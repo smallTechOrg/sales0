@@ -1019,3 +1019,7 @@ P1 appears under two keywords with the same URN (URN duplicate). P7 is the same 
 ## Portability to a VPS (later)
 
 The same command runs on any Linux host after `uv sync && uv run playwright install --with-deps chromium`. With `SALES0_LINKEDIN_BROWSER_CHANNEL=auto`, sales0 uses Google Chrome when `google-chrome-stable` is installed (`/opt/google/chrome/chrome`), and otherwise the bundled Chromium with the Setup note. The live headed **Connect** needs a display. On a VPS, either run it under `xvfb-run` and reach it through a VNC/noVNC tunnel, or log in on the laptop and copy the profile directory for the channel in use (`data/linkedin-chrome-profile/` for Chrome). Copying works only between the same browser channel. This is documented in the README in Phase 2, together with the shared login. A Postgres switch is a URL change (see Stack).
+
+
+## LinkedIn results variants (Phase 1.3)
+The SDUI results page ships in several markup variants. Card discovery order: `sdui` (`data-view-name="feed-full-update"`), `urn`, then `listitem` (`role=listitem` containing an expandable text box / `Open control menu for post by <Name>` button / `feed-commentary`). `listitem` also wins when the earlier tiers produce no post text. Its raws have `has_control_menu=false` (no permalink capture; the card links to the author profile). Selectors live in `scraper/selectors.py` (`LISTITEM_*`); sample: `tests/integration/scraper/test_listitem_variant.py`.

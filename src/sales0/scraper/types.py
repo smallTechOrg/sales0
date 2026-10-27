@@ -12,7 +12,7 @@ BrowserChannel = Literal["chrome", "chromium"]
 # Phase 1.2: what a card link points at (== ``scraper.urls.link_kind_of(url)``).
 LinkKind = Literal["post", "profile", "search", "other"]
 # Phase 1.2: which card-discovery strategy won on a results page.
-CardStrategy = Literal["sdui", "urn", "none"]
+CardStrategy = Literal["sdui", "urn", "listitem", "none"]
 URN_REF_PREFIX = "urn:li:"
 
 # The optional post fields whose absence is counted into ``KeywordScrapeResult.field_misses``.

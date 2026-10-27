@@ -38,3 +38,9 @@ Branch: feature/sales0-20261027-1816-v0.1 (base: main)
 - Pricing defaults corrected to $0.10/$0.50 per MTok (spec-writer had guessed $1/$5 as Assumed). effort="low" probed: accepted with forced tool use but saves ~1% — not used.
 - Process change requested by user: split audits into 3–4 parallel scoped auditors; run unit/integration/e2e gates concurrently.
 - Gate (orchestrator-run): unit 630, integration 498 (real Haiku), e2e 6, check-browser OK.
+
+## Phase 1.3 — marker-free results variant (2026-10-28)
+- **Symptom:** "layout may have changed" on every live run although Connect worked and posts were visible. Run 1: 0 cards; run 2: 6 cards found, 0 parsed.
+- **Cause:** LinkedIn serves the SDUI results page in more than one markup variant per load. One has no `data-view-name` at all, so the Phase 1.2 reader (keyed on `feed-full-update`) found nothing. A single capture had looked representative and wasn't.
+- **Fix:** third card tier (`listitem`): `role=listitem` holding an expandable text box or an "Open control menu for post by <Name>" button; name from that label, headline/time from text nodes before the post text. It is also used when the other tiers yield no post text. No permalink capture on this tier (profile link instead).
+- **Lesson:** reproduce through the app's own run path (not a one-shot page load) before declaring a parser fixed, and key parsers on visible structure (roles, aria-labels, test ids), never on a single vendor attribute. Verified live: 9/9 posts, no drift.

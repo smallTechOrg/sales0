@@ -77,6 +77,9 @@ const __urnCards = (sel, scope) => {
   cards.sort(__domOrder);
   return cards;
 };
+const __listCards = (sel, scope) => Array.from(scope.querySelectorAll(sel.listitem_card))
+  .filter((li) => !(li.parentElement && li.parentElement.closest(sel.listitem_card))
+    && sel.listitem_markers.some((m) => li.querySelector(m)));
 const __cards = (sel) => {
   const scope = __scope();
   if (!scope || !scope.querySelectorAll) return { strategy: 'none', cards: [] };
@@ -85,6 +88,8 @@ const __cards = (sel) => {
   if (sdui.length) return { strategy: 'sdui', cards: sdui };
   const urn = __urnCards(sel, scope);
   if (urn.length) return { strategy: 'urn', cards: urn };
+  const lst = __listCards(sel, scope);
+  if (lst.length) return { strategy: 'listitem', cards: lst };
   return { strategy: 'none', cards: [] };
 };
 const __cardsFound = (sel) => {
@@ -109,6 +114,8 @@ const __any = (list) => list.some((s) => { try { return !!document.querySelector
 CARD_ARGS: dict[str, Any] = {
     "sdui_post": S.SDUI_POST,
     "sdui_listitem": S.SDUI_LISTITEM,
+    "listitem_card": S.LISTITEM_CARD,
+    "listitem_markers": list(S.LISTITEM_POST_MARKERS),
     "card_attr": S.join(S.CARD_ATTR_SELECTORS),
     "post_links": S.join(S.POST_LINK_SELECTORS),
     "containers": S.CARD_CONTAINERS,
@@ -409,8 +416,91 @@ const sduiRaw = (card) => {
            via };
 };
 
+// ---------------------------------------------------------------- listitem variant (Phase 1.3)
+// No data-view-name needed: name from the "Open control menu for post by <Name>" label, text from the
+// expandable text box, headline/time from the text nodes BEFORE the text. No permalink capture
+// (has_control_menu=false): the card links to the author's profile instead.
+const listRaw = (card) => {
+  const via = { strategy: 'listitem' };
+  const menu = card.querySelector(sel.listitem_menu);
+  const label = menu ? clean(menu.getAttribute('aria-label')) : '';
+  const lm = label.match(new RegExp(sel.listitem_menu_re, 'i'));
+  let name = lm ? clean(lm[1]) : null;
+  if (name) via.author_name = 'control_menu_label';
+
+  const anchor = Array.from(card.querySelectorAll(sel.author_anchor))[0] || null;
+  const profile = anchor ? (anchor.getAttribute('href') || null) : null;
+  if (profile) via.author_profile_url = 'first_profile_link';
+  if (!name && anchor) {
+    const holder = anchor.matches('[aria-label]') ? anchor : anchor.querySelector('[aria-label]');
+    let l = holder ? (holder.getAttribute('aria-label') || '') : '';
+    for (const s of sel.aria_strip) l = l.split(s).join(' ');
+    l = clean(l.replace(degreeTail, ''));
+    if (l) { name = l; via.author_name = 'anchor_label'; }
+  }
+
+  let textEl = null, best = 0;
+  for (const css of sel.listitem_text) {
+    for (const el of card.querySelectorAll(css)) {
+      if (exclCss && el.closest(exclCss)) continue;  // article titles, document captions, image alt text
+      const len = clean(shown(el)).length;
+      if (len > best) { textEl = el; best = len; via.text = css; }
+    }
+  }
+  let text = null;
+  if (textEl) {
+    text = shown(textEl).replace(/\s+$/, '');
+    const expand = textEl.querySelector(sel.sdui_expand) || (textEl.parentElement ? textEl.parentElement.querySelector(sel.sdui_expand) : null);
+    if (expand) {
+      const raw = (expand.innerText || expand.textContent || '').trim();
+      for (const tail of [raw, clean(raw)]) {
+        if (tail && text.endsWith(tail)) { text = text.slice(0, -tail.length).replace(/\s+$/, ''); break; }
+      }
+    }
+    text = text.replace(/\s*(…|\.\.\.)$/, '');
+    if (!clean(text)) { text = null; delete via.text; }
+  }
+
+  // Text nodes before the post text, in DOM order: headline and relative time.
+  const head = [];
+  const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const el = n.parentElement;
+    if (!el) continue;
+    if (textEl && (textEl.contains(el) || (textEl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING))) break;
+    if (el.closest('button, h1, h2, h3, script, style') || isHidden(el)) continue;
+    const t = clean(n.textContent);
+    if (t && t !== '​') head.push(t);
+  }
+  const skipLine = (l) => isSkip(l) || /^feed post$/i.test(l) || (name && l === name);
+  if (!name) {
+    const first = head.find((l) => !skipLine(l));
+    if (first) { name = clean(first.replace(degreeTail, '')); via.author_name = 'first_line'; }
+  }
+  const posted = head.find((l) => isRel(l)) || null;
+  if (posted) via.posted_relative = 'head_lines';
+  const headline = head.find((l) => !skipLine(l) && !(name && l.includes(name))) || null;
+  if (headline) via.author_headline = 'head_lines';
+
+  const rawKey = (card.getAttribute(sel.key_attr) || '').trim().replace(new RegExp(sel.listitem_key_prefix_re), '');
+  const key = validKey(rawKey) || (() => {
+    const inner = Array.from(card.querySelectorAll('[' + sel.key_attr + ']')).map((e) => (e.getAttribute(sel.key_attr) || '').trim());
+    return validKey(inner[0]);
+  })();
+  if (key) via.component_key = 'listitem';
+  return { strategy: 'listitem', urn: null, component_key: key, post_href: null, author_name: name,
+           author_profile_url: profile, author_headline: headline, posted_relative: posted, text,
+           has_control_menu: false, via };
+};
+
 const found = __cards(sel);
-return found.cards.map((card) => (found.strategy === 'sdui' ? sduiRaw(card) : urnRaw(card)));
+let raws = found.cards.map((card) => (found.strategy === 'sdui' ? sduiRaw(card) : found.strategy === 'listitem' ? listRaw(card) : urnRaw(card)));
+// A variant that matched cards but gave no text on any of them: try the marker-free listitem tier.
+if (found.strategy !== 'listitem' && !raws.some((r) => r && r.text)) {
+  const alt = __listCards(sel, __scope()).map(listRaw);
+  if (alt.some((r) => r.text)) raws = alt;
+}
+return raws;
 }"""
 )
 
@@ -441,6 +531,11 @@ EXTRACT_ARGS: dict[str, Any] = {
     "sdui_text_exclude": list(S.SDUI_TEXT_EXCLUDE),
     "sdui_expand": S.SDUI_EXPAND,
     "sdui_control_menu": S.SDUI_CONTROL_MENU,
+    # Phase 1.3 (listitem variant)
+    "listitem_text": list(S.LISTITEM_TEXT),
+    "listitem_menu": S.LISTITEM_MENU,
+    "listitem_menu_re": S.LISTITEM_MENU_LABEL_RE,
+    "listitem_key_prefix_re": S.LISTITEM_KEY_PREFIX_RE,
 }
 
 # The "see more" toggle of each of the first ``n`` cards (an array of elements; cards without one are skipped).
@@ -608,7 +703,7 @@ def strategy_of(raws: list[dict[str, Any]]) -> CardStrategy:
     if not raws:
         return "none"
     value = raws[0].get("strategy")
-    return value if value in ("sdui", "urn") else "urn"
+    return value if value in ("sdui", "urn", "listitem") else "urn"
 
 
 def parse_cards(

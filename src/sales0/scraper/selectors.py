@@ -53,6 +53,23 @@ SDUI_SCROLL_CONTAINER = '[data-testid="lazy-column"]'
 # Informational only (logged as sdui_screen), never a verdict.
 SDUI_SCREEN = '[data-sdui-screen*="SearchResultsContent"]'
 
+# --------------------------------------------------------------------------- listitem variant (Phase 1.3)
+# LinkedIn serves the same SDUI results page in several markup variants; one has NO data-view-name
+# at all. What every variant keeps is the visible structure: a role=listitem holding a hidden
+# "Feed post" heading, a profile link, an expandable text box, a relative time and a
+# "Open control menu for post by <Name>" button. This tier only needs those, and is tried after
+# the data-view-name (sdui) and URN strategies - and also wins when they yield no post text.
+LISTITEM_CARD = '[role="listitem"]'
+LISTITEM_POST_MARKERS: tuple[str, ...] = (
+    '[data-testid="expandable-text-box"]',
+    '[data-view-name="feed-commentary"]',
+    'button[aria-label^="Open control menu for post by"]',
+)
+LISTITEM_TEXT: tuple[str, ...] = ('[data-testid="expandable-text-box"]', '[data-view-name="feed-commentary"]')
+LISTITEM_MENU = 'button[aria-label^="Open control menu for post by"]'
+LISTITEM_MENU_LABEL_RE = r"^Open control menu for post by\s+(.+?)\s*$"
+LISTITEM_KEY_PREFIX_RE = r"^(?:update-card-focus|expanded)"
+
 # --------------------------------------------------------------------------- cards (URN layout)
 URN_PREFIXES: tuple[str, ...] = ("urn:li:activity:", "urn:li:ugcPost:", "urn:li:share:")
 URN_ATTRIBUTES: tuple[str, ...] = ("data-urn", "data-id")
