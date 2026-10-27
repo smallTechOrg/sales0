@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Error {{ status }} · sales0{% endblock %}
+{% block content %}
+  <h1>Something needs attention</h1>
+  <p role="alert">{{ message }}</p>
+  <p><a href="{{ back_href or '/' }}">Back to sales0</a></p>
+{% endblock %}

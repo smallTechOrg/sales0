@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}sales0{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+</head>
+<body>
+  <header>{% block page_header %}<strong>sales0</strong>{% endblock %}</header>
+  <main id="main">{% block content %}{% endblock %}</main>
+  <div id="toasts" aria-live="polite"></div>
+</body>
+</html>
