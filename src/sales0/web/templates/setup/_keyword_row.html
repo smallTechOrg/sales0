@@ -1,0 +1,17 @@
+{# Needs: keyword (KeywordView). #}
+<li id="keyword-{{ keyword.id }}" data-active="{{ 'true' if keyword.active else 'false' }}">
+  <div class="item-list__main">
+    <strong>{{ keyword.text }}</strong>
+    <span class="muted">{% if keyword.last_run_at %}Last run {{ keyword.last_run_at | ago }}{% else %}Not run yet{% endif %}{% if not keyword.active %} · paused{% endif %}</span>
+  </div>
+  <button class="switch" type="button" role="switch" aria-checked="{{ 'true' if keyword.active else 'false' }}"
+          aria-label="Search '{{ keyword.text }}' in runs"
+          hx-post="/setup/keywords/{{ keyword.id }}/toggle" hx-vals='{"active": "{{ 'false' if keyword.active else 'true' }}"}'
+          hx-target="#keyword-{{ keyword.id }}" hx-disabled-elt="this">
+    <span class="switch__track" aria-hidden="true"></span>
+    <span>{{ "Active" if keyword.active else "Paused" }}</span>
+  </button>
+  <button class="btn btn--danger btn--sm" type="button"
+          hx-post="/setup/keywords/{{ keyword.id }}/delete" hx-target="#keyword-list"
+          hx-confirm="Remove keyword '{{ keyword.text }}'? Past runs and enquiry chips keep its text.">Remove</button>
+</li>

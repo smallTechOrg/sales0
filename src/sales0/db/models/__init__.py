@@ -1,22 +1,40 @@
-"""ORM models (Alembic autogenerate target).
+"""ORM models (Alembic autogenerate target): one module per aggregate (see spec/data.md).
 
-Scaffold placeholder: exports ``AppMeta`` only. Phase-1 slice A replaces this module with
-one module per aggregate (see spec/data.md) and re-exports every model here.
+Every model is re-exported here; importing this package registers all tables on
+``sales0.db.base.metadata``.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
+from sales0.db.models import enums
+from sales0.db.models._types import UTCDateTime
+from sales0.db.models.decisions import TriageDecision
+from sales0.db.models.enquiries import Enquiry, EnquiryKeywordHit, EnquirySource
+from sales0.db.models.history import StatusHistory
+from sales0.db.models.keywords import Keyword
+from sales0.db.models.linkedin import LINKEDIN_SESSION_ID, LinkedInSession
+from sales0.db.models.llm_calls import LlmCall
+from sales0.db.models.meta import AppMeta
+from sales0.db.models.offerings import Offering, OfferingGroup
+from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
+from sales0.db.models.users import User
 
-from sales0.db.base import Base
-
-
-class AppMeta(Base):
-    __tablename__ = "app_meta"
-
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    value: Mapped[str] = mapped_column(String(500), nullable=False)
-
-
-__all__ = ["AppMeta"]
+__all__ = [
+    "LINKEDIN_SESSION_ID",
+    "AppMeta",
+    "Enquiry",
+    "EnquiryKeywordHit",
+    "EnquirySource",
+    "Keyword",
+    "LinkedInSession",
+    "LlmCall",
+    "Offering",
+    "OfferingGroup",
+    "ScrapeRun",
+    "ScrapeRunKeyword",
+    "StatusHistory",
+    "TriageDecision",
+    "UTCDateTime",
+    "User",
+    "enums",
+]

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Runs{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Runs</h1>
+      <p>Each run searches your active keywords on LinkedIn, slowly and like a person, then asks the AI to triage every new post.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "runs/_panel.html" %}
+    <section class="card" aria-labelledby="history-title">
+      <div class="card__header"><h2 id="history-title">History</h2></div>
+      <div class="card__body">{% include "runs/_history.html" %}</div>
+    </section>
+  </div>
+{% endblock %}

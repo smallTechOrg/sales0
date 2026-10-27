@@ -36,7 +36,7 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | POST | `/runs` | — | `start_run` | `#run-panel` (progress, polling) |
 | GET | `/runs/{id}/progress` | — | — | `#run-panel`. `hx-trigger="every 1s"` while queued or running. The final render shows the outcome + "Open inbox (N new)". |
 | POST | `/inbox/decide` | `enquiry_ids` (repeated), `decision=accept\|discard`, `discard_reason` (opt), `tab`, `q`, `page` | `decide` | `#inbox-list` for the current tab + tab counts (`hx-swap-oob` on `#inbox-tabs`) + toast "Accepted 2" / "Discarded 3" |
-| POST | `/inbox/{id}/fields` | `priority`, `offering_id` | `update_fields` | that card `#enquiry-{id}` |
+| POST | `/inbox/{id}/fields` | `priority`, `offering_id` (each optional; an absent `offering_id` keeps it, `""`/`none` means "No match"; neither field → `field_invalid`) | `update_fields` (semantics in `architecture.md` → Contracts) | that card `#enquiry-{id}` |
 | POST | `/inbox/{id}/retry` | — | `retry_triage` | that card |
 
 ## JSON
@@ -44,8 +44,8 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | Method | Path | Response `data` |
 |---|---|---|
 | GET | `/api/health` | `{"status":"ok","db_revision":"<rev>","linkedin_mode":"live\|fixture","model":"<SALES0_LLM_MODEL>","api_key_present":true}` |
-| GET | `/api/runs/{id}` | `RunDetailView` serialised (used by E2E for exact counter assertions) |
-| GET | `/api/session` | `SessionStatusView` serialised |
+| GET | `/api/runs/{id}` | `RunDetailView` serialised (used by E2E for exact counter assertions). Served by `web/routes/runs.py` (G); unknown id → `not_found` 404. |
+| GET | `/api/session` | `SessionStatusView` serialised. Served by `web/routes/setup.py` (F). |
 
 ## Fixture-only routes
 
@@ -59,6 +59,7 @@ These are mounted at `/__fixtures/linkedin` only when `SALES0_LINKEDIN_MODE=fixt
 | `keyword_duplicate` | 409 | "'<text>' is already in your keywords." |
 | `offering_invalid` | 400 | "Offering name (1–80) and group (1–60) are required." |
 | `offering_duplicate` | 409 | "An offering named '<name>' already exists." |
+| `csrf_rejected` | 403 | "Request blocked: it came from another site." Raised by the same-origin middleware for a cross-origin unsafe request (`architecture.md` → Security & Safety). |
 | `not_found` | 404 | "That item no longer exists — refresh the page." |
 | `job_busy` | 409 | "LinkedIn is busy (<action> in progress) — wait for it to finish." |
 | `run_in_progress` | 409 | "A run is already in progress." |
@@ -67,6 +68,7 @@ These are mounted at `/__fixtures/linkedin` only when `SALES0_LINKEDIN_MODE=fixt
 | `no_keywords` | 409 | "Add at least one active keyword in Setup." |
 | `daily_run_cap` | 429 | "Daily run limit reached (<n>/<cap>). Runs reset at midnight (<tz>)." |
 | `daily_post_cap` | 429 | "Daily post limit reached (<n>/<cap>) — protects your LinkedIn account." |
-| `decision_invalid` | 400 | "Choose Accept or Discard for at least one enquiry." |
+| `decision_invalid` | 400 | "Choose Accept or Discard for at least one enquiry." Also raised when a target enquiry is still pending triage. |
+| `field_invalid` | 400 | Raised by `update_fields` for a priority outside high/medium/low or an inactive/unknown offering, and by `POST /inbox/{id}/fields` when neither field is sent ("Choose a priority or an offering to change."). |
 | `triage_failed` | 502 | "AI triage failed: <error>. Try again in a minute." |
-| `llm_auth` | 502 | "Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env." |
+| `llm_auth` | 502 | "Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env.", or for a key that is not workspace-scoped: "This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env." |

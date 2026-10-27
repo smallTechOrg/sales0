@@ -1,0 +1,24 @@
+{# Needs: offering (OfferingView), group_names. #}
+<li id="offering-{{ offering.id }}">
+  <form class="stack stack--tight item-list__main" method="post" action="/setup/offerings/{{ offering.id }}"
+        hx-post="/setup/offerings/{{ offering.id }}" hx-target="#offering-list" hx-disabled-elt="find button[type=submit]">
+    <div class="field">
+      <label class="field__label" for="offering-{{ offering.id }}-name">Name</label>
+      <input class="input" id="offering-{{ offering.id }}-name" name="name" type="text" maxlength="80" required value="{{ offering.name }}">
+    </div>
+    <div class="field">
+      <label class="field__label" for="offering-{{ offering.id }}-group">Group</label>
+      <input class="input" id="offering-{{ offering.id }}-group" name="group_name" type="text" maxlength="60" required
+             list="offering-groups" value="{{ offering.group_name }}">
+    </div>
+    <div class="field">
+      <label class="field__label" for="offering-{{ offering.id }}-description">Description</label>
+      <textarea class="input" id="offering-{{ offering.id }}-description" name="description" maxlength="500" rows="3">{{ offering.description }}</textarea>
+    </div>
+    <div class="row">
+      <button class="btn btn--primary btn--sm" type="submit">Save changes</button>
+      <button class="btn btn--ghost btn--sm" type="button"
+              hx-get="/setup" hx-select="#offering-list" hx-target="#offering-list">Cancel</button>
+    </div>
+  </form>
+</li>

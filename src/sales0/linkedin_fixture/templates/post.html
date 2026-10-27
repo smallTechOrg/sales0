@@ -1,0 +1,10 @@
+{% extends "_layout.html" %}
+{% block title %}Post | LinkedIn (fixture){% endblock %}
+{% block content %}
+{% if post %}
+<div class="feed-shared-update-v2" data-urn="{{ post.urn }}">
+  <p><strong>{{ post.author_name }}</strong> — {{ post.author_headline }}</p>
+  <div class="update-components-text">{{ post.text }}</div>
+</div>
+{% else %}<h1>This post is not available</h1>{% endif %}
+{% endblock %}

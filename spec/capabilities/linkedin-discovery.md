@@ -25,7 +25,7 @@ Connects the team's own LinkedIn session once, then on **Run now** searches Link
 ## External Calls
 | System | Operation | On Failure |
 |---|---|---|
-| LinkedIn (team session, persistent browser profile) | open feed (session check), content search results by keyword, scroll, expand "see more" | Logout/authwall, checkpoint, captcha or rate-limit (HTTP 429/999): **stop the run immediately**, close the browser, set "needs attention" with the reason, show the banner, never retry automatically. Other page errors: mark that keyword `error`, continue to the next keyword. |
+| LinkedIn (team session, persistent browser profile) | open feed (session check), content search results by keyword, scroll, expand "see more" | Logout/authwall, checkpoint, captcha or rate-limit (HTTP 429/999 on any LinkedIn response, including background requests the page makes; checked after every page load, scroll and "see more"): **stop the run immediately**, close the browser, set "needs attention" with the reason, show the banner, never retry automatically. Other page errors: mark that keyword `error`, continue to the next keyword. |
 | AI triage (see ai-triage) | per new enquiry | Enquiry marked "triage failed" with Retry. The run continues. A fatal key/model error stops triage and fails the run with a clear message. |
 
 ## Business Rules
@@ -41,6 +41,7 @@ Connects the team's own LinkedIn session once, then on **Run now** searches Link
 - On a safety stop: posts already saved are kept and still triaged, the remaining keywords are marked skipped, and the session becomes "needs attention" with the reason and page. It goes back to "connected" only after a successful Connect or Re-check.
 - A logged-in results page with neither results nor a "no results" marker is flagged as a possible layout change on that keyword's log row (a warning, not a stop).
 - Runs interrupted by a server restart are marked failed at the next startup.
+- Deleting a keyword while a run is active does not affect that run. Its hits keep the keyword text; the link to the deleted keyword is cleared.
 - **Fixture mode** runs the identical flow against a built-in fake LinkedIn with a known post corpus. It is used for automated tests and offline demos, and is labelled "FIXTURE MODE" in the header.
 - Scheduling is out of scope (Phase 4). Phase 1 runs only on a button press.
 
@@ -50,7 +51,7 @@ Connects the team's own LinkedIn session once, then on **Run now** searches Link
 - [ ] The enquiry for P1 carries both keyword chips. P2 has 2 source refs (P2 + P7 URNs). There are exactly 7 enquiry rows.
 - [ ] Run 2 after adding `claude code training`: seen 11 / new 2 / dupes 9, and the new keyword is searched first.
 - [ ] Keyword `checkpoint-test` (placed first): the run ends `aborted` with reason `checkpoint`, the session is `needs_attention`, the other keywords are `skipped`, `/inbox` renders `#alert-banner`, and **Run now** is disabled with the needs-attention reason.
-- [ ] `captcha-test` → aborted `captcha`. `ratelimit-test` → aborted `rate_limited`. A cleared profile (no cookie) → aborted `logout`.
+- [ ] `captcha-test` → aborted `captcha`. `ratelimit-test` → aborted `rate_limited`. `ratelimit-scroll-test` (a background 429) → aborted `rate_limited`. The mid-scroll safety trigger keyword (see `linkedin_fixture/routes.py`) → aborted at the scroll checkpoint. A cleared profile (no cookie) → aborted `logout`.
 - [ ] With `SALES0_SCRAPE_MAX_RUNS_PER_DAY=1`, a second Run now is refused with `daily_run_cap`.
 - [ ] With `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD=2`, every keyword row reports seen ≤ 2.
 - [ ] A Run now while a run is active is refused with `run_in_progress`. Connect during a run is refused with `job_busy`.

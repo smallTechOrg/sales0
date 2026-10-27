@@ -34,6 +34,8 @@ Browser (htmx) ──HTTP──> FastAPI routes ──> services ──> SQLAlch
 4. For each NEW enquiry from that keyword: `services.triage.triage_enquiry(db, enquiry_id, llm)` loads the offerings and few-shot examples, calls `agent.graph.run_triage`, and persists the result, the `llm_calls` row and a `status_history` row.
 5. A paced pause runs between keywords. The job stops early when the daily post cap is reached.
 6. `AccountSafetyStop` (logout / checkpoint / captcha / rate_limited) closes the browser immediately. The run becomes `aborted` and the session becomes `needs_attention`. Enquiries already saved but still untriaged ARE triaged, because that makes no LinkedIn request.
+6a. A fatal LLM error (`LLMAuthError` / `LLMModelNotFound`) mid-run stops the run. It ends `failed` with the adapter's message in `error_message`. Remaining keywords become `skipped`. Enquiries already scraped stay `triage_status=pending`, so the user can use Retry triage later. The `llm_calls` error row is kept. `abort_reason` stays null, because `aborted` is reserved for account-safety stops. Exception: if the fatal LLM error happens during the post-stop triage of step 6 (after an `AccountSafetyStop`), the run stays `aborted` with its `abort_reason`, and the LLM message is still recorded in `error_message`.
+6b. The keyword list is snapshotted at step 2. A keyword deleted (or deactivated) mid-run does not change the run: it is still searched if planned, and its hits are saved with `keyword_text` set and `keyword_id` null (`SET NULL`, `data.md`). If the keyword is deleted while that keyword's posts are being saved, the insert of a keyword hit raises an `IntegrityError` (FK). The job rolls back that post and retries its `upsert_post` once with `keyword_id` null. Deletion never fails the run or a keyword row.
 7. The run is finalised: status `succeeded` (or `aborted`/`failed`) and `finished_at` are set, and on success `linkedin_session.last_successful_run_at` is updated.
 
 At startup, any run left in `queued` or `running` is marked `failed` with the error "Interrupted by server restart".
@@ -191,7 +193,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 - Settings: `extra="ignore"`. Enum-like env values (`linkedin_mode`, `log_format`) are resolved through a property that strips inline `# comments` and whitespace and then validates. Startup fails loudly when `SALES0_ANTHROPIC_API_KEY` is missing, when the DB is not at head ("Run: uv run alembic upgrade head"), or when an invalid mode is set.
 - Starlette ≥1.0 form only: `templates.TemplateResponse(request, "x.html", {...})`.
 - No raw SQL strings except Alembic data seeds via `op.bulk_insert`. All queries go through the ORM or Core with bound parameters.
-- Money is stored as integer micro-USD (`cost_usd_micros`). It is displayed with the `usd` filter (≥4 decimals below $0.01, e.g. `$0.0012`).
+- Money is stored as integer micro-USD (`cost_usd_micros`). It is displayed with the `usd` filter (≥4 decimals below $0.01, e.g. `$0.0012`). The header cost badge and run costs always show 4 decimals.
 - Datetimes are timezone-aware UTC in the DB (`DateTime(timezone=True)`) and are shown in `SALES0_TIMEZONE` via `localdt` and `ago`.
 
 **SQLite engine setup** (`db/engine.py`): `connect_args={"check_same_thread": False}`. On every connect it sets `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000`. It uses `sessionmaker(expire_on_commit=False)`, and `session_scope()` commits on success and rolls back on exception. The background thread opens its own sessions and never shares one with a request.
@@ -238,17 +240,18 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 **Startup hooks** (`web/app.py` lifespan):
 - The scaffold version runs `configure_logging`, ensures `data/` exists, and calls `assert_at_head()`.
 - In Phase 1, slice **D** (the only Phase-1 slice allowed to edit `web/app.py`) adds exactly one line, `services.runs.recover_interrupted_runs(db)`. This marks queued/running runs `failed` with "Interrupted by server restart".
-- The scaffold's `/` route lives in the `web/routes/stubs.py` placeholder and renders `home.html`. Slice E replaces it with the 303 redirect to `/inbox`.
+- Since Phase 1, `/` (in `web/routes/stubs.py`) returns a 303 redirect to `/inbox`. The scaffold's `home.html` no longer exists.
 
 ## Configuration
 
-Every variable below appears in `.env.example`, with comments, in this order. All are read by `sales0.config.Settings` (prefix `SALES0_`).
+Every variable below appears in `.env.example`, with comments, in this order (optional ones such as `SALES0_ANTHROPIC_WORKSPACE_ID` appear commented out or empty, with their purpose). All are read by `sales0.config.Settings` (prefix `SALES0_`).
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `SALES0_ANTHROPIC_API_KEY` | — (required) | Anthropic key (SecretStr). The user creates `.env`. |
+| `SALES0_ANTHROPIC_WORKSPACE_ID` | (unset) | Optional. When set, sent as the `anthropic-workspace-id` header on every Anthropic request. REQUIRED for org-level keys that are not workspace-scoped (this user's key needs it). |
 | `SALES0_LLM_MODEL` | `claude-haiku-5-5` | Model id. Haiku only by constraint. |
-| `SALES0_LLM_MAX_OUTPUT_TOKENS` | `700` | Triage output cap |
+| `SALES0_LLM_MAX_OUTPUT_TOKENS` | `900` | Triage output cap |
 | `SALES0_LLM_TIMEOUT_S` | `30` | Per-request timeout |
 | `SALES0_LLM_MAX_RETRIES` | `3` | Retries on 429/5xx/timeouts (exponential backoff with jitter, base 1s) |
 | `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` | `1.00` | Input price per 1M tokens |
@@ -323,9 +326,9 @@ class LLMClient(Protocol):
     def ping(self) -> LLMResponse: ...  # max_tokens=5, "Reply with OK"
 ```
 
-`AnthropicClient.structured` calls `messages.create(model=settings.llm_model, system=..., messages=..., tools=[{name, description, input_schema}], tool_choice={"type":"tool","name":tool_name}, max_tokens=...)`. The SDK's internal retries are disabled (`max_retries=0`); the adapter retries itself on `RateLimitError`, `APIStatusError` ≥500, `APIConnectionError` and `APITimeoutError`, up to `SALES0_LLM_MAX_RETRIES` with backoff. It maps 401/403 to `LLMAuthError("Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env")` and 404 to `LLMModelNotFound("Model '<id>' not found — check SALES0_LLM_MODEL")`. It emits one `llm_call` log line per attempt-final outcome. It does NOT write to the DB; persistence of `llm_calls` is done by `services.triage` from the returned `LLMResponse`, which keeps the layer DB-free.
+`AnthropicClient.structured` calls `messages.create(model=settings.llm_model, system=..., messages=..., tools=[{name, description, input_schema}], tool_choice={"type":"tool","name":tool_name}, max_tokens=...)`. When `SALES0_ANTHROPIC_WORKSPACE_ID` is set, the client is built with `default_headers={"anthropic-workspace-id": <id>}`, so every request (including `ping`) carries it. The SDK's internal retries are disabled (`max_retries=0`); the adapter retries itself on `RateLimitError`, `APIStatusError` ≥500, `APIConnectionError` and `APITimeoutError`, up to `SALES0_LLM_MAX_RETRIES` with backoff. It maps 401/403 to `LLMAuthError("Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env")`, the HTTP 400 that says the key requires a workspace to `LLMAuthError("This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env")` (never retried), and 404 to `LLMModelNotFound("Model '<id>' not found — check SALES0_LLM_MODEL")`. Any other rejected request (another 4xx, e.g. HTTP 400 `invalid_request_error`) is not retried and surfaces to the user as "AI request rejected — see logs"; the Anthropic error detail goes only to the `llm_call` log line. It emits one `llm_call` log line per attempt-final outcome. It does NOT write to the DB; persistence of `llm_calls` is done by `services.triage` from the returned `LLMResponse`, which keeps the layer DB-free.
 
-`python -m sales0.cli check-llm` calls `ping()` and prints `LLM OK model=<model> input_tokens=N output_tokens=M` with exit 0. On error it prints the mapped error message to stderr with exit 1.
+`python -m sales0.cli check-llm` calls `ping()` and prints `LLM OK model=<model> input_tokens=N output_tokens=M` with exit 0. On error it prints `LLM ERROR type=<auth|workspace-required|model-not-found|transient|bad-response> <mapped message>` to stderr with exit 1 (a missing key is still reported as missing). The type distinguishes a bad key, a key that needs `SALES0_ANTHROPIC_WORKSPACE_ID`, a wrong model slug, a temporary outage, and a rejected request or unusable response (`LLMBadResponse`), rather than a bare OK/MISSING.
 
 ## Contracts (Phase 1 inter-slice interfaces)
 
@@ -379,12 +382,13 @@ class ConnectResult: connected: bool; reason: Literal["ok","timeout","window_clo
 
 # scraper/errors.py
 class AccountSafetyStop(Exception): kind: Literal["logout","checkpoint","captcha","rate_limited"]; url: str
-class ScrapeError(Exception): ...
+class ScrapeError(Exception): ...   # AccountSafetyStop is NOT a ScrapeError subclass (callers catch them separately)
 
 # scraper/session_check.py
 def check_session(settings: Settings, *, headless: bool = True) -> SessionCheckResult   # opens+closes own context
 # scraper/connect.py
 def connect_interactive(settings: Settings, on_tick: Callable[[int], None], should_cancel: Callable[[], bool]) -> ConnectResult
+#   During login a checkpoint page is NOT a stop (2FA is expected); it keeps polling until the feed loads or the timeout.
 # scraper/search.py
 class LinkedInSearcher:
     def __init__(self, settings: Settings, pacer: Pacer | None = None): ...
@@ -401,16 +405,18 @@ KeywordView(id, text, active, last_run_at, created_at)
 OfferingView(id, name, group_id, group_name, description, active, sort_order, enquiry_count)
 OfferingInput(name: str 1..80, group_name: str 1..60, description: str 0..500)
 SessionStatusView(status: Literal["not_connected","connected","needs_attention","busy"], busy_action: Literal["connect","check","run"] | None,
-                  last_checked_at, last_successful_run_at, last_error: str | None, mode: Literal["live","fixture"], connect_elapsed_s: int | None)
-Eligibility(can_run: bool, reason: str | None, runs_today: int, runs_cap: int, posts_today: int, posts_cap: int)
+                  stored_status: Literal["not_connected","connected","needs_attention"],   # the DB value; `status` may be the derived "busy"
+                  last_checked_at, last_connected_at, last_successful_run_at, last_error: str | None, mode: Literal["live","fixture"], connect_elapsed_s: int | None)
+Eligibility(can_run: bool, reason: str | None, reason_code: str | None,   # reason_code = the DomainError code start_run would raise
+            runs_today: int, runs_cap: int, posts_today: int, posts_cap: int)
 RunKeywordView(keyword_text, status, posts_seen, posts_new, posts_dupe, errors, duration_ms, error_message)
 RunView(id, status, trigger, mode, started_at, finished_at, duration_ms, keywords_planned, keywords_done, current_keyword, current_step,
         posts_seen, posts_new, posts_dupe, enquiries_triaged, triage_failed, errors_count, abort_reason, error_message, cost_usd_micros)
 RunDetailView(run: RunView, keywords: list[RunKeywordView])
 EnquiryCardView(id, review_status, stage, triage_status, triage_error,
-                requirement_summary, ai_verdict, ai_reason, ai_poster_type, priority, offering_id, offering_name,
+                requirement_summary, ai_verdict, ai_reason, ai_poster_type, ai_priority, ai_offering_id, priority, offering_id, offering_name,
                 company, contact_person, email, phone, city, mode, dates_mentioned, topic,
-                author_name, author_headline, source_url, raw_text, date_posted, date_added, keywords: list[str],
+                author_name, author_headline, source_url, source_ref, raw_text, date_posted, date_added, keywords: list[str],
                 discard_reason, is_override, decided_at, cost_usd_micros, tokens_total)
 InboxPage(tab, q, items: list[EnquiryCardView], total, page, page_size, counts: dict[str,int])   # counts keys: review, accepted, discarded
 CostSummary(today_usd_micros, month_usd_micros, today_calls, month_calls)
@@ -424,8 +430,9 @@ set_keyword_active(db, keyword_id: int, active: bool) -> KeywordView
 list_offerings(db, include_inactive: bool = False) -> list[OfferingView]
 list_group_names(db) -> list[str]
 create_offering(db, data: OfferingInput) -> OfferingView   # DomainError offering_invalid | offering_duplicate
+#   OfferingInput length violations raise offering_invalid. A name matching a DEACTIVATED offering reactivates it (with the new group/description), not offering_duplicate.
 update_offering(db, offering_id: int, data: OfferingInput) -> OfferingView
-delete_offering(db, offering_id: int) -> Literal["deleted","deactivated"]
+delete_offering(db, offering_id: int) -> Literal["deleted","deactivated"]   # deactivated when any enquiry references it (FK RESTRICT, data.md)
 # services/session.py
 session_status(db) -> SessionStatusView
 start_connect(db) -> SessionStatusView                     # DomainError job_busy
@@ -442,7 +449,10 @@ list_enquiries(db, tab: Literal["review","accepted","discarded"], q: str | None,
 get_card(db, enquiry_id: int) -> EnquiryCardView
 decide(db, enquiry_ids: list[int], decision: Literal["accept","discard"], discard_reason: str | None = None,
        actor_user_id: int | None = None) -> list[EnquiryCardView]       # DomainError not_found | decision_invalid
-update_fields(db, enquiry_id: int, priority: str | None = None, offering_id: int | None = None) -> EnquiryCardView
+#   decision_invalid also when any target enquiry is still triage_status=pending.
+update_fields(db, enquiry_id: int, priority: str | None = None, offering_id: int | None = <omitted sentinel>) -> EnquiryCardView
+#   priority=None leaves it unchanged; offering_id omitted keeps it; offering_id=None sets "No match".
+#   DomainError field_invalid for a priority outside high|medium|low or an inactive/unknown offering.
 retry_triage(db, enquiry_id: int) -> EnquiryCardView       # synchronous single real call; DomainError triage_failed
 # services/costs.py
 cost_summary(db, now: datetime | None = None) -> CostSummary
@@ -470,19 +480,22 @@ execute(run_id: int) -> None
 - `GET /login`: sets cookie `li_at=fixture-session` (path `/`, httponly) and redirects 302 to `/feed/`.
 - `GET /feed/`: with `li_at`, renders a feed page containing `nav.global-nav`. Without it, redirects 302 to `/authwall`.
 - `GET /authwall`: a login wall page (no `global-nav`).
-- `GET /search/results/content/?keywords=K&...`: without `li_at` → 302 to `/authwall`. When K (lower-cased, trimmed) is `checkpoint-test` → 302 to `/checkpoint/challenge/`. When K is `captcha-test` → renders a page containing `iframe[src*="captcha"]`. When K is `ratelimit-test` → HTTP 429. Otherwise it renders every post whose `keywords` contains K, in corpus order. Zero matches renders the no-results marker `.search-reusable-search-no-results`.
+- `GET /search/results/content/?keywords=K&...`: without `li_at` → 302 to `/authwall`. When K (lower-cased, trimmed) is `checkpoint-test` → 302 to `/checkpoint/challenge/`. When K is `captcha-test` → renders a page containing `iframe[src*="captcha"]`. When K is `ratelimit-test` → HTTP 429. When K is `ratelimit-scroll-test` → the results page renders normally, but a background XHR/fetch it issues returns HTTP 429. When K is `checkpoint-scroll-test` → the results page lazy-loads more cards on the first scroll, and the page load triggered by the second scroll redirects to the checkpoint, to exercise the per-scroll checkpoint. When K is `lazy-scroll-test` → the `ai workshop` posts are served lazily: one more card is revealed ~700ms after each scroll (longer than a fixed short post-scroll wait), to exercise the wait-for-growth logic. When K is `layout-drift-test` → a logged-in results page with neither parseable result cards nor the no-results marker, so the searcher sets `drift_warning=True`. Trigger keywords are defined in `linkedin_fixture/corpus.py`. Otherwise it renders every post whose `keywords` contains K, in corpus order. Zero matches renders the no-results marker `.search-reusable-search-no-results`.
 - `GET /checkpoint/challenge/`: a security-check page.
 
 **DOM contract** (`scraper/selectors.py` is the single source; the fixture templates use exactly these):
-- result card `div[data-urn^="urn:li:activity:"]` (URN from the `data-urn` attribute)
+- result card `div[data-urn]` whose `data-urn` starts with `urn:li:activity:`, `urn:li:ugcPost:` or `urn:li:share:` (URN from the `data-urn` attribute; other prefixes are ignored)
 - author name `.update-components-actor__title span[aria-hidden="true"]`
 - author profile link `a.update-components-actor__meta-link` (href)
 - author headline `.update-components-actor__description span[aria-hidden="true"]`
 - relative time `.update-components-actor__sub-description span[aria-hidden="true"]` (e.g. `2d •`)
 - text `.update-components-text` (expand via `button.feed-shared-inline-show-more-text__see-more-less-toggle` if present)
-- logged-in marker `nav.global-nav`
+- logged-in marker (`LOGGED_IN_MARKER`, a union selector; any match = logged in) `#global-nav, header.global-nav, nav.global-nav__nav, nav.global-nav`
 - no-results marker `.search-reusable-search-no-results`
 - The post permalink is built as `{base}/feed/update/{urn}/`.
+- After each scroll, the searcher waits up to ~2.5s for the result-card count to grow before deciding the page is exhausted.
+
+**Safety checkpoints** (`scraper/search.py`): the searcher listens to EVERY LinkedIn response in the context, including background XHR/fetch requests, not only the main document. Any HTTP 429 or 999 seen is latched and raised as `AccountSafetyStop("rate_limited")` at the next checkpoint. Checkpoints run after each navigation, after each scroll and after each "see more" expand; each also checks for the logout, checkpoint and captcha signals.
 
 > **Assumed:** the selectors model LinkedIn's current DOM as best known. Live LinkedIn changes markup often, so drift is handled operationally. If a live results page is logged in, shows neither result cards nor the no-results marker, then `drift_warning=True`. The keyword row is then marked `warning` with "No posts parsed — LinkedIn layout may have changed", and the run detail shows it. Fixing selectors is a one-file change (`selectors.py` plus the fixture templates).
 
@@ -511,6 +524,7 @@ P1 appears under two keywords with the same URN (URN duplicate). P7 is the same 
 
 - Secrets live only in `.env`, read through `SecretStr`. Logs record `api_key_present` only. `.env` and `data/` are gitignored before they are first created.
 - LinkedIn safety (see `capabilities/linkedin-discovery.md`): caps, human-like pacing, a stop on any safety page, no retries after a stop, and no automatic reconnect.
+- CSRF posture (Phase 1): a middleware checks every unsafe request (POST/PUT/PATCH/DELETE). If an `Origin` header is present it must match an allowed origin; otherwise a present `Referer` must. The allowed origins are: the configured `SALES0_HOST:SALES0_PORT`; the loopback aliases `localhost`, `127.0.0.1` and `[::1]` on the configured or the served port; and the request's own `Host`, but only when that Host is itself loopback or the configured host. The request's Host is never trusted on its own, which defends against DNS rebinding. A rejected htmx request gets the toast envelope (HTTP 200, per the htmx error convention above). Any other rejected request gets HTTP 403 with code `csrf_rejected` (`api.md`). A request with neither header is allowed (non-browser clients such as curl and tests). In fixture mode, the `/__fixtures/` paths are exempt. Phase 2's shared login adds session-bound CSRF tokens on top of this check.
 - Fixture routes are never mounted in live mode (a test asserts `/__fixtures/linkedin/feed/` returns 404 in live mode).
 - All LLM output is untrusted. It is schema-validated and guarded (`agent.md`) and rendered with Jinja autoescape. Raw post text is escaped and never rendered as HTML.
 

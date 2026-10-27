@@ -21,11 +21,15 @@ from sales0.llm.errors import (
     LLMError,
     LLMModelNotFound,
     LLMTransientError,
+    LLMWorkspaceRequired,
 )
 from sales0.llm.pricing import cost_usd_micros, micros_to_usd
 from sales0.logging import get_logger
 
 log = get_logger("sales0.llm")
+
+# Keys structlog / the renderer own on every line; caller context may not overwrite them.
+_RESERVED_LOG_KEYS = frozenset({"event", "timestamp", "level", "logger", "exc_info", "stack_info"})
 
 BACKOFF_BASE_S = 1.0
 BACKOFF_CAP_S = 30.0
@@ -34,10 +38,7 @@ PING_MAX_TOKENS = 5
 
 AUTH_MESSAGE = "Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env"
 MISSING_KEY_MESSAGE = "SALES0_ANTHROPIC_API_KEY is missing — add it to .env in the repo root"
-WORKSPACE_MESSAGE = (
-    "Anthropic key is not scoped to a workspace — set SALES0_ANTHROPIC_WORKSPACE_ID in .env "
-    "or use a workspace-scoped key"
-)
+WORKSPACE_MESSAGE = "This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env"
 
 
 def _api_error_message(exc: Exception) -> str:
@@ -166,7 +167,7 @@ class AnthropicClient:
         if isinstance(exc, anthropic.APIStatusError):
             detail = _api_error_message(exc)
             if exc.status_code == 400 and "anthropic-workspace-id" in detail:
-                return LLMAuthError(WORKSPACE_MESSAGE)
+                return LLMWorkspaceRequired(WORKSPACE_MESSAGE)
             suffix = f": {detail}" if detail else ""
             return LLMBadResponse(f"Anthropic rejected the request (HTTP {exc.status_code}, {type(exc).__name__}){suffix}")
         return LLMBadResponse(f"Unexpected LLM failure ({type(exc).__name__})")
@@ -266,9 +267,7 @@ class AnthropicClient:
         attempts: int,
         response: LLMResponse | None = None,
     ) -> None:
-        extra = {k: v for k, v in log_context.items() if k not in {"fewshot_count", "input_summary"}}
-        log.info(
-            "llm_call",
+        fields: dict[str, Any] = dict(
             feature=feature,
             model=self._settings.llm_model,
             prompt_version=prompt_version,
@@ -283,5 +282,15 @@ class AnthropicClient:
             output_summary=_summarise_output(response.tool_input, response.text) if response else None,
             attempts=attempts,
             stop_reason=response.stop_reason if response else None,
-            **extra,
         )
+        # Caller context must never break logging after a (paid) call: keys that collide
+        # with a fixed field or a structlog-reserved key are kept under a ``ctx_`` prefix.
+        reserved = set(fields) | _RESERVED_LOG_KEYS
+        for key, value in log_context.items():
+            if key in {"fewshot_count", "input_summary"}:
+                continue
+            name = str(key)
+            while name in reserved or name in fields:
+                name = f"ctx_{name}"
+            fields[name] = value
+        log.info("llm_call", **fields)

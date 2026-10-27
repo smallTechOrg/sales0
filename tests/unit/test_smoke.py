@@ -21,6 +21,7 @@ from sales0.clock import local_day_bounds_utc, local_month_bounds_utc, local_tod
 from sales0.config import REPO_ROOT, Settings, StartupError, check_startup
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMBadResponse, LLMModelNotFound, LLMTransientError, StructuredRequest
+from sales0.llm.errors import LLMWorkspaceRequired
 from sales0.llm.anthropic_adapter import AnthropicClient
 from sales0.llm.pricing import cost_usd_micros
 from sales0.web.envelope import err, ok
@@ -42,7 +43,7 @@ def test_settings_defaults_match_the_configuration_table(monkeypatch: pytest.Mon
     s = Settings(_env_file=None)
     assert s.llm_model == "claude-haiku-5-5"
     assert (s.host, s.port) == ("127.0.0.1", 8765)
-    assert s.llm_max_output_tokens == 700 and s.llm_max_retries == 3 and s.llm_timeout_s == 30
+    assert s.llm_max_output_tokens == 900 and s.llm_max_retries == 3 and s.llm_timeout_s == 30
     assert (s.llm_price_input_usd_per_mtok, s.llm_price_output_usd_per_mtok) == (1.0, 5.0)
     assert s.database_url == "sqlite:///data/sales0.db"
     assert s.resolved_database_url == f"sqlite:///{(REPO_ROOT / 'data/sales0.db').as_posix()}"
@@ -259,9 +260,64 @@ def test_unscoped_key_400_maps_to_auth_error_naming_the_workspace_setting() -> N
     }
     exc = anthropic.BadRequestError("boom", response=httpx2.Response(400, request=_REQ), body=body)
     client, messages, _ = _client([exc])
-    with pytest.raises(LLMAuthError, match="SALES0_ANTHROPIC_WORKSPACE_ID"):
+    with pytest.raises(LLMWorkspaceRequired) as info:
         client.ping()
+    assert isinstance(info.value, LLMAuthError)  # existing fatal-auth handlers still catch it
+    assert info.value.error_type == "workspace_required"
+    assert str(info.value) == (
+        "This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env"
+    )
     assert len(messages.calls) == 1
+
+
+# --------------------------------------------------------------------------- check-llm CLI
+class _FakePingClient:
+    outcome: Any = None
+
+    def __init__(self, settings: Any) -> None:
+        self.settings = settings
+
+    def ping(self) -> Any:
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+
+@pytest.mark.parametrize(
+    ("exc", "label"),
+    [
+        (LLMWorkspaceRequired("This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env"),
+         "workspace-required"),
+        (LLMAuthError("Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env"), "auth"),
+        (LLMModelNotFound("Model 'x' not found — check SALES0_LLM_MODEL"), "model-not-found"),
+        (LLMTransientError("LLM unavailable — retry later (APITimeoutError)"), "transient"),
+        (LLMBadResponse("Anthropic rejected the request (HTTP 400, BadRequestError)"), "bad-response"),
+    ],
+)
+def test_check_llm_prints_typed_error_line_and_exits_1(
+    exc: Exception, label: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import sales0.llm.anthropic_adapter as adapter
+    from sales0 import cli
+
+    fake = type("Fake", (_FakePingClient,), {"outcome": exc})
+    monkeypatch.setattr(adapter, "AnthropicClient", fake)
+    assert cli.main(["check-llm"]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    error_line = [x for x in out.err.splitlines() if x.startswith("LLM ERROR")]
+    assert error_line == [f"LLM ERROR type={label} {exc}"]
+
+
+def test_check_llm_success_line_is_unchanged(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    import sales0.llm.anthropic_adapter as adapter
+    from sales0 import cli
+    from sales0.config import get_settings
+
+    fake = type("Fake", (_FakePingClient,), {"outcome": SimpleNamespace(input_tokens=9, output_tokens=2)})
+    monkeypatch.setattr(adapter, "AnthropicClient", fake)
+    assert cli.main(["check-llm"]) == 0
+    assert capsys.readouterr().out == f"LLM OK model={get_settings().llm_model} input_tokens=9 output_tokens=2\n"
 
 
 def test_workspace_id_is_sent_as_a_default_header_when_configured() -> None:
@@ -269,3 +325,31 @@ def test_workspace_id_is_sent_as_a_default_header_when_configured() -> None:
     assert client._sdk.default_headers.get("anthropic-workspace-id") == "wrkspc_test123"
     plain = AnthropicClient(make_settings())
     assert "anthropic-workspace-id" not in plain._sdk.default_headers
+
+
+def test_log_context_keys_colliding_with_fixed_log_fields_are_prefixed_not_raised(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from sales0.config import Settings as _S
+    from sales0.logging import configure_logging
+
+    configure_logging(_S(_env_file=None, log_format="json", log_level="INFO"))
+    client, _, _ = _client([_message({"word": "hello"})])
+    req = _request()
+    req.log_context = {
+        "status": "ctx-status",
+        "model": "ctx-model",
+        "feature": "ctx-feature",
+        "attempts": 99,
+        "run_id": 7,
+        "fewshot_count": 2,
+        "input_summary": "post urn:li:activity:1",
+    }
+    resp = client.structured(req)  # must not raise TypeError after the (paid) call
+    assert resp.tool_input == {"word": "hello"}
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
+    line = next(x for x in lines if x.get("event") == "llm_call")
+    assert line["status"] == "ok" and line["model"] == "claude-haiku-5-5" and line["feature"] == "triage"
+    assert line["attempts"] == 1 and line["run_id"] == 7 and line["fewshot_count"] == 2
+    assert line["ctx_status"] == "ctx-status" and line["ctx_model"] == "ctx-model"
+    assert line["ctx_feature"] == "ctx-feature" and line["ctx_attempts"] == 99

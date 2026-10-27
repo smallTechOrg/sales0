@@ -68,3 +68,27 @@ def test_check_llm_cli_prints_ok_with_the_model() -> None:
     )
     assert result.returncode == 0, result.stderr[-1000:]
     assert result.stdout.startswith(f"LLM OK model={get_settings().llm_model} input_tokens=")
+
+
+def test_check_llm_cli_reports_a_typed_auth_error_for_a_bad_key() -> None:
+    import os
+
+    env = {**os.environ, "SALES0_ANTHROPIC_API_KEY": "sk-ant-invalid-cli-test"}
+    result = subprocess.run(
+        [sys.executable, "-m", "sales0.cli", "check-llm"], cwd=REPO_ROOT, capture_output=True, text=True, timeout=90, env=env
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "LLM ERROR type=auth Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env" in result.stderr
+    assert "sk-ant-invalid-cli-test" not in result.stderr
+
+
+def test_check_llm_cli_reports_model_not_found_for_an_unknown_slug() -> None:
+    import os
+
+    env = {**os.environ, "SALES0_LLM_MODEL": "claude-haiku-does-not-exist-0"}
+    result = subprocess.run(
+        [sys.executable, "-m", "sales0.cli", "check-llm"], cwd=REPO_ROOT, capture_output=True, text=True, timeout=90, env=env
+    )
+    assert result.returncode == 1
+    assert "LLM ERROR type=model-not-found Model 'claude-haiku-does-not-exist-0' not found" in result.stderr

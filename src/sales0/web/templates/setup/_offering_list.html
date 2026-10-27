@@ -1,0 +1,16 @@
+{# Needs: offering_groups (list[(group_name, list[OfferingView])]), group_names (list[str]). #}
+<div id="offering-list" class="stack stack--tight">
+  {% for group_name, items in offering_groups %}
+    <h3 class="group-heading">{{ group_name }}</h3>
+    <ul class="item-list">
+      {% for offering in items %}{% include "setup/_offering_row.html" %}{% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty-state empty-state--compact">
+      <p>No offerings yet — add what smallTech sells so the AI can match enquiries to it.</p>
+    </div>
+  {% endfor %}
+  <datalist id="offering-groups">
+    {% for name in group_names %}<option value="{{ name }}"></option>{% endfor %}
+  </datalist>
+</div>

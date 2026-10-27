@@ -1,0 +1,30 @@
+{#- Every post-derived value goes through `inert`: `<` / `>` become `&lt;` / `&gt;`, so a
+    `</enquiry>` or `</example>` inside a post cannot close the delimiters below. -#}
+{% if examples -%}
+## Recent team decisions (learn from these; they override the built-in examples when they disagree)
+
+{% for ex in examples -%}
+<example index="{{ loop.index }}">
+Post: {{ ex.text | inert }}
+{% if ex.decision == "accept" -%}
+Team decision: ACCEPT (genuine)
+{%- else -%}
+Team decision: DISCARD — reason: {{ (ex.reason or "not a fit") | inert }}
+{%- endif %}
+{%- if ex.is_override and ex.ai_verdict %} (AI originally said {{ ex.ai_verdict }}; the team overrode it){% endif %}
+</example>
+
+{% endfor -%}
+{% endif -%}
+## Enquiry to triage
+
+<enquiry>
+Author: {{ (author_name or "unknown") | inert }}
+Headline: {{ (author_headline or "unknown") | inert }}
+Date posted: {{ date_posted or "unknown" }}
+URL: {{ (source_url or "unknown") | inert }}
+Text:
+{{ text | inert }}
+</enquiry>
+
+Call `record_triage` now with every field.

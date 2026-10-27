@@ -3,13 +3,56 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}sales0{% endblock %}</title>
+  <title>{% block title %}sales0{% endblock %} · sales0</title>
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
 </head>
 <body>
-  <header>{% block page_header %}<strong>sales0</strong>{% endblock %}</header>
-  <main id="main">{% block content %}{% endblock %}</main>
-  <div id="toasts" aria-live="polite"></div>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="wordmark" href="/inbox">sales0</a>
+      <nav class="site-nav" aria-label="Primary">
+        <ul>
+          {% if shell %}{% set nav = shell.nav %}{% else %}{% set nav = fallback_nav or [] %}{% endif %}
+          {% for item in nav %}
+            <li>
+              <a href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>
+                {{ item.label }}{% if item.phase %} <span class="badge badge--stub">Phase {{ item.phase }}</span>{% endif %}
+              </a>
+            </li>
+          {% else %}
+            <li><a href="/inbox">Inbox</a></li>
+            <li><a href="/runs">Runs</a></li>
+            <li><a href="/setup">Setup</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+      {% if shell %}
+        <div class="site-header__status">
+          {% if shell.mode == "fixture" %}<span class="fixture-badge" title="Demo data from the built-in fake LinkedIn — not live">FIXTURE MODE</span>{% endif %}
+          {% with session=shell.session, light=shell.light %}{% include "_shell/status_light.html" %}{% endwith %}
+          {% with cost=shell.cost %}{% include "_shell/cost_badge.html" %}{% endwith %}
+        </div>
+      {% endif %}
+    </div>
+  </header>
+  <div class="banner-slot" id="banner-slot" hx-get="/_shell/banner" hx-trigger="session-changed from:body" hx-swap="innerHTML">{% if shell and shell.banner %}{% with banner=shell.banner %}{% include "_shell/banner.html" %}{% endwith %}{% endif %}</div>
+  <main id="main" class="page" tabindex="-1">
+    {% block page_header %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-dialog-title">
+    <form method="dialog">
+      <h2 id="confirm-dialog-title">Please confirm</h2>
+      <p class="confirm-dialog__message"></p>
+      <div class="row">
+        <button class="btn btn--danger" value="confirm">Yes, continue</button>
+        <button class="btn btn--ghost" value="cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

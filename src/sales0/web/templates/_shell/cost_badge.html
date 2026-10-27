@@ -1,0 +1,5 @@
+{# AI spend. Needs: cost (CostSummary); oob=True when sent alongside another fragment. #}
+<span id="cost-badge" class="cost-badge"{% if oob %} hx-swap-oob="true"{% endif %}
+      title="AI calls — today: {{ cost.today_calls }}, this month: {{ cost.month_calls }}">
+  AI today <strong>{{ usd_precise(cost.today_usd_micros) }}</strong> · month <strong>{{ usd_precise(cost.month_usd_micros) }}</strong>
+</span>

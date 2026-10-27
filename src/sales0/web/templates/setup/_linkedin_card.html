@@ -1,0 +1,52 @@
+{# LinkedIn connection card. Needs: session (SessionStatusView). Polls while busy. #}
+{% set busy = session.status == "busy" %}
+{% set key = session.status ~ ":" ~ (session.busy_action or "") %}
+<section id="linkedin-card" class="card" aria-labelledby="linkedin-title" data-status="{{ session.status }}"
+  {% if busy %}hx-get="/setup/linkedin/status?prev={{ key | urlencode }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <div class="card__header">
+    <h2 id="linkedin-title">LinkedIn connection</h2>
+    {% if session.status == "connected" %}<span class="badge badge--genuine">Connected</span>
+    {% elif session.status == "needs_attention" %}<span class="badge badge--discard">Needs attention</span>
+    {% elif busy %}<span class="badge badge--warn"><span class="spinner" aria-hidden="true"></span> Busy</span>
+    {% else %}<span class="badge">Not connected</span>{% endif %}
+    {% if session.mode == "fixture" %}<span class="fixture-badge">FIXTURE MODE</span>{% endif %}
+  </div>
+  <div class="card__body" aria-live="polite">
+    {% if busy and session.busy_action == "connect" %}
+      <p class="row"><span class="spinner" aria-hidden="true"></span>
+        <span>A browser window opened — log in to LinkedIn there. Waiting… <span class="mono">{{ clock_text(session.connect_elapsed_s) }}</span></span></p>
+      <p class="muted">Finish any 2FA in that window. It closes by itself once you reach the feed.</p>
+    {% elif busy and session.busy_action == "check" %}
+      <p class="row"><span class="spinner" aria-hidden="true"></span><span>Checking your LinkedIn session in the background…</span></p>
+    {% elif busy %}
+      <p class="row"><span class="spinner" aria-hidden="true"></span>
+        <span>A run is in progress — Connect and Re-check wait until it finishes. <a href="/runs">Watch the run</a></span></p>
+    {% elif session.status == "connected" %}
+      <p>LinkedIn is connected. Runs reuse this login from the dedicated browser profile on this computer.</p>
+    {% elif session.status == "needs_attention" %}
+      <p class="outcome outcome--error"><strong>{{ session.last_error or "LinkedIn showed a security or login page." }}</strong></p>
+      <p>Open LinkedIn in a normal browser, resolve the check (log in, captcha or security challenge), wait a while, then press <strong>Connect LinkedIn</strong> here. Runs stay paused until then.</p>
+    {% else %}
+      <p>sales0 uses your team's own LinkedIn login in a dedicated browser profile on this computer. Log in once; we never store your password.</p>
+    {% endif %}
+    <dl class="kv">
+      <dt>Last checked</dt><dd>{{ session.last_checked_at | ago }}</dd>
+      <dt>Last successful run</dt><dd>{{ session.last_successful_run_at | ago }}</dd>
+    </dl>
+  </div>
+  <div class="card__footer">
+    {% if busy and session.busy_action == "connect" %}
+      <button class="btn" type="button" hx-post="/setup/linkedin/connect/cancel" hx-target="#linkedin-card" hx-disabled-elt="this">Cancel</button>
+    {% else %}
+      <form method="post" action="/setup/linkedin/connect" hx-post="/setup/linkedin/connect" hx-target="#linkedin-card">
+        <button id="connect-linkedin" class="btn {{ 'btn--ghost' if session.status == 'connected' else 'btn--primary' }}" type="submit"
+                {% if busy %}disabled{% endif %} hx-disabled-elt="this">
+          {{ "Connect again" if session.status == "connected" else "Connect LinkedIn" }}
+        </button>
+      </form>
+      <form method="post" action="/setup/linkedin/check" hx-post="/setup/linkedin/check" hx-target="#linkedin-card">
+        <button id="check-linkedin" class="btn" type="submit" {% if busy %}disabled{% endif %} hx-disabled-elt="this">Re-check</button>
+      </form>
+    {% endif %}
+  </div>
+</section>

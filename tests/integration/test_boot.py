@@ -1,4 +1,4 @@
-"""The app boots on a migrated SQLite file: health, home page, static assets, envelope,
+"""The app boots on a migrated SQLite file: health, root redirect, inbox + static assets, envelope,
 request logging, fixture-route isolation, and the real ``python -m sales0`` process."""
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from sales0.config import REPO_ROOT, get_settings
 from sales0.db.engine import session_scope
-from sales0.db.migrate_check import DatabaseNotAtHead, alembic_config
+from sales0.db.migrate_check import DatabaseNotAtHead, alembic_config, head_revision
 from sales0.db.models import AppMeta
 from sales0.errors import DomainError
 from sales0.web.app import create_app
@@ -44,14 +44,16 @@ def _log_lines(text: str) -> list[dict]:
     return out
 
 
-def test_health_reports_the_baseline_revision_and_config_presence(client: TestClient) -> None:
+def test_health_reports_the_head_revision_and_config_presence(client: TestClient) -> None:
+    head = head_revision()
+    assert head == "0002_phase1_discovery"  # Phase 1 migration is the head
     resp = client.get("/api/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
     assert body["data"] == {
         "status": "ok",
-        "db_revision": "0001_baseline",
+        "db_revision": head,
         "linkedin_mode": "live",
         "model": get_settings().llm_model,
         "api_key_present": True,
@@ -65,10 +67,12 @@ def test_baseline_migration_creates_and_seeds_app_meta(db_url: str) -> None:
         assert row is not None and "0001_baseline" in row.value
 
 
-def test_home_page_says_sales0_is_running_and_assets_are_served(client: TestClient) -> None:
-    home = client.get("/")
-    assert home.status_code == 200 and "sales0 is running" in home.text
-    assert "/static/css/app.css" in home.text and "/static/vendor/htmx.min.js" in home.text
+def test_root_redirects_to_inbox_which_renders_with_assets(client: TestClient) -> None:
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 303 and root.headers["location"] == "/inbox"
+    inbox = client.get("/inbox")
+    assert inbox.status_code == 200 and "Review inbox" in inbox.text
+    assert "/static/css/app.css" in inbox.text and "/static/vendor/htmx.min.js" in inbox.text
     css = client.get("/static/css/app.css")
     assert css.status_code == 200 and "font-family" in css.text
     js = client.get("/static/vendor/htmx.min.js")
@@ -196,8 +200,12 @@ def test_documented_run_command_boots_and_serves_health(db_url: str, tmp_path: P
             except httpx.HTTPError:
                 time.sleep(0.2)
         assert body is not None, f"server did not become healthy (exit={proc.poll()})"
-        assert body["data"]["db_revision"] == "0001_baseline" and body["data"]["api_key_present"] is True
-        assert "sales0 is running" in httpx.get(f"http://127.0.0.1:{port}/", timeout=2).text
+        assert body["data"]["db_revision"] == head_revision() and body["data"]["api_key_present"] is True
+        root = httpx.get(f"http://127.0.0.1:{port}/", timeout=2)
+        assert root.status_code == 303 and root.headers["location"] == "/inbox"
+        inbox = httpx.get(f"http://127.0.0.1:{port}/inbox", timeout=5)
+        assert inbox.status_code == 200 and "Review inbox" in inbox.text
+        assert httpx.get(f"http://127.0.0.1:{port}/static/css/app.css", timeout=2).status_code == 200
     finally:
         proc.terminate()
         try:

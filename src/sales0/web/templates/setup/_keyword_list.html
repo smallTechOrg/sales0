@@ -1,0 +1,12 @@
+{# Needs: keywords (list[KeywordView]). #}
+<div id="keyword-list">
+  {% if keywords %}
+    <ul class="item-list">
+      {% for keyword in keywords %}{% include "setup/_keyword_row.html" %}{% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty-state empty-state--compact">
+      <p>No keywords yet — add 10–20 phrases buyers use, e.g. 'corporate AI training'.</p>
+    </div>
+  {% endif %}
+</div>

@@ -63,13 +63,37 @@ def _needs_real_key(item: pytest.Item) -> bool:
     return "integration" in parts or "e2e" in parts or item.get_closest_marker("llm") is not None
 
 
-def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
+def _is_e2e(item: pytest.Item) -> bool:
+    return "e2e" in Path(str(item.path)).parts
+
+
+def _browser_rank(item: pytest.Item) -> int:
+    if _is_e2e(item):
+        return 2
+    return 1 if "browser_name" in getattr(item, "fixturenames", ()) else 0
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_collection_modifyitems(
+    session: pytest.Session, config: pytest.Config, items: list[pytest.Item]
+) -> Iterator[None]:
     if any(_needs_real_key(item) for item in items):
         reset_settings()
         present = get_settings().api_key_present
         reset_settings()
         if not present:
             pytest.exit(KEY_MISSING_MESSAGE, returncode=1)
+    # Every other implementation (pytest's own fixture-based reordering, plugins, the e2e
+    # conftest's marker hook) runs inside this wrapper; the final order is fixed after it.
+    result = yield
+    # pytest-playwright's ``page`` starts a session-scoped sync Playwright (an asyncio loop
+    # on the main thread). Once it is up, every later in-process ``sync_playwright()`` (the
+    # integration scraper/jobs tests) fails with "Sync API inside the asyncio loop". pytest's
+    # fixture reordering anchors all ``[chromium]`` items where the first one sorts. So, for
+    # ANY selection (tests/integration alone, tests/e2e alone, all of tests/): everything
+    # else first, then the pytest-playwright tests, then E2E last.
+    items[:] = sorted(items, key=_browser_rank)  # stable: keeps the order within each group
+    return result
 
 
 @pytest.fixture(autouse=True)

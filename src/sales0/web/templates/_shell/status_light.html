@@ -1,0 +1,11 @@
+{# Header LinkedIn light. Needs: session (SessionStatusView), light (status_light_view). #}
+<a id="status-light" href="/setup"
+   class="status-light status-light--{{ light.modifier }}"
+   data-status="{{ session.status }}"
+   hx-get="/_shell/status-light"
+   hx-trigger="session-changed from:body{% if light.busy %}, every 5s{% endif %}"
+   hx-swap="outerHTML"
+   title="LinkedIn connection — open Setup">
+  {% if light.busy %}<span class="spinner" aria-hidden="true"></span>{% else %}<span class="status-light__dot" aria-hidden="true"></span>{% endif %}
+  <span>{{ light.label }}</span>
+</a>

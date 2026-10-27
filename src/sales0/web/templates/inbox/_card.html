@@ -1,0 +1,120 @@
+{# One enquiry card. Needs: card (EnquiryCardView), tab, q, page, offerings, discard_reasons, priorities, first_urn. #}
+{% set pending = card.triage_status == "pending" %}
+{% set failed = card.triage_status == "failed" %}
+<article id="enquiry-{{ card.id }}" class="card enquiry"
+         data-urn="{{ first_urn(card) }}" data-verdict="{{ card.ai_verdict or '' }}" data-review-status="{{ card.review_status }}"
+         aria-labelledby="enquiry-{{ card.id }}-summary">
+  <header class="card__header">
+    <div class="enquiry__verdict">
+      {% if pending %}
+        <span class="badge"><span class="spinner" aria-hidden="true"></span> AI triage pending…</span>
+      {% elif failed %}
+        <span class="triage-failed" role="status">AI triage failed — {{ card.triage_error or "unknown error" }}</span>
+        <form hx-post="/inbox/{{ card.id }}/retry" hx-target="#enquiry-{{ card.id }}" hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+          <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}">
+          <button class="btn btn--sm" type="submit">Retry triage</button>
+          <span class="htmx-indicator row"><span class="spinner" aria-hidden="true"></span> Asking AI…</span>
+        </form>
+      {% else %}
+        <span class="badge {{ 'badge--genuine' if card.ai_verdict == 'genuine' else 'badge--discard' }}">{{ card.ai_verdict | verdict_label }}</span>
+        <span class="enquiry__reason">{{ card.ai_reason }}</span>
+      {% endif %}
+      {% if card.is_override and card.review_status != "pending_review" %}<span class="badge badge--warn">Overrode AI</span>{% endif %}
+      {% if card.review_status == "accepted" %}<span class="badge badge--info">Prospect · New</span>{% endif %}
+    </div>
+    {% if not pending %}
+      <div class="enquiry__controls">
+        <form hx-post="/inbox/{{ card.id }}/fields" hx-trigger="change" hx-target="#enquiry-{{ card.id }}">
+          <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}">
+          <label class="visually-hidden" for="enquiry-{{ card.id }}-priority">Priority</label>
+          <select class="select" id="enquiry-{{ card.id }}-priority" name="priority">
+            {% if not card.priority %}<option value="" selected disabled>Priority…</option>{% endif %}
+            {% for value, label in priorities %}<option value="{{ value }}"{% if card.priority == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </form>
+        <form hx-post="/inbox/{{ card.id }}/fields" hx-trigger="change" hx-target="#enquiry-{{ card.id }}">
+          <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}">
+          <label class="visually-hidden" for="enquiry-{{ card.id }}-offering">Offering</label>
+          <select class="select" id="enquiry-{{ card.id }}-offering" name="offering_id">
+            {% set active_ids = offerings | map(attribute="id") | list %}
+            {% if card.offering_id and card.offering_id not in active_ids %}
+              <option value="{{ card.offering_id }}" selected>{{ card.offering_name or "Offering" }} (inactive)</option>
+            {% endif %}
+            {% for offering in offerings %}<option value="{{ offering.id }}"{% if card.offering_id == offering.id %} selected{% endif %}>{{ offering.name }}</option>{% endfor %}
+            <option value="none"{% if not card.offering_id %} selected{% endif %}>No match</option>
+          </select>
+        </form>
+      </div>
+    {% endif %}
+  </header>
+
+  <div class="card__body">
+    <p id="enquiry-{{ card.id }}-summary" class="enquiry__summary">{{ card.requirement_summary or "No summary yet — the full post text is below." }}</p>
+    <p class="enquiry__meta">
+      <span>{{ card.author_name or "Unknown author" }}</span>
+      {% if card.author_headline %}<span aria-hidden="true">·</span><span>{{ card.author_headline }}</span>{% endif %}
+      <span aria-hidden="true">·</span><span title="Date posted">{{ date_ago(card.date_posted) }}</span>
+      {% for kw in card.keywords %}<span class="chip">{{ kw }}</span>{% endfor %}
+      {% if poster_label(card.ai_poster_type) %}<span aria-hidden="true">·</span><span>{{ poster_label(card.ai_poster_type) }}</span>{% endif %}
+    </p>
+
+    {% set details = [
+      ("Company", card.company), ("Contact person", card.contact_person), ("Email", card.email), ("Phone", card.phone),
+      ("City", card.city), ("Mode", card.mode if card.mode and card.mode != "unknown" else None), ("Dates", card.dates_mentioned), ("Topic", card.topic)
+    ] | selectattr(1) | list %}
+    {% if details %}
+      <dl class="enquiry__details">
+        {% for label, value in details %}
+          <div><dt>{{ label }}</dt><dd>{% if label == "Email" %}<a href="mailto:{{ value }}">{{ value }}</a>{% elif label == "Mode" %}{{ value | capitalize }}{% else %}{{ value }}{% endif %}</dd></div>
+        {% endfor %}
+      </dl>
+    {% endif %}
+
+    {% if card.review_status == "discarded" and card.discard_reason %}
+      <p><span class="muted">Discard reason:</span> {{ card.discard_reason }}</p>
+    {% endif %}
+
+    <div class="row">
+      {% if card.source_url %}<a href="{{ card.source_url }}" target="_blank" rel="noopener">Open post ↗</a>{% endif %}
+    </div>
+    <details class="enquiry__raw">
+      <summary>Full post text</summary>
+      <pre class="enquiry__raw-text">{{ card.raw_text }}</pre>
+    </details>
+  </div>
+
+  <footer class="card__footer">
+    {% if not pending %}
+      <label class="enquiry__select">
+        <input type="checkbox" class="js-select" name="enquiry_ids" value="{{ card.id }}" form="bulk-form"
+               aria-label="Select enquiry {{ card.id }}"> Select
+      </label>
+      {% if card.review_status != "accepted" %}
+        <form method="post" action="/inbox/decide" hx-post="/inbox/decide" hx-target="#inbox-list" hx-disabled-elt="find button">
+          <input type="hidden" name="enquiry_ids" value="{{ card.id }}"><input type="hidden" name="decision" value="accept">
+          <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}">
+          <button class="btn {{ 'btn--primary' if card.review_status == 'pending_review' else '' }}" type="submit">
+            {{ "Accept" if card.review_status == "pending_review" else "Accept instead" }}
+          </button>
+        </form>
+      {% endif %}
+      {% if card.review_status != "discarded" %}
+        <details class="discard-menu">
+          <summary class="btn btn--danger">{{ "Discard" if card.review_status == "pending_review" else "Discard instead" }}</summary>
+          <form class="discard-menu__panel" method="post" action="/inbox/decide" hx-post="/inbox/decide" hx-target="#inbox-list" hx-disabled-elt="find button">
+            <input type="hidden" name="enquiry_ids" value="{{ card.id }}"><input type="hidden" name="decision" value="discard">
+            <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}">
+            <label class="field__label" for="enquiry-{{ card.id }}-reason">Reason</label>
+            <select class="select" id="enquiry-{{ card.id }}-reason" name="discard_reason">
+              {% set ai_discard = card.ai_verdict == "discard" %}
+              {% for reason in discard_reasons %}<option value="{{ reason }}"{% if not ai_discard and loop.first %} selected{% endif %}>{{ reason }}</option>{% endfor %}
+              <option value=""{% if ai_discard %} selected{% endif %}>Other — use AI reason</option>
+            </select>
+            <button class="btn btn--danger btn--sm" type="submit">Confirm discard</button>
+          </form>
+        </details>
+      {% endif %}
+    {% endif %}
+    <span class="enquiry__cost muted">AI {{ card.cost_usd_micros | usd }} · {{ tokens_short(card.tokens_total) }}</span>
+  </footer>
+</article>

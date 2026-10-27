@@ -19,6 +19,14 @@ class LLMAuthError(LLMError):
     error_type = "auth"
 
 
+class LLMWorkspaceRequired(LLMAuthError):
+    """The key is an org-level key that needs ``SALES0_ANTHROPIC_WORKSPACE_ID`` (HTTP 400
+    naming ``anthropic-workspace-id``). A subclass of ``LLMAuthError`` so every fatal-auth
+    handler still catches it. Fatal, never retried."""
+
+    error_type = "workspace_required"
+
+
 class LLMModelNotFound(LLMError):
     """The configured model id does not exist for this account (404). Fatal."""
 

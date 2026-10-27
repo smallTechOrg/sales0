@@ -13,8 +13,9 @@ from sales0.config import Settings, get_settings
 from sales0.db.engine import get_engine
 from sales0.db.migrate_check import assert_at_head
 from sales0.logging import configure_logging, get_logger
+from sales0.services.runs import recover_interrupted_runs_on_startup
 from sales0.web.envelope import install_exception_handlers
-from sales0.web.middleware import RequestContextMiddleware
+from sales0.web.middleware import CsrfOriginMiddleware, RequestContextMiddleware
 from sales0.web.routes import health, inbox, runs, setup, stubs
 from sales0.web.templating import STATIC_DIR
 
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         configure_logging(settings)
         settings.data_path.mkdir(parents=True, exist_ok=True)
         revision = assert_at_head(get_engine())
+        recover_interrupted_runs_on_startup()  # slice D: queued/running runs -> failed
         log.info(
             "app_started",
             db_revision=revision,
@@ -42,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("app_stopped")
 
     app = FastAPI(title="sales0", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(CsrfOriginMiddleware)  # inner: runs after request-id binding
     app.add_middleware(RequestContextMiddleware)
     install_exception_handlers(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

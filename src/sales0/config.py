@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # anthropic-workspace-id header). Not in the original spec table; see .env.example.
     anthropic_workspace_id: str | None = None
     llm_model: str = "claude-haiku-5-5"
-    llm_max_output_tokens: int = Field(700, ge=1, le=8192)
+    llm_max_output_tokens: int = Field(900, ge=1, le=8192)
     llm_timeout_s: float = Field(30.0, gt=0)
     llm_max_retries: int = Field(3, ge=0, le=10)
     llm_price_input_usd_per_mtok: float = Field(1.00, ge=0)

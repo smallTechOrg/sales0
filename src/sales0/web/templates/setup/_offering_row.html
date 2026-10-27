@@ -1,0 +1,11 @@
+{# Needs: offering (OfferingView). #}
+<li id="offering-{{ offering.id }}">
+  <div class="item-list__main">
+    <strong>{{ offering.name }}{% if not offering.active %} <span class="badge">Inactive</span>{% endif %}</strong>
+    <span class="muted">{{ offering.description or "No description" }}</span>
+  </div>
+  <button class="btn btn--sm" type="button" hx-get="/setup/offerings/{{ offering.id }}/edit" hx-target="#offering-{{ offering.id }}">Edit</button>
+  <button class="btn btn--danger btn--sm" type="button"
+          hx-post="/setup/offerings/{{ offering.id }}/delete" hx-target="#offering-list"
+          hx-confirm="Delete '{{ offering.name }}'?">Delete</button>
+</li>

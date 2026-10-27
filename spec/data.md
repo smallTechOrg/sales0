@@ -71,8 +71,8 @@ Group seeds: Training (1), Services (2), Products (3).
 | current_step | str(200) null | Human text, e.g. "Searching 'ai workshop' (2/3) — scrolling", "Triaging 3 new enquiries (1/3)", "Pausing 34s before next keyword" |
 | posts_seen, posts_new, posts_dupe | int default 0 | |
 | enquiries_triaged, triage_failed, errors_count | int default 0 | |
-| abort_reason | `logout` \| `checkpoint` \| `captcha` \| `rate_limited` \| `daily_post_cap` \| null | `daily_post_cap` ends the run as `succeeded`, with the note in current_step |
-| error_message | str(500) null | |
+| abort_reason | `logout` \| `checkpoint` \| `captcha` \| `rate_limited` \| `daily_post_cap` \| null | `daily_post_cap` ends the run as `succeeded`, with the note in current_step. Null on `failed` runs, including fatal LLM errors (`aborted` is reserved for account-safety stops). A fatal LLM error after a safety stop keeps the run `aborted` with its reason (`architecture.md` step 6a). |
+| error_message | str(500) null | Also holds the LLM message when a fatal LLM error follows a safety stop. |
 | actor_user_id | FK users null | |
 
 ### scrape_run_keywords
@@ -192,6 +192,13 @@ Index `(entity_type, entity_id, changed_at)`.
 
 ### app_meta (scaffold)
 `key` str PK, `value` str. Holds `schema_note`.
+
+### Foreign-key delete rules and key normalisation (binding)
+- **Offering references** (`enquiries.offering_id`, `enquiries.ai_offering_id`, `offerings.group_id`): `RESTRICT`. `delete_offering` therefore deletes only an unreferenced offering, and deactivates (`active=false`) one still in use.
+- **`triage_decisions.enquiry_id`**: `CASCADE`, so decisions are deleted with their enquiry (as with `enquiry_sources` and `enquiry_keyword_hits`).
+- **Run and enquiry links** (`llm_calls.run_id`, `llm_calls.enquiry_id`, `enquiry_sources.first_seen_run_id`, `enquiry_keyword_hits.run_id`): `SET NULL`. `scrape_run_keywords.run_id` is `CASCADE`.
+- **`actor_user_id`** on every table: `SET NULL`.
+- **`name_key` / `text_key`** are set automatically by the model whenever `name`/`text` is assigned. Callers never set them. `name_key = lower(trim(name))` on offering_groups and offerings. On keywords, `text` is trimmed and inner whitespace collapsed, then `text_key = lower(text)`.
 
 ## Lifecycle (binding vocabulary)
 

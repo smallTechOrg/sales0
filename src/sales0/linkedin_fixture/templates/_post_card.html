@@ -1,0 +1,13 @@
+<div class="feed-shared-update-v2" data-urn="{{ post.urn }}">
+  <div class="update-components-actor">
+    <a class="update-components-actor__meta-link" href="{{ base }}/in/{{ post.profile_slug }}/">
+      <span class="update-components-actor__title"><span aria-hidden="true">{{ post.author_name }}</span><span class="visually-hidden">View {{ post.author_name }}’s profile</span></span>
+      <span class="update-components-actor__description"><span aria-hidden="true">{{ post.author_headline }}</span></span>
+    </a>
+    <span class="update-components-actor__sub-description"><span aria-hidden="true">{{ post.posted_relative }} • </span><span class="visually-hidden">{{ post.posted_relative }} ago</span></span>
+  </div>
+  <div class="feed-shared-inline-show-more-text">
+    <div class="update-components-text">{{ post.text_head }}{% if post.text_tail %}<span class="see-more-rest" hidden>{{ post.text_tail }}</span>{% endif %}</div>
+    {% if post.text_tail %}<button type="button" class="feed-shared-inline-show-more-text__see-more-less-toggle" aria-expanded="false">…see more</button>{% endif %}
+  </div>
+</div>

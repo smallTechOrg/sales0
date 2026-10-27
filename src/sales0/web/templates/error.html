@@ -1,7 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Error {{ status }} · sales0{% endblock %}
+{% block title %}{% if status == 404 %}Not found{% else %}Something went wrong{% endif %}{% endblock %}
 {% block content %}
-  <h1>Something needs attention</h1>
-  <p role="alert">{{ message }}</p>
-  <p><a href="{{ back_href or '/' }}">Back to sales0</a></p>
+  <section class="stub-page card" aria-labelledby="error-title">
+    <div class="card__body">
+      <span class="badge badge--discard">{% if status %}Error {{ status }}{% else %}Error{% endif %}</span>
+      <h1 id="error-title">{% if status == 404 %}We couldn't find that{% else %}Something needs attention{% endif %}</h1>
+      <p role="alert">{{ message }}</p>
+      <a class="btn btn--primary" href="{{ back_href or '/inbox' }}">Back to sales0</a>
+    </div>
+  </section>
 {% endblock %}

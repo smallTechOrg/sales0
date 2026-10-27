@@ -67,7 +67,8 @@ def configure_logging(settings: Settings, *, stream: IO[str] | None = None) -> N
         lg = logging.getLogger(name)
         lg.handlers.clear()
         lg.propagate = True
-    for noisy in ("httpx", "httpx2", "httpcore", "anthropic", "alembic.runtime.migration"):
+    # Parent "alembic" covers alembic.runtime.migration and alembic.runtime.plugins INFO noise.
+    for noisy in ("httpx", "httpx2", "httpcore", "anthropic", "alembic"):
         logging.getLogger(noisy).setLevel(max(logging.WARNING, root.level))
 
     structlog.configure(

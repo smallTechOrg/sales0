@@ -1,0 +1,50 @@
+{% extends "_layout.html" %}
+{% block title %}"{{ keyword }}" | Search | LinkedIn (fixture){% endblock %}
+{% block content %}
+<h1 class="visually-hidden">Search results for {{ keyword }}</h1>
+{% if drift %}
+<div class="search-results-container-v2"><p>Results are loading in a layout sales0 does not know.</p></div>
+{% elif posts %}
+<ul class="reusable-search__entity-result-list">
+  {% for post in posts %}<li>{% include "_post_card.html" %}</li>{% endfor %}
+</ul>
+{% for post in lazy_posts or [] %}<template class="lazy-result"><li>{% include "_post_card.html" %}</li></template>{% endfor %}
+{% else %}
+<div class="search-reusable-search-no-results"><h2>No results found</h2><p>Try shortening or rephrasing your search.</p></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".feed-shared-inline-show-more-text__see-more-less-toggle");
+    if (!button) return;
+    const rest = button.parentElement.querySelector(".see-more-rest");
+    if (rest) rest.hidden = false;
+    button.remove();
+  });
+</script>
+{% if lazy %}
+<script>
+  // Lazy results: each scroll gesture reveals the next card after a delay, like LinkedIn's XHR paging.
+  (() => {
+    const lazy = {{ lazy | tojson }};
+    const list = document.querySelector(".reusable-search__entity-result-list");
+    const ping = () => { if (lazy.voyager_url) fetch(lazy.voyager_url, { credentials: "include" }).catch(() => {}); };
+    let scrolls = 0, last = 0;
+    ping();
+    document.addEventListener("wheel", () => {
+      const now = Date.now();
+      if (now - last < 200) return;  // one gesture, however many wheel events it produced
+      last = now;
+      scrolls += 1;
+      ping();
+      if (lazy.checkpoint_at && scrolls >= lazy.checkpoint_at) { window.location.assign(lazy.next_page_url); return; }
+      setTimeout(() => {
+        const next = document.querySelector("template.lazy-result");
+        if (next && list) { list.appendChild(next.content.cloneNode(true)); next.remove(); }
+      }, lazy.delay_ms);
+    }, { passive: true });
+  })();
+</script>
+{% endif %}
+{% endblock %}
