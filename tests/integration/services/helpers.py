@@ -15,17 +15,59 @@ from sales0.services import dedupe
 from tests.support.fake_llm import triage_answer
 
 
+LIVE = "https://www.linkedin.com"
+SEARCH_URL = f"{LIVE}/search/results/content/?keywords=ai%20workshop"
+
+
 def post(n: int, text: str, *, author: str = "Author", headline: str | None = "Head of L&D") -> ScrapedPost:
+    """A URN-strategy post (Phase 1.1 shape): the source ref is the URN, the link its permalink."""
     urn = f"urn:li:activity:73000000000000000{n:02d}"
     return ScrapedPost(
-        urn=urn,
-        url=f"https://www.linkedin.com/feed/update/{urn}/",
+        source_ref=urn,
+        url=f"{LIVE}/feed/update/{urn}/",
         author_name=author,
         author_profile_url=None,
         author_headline=headline,
         posted_relative="1d",
         posted_date=date(2026, 10, 26),
         text=text,
+        link_kind="post",
+        search_url=SEARCH_URL,
+    )
+
+
+def sdui_post(
+    key: str,
+    text: str,
+    *,
+    slug: str = "in/priya-menon-fx",
+    author: str = "Priya Menon",
+    urn: str | None = None,
+    link: str | None = None,
+    search_url: str = SEARCH_URL,
+) -> ScrapedPost:
+    """An SDUI-strategy post (Phase 1.2): ref ``ck:<key>`` unless a URN was learned (then the URN),
+    linked to ``link`` / the URN permalink when known, else to the author profile."""
+    profile = f"{LIVE}/{slug}/" if slug else None
+    if urn is not None:
+        ref, url, kind = urn, f"{LIVE}/feed/update/{urn}/", "post"
+    elif link is not None:
+        ref, url, kind = f"ck:{key}", link, "post"
+    elif profile is not None:
+        ref, url, kind = f"ck:{key}", profile, "profile"
+    else:
+        ref, url, kind = f"ck:{key}", search_url, "search"
+    return ScrapedPost(
+        source_ref=ref,
+        url=url,
+        author_name=author,
+        author_profile_url=profile,
+        author_headline="Head of L&D",
+        posted_relative="2d",
+        posted_date=date(2026, 10, 25),
+        text=text,
+        link_kind=kind,  # type: ignore[arg-type]
+        search_url=search_url,
     )
 
 
@@ -79,7 +121,8 @@ class FakeSearcher:
     searched: list[str] = field(default_factory=list)
     drift: set[str] = field(default_factory=set)
     # Phase 1.1: keyword -> extra KeywordScrapeResult fields (cards_found, no_results,
-    # field_misses, parse_errors) merged into the scripted result.
+    # field_misses, parse_errors; Phase 1.2: strategy, permalink_attempts, permalinks_found)
+    # merged into the scripted result.
     extra: dict[str, dict[str, Any]] = field(default_factory=dict)
     closed: bool = False
 

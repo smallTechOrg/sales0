@@ -8,8 +8,9 @@ extracted contact details), and puts every result in a **Review inbox**. A perso
 discards or overrides each card. Every decision is stored and fed back into later triage
 calls as examples (the learning loop). No spreadsheet is involved.
 
-**Status: Phase 1.1 (Discovery → AI triage → Review inbox, with real-Chrome connect and
-robust LinkedIn detection).** Inbox, Runs and Setup are real. Pipeline, Contacts,
+**Status: Phase 1.2 (Discovery → AI triage → Review inbox, with real-Chrome connect, robust
+LinkedIn detection and support for LinkedIn's new search-results layout).** Inbox, Runs and
+Setup are real. Pipeline, Contacts,
 Competitors & Groups, Import (Phase 2), Outreach (Phase 3), Metrics (Phase 4) and WhatsApp
 (Phase 5) are labelled stub pages that say "Coming in Phase N". That is expected, not a
 bug. The full plan is in `spec/roadmap.md`.
@@ -19,7 +20,9 @@ bug. The full plan is in `spec/roadmap.md`.
 - macOS or Linux
 - Python 3.12 (pinned in `.python-version`; asdf works)
 - [uv](https://docs.astral.sh/uv/) (creates the project-local `.venv`; every command below goes through `uv run`)
-- An Anthropic API key. Only the configured Haiku model is used.
+- An Anthropic API key. Only the configured Haiku model is used (`claude-haiku-5-5`, priced
+  at $0.10 per million input tokens and $0.50 per million output tokens; a triage call is
+  typically a fraction of a cent).
 - **Google Chrome** (recommended), installed normally (`/Applications/Google Chrome.app` on
   macOS, `/opt/google/chrome/chrome` on Linux). sales0 logs in to LinkedIn through it. Without
   Chrome, sales0 falls back to Playwright's built-in Chromium (see below).
@@ -59,6 +62,8 @@ defaults. The ones you normally set:
 | `SALES0_HOST` / `SALES0_PORT` | optional | Bind address, default `127.0.0.1:8765`. Phase 1 refuses to bind a non-loopback host. |
 | `SALES0_LOG_FILE` | optional | Also write the JSON logs to this file, e.g. `data/logs/sales0.jsonl`. |
 | `SALES0_SCRAPE_*` | optional | The LinkedIn safety caps and pacing (see below). |
+| `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | optional | At most this many "Copy link to post" menu clicks per keyword (default 15). `0` skips them: runs are faster and every new card links to the author profile (see "Post links" below). |
+| `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` / `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK` | optional | The prices used for the cost display, USD per million tokens. Defaults `0.10` / `0.50` (`claude-haiku-5-5`, prompts up to 100K tokens). |
 
 `SALES0_LINKEDIN_HEADLESS` no longer exists (Connect always shows a window, checks and runs
 never do). A leftover line in an old `.env` is ignored.
@@ -121,11 +126,35 @@ is no penalty. Afterwards, `data/linkedin-profile-fixture/` is unused and can be
    new, duplicates and triaged. A run takes several minutes on purpose, because the pacing
    is human-like.
 4. **Inbox**: each card shows the summary, the AI verdict with a one-line reason, priority,
-   offering, extracted details, a link to the post, the full text and the AI cost. **Accept**
+   offering, extracted details, a link (**"View post ↗"** or **"Author profile (post link
+   unavailable) ↗"**, see below), the full text and the AI cost. **Accept**
    moves a card to Accepted as "Prospect · New". **Discard** asks for a reason. Use the
    checkboxes for bulk accept or discard. Discarded enquiries are kept and can be searched.
 5. **Runs → a run** shows the per-keyword log and the cost. The header shows the AI spend
    for today and this month.
+
+### Post links and LinkedIn's search layout (Phase 1.2)
+
+LinkedIn's content search now uses a new page layout that no longer contains post ids or
+post links. sales0 reads that layout (and still reads the older one), recognises the same
+post again on later runs without a post id, and merges duplicates by their text and author.
+
+To find a post's link, sales0 opens the post's own **"…"** menu and presses **"Copy link to
+post"**, slowly, like a person. It never presses any other menu item. sales0 intercepts that
+copy inside its own browser page, so **your computer's clipboard is never read or changed**.
+It does this for at most `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` posts per keyword (default
+15) and gives up on a keyword after 3 posts in a row yield no link. This makes runs longer:
+about 9 s per post at the default pacing, so about 2–3 minutes for 15 posts.
+
+Each Inbox card therefore links in one of two ways. Both are expected:
+
+- **"View post ↗"** opens the post itself.
+- **"Author profile (post link unavailable) ↗"** opens the author's LinkedIn profile, when
+  the post link could not be found. The post is in their recent activity. A later run may
+  find the link, and the card then shows "View post ↗".
+
+Set `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD=0` in `.env` (and restart) to skip the menu
+clicks entirely.
 
 ### LinkedIn safety: caps, stops, cool-down, layout warnings
 
@@ -150,7 +179,7 @@ sales0 only uses your own logged-in session and searches gently. You can change 
   "LinkedIn asked us to slow down — next run allowed after HH:MM". Re-check and Connect do
   not shorten it.
 - **Layout warnings:** sales0 reads LinkedIn by its session cookie, URLs and stable page
-  attributes, not by styling classes. If a keyword's results still can't be read, the run
+  attributes (such as `data-view-name` and `data-testid`), not by styling classes. If a keyword's results still can't be read, the run
   shows a yellow "LinkedIn's page layout may have changed" alert and a "Layout warning"
   badge, and that keyword's Message in the run detail says what was missed. It is a warning,
   not a problem with your account; runs stay allowed. Please report the keyword.
@@ -174,7 +203,9 @@ and a "remember this browser" page, then the light turns green. Then **Runs → 
 
 Demo keywords show the safety features: `checkpoint-test`, `captcha-test`, `ratelimit-test`
 and `logout-test` stop the run (with the banner and, unless set to 0, the cool-down), and
-`layout-drift-test` produces the layout-drift alert. The `.env` pacing still applies, so with
+`layout-drift-test` produces the layout-drift alert. `legacy-urn-test` shows every demo post
+in LinkedIn's older layout, and `permalink-miss-test` shows posts whose "Copy link to post"
+yields nothing (their cards link to the author profile). The `.env` pacing still applies, so with
 several keywords expect the 20–60 s pauses between them. Fixture mode keeps its own browser
 profile (`data/linkedin-profile-fixture-chrome/`, or `…-chromium/` with the built-in browser),
 never your real sales0 login.
@@ -204,8 +235,9 @@ uv run pytest tests -q               # everything
   Headless Chromium then walks setup → Connect LinkedIn (through the fake 2FA) → Re-check →
   Run now → inbox → accept → bulk discard → discarded search, restarts the server and checks
   that the state survived. It also covers a second run that learns from the decisions, the
-  logout/checkpoint/captcha safety stops, the layout-drift alert, and the rate-limit
-  cool-down surviving a Re-check and a restart. Port 8766 must be free.
+  logout/checkpoint/captcha safety stops, the layout-drift alert, the older LinkedIn layout
+  still parsing, the two card link labels, and the rate-limit cool-down surviving a
+  Re-check and a restart. Port 8766 must be free.
 
 ## Layout
 

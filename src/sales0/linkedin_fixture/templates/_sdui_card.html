@@ -1,0 +1,14 @@
+{#- One search result in LinkedIn's SDUI markup (architecture.md → Fixture markup (Phase 1.2)).
+    ``card`` is a routes.SduiCard: post, key (P1's varies per keyword) and copy_link (urn | noop | none).
+    No URN, no data-urn/data-id and no /feed/update/ or /posts/ href appear anywhere in it. -#}
+{%- set post = card.post -%}
+<div role="listitem" componentkey="{{ card.listitem_key }}" class="y6ob2"><div componentkey="{{ card.key }}" class="k3v9q _s7dq"><div data-view-name="feed-full-update" class="z5wr2">
+<h2 class="h2fp4"><span class="_vh3k">Feed post</span></h2>
+<div data-view-name="feed-actor" class="a7ct1"><a class="a1lp4 _g8wz" href="{{ base }}/{{ post.profile_path }}/" aria-label="View {{ post.author_name }}’s profile"><img class="i9av2" alt="" src="data:,"></a></div>
+<div data-view-name="feed-actor" class="a7ct2"><a class="a1lp4 d9zh3" href="{{ base }}/{{ post.profile_path }}/"><span class="n5me1">{{ post.author_name }}</span></a><span class="_s4tv">• 3rd+</span><p class="e2mc8">{{ post.author_headline }}</p><p class="e2mc8"><span class="r2tm6">{{ post.posted_relative }} • </span></p><button type="button" class="b7lm2 _f4lw">Follow</button></div>
+{%- if card.copy_link != "none" %}
+<div data-view-name="feed-control-menu" class="c4mn8"><button type="button" class="b7lm2 _t2rg" aria-label="Open control menu for post by {{ post.author_name }}" aria-expanded="false">…</button><div role="menu" class="m6pq3" hidden><div role="menuitem" tabindex="-1" class="m2it5">Save</div><div role="menuitem" tabindex="-1" class="m2it5">Copy link to post</div><div role="menuitem" tabindex="-1" class="m2it5">Not interested</div><div role="menuitem" tabindex="-1" class="m2it5">Unfollow {{ post.author_name }}</div><div role="menuitem" tabindex="-1" class="m2it5">Report post</div></div></div>
+{%- endif %}
+<div data-view-name="feed-commentary" class="ch2vt"><span data-testid="expandable-text-box" class="t5wq1">{{ post.text_head }}{% if post.text_tail %}<span class="r8ne4" hidden>{{ post.text_tail }}</span>{% endif %}</span>{% if post.text_tail %}<button type="button" class="b7lm2 _c3ps" data-testid="expandable-text-button">…more</button>{% endif %}</div>
+<div class="s3bx7"><button type="button" class="b7lm2" aria-label="React Like">Like</button><button type="button" class="b7lm2">Comment</button><button type="button" class="b7lm2">Repost</button><button type="button" class="b7lm2">Send</button></div>
+</div></div></div>

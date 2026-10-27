@@ -1,5 +1,5 @@
 # Capability: LinkedIn Discovery (Connect, Run now, Dedupe, Run Log, Safety)
-**Phase 1, reworked in Phase 1.1 (Real-Chrome connect + robust LinkedIn detection)**
+**Phase 1, reworked in Phase 1.1 (Real-Chrome connect + robust LinkedIn detection) and Phase 1.2 (LinkedIn's new search-results layout)**
 
 ## What It Does
 Connects the team's own LinkedIn session once, by logging in to a real Google Chrome window that sales0 opens. Then, on **Run now**, it searches LinkedIn posts for each active keyword, invisibly in the background. It runs slowly and like a human, merges duplicates into single enquiries, hands new enquiries to AI triage, and logs every run. It stops at the first sign of trouble with the account and tells the user when LinkedIn's page layout seems to have changed.
@@ -20,13 +20,13 @@ Connects the team's own LinkedIn session once, by logging in to a real Google Ch
 | Session status | not connected / connected / needs attention (+ busy), plus which browser is used | Header light, Setup card, alert banner |
 | Run record | status, per-keyword counts, errors, duration, abort reason, cost, layout warnings | Runs page, run detail |
 | Layout-change alert | count of keywords whose results could not be read | Runs panel, run detail, logs |
-| Enquiries | one per distinct post (raw text, author, link, date, keywords) | Triage → Review inbox |
+| Enquiries | one per distinct post (raw text, author, link, date, keywords). The link is the post itself when sales0 could get it, otherwise the author's profile (labelled as such) | Triage → Review inbox |
 | Live progress | current keyword/step, counters | Runs page (refreshes every second) |
 
 ## External Calls
 | System | Operation | On Failure |
 |---|---|---|
-| LinkedIn (team session, sales0's own Google Chrome profile on this computer) | open feed (session check), content search results by keyword, scroll, expand "see more" | Each of these makes sales0 **stop the run immediately**, close the browser, set "needs attention" with the reason, show the banner and never retry automatically: logout (sent to a login page or the authwall, or the session cookie disappears), a checkpoint/challenge page, a captcha, or a rate limit (HTTP 429/999 on any LinkedIn response, including background requests the page makes). It checks before each keyword and after every page load, scroll and "see more". Other page errors: that keyword is marked `error` and the run continues with the next keyword. |
+| LinkedIn (team session, sales0's own Google Chrome profile on this computer) | open feed (session check), content search results by keyword, scroll, expand "see more", and (Phase 1.2) open a post's "…" menu and press "Copy link to post" | Each of these makes sales0 **stop the run immediately**, close the browser, set "needs attention" with the reason, show the banner and never retry automatically: logout (sent to a login page or the authwall, or the session cookie disappears), a checkpoint/challenge page, a captcha, or a rate limit (HTTP 429/999 on any LinkedIn response, including background requests the page makes). It checks before each keyword and after every page load, scroll, "see more" and post-menu action. Other page errors: that keyword is marked `error` and the run continues with the next keyword. |
 | AI triage (see ai-triage) | per new enquiry | Enquiry marked "triage failed" with Retry. The run continues. A fatal key/model error stops triage and fails the run with a clear message. |
 
 ## Business Rules
@@ -58,6 +58,11 @@ Connects the team's own LinkedIn session once, by logging in to a real Google Ch
 - The keyword that was being searched when a stop tripped counts as "just run", so the next run searches it last.
 - **Layout changes are never silent.** A logged-in results page that yields 0 readable posts, while it has result cards or shows no "no results" message, marks that keyword `warning` "No posts parsed — LinkedIn layout may have changed". The same happens when an author, headline, time or profile link can't be read on at least half of a keyword's posts (and at least 2 posts were parsed). Smaller misses and unreadable cards are listed in the keyword's message. Any warning in a run shows a run-level alert on the Runs page and in the run detail, and is logged. It is a warning, not a stop.
 - Post cards are recognised by LinkedIn's post ids and post links, and each detail has ordered fallbacks. sales0 does not depend on LinkedIn's (obfuscated) class names.
+- **Phase 1.2 — LinkedIn's new search layout.** LinkedIn's search results no longer carry post ids or post links. sales0 recognises posts by LinkedIn's stable page-structure labels (post, author block, post text, "…more", post menu), and still recognises the older id-based layout when LinkedIn serves it. Which layout was read is logged per keyword.
+  - A post without a LinkedIn id is identified by LinkedIn's per-result key. Because that key may change between visits, duplicates are ALSO merged by normalised text (as before) and by "same author + same opening ~300 characters" (so a post read once truncated and once in full is one enquiry). The same post under two keywords or in two runs is one enquiry.
+  - **Post link.** For posts without a link, sales0 opens the post's "…" menu and presses **"Copy link to post"**, slowly and with a safety check after each step. It intercepts the copy inside the page, so the computer's clipboard is never touched, and it never presses any other menu item. At most N posts per keyword are tried (default 15; 0 turns it off), and it gives up on a keyword after 3 failures in a row. When the link can't be had, the card links to the **author's profile** and says "post link unavailable". A link found in a later run replaces the profile link.
+  - The post time ("now", "24m", "3h", "2d", "1w", "3mo", "1yr", with or without "• Edited") becomes the approximate date posted.
+  - A results page that shows result items but yields no readable posts is a layout warning (as before). Posts whose text can't be read on at least half of ≥ 2 results are a layout warning "couldn't read post text on M".
 - Runs interrupted by a server restart are marked failed at the next startup.
 - Deleting a keyword while a run is active does not affect that run. Its hits keep the keyword text; the link to the deleted keyword is cleared.
 - **Fixture mode** runs the identical flow against a built-in fake LinkedIn with a known post corpus. It is used for automated tests and offline demos, and is labelled "FIXTURE MODE" in the header.
@@ -95,3 +100,16 @@ Connects the team's own LinkedIn session once, by logging in to a real Google Ch
 - [ ] A server restart during a run → that run shows `failed` "Interrupted by server restart".
 - [ ] In live mode, `/__fixtures/linkedin/feed/` returns 404.
 - [ ] Every keyword produces a `scrape_keyword` JSON log line, and every run produces a `scrape_run` line.
+
+**Phase 1.2 (HOW: `architecture.md` → `## LinkedIn SDUI search results`)**
+- [ ] The sanitised saved SDUI sample parses (real headless browser) to exactly 6 posts with `strategy=sdui`, the 6 pinned `ck:` refs in DOM order, and the pinned author, profile URL, headline, relative time and text snippet per post; `drift=false`.
+- [ ] The sanitisation test passes: every `/in/` and `/company/` slug, author name, `aria-label`/`alt` and componentkey in the sample is from the synthetic list; no script, iframe, `licdn.com`, member id, tracking attribute, or attribute outside the allowlist.
+- [ ] The legacy saved sample (`search_results_content.html`) still parses to its 6 URN posts with `strategy=urn`; fixture `legacy-urn-test` returns 10 posts with their URNs and 0 permalink attempts.
+- [ ] Fixture run 1 / run 2 counts hold with no URN anywhere in the fixture DOM: 9/7/2/7, then 11/2/9/2. P1 has both keyword chips and 2 `ck:` source rows; P2 has 2 source rows (its URN + P7's `ck:` ref); exactly 7 enquiries after run 1.
+- [ ] Permalink capture on fixture `ai workshop` (default cap): P5's card links "View post ↗" to `{base}/feed/update/<P5's corpus URN>/` (no `utm_`/`rcm` query) and P5's source ref is that URN; P1 and P6 link "Author profile (post link unavailable) ↗" to their `/in/<slug>/`; `window.__fixture_menu_clicks` contains only "Copy link to post"; `scrape_keyword` logs `strategy: "sdui"`, `permalink_attempts: 3`, `permalinks_found: 1`.
+- [ ] Clipboard isolation: on a page whose original `navigator.clipboard.writeText` is wrapped to record calls, after `CLIPBOARD_HOOK_JS` and a "Copy link to post" click, the URL is captured and the original was called 0 times.
+- [ ] `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD=0` → 0 menu opens; every SDUI card links to the author profile; counts unchanged. `=1` on `ai workshop` → exactly 1 menu open.
+- [ ] 3 consecutive capture misses stop capture for that keyword (fixture `permalink-miss-test`, 4 posts whose menus all write nothing, gets exactly 3 menu opens).
+- [ ] `near_duplicate`: same author slug and the first 120 normalised chars of a truncated text equal the expanded text's → True; different author → False; overlap < 100 chars → False. `upsert_post` merges such a pair as `dupe_content` and upgrades a profile link to a permalink when the later sighting has one.
+- [ ] `parse_relative` maps `now`, `24m`, `3h` → today; `2d` → today−2; `1w` → today−7; `3mo` → today−90; `1yr` → today−365; `2d • Edited •` → today−2.
+- [ ] `layout-drift-test` (SDUI listitems, no posts) → `strategy=none`, `cards_found=3`, keyword `warning`. A page where ≥ half of ≥ 2 SDUI containers have no text → `warning` "couldn't read post text on M".

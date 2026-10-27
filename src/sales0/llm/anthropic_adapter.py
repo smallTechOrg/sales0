@@ -133,6 +133,9 @@ class AnthropicClient:
             "tool_choice": {"type": "tool", "name": req.tool_name},
             "max_tokens": req.max_tokens,
         }
+        # Never send temperature / top_p / top_k / thinking: claude-haiku-5-5 rejects them (400).
+        if req.effort is not None:
+            params["output_config"] = {"effort": req.effort}
         return self._call(
             params,
             feature=req.feature,

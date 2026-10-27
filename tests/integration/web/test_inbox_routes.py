@@ -3,6 +3,7 @@ field edits, retry triage (real Haiku), pagination and state survival."""
 
 from __future__ import annotations
 
+import hashlib
 import re
 from html import unescape
 
@@ -12,7 +13,7 @@ from sqlalchemy import select
 
 from sales0.clock import utcnow
 from sales0.db.engine import session_scope
-from sales0.db.models import Enquiry, TriageDecision
+from sales0.db.models import Enquiry, EnquirySource, TriageDecision
 from sales0.services.dedupe import content_hash
 from sales0.web.app import create_app
 from tests.integration.web.conftest import HX, add_llm_call, make_enquiry, make_run, triaged
@@ -24,6 +25,12 @@ P2_REASON = "Training company recruiting freelance trainers"
 def _card(html: str, enquiry_id: int) -> str:
     start = html.index(f'<article id="enquiry-{enquiry_id}"')
     return html[start : html.index("</article>", start)]
+
+
+def _link(card_html: str) -> tuple[str, str, str] | None:
+    """(data-link-kind, href, label) of the card's ``a.enquiry__link``; None when absent."""
+    match = re.search(r'<a class="enquiry__link" href="([^"]*)"[^>]*data-link-kind="([^"]*)">([^<]*)</a>', card_html)
+    return (match.group(2), match.group(1), match.group(3)) if match else None
 
 
 def _card_ids(html: str) -> list[int]:
@@ -101,7 +108,9 @@ def test_review_tab_sorts_failed_then_genuine_and_renders_card_details(client: T
     assert '<option value="1" selected>AI corporate workshops</option>' in p1 and ">No match</option>" in p1
     assert 'href="mailto:training@acmelogistics.example"' in p1 and "+91 98200 11111" in p1 and "Offline" in p1
     assert "Contact person" not in p1  # null details are not shown
-    assert 'href="https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000001/" target="_blank" rel="noopener">Open post ↗' in p1
+    assert _link(p1) == ("post", "https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000001/",
+                         "View post ↗")
+    assert 'target="_blank" rel="noopener"' in p1 and "Open post ↗" not in p1
     assert "<summary>Full post text</summary>" in p1 and "Please send your proposals" in p1
     assert '<span class="chip">corporate ai training</span>' in p1 and "Buyer company" in p1 and "1d ago" in p1
     assert re.search(r"AI \$0\.\d{4} · 1\.3k tok", p1)
@@ -274,3 +283,84 @@ def test_card_urn_falls_back_to_permalink_for_every_post_urn_kind(client: TestCl
     card = _card(unescape(client.get("/inbox").text), enquiry_id)
     assert f'data-urn="{urn}"' in card
     assert f'href="https://www.linkedin.com/feed/update/{urn}/"' in card
+
+
+# ---------------------------------------------------------------------- Phase 1.2: link labels
+LINK_CASES = [
+    ("post", "https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000005/", "View post ↗"),
+    ("post", "https://www.linkedin.com/posts/arjun-rao-fx_ai-agents-workshop-AbCd/", "View post ↗"),
+    ("profile", "https://www.linkedin.com/in/priya-menon-acme/", "Author profile (post link unavailable) ↗"),
+    ("profile", "https://www.linkedin.com/company/briltus-academy/", "Author profile (post link unavailable) ↗"),
+    ("search", "https://www.linkedin.com/search/results/content/?keywords=ai%20workshop",
+     "Search results (post link unavailable) ↗"),
+    ("other", "https://example.invalid/elsewhere", "Open link ↗"),
+]
+
+
+def _enquiry_with_link(url: str | None, ref: str | None = None, text: str | None = None) -> int:
+    raw = text or f"We need a corporate GenAI workshop for our team, link {url}"
+    with session_scope() as db:
+        unique = hashlib.sha256(f"{raw}|{url}|{ref}".encode()).hexdigest()
+        e = Enquiry(content_hash=unique, raw_text=raw, author_name="Asha Rao",
+                    author_headline="L&D Head", source_url=url, date_added=utcnow(),
+                    **triaged("genuine", P1_REASON))
+        db.add(e)
+        db.flush()
+        if ref:
+            db.add(EnquirySource(enquiry_id=e.id, source_ref=ref, source_url=None, first_seen_at=utcnow()))
+        return e.id
+
+
+@pytest.mark.parametrize(("kind", "url", "label"), LINK_CASES)
+def test_card_link_label_and_data_link_kind_follow_the_url_shape(client: TestClient, kind: str, url: str,
+                                                                 label: str) -> None:
+    eid = _enquiry_with_link(url)
+    card = _card(unescape(client.get("/inbox").text), eid)
+    assert _link(card) == (kind, url, label)
+
+
+def test_fixture_mode_links_are_classified_after_the_fixture_prefix(client: TestClient) -> None:
+    base = "http://127.0.0.1:8788/__fixtures/linkedin"
+    post_id = _enquiry_with_link(f"{base}/feed/update/urn:li:activity:7300000000000000005/")
+    profile_id = _enquiry_with_link(f"{base}/in/meera-iyer-orbit/")
+    html = unescape(client.get("/inbox").text)
+    assert _link(_card(html, post_id))[::2] == ("post", "View post ↗")  # type: ignore[index]
+    assert _link(_card(html, profile_id))[::2] == ("profile", "Author profile (post link unavailable) ↗")  # type: ignore[index]
+
+
+def test_card_without_source_url_shows_no_link(client: TestClient) -> None:
+    eid = _enquiry_with_link(None, ref="ck:NoLinkKey01")
+    card = _card(unescape(client.get("/inbox").text), eid)
+    assert _link(card) is None and "enquiry__link" not in card
+    assert 'data-urn="ck:NoLinkKey01"' in card  # data-urn may hold a ck: ref (ui.md test hooks)
+
+
+def test_link_label_upgrades_after_a_later_run_finds_the_permalink(client: TestClient) -> None:
+    from sales0.services import dedupe
+    from tests.integration.services.helpers import sdui_post
+
+    text = ("Orbit Health wants a partner to run a Build your first AI agent workshop for 25 engineers, fully "
+            "online, in December. Reach out if you do this kind of hands-on session for product teams.")
+    run1, run2 = make_run("succeeded"), make_run("succeeded")
+    with session_scope() as db:
+        _, eid = dedupe.upsert_post(db, sdui_post("KeyP6a", text, slug="in/meera-iyer-orbit"), run1, None, "ai workshop")
+    html = unescape(client.get("/inbox").text)
+    assert _link(_card(html, eid)) == ("profile", "https://www.linkedin.com/in/meera-iyer-orbit/",
+                                       "Author profile (post link unavailable) ↗")
+    assert 'data-urn="ck:KeyP6a"' in _card(html, eid)
+    urn = "urn:li:activity:7300000000000000006"
+    with session_scope() as db:
+        kind, again = dedupe.upsert_post(db, sdui_post("KeyP6b", text, slug="in/meera-iyer-orbit", urn=urn),
+                                         run2, None, "ai workshop")
+    assert (kind, again) == ("dupe_content", eid)
+    card = _card(unescape(client.get("/inbox").text), eid)
+    assert _link(card) == ("post", f"https://www.linkedin.com/feed/update/{urn}/", "View post ↗")
+    assert 'data-urn="ck:KeyP6a"' in card  # the first source ref is unchanged
+
+
+def test_link_href_is_escaped(client: TestClient) -> None:
+    eid = _enquiry_with_link('https://www.linkedin.com/in/x"onmouseover="alert(1)/')
+    raw_html = client.get("/inbox").text
+    card = raw_html[raw_html.index(f'<article id="enquiry-{eid}"'):]
+    card = card[: card.index("</article>")]
+    assert 'onmouseover="alert(1)' not in card

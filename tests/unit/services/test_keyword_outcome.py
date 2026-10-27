@@ -15,7 +15,7 @@ from sales0.services.runs import keyword_outcome
 def _post(n: int) -> ScrapedPost:
     urn = f"urn:li:activity:7{n:018d}"
     return ScrapedPost(
-        urn=urn,
+        source_ref=urn,
         url=f"https://www.linkedin.com/feed/update/{urn}/",
         author_name="A",
         author_profile_url="https://www.linkedin.com/in/a/",
@@ -101,3 +101,35 @@ def test_an_honest_no_results_page_is_done_with_no_message() -> None:
 
 def test_unknown_field_names_and_zero_counts_are_ignored() -> None:
     assert keyword_outcome(_result(4, misses={"bogus": 4, "author_name": 0})) == ("done", None)
+
+
+# ---------------------------------------------------------------------- Phase 1.2: post text
+def test_text_misses_on_half_of_all_containers_are_a_warning_named_post_text() -> None:
+    # 3 posts parsed + 3 containers with no readable text -> 3 of 6 -> half -> warning.
+    status, message = keyword_outcome(_result(3, misses={"text": 3}))
+    assert status == "warning"
+    assert message == "Parsed 3 posts, but couldn't read post text on 3 — LinkedIn layout may have changed"
+
+
+def test_text_uses_posts_plus_text_misses_as_denominator() -> None:
+    # 4 posts + 3 text-less containers: 3 of 7 is under half -> done, written down as 3/7.
+    assert keyword_outcome(_result(4, misses={"text": 3})) == ("done", "post text missing on 3/7")
+
+
+def test_text_is_listed_before_the_other_fields() -> None:
+    status, message = keyword_outcome(_result(2, misses={"author_name": 2, "text": 2}))
+    assert status == "warning"
+    assert message == ("Parsed 2 posts, but couldn't read post text on 2, author on 2 "
+                       "— LinkedIn layout may have changed")
+
+
+def test_one_post_and_one_textless_container_reaches_the_two_result_minimum() -> None:
+    assert keyword_outcome(_result(1, misses={"text": 1})) == (
+        "warning", "Parsed 1 posts, but couldn't read post text on 1 — LinkedIn layout may have changed")
+
+
+def test_a_single_textless_container_alone_is_drift_or_done_never_a_text_warning() -> None:
+    # 0 posts + 1 miss: denominator 1 < 2 -> no text threshold; without drift it is written down.
+    assert keyword_outcome(_result(0, misses={"text": 1})) == ("done", "post text missing on 1/1")
+    assert keyword_outcome(_result(0, drift=True, cards=1, misses={"text": 1}))[1] == (
+        "No posts parsed — LinkedIn layout may have changed (1 result card found)")

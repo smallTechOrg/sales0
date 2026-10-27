@@ -1,26 +1,37 @@
 {% extends "_layout.html" %}
+{#- Search results. Phase 1.2: SDUI markup (lazy column of listitems, feed-full-update posts,
+    "…" control menus) for every keyword except legacy-urn-test, which keeps the Phase 1.1
+    URN card shapes. ``mode`` is one of: sdui | drift | legacy | empty. -#}
 {% block title %}"{{ keyword }}" | Search | LinkedIn (fixture){% endblock %}
 {% block content %}
 <h1 class="_vh3k">Search results for {{ keyword }}</h1>
-{% if drift %}
-<ul role="list" class="u5rt7 _b2xe">
-  <li class="k3v9q"><div class="g4nu7">Results are loading in a layout sales0 does not know.</div></li>
-  <li class="k3v9q"><div class="g4nu7">Promoted · Grow your network with Premium</div></li>
-  <li class="k3v9q"><div class="g4nu7">People also searched for: corporate training</div></li>
-</ul>
-{% elif posts %}
+{% if mode == "sdui" or mode == "drift" %}
+<div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent" class="w8sc2">
+ <div data-testid="lazy-column" class="u5rt7 _b2xe">
+{%- if mode == "drift" %}
+{%- for item_key in drift_keys %}
+  <div role="listitem" componentkey="{{ listitem_key(item_key) }}" class="y6ob2"><div class="k3v9q"><div class="g4nu7">{{ drift_texts[loop.index0] }}</div></div></div>
+{%- endfor %}
+{%- else %}
+{%- for card in cards %}
+  {% include "_sdui_card.html" %}
+{%- endfor %}
+{%- endif %}
+ </div>
+</div>
+{% for card in lazy_cards or [] %}<template class="l0vr6">{% include "_sdui_card.html" %}</template>{% endfor %}
+{% elif mode == "legacy" %}
 <ul role="list" class="u5rt7 _b2xe">
   {% for post in posts %}{% include "_post_card.html" %}
   {% endfor %}
 </ul>
-{% for post in lazy_posts or [] %}<template class="l0vr6">{% include "_post_card.html" %}</template>{% endfor %}
 {% else %}
 <div class="k3v9q _n4ow"><h2 class="o2ty5">No results found</h2><p class="e2mc8">Try shortening or rephrasing your search.</p></div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
-  // "…see more" reveals the hidden tail of the post text (no classes involved).
+  // Phase 1.1 cards: "…see more" reveals the hidden tail of the post text (no classes involved).
   document.addEventListener("click", (event) => {
     const button = event.target.closest('button[aria-label*="see more" i]');
     if (!button) return;
@@ -29,12 +40,86 @@
     button.remove();
   });
 </script>
+{% if mode == "sdui" %}
+<script>
+  // SDUI posts: "…more" expands the text; the "…" control menu opens on its trigger and
+  // "Copy link to post" writes the post's share link through navigator.clipboard.writeText
+  // (only for posts whose copy_link is "urn"). Every trigger click and menu-item click is
+  // recorded so tests can assert what the scraper clicked.
+  (() => {
+    const BASE = {{ base | tojson }};
+    const SHARE = {{ share_slugs | tojson }};  // inner KEY -> share slug (urn posts only)
+    const QUERY = {{ copy_query | tojson }};
+    const MENU = '[data-view-name="feed-control-menu"]';
+    window.__fixture_menu_clicks = [];
+    window.__fixture_menu_opens = 0;
+    const closeAll = () => {
+      document.querySelectorAll(MENU).forEach((menu) => {
+        const list = menu.querySelector('[role="menu"]');
+        if (list) list.hidden = true;
+        const trigger = menu.querySelector(":scope > button");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+      });
+    };
+    const toast = (message) => {
+      const box = document.createElement("div");
+      box.className = "tq4s5";
+      box.setAttribute("role", "status");
+      box.textContent = message;
+      document.body.appendChild(box);
+      setTimeout(() => box.remove(), 3000);
+    };
+    const copy = (text) => {
+      try {
+        const pending = navigator.clipboard && navigator.clipboard.writeText(text);
+        if (pending && typeof pending.catch === "function") pending.catch(() => {});
+      } catch (error) { /* no clipboard: nothing to do, like a denied permission */ }
+    };
+    document.addEventListener("click", (event) => {
+      const more = event.target.closest('[data-testid="expandable-text-button"]');
+      if (more) {
+        const box = more.parentElement.querySelector('[data-testid="expandable-text-box"]');
+        if (box) box.querySelectorAll("[hidden]").forEach((node) => { node.hidden = false; });
+        more.remove();
+        return;
+      }
+      const item = event.target.closest(`${MENU} [role="menuitem"]`);
+      if (item) {
+        const label = item.textContent.trim();
+        window.__fixture_menu_clicks.push(label);
+        if (label.toLowerCase() === "copy link to post") {
+          const holder = item.closest('[componentkey]:not([role="listitem"])');
+          const slug = holder ? SHARE[holder.getAttribute("componentkey")] : undefined;
+          if (slug) {
+            copy([BASE, "posts", slug].join("/") + "?" + QUERY);
+            toast("Link copied to clipboard.");
+          }
+        }
+        closeAll();
+        return;
+      }
+      const trigger = event.target.closest(`${MENU} > button`);
+      if (trigger) {
+        window.__fixture_menu_opens += 1;
+        const list = trigger.parentElement.querySelector('[role="menu"]');
+        const opening = Boolean(list && list.hidden);
+        closeAll();
+        if (opening) { list.hidden = false; trigger.setAttribute("aria-expanded", "true"); }
+        return;
+      }
+      closeAll();
+    });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeAll(); });
+  })();
+</script>
+{% endif %}
 {% if lazy %}
 <script>
-  // Lazy results: each scroll gesture reveals the next card after a delay, like LinkedIn's XHR paging.
+  // Lazy results: each scroll gesture reveals the next card after a delay, like LinkedIn's XHR
+  // paging. Phase 1.2: revealed cards are appended as new listitems to the lazy column.
   (() => {
     const lazy = {{ lazy | tojson }};
-    const list = document.querySelector('main > ul[role="list"]');
+    const list = document.querySelector('[data-testid="lazy-column"]');
     const ping = () => { if (lazy.voyager_url) fetch(lazy.voyager_url, { credentials: "include" }).catch(() => {}); };
     let scrolls = 0, last = 0;
     ping();

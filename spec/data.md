@@ -95,7 +95,7 @@ The core record: one per real-world post, after dedupe.
 | raw_text | text | "Full Enquiry". Kept forever. |
 | author_name, author_headline | str null | |
 | author_profile_url | str null | |
-| source_url | str null | "Link": permalink of the first source |
+| source_url | str null | "Link": permalink of the first source; Phase 1.2: else the author profile URL, else the search URL (upgraded when a permalink is found later) |
 | date_posted | date null | Estimated from the relative time |
 | date_added | datetime | First seen |
 | review_status | `pending_review` \| `accepted` \| `discarded` | |
@@ -132,7 +132,7 @@ Each distinct source post merged into an enquiry.
 | Field | Type | Notes |
 |---|---|---|
 | enquiry_id | FK enquiries (cascade) | |
-| source_ref | str unique | LinkedIn `urn:li:activity:…` (later the WhatsApp message id) |
+| source_ref | str unique | LinkedIn `urn:li:activity:…`, or `ck:<KEY>` when no URN is exposed (Phase 1.2) (later the WhatsApp message id) |
 | source_url | str null | |
 | first_seen_run_id | FK scrape_runs null | |
 | first_seen_at | datetime | |
@@ -197,6 +197,13 @@ Index `(entity_type, entity_id, changed_at)`.
 - The **browser channel/label** is resolved at runtime (`scraper.browser.resolve_browser`) and is never stored.
 - A run that fails because the profile has no session cookie keeps `abort_reason` null (it is not a safety stop) and sets `linkedin_session.status='not_connected'` with `last_error` "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup".
 - Future migrations follow `architecture.md` → Conventions → Migrations: never batch-rebuild an FK-referenced table under `foreign_keys=ON`.
+
+### Phase 1.2: no schema change (head stays `0002_phase1_discovery`)
+- **`enquiry_sources.source_ref`** may now also be `ck:<KEY>` (LinkedIn's `componentkey` for a search-result post) when the page exposes no URN. A URN learned later (from "Copy link to post") is added as an extra source row for the same enquiry. `String(200)` is enough; a longer KEY is treated as absent by the parser, never truncated.
+- **`enquiries.source_url`** ("Link") is the post permalink when known, else the author's profile URL, else the keyword's search URL. A later sighting that has the permalink upgrades it. **`enquiry_sources.source_url`** is the permalink when known, else the search URL the post was seen on.
+- **Link kind** (`post | profile | search | other`) is derived from `source_url` on read (`scraper.urls.link_kind_of`); it is never stored.
+- **Near-duplicate fingerprint** (same author profile slug + first 300 normalised characters) is computed on read from `author_profile_url` and `raw_text` (`services.dedupe.near_duplicate`); it is never stored. `content_hash` keeps its meaning.
+- **`date_posted`** keeps its meaning: estimated from the relative time (`now`, `24m`, `3h`, `2d`, `1w`, `3mo`, `1yr`, `• Edited` ignored).
 
 ### app_meta (scaffold)
 `key` str PK, `value` str. Holds `schema_note`.

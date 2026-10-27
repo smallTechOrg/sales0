@@ -1,20 +1,36 @@
-"""The fixture corpus must hold the facts the run expectations depend on (architecture.md)."""
+"""The fixture corpus must hold the facts the run expectations depend on (architecture.md).
+
+Phase 1.2 (S4): every post also carries a synthetic SDUI ``component_key`` and a
+``copy_link`` behaviour; P1's KEY varies per keyword; ``possible_refs`` lists every
+``source_ref`` the scraper may assign a post.
+"""
 
 import re
 import unicodedata
+from urllib.parse import urlsplit
 
 from sales0.linkedin_fixture.corpus import (
     CARD_SHAPES,
+    COPY_LINK_QUERY,
     LAZY_PLANS,
+    LEGACY_KEYWORD,
     LOGOUT_KEYWORD,
+    PERMALINK_MISS_IDS,
+    PERMALINK_MISS_KEYWORD,
     SEE_MORE_AT,
     TRIGGER_KEYWORDS,
+    UNSTABLE_KEY_IDS,
+    keyword_slug,
     load_corpus,
     normalize_keyword,
+    permalink_miss_posts,
     post_by_urn,
     posts_for,
 )
 from sales0.scraper.parsing import URN_RE
+
+LISTITEM_KEY_RE = re.compile(r"^expanded(.+?)FeedType_[A-Za-z_]+$")  # architecture.md SDUI_LISTITEM_KEY_RE
+CORPUS_KEYWORDS = ("corporate ai training", "ai workshop", "ai consulting", "claude code training")
 
 
 def _spec_normalize(text: str) -> str:
@@ -104,13 +120,105 @@ def test_posts_slug_carries_the_urn_in_linkedins_posts_permalink_form() -> None:
     assert p10.posts_slug.startswith(p10.profile_slug)
 
 
-def test_trigger_keywords_include_logout_and_never_collide_with_corpus_keywords() -> None:
+def test_trigger_keywords_include_phase_1_2_keywords_and_never_collide_with_corpus_keywords() -> None:
     assert LOGOUT_KEYWORD == "logout-test"
+    assert LEGACY_KEYWORD == "legacy-urn-test" and PERMALINK_MISS_KEYWORD == "permalink-miss-test"
     assert TRIGGER_KEYWORDS == {
         "checkpoint-test", "captcha-test", "ratelimit-test", "logout-test", "layout-drift-test",
         "lazy-scroll-test", "checkpoint-scroll-test", "ratelimit-scroll-test",
+        "legacy-urn-test", "permalink-miss-test",
     }
     corpus_keywords = {k for p in load_corpus() for k in p.keywords}
     assert not (TRIGGER_KEYWORDS & corpus_keywords)
     assert all(posts_for(k) == [] for k in TRIGGER_KEYWORDS)
     assert all(posts_for(plan.source_keyword) for plan in LAZY_PLANS.values())
+
+
+# ----------------------------------------------------------------- Phase 1.2: SDUI identity
+def test_every_post_has_a_unique_opaque_component_key() -> None:
+    posts = load_corpus()
+    keys = [p.component_key for p in posts]
+    assert len(set(keys)) == len(keys)
+    for key in keys:
+        assert re.fullmatch(r"[A-Za-z0-9]{10,24}", key), key
+        assert not LISTITEM_KEY_RE.match(key)  # an inner key never looks like a wrapper key
+        assert "urn" not in key.lower() and "activity" not in key.lower()
+
+
+def test_copy_link_behaviour_follows_the_spec_assignment() -> None:
+    assert {p.id: p.copy_link for p in load_corpus()} == {
+        "P1": "noop", "P2": "urn", "P3": "none",
+        "P5": "urn", "P6": "noop", "P7": "none",
+        "P8": "urn", "P9": "noop",
+        "P10": "urn", "P11": "none",
+    }
+
+
+def test_only_p1s_key_varies_per_keyword() -> None:
+    assert UNSTABLE_KEY_IDS == frozenset({"P1"})
+    p = _by_id()
+    a, b = p["P1"].key_for("corporate ai training"), p["P1"].key_for("ai workshop")
+    assert a != b
+    assert a.startswith(p["P1"].component_key + "-") and b.startswith(p["P1"].component_key + "-")
+    assert p["P1"].key_for("  Corporate  AI Training ") == a  # keyword normalised first
+    for post in load_corpus():
+        if post.id == "P1":
+            continue
+        assert {post.key_for(k) for k in (*CORPUS_KEYWORDS, PERMALINK_MISS_KEYWORD)} == {post.component_key}
+
+
+def test_keys_fit_source_ref_and_contain_no_whitespace() -> None:
+    for post in load_corpus():
+        for keyword in (*post.keywords, PERMALINK_MISS_KEYWORD, "lazy-scroll-test", "x" * 300):
+            key = post.key_for(keyword)
+            assert key and not re.search(r"\s", key)
+            assert len(key) <= 197  # "ck:" + KEY fits enquiry_sources.source_ref String(200)
+            assert not LISTITEM_KEY_RE.match(key)
+
+
+def test_keyword_slug_edge_cases() -> None:
+    assert keyword_slug("Corporate AI  training") == "corporate-ai-training"
+    assert keyword_slug("  ") == ""
+    assert keyword_slug("c++ / ai!") == "c-ai"
+    assert _by_id()["P1"].key_for("") == _by_id()["P1"].component_key  # nothing to vary by
+
+
+def test_possible_refs_cover_every_ref_the_scraper_can_assign() -> None:
+    p = _by_id()
+    # P1: noop menu, two keywords -> two distinct ck: refs, never its URN.
+    assert p["P1"].possible_refs() == (
+        f"ck:{p['P1'].key_for('corporate ai training')}",
+        f"ck:{p['P1'].key_for('ai workshop')}",
+    )
+    # P2: copy link yields the URN; the ck: ref is still possible (cap 0, miss).
+    assert p["P2"].possible_refs() == (p["P2"].urn, f"ck:{p['P2'].component_key}")
+    # P3: no menu at all.
+    assert p["P3"].possible_refs() == (f"ck:{p['P3'].component_key}",)
+    for post in load_corpus():
+        refs = post.possible_refs()
+        assert len(refs) == len(set(refs))
+        assert (post.urn in refs) == (post.copy_link == "urn")
+
+
+def test_share_url_is_a_same_site_posts_link_with_tracking_and_the_urn_in_its_slug() -> None:
+    base = "http://127.0.0.1:9/__fixtures/linkedin"
+    p5 = _by_id()["P5"]
+    url = p5.share_url(base)
+    parts = urlsplit(url)
+    assert url.startswith(f"{base}/posts/{p5.posts_slug}?")
+    assert parts.query == COPY_LINK_QUERY
+    assert "utm_source=share" in parts.query and "rcm=" in parts.query
+    m = re.search(r"-(activity)-(\d+)-", parts.path)
+    assert m and f"urn:li:{m.group(1)}:{m.group(2)}" == p5.urn
+
+
+def test_company_authors_link_to_a_company_page() -> None:
+    p = _by_id()
+    assert p["P11"].profile_path == "company/briltus-academy"
+    assert p["P1"].profile_path == "in/priya-menon-acme"
+    assert {post.id for post in load_corpus() if post.profile_path.startswith("company/")} == {"P11"}
+
+
+def test_permalink_miss_posts_are_p1_p6_p9_p2() -> None:
+    assert PERMALINK_MISS_IDS == ("P1", "P6", "P9", "P2")
+    assert [p.id for p in permalink_miss_posts()] == ["P1", "P6", "P9", "P2"]

@@ -12,7 +12,7 @@ import pytest
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
 from sales0.scraper.detection import CONTENT_READY_JS, SIGNAL_ARGS, read_signals
-from sales0.scraper.parsing import ParsedCards, parse_cards
+from sales0.scraper.parsing import ParsedCards, drift_detected, parse_cards
 from sales0.scraper.search import count_cards, extract_raw_cards, see_more_buttons
 
 pytestmark = pytest.mark.browser
@@ -106,6 +106,9 @@ def test_anchor_only_cards_use_the_closest_container(page: Page, container: str)
     parsed, raws = _parse(page, "<main><div>" + container.format(inner) + "</div></main>")
     assert [p.urn for p in parsed.posts] == ["urn:li:activity:77"]
     assert raws[0]["via"]["urn"] == "feed_update_href"
+    # Phase 1.2: a feed-full-update container is an SDUI post (its URN link is still read, best effort).
+    assert raws[0]["strategy"] == ("sdui" if "feed-full-update" in container else "urn")
+    assert parsed.posts[0].text == "Anchor-only post"
 
 
 def test_a_post_link_without_a_container_is_skipped(page: Page) -> None:
@@ -246,7 +249,8 @@ def test_text_is_the_longest_candidate_outside_the_author_anchor(page: Page) -> 
     assert [p.text for p in parsed.posts] == [
         "The real, longest post body: we need a corporate GenAI workshop.", "Legacy text class only"]
     assert [r["via"].get("text") for r in raws[:2]] == ['[dir="ltr"]', ".update-components-text"]
-    assert parsed.parse_errors == 1 and "no post text" in parsed.errors[0]
+    # Phase 1.2: a container with a ref but no text is a counted text miss, not a parse error.
+    assert parsed.parse_errors == 0 and parsed.field_misses["text"] == 1
 
 
 def test_no_class_selector_is_needed_for_obfuscated_markup(page: Page) -> None:
@@ -347,7 +351,8 @@ def test_soft_hints_are_reported_by_name_and_a_bare_page_has_none(context: Brows
     assert set(signals.soft_hints) == {"self_profile_link", "global_nav_attr", "nav_aria", "main_landmark", "legacy_global_nav"}
     assert signals.has_session_cookie is False  # this context has no li_at
     bare, extras = _signals(context, page, "<div>hello</div>")
-    assert bare.soft_hints == () and extras == {"no_results": False, "cards_found": 0}
+    assert bare.soft_hints == ()
+    assert extras == {"no_results": False, "cards_found": 0, "strategy": "none", "sdui_screen": False}
 
 
 def test_content_ready_waits_for_cards_no_results_or_a_safety_marker(page: Page) -> None:
@@ -360,3 +365,179 @@ def test_content_ready_waits_for_cards_no_results_or_a_safety_marker(page: Page)
     ]:
         page.set_content(f"<html><body>{body}</body></html>")
         assert page.evaluate(CONTENT_READY_JS, SIGNAL_ARGS) is ready, body
+
+
+# =========================================================================== Phase 1.2: SDUI
+# Synthetic SDUI markup in the two shapes the spec binds: the capture's (actor links with the
+# headline/time beside them, an empty overlay actor) and the fixture's (avatar actor + a meta actor).
+KEY_A = "sQ3v9LmP1aZ0kQ7HbN2cRw4tYu8iOpLkJhGfDsAzXc1"
+KEY_B = "Zt7Lw2Qe9Rb4Ny6Mk1Pc8Vd3Hs5Jf0Gx2Ua7Ki9Ol3m"
+
+
+def _capture_post(key: str, name: str = "Asha Rao", slug: str = "asha-rao-zz", headline: str | None = "VP People at Kestrel Ports",
+                  time: str = "24m", text: str = "Kestrel Ports needs a GenAI workshop for 40 managers.", company: bool = False,
+                  menu: bool = True, extra: str = "") -> str:
+    kind = "company" if company else "in"
+    degree = "" if company else '<p><span><span> </span><span aria-hidden="true"><svg></svg></span><span> </span>• 3rd+</span></p>'
+    head = f'<div class="q2"><p class="q3"><span>{headline}</span></p></div>' if headline else ""
+    control = ('<button type="button" data-view-name="feed-control-menu" aria-label="Open control menu for post by '
+               f'{name}"><span><svg aria-hidden="true"></svg></span></button>') if menu else ""
+    return (
+        f'<div role="listitem" componentkey="expanded{key}FeedType_FLAGSHIP_SEARCH"><div data-view-name="feed-full-update">'
+        f'<div componentkey="{key}"><h2><span class="vh">Feed post</span></h2>'
+        f'<div class="a1"><div class="a2"><a href="{LIVE}/{kind}/{slug}/" data-view-name="feed-actor-image" componentkey="00000000-aaaa-0001">'
+        f'<figure><svg role="img" aria-label="View {name}’s profile"></svg></figure></a></div>'
+        f'<div class="a3"><div class="a4"><div class="a5"><div class="a6">'
+        f'<a href="{LIVE}/{kind}/{slug}/?miniProfileUrn=x" data-view-name="feed-actor" componentkey="00000000-aaaa-0002">'
+        f'<div componentkey="00000000-aaaa-0002"><div aria-label="{name}"><div><p><span>{name}</span></p></div>{degree}</div></div></a>'
+        f'</div></div>{head}<div class="q4"></div><div class="q5"><p componentkey="00000000-aaaa-0003"><span>{time}</span></p></div>'
+        f'<a href="{LIVE}/{kind}/{slug}/" data-view-name="feed-actor" componentkey="00000000-aaaa-0004"><div aria-label="{name}"></div></a>'
+        f'</div></div>'
+        f'<div data-view-name="relationship-building-button"><button type="button" aria-label="Follow {name}"><span>Follow</span></button></div>'
+        f'{control}</div>'
+        f'<p data-view-name="feed-commentary" componentkey="00000000-aaaa-0005"><span data-testid="expandable-text-box" tabindex="-1">{text}'
+        '<span> </span><a data-view-name="feed-commentary" href="/search/results/all/?keywords=%23aiworkshop"><strong>#aiworkshop</strong></a>'
+        '<button type="button" aria-hidden="true" data-testid="expandable-text-button"><span><span>…</span><span> more</span></span></button>'
+        f'</span></p>{extra}</div></div></div>'
+    )
+
+
+def _fixture_post(key: str, name: str = "Meera Iyer", slug: str = "meera-iyer-oh", headline: str = "VP Engineering at Orbit Health",
+                  time: str = "2d", head: str = "Orbit Health wants a Build your first AI agent workshop.", tail: str = "") -> str:
+    expand = '<button type="button" data-testid="expandable-text-button">…more</button>' if tail else ""
+    hidden = f'<span hidden>{tail}</span>' if tail else ""
+    return (
+        f'<div role="listitem" componentkey="expanded{key}FeedType_FLAGSHIP_SEARCH"><div componentkey="{key}">'
+        '<div data-view-name="feed-full-update"><h2><span class="vh">Feed post</span></h2>'
+        f'<div data-view-name="feed-actor"><a href="{LIVE}/in/{slug}/" aria-label="View {name}’s profile"><img alt="" src="data:,"></a></div>'
+        f'<div data-view-name="feed-actor"><a href="{LIVE}/in/{slug}/"><span>{name}</span></a><span>• 3rd+</span>'
+        f'<p>{headline}</p><p><span>{time} • </span></p><button type="button">Follow</button></div>'
+        f'<div data-view-name="feed-commentary"><span data-testid="expandable-text-box">{head}{hidden}</span>{expand}</div>'
+        '<div><button aria-label="React Like">Like</button><button>Comment</button><button>Repost</button><button>Send</button></div>'
+        '</div></div></div>'
+    )
+
+
+def _page(*posts: str, screen: bool = True) -> str:
+    attr = ' data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent"' if screen else ""
+    return f'<main><div{attr}><div data-testid="lazy-column">' + "".join(posts) + "</div></div></main>"
+
+
+def test_sdui_capture_shape_reads_name_headline_time_text_key_and_menu(page: Page) -> None:
+    parsed, raws = _parse(page, _page(_capture_post(KEY_A), _capture_post(KEY_B, "Halvex Analytics", "halvex-analytics",
+                                                                          headline=None, time="2d • Edited", company=True,
+                                                                          menu=False)))
+    assert [r["strategy"] for r in raws] == ["sdui", "sdui"] and parsed.strategy == "sdui"
+    first, company = parsed.posts
+    assert (first.source_ref, first.urn, first.author_name, first.author_headline, first.posted_relative) == (
+        f"ck:{KEY_A}", None, "Asha Rao", "VP People at Kestrel Ports", "24m")
+    assert (first.author_profile_url, first.url, first.link_kind) == (
+        f"{LIVE}/in/asha-rao-zz/", f"{LIVE}/in/asha-rao-zz/", "profile")
+    assert first.text == "Kestrel Ports needs a GenAI workshop for 40 managers. #aiworkshop"  # "… more" dropped
+    assert (company.author_name, company.author_headline, company.posted_relative, company.posted_date) == (
+        "Halvex Analytics", None, "2d", date(2026, 10, 25))
+    assert company.author_profile_url == f"{LIVE}/company/halvex-analytics/"
+    assert [r["has_control_menu"] for r in raws] == [True, False]
+    assert raws[0]["via"]["component_key"] == "inner" and raws[0]["via"]["actor_lines"] == "actor_block"
+    assert parsed.field_misses == {"author_headline": 1} and parsed.parse_errors == 0
+
+
+def test_sdui_fixture_shape_reads_the_meta_actor_and_the_listitem_key(page: Page) -> None:
+    parsed, raws = _parse(page, _page(_fixture_post(KEY_A, tail=" Contact lead@orbit.example")))
+    post = parsed.posts[0]
+    assert raws[0]["component_key"] == KEY_A
+    assert (post.source_ref, post.author_name, post.author_headline, post.posted_relative) == (
+        f"ck:{KEY_A}", "Meera Iyer", "VP Engineering at Orbit Health", "2d")
+    assert post.text == "Orbit Health wants a Build your first AI agent workshop."  # hidden tail unread, "…more" dropped
+    assert "lead@orbit.example" not in post.text and raws[0]["has_control_menu"] is False
+
+
+def test_sdui_expand_button_is_the_see_more_choice_and_reveals_the_tail(page: Page) -> None:
+    body = _page(_fixture_post(KEY_A, tail=" Contact lead@orbit.example")
+                 .replace('data-testid="expandable-text-button"',
+                          'data-testid="expandable-text-button" onclick="this.previousElementSibling.querySelector(\'[hidden]\')'
+                          '.hidden=false; this.remove()"'),
+                 _fixture_post(KEY_B, "Arjun Rao", "arjun-rao"))
+    page.set_content(f"<html><body>{body}</body></html>")
+    buttons = see_more_buttons(page, 2)
+    assert len(buttons) == 1 and buttons[0].get_attribute("data-testid") == "expandable-text-button"
+    buttons[0].click()
+    post = parse_cards(extract_raw_cards(page), LIVE, TODAY).posts[0]
+    assert post.text == "Orbit Health wants a Build your first AI agent workshop. Contact lead@orbit.example"
+    assert see_more_buttons(page, 2) == []
+
+
+def test_sdui_wins_over_the_urn_layout_and_only_outermost_posts_count(page: Page) -> None:
+    nested = _capture_post(KEY_B, "Inner Poster", "inner-poster", text="The reshared original, a much longer body text here.")
+    outer = _capture_post(KEY_A, extra=nested)
+    body = _page(outer) + f'<div data-urn="urn:li:activity:5">{_actor()}{_text("A URN-layout card on the same page")}</div>'
+    parsed, raws = _parse(page, body)
+    assert len(raws) == 1 and raws[0]["strategy"] == "sdui"
+    post = parsed.posts[0]
+    assert (post.source_ref, post.author_name) == (f"ck:{KEY_A}", "Asha Rao")
+    assert "reshared original" not in post.text
+    assert count_cards(page) == 1
+
+
+def test_sdui_component_key_falls_back_to_the_listitem_and_rejects_unusable_keys(page: Page) -> None:
+    no_inner = _capture_post(KEY_A).replace(f'<div componentkey="{KEY_A}">', "<div>")
+    spaced = _capture_post("bad key").replace('componentkey="bad key"', 'componentkey="bad key"')
+    too_long = _capture_post("k" * 198)
+    parsed, raws = _parse(page, _page(no_inner, spaced, too_long))
+    assert raws[0]["component_key"] == KEY_A and raws[0]["via"]["component_key"] == "listitem"
+    assert raws[1]["component_key"] is None and raws[2]["component_key"] is None
+    assert [p.source_ref for p in parsed.posts] == [f"ck:{KEY_A}"]
+    assert parsed.parse_errors == 2 and all("component key" in e for e in parsed.errors)
+
+
+def test_a_urn_inside_an_sdui_post_is_used_best_effort(page: Page) -> None:
+    with_attr = _capture_post(KEY_A).replace('<h2>', '<h2 data-urn="urn:li:activity:7300000000000000005">')
+    with_link = _capture_post(KEY_B).replace('href="/search/results/all/?keywords=%23aiworkshop"',
+                                             'href="/feed/update/urn:li:ugcPost:7311/"')
+    parsed, raws = _parse(page, _page(with_attr, with_link))
+    assert [p.source_ref for p in parsed.posts] == ["urn:li:activity:7300000000000000005", "urn:li:ugcPost:7311"]
+    assert [p.link_kind for p in parsed.posts] == ["post", "post"]
+    assert [r["via"]["urn"] for r in raws] == ["attr", "feed_update_href"]
+    assert raws[1]["post_href"] == "/feed/update/urn:li:ugcPost:7311/"
+
+
+def test_sdui_text_skips_excluded_media_and_text_less_posts_are_text_misses(page: Page) -> None:
+    article = ('<div data-view-name="feed-article"><span data-testid="expandable-text-box">An article title that is not the post</span></div>')
+    only_article = _capture_post(KEY_A, extra=article).replace(
+        '<p data-view-name="feed-commentary"', '<p data-view-name="feed-commentary" hidden')
+    image_only = _capture_post(KEY_B).replace('<p data-view-name="feed-commentary"', '<p data-view-name="feed-commentary" hidden')
+    parsed, raws = _parse(page, _page(only_article, image_only))
+    assert [r["text"] for r in raws] == [None, None]
+    assert parsed.posts == [] and parsed.parse_errors == 0 and parsed.field_misses == {"text": 2}
+
+
+def test_sdui_text_falls_back_to_the_longest_candidate_outside_the_actor_block(page: Page) -> None:
+    body = (_capture_post(KEY_A).replace('data-view-name="feed-commentary"', 'data-view-name="renamed-commentary"')
+            .replace('data-testid="expandable-text-box"', 'data-testid="renamed-box" dir="ltr"'))
+    parsed, raws = _parse(page, _page(body))
+    assert parsed.posts[0].text.startswith("Kestrel Ports needs a GenAI workshop")
+    assert raws[0]["via"]["text"].startswith("fallback:")
+
+
+def test_actors_inside_the_text_or_excluded_media_never_supply_the_author(page: Page) -> None:
+    mention = (f'<span data-view-name="feed-actor"><a href="{LIVE}/in/mentioned/">Mentioned Person</a></span>')
+    body = _fixture_post(KEY_A, head=f"Shout-out to {mention} for the intro.")
+    parsed, _ = _parse(page, _page(body))
+    assert (parsed.posts[0].author_name, parsed.posts[0].author_profile_url) == ("Meera Iyer", f"{LIVE}/in/meera-iyer-oh/")
+
+
+def test_sdui_listitems_without_posts_are_counted_containers_so_the_page_drifts(context: BrowserContext, page: Page) -> None:
+    items = "".join(f'<div role="listitem" componentkey="expanded{k}FeedType_FLAGSHIP_SEARCH"><p>Some unknown result {k}</p></div>'
+                    for k in ("K1", "K2", "K3"))
+    signals, extras = _signals(context, page, _page(items))
+    assert (extras["strategy"], extras["cards_found"], extras["sdui_screen"]) == ("none", 3, True)
+    assert count_cards(page) == 3 and extract_raw_cards(page) == []
+    parsed = parse_cards(extract_raw_cards(page), LIVE, TODAY)
+    assert parsed.strategy == "none" and drift_detected(0, extras["cards_found"], extras["no_results"]) is True
+    assert page.evaluate(CONTENT_READY_JS, SIGNAL_ARGS) is True
+
+
+def test_sdui_posts_count_as_cards_and_the_screen_is_informational(context: BrowserContext, page: Page) -> None:
+    signals, extras = _signals(context, page, _page(_capture_post(KEY_A), _fixture_post(KEY_B), screen=False))
+    assert (extras["strategy"], extras["cards_found"], extras["sdui_screen"]) == ("sdui", 2, False)
+    assert count_cards(page) == 2 and page.evaluate(CONTENT_READY_JS, SIGNAL_ARGS) is True

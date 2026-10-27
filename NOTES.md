@@ -31,3 +31,10 @@ Branch: feature/sales0-20261027-1816-v0.1 (base: main)
 - A test reached the user's live 8765 server during the extension work → test harness now pins a dead port and refuses loopback 8765 from any thread.
 - Kept from the rejected attempt: port guard, safety cool-down, pure classify_page, fixture logout-test.
 - Final gate (orchestrator-run): unit 420, integration 439 (real Haiku + real headless Chrome 156 against fixture), e2e 6, check-browser OK, boot on 8767 OK.
+
+## Phase 1.2 (after user gate)
+- Real LinkedIn content search now ships SDUI markup: no URNs, no post links, obfuscated classes. Phase 1.1's "stable attribute" selectors (data-urn) were still a guess — only a real capture settled it. Lesson: for third-party DOM, get ONE real capture early (root did, safely) and build a sanitised sample before writing selectors.
+- Privacy: the real capture holds people's public posts. Sanitised sample + leak check by S1; an independent auditor still found one real componentkey UUID reused as a "leak" example inside a test. Independent re-check was worth it.
+- Pricing defaults corrected to $0.10/$0.50 per MTok (spec-writer had guessed $1/$5 as Assumed). effort="low" probed: accepted with forced tool use but saves ~1% — not used.
+- Process change requested by user: split audits into 3–4 parallel scoped auditors; run unit/integration/e2e gates concurrently.
+- Gate (orchestrator-run): unit 630, integration 498 (real Haiku), e2e 6, check-browser OK.

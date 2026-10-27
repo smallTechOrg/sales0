@@ -62,6 +62,7 @@ def test_drift_alert_then_rate_limit_cooldown_survives_recheck_and_restart(coold
 
     add_keyword(page, "layout-drift-test")
     add_keyword(page, "ai consulting")
+    add_keyword(page, "legacy-urn-test")
     connect_linkedin(page, base)
 
     # --- run 1: one keyword's results page can't be read → drift alert, runs stay allowed
@@ -83,6 +84,12 @@ def test_drift_alert_then_rate_limit_cooldown_survives_recheck_and_restart(coold
     assert drift_row["status"] == "warning", drift_row
     assert drift_row["error_message"] and "No posts parsed" in drift_row["error_message"], drift_row
     assert by_kw["ai consulting"]["status"] == "done" and by_kw["ai consulting"]["posts_seen"] == 2, by_kw
+    # Phase 1.2: the Phase 1.1 URN card shapes still parse (fallback strategy), all 10 corpus posts.
+    assert by_kw["legacy-urn-test"]["status"] == "done" and by_kw["legacy-urn-test"]["posts_seen"] == 10, by_kw
+    lines = {e["keyword"]: e for e in server.log_events() if e.get("event") == "scrape_keyword"}
+    assert lines["legacy-urn-test"]["strategy"] == "urn", lines["legacy-urn-test"]
+    assert lines["ai consulting"]["strategy"] == "sdui", lines["ai consulting"]
+    assert lines["layout-drift-test"]["status"] == "warning" and lines["layout-drift-test"]["drift"] is True, lines
 
     page.goto(f"{base}/runs")
     expect(page.locator("#run-history")).to_contain_text("Layout warning")
@@ -94,6 +101,7 @@ def test_drift_alert_then_rate_limit_cooldown_survives_recheck_and_restart(coold
     page.goto(f"{base}/setup")
     remove_keyword(page, "layout-drift-test")
     remove_keyword(page, "ai consulting")
+    remove_keyword(page, "legacy-urn-test")
     add_keyword(page, "ratelimit-test")
     before = datetime.now(timezone.utc)
     run2_id, _ = run_now(page, base)

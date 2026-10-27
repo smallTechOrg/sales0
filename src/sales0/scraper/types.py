@@ -9,21 +9,36 @@ from typing import Literal
 SessionReason = Literal["ok", "no_cookie", "redirected_login", "checkpoint", "captcha", "rate_limited", "error"]
 ConnectReason = Literal["ok", "timeout", "window_closed", "cancelled", "error"]
 BrowserChannel = Literal["chrome", "chromium"]
+# Phase 1.2: what a card link points at (== ``scraper.urls.link_kind_of(url)``).
+LinkKind = Literal["post", "profile", "search", "other"]
+# Phase 1.2: which card-discovery strategy won on a results page.
+CardStrategy = Literal["sdui", "urn", "none"]
+URN_REF_PREFIX = "urn:li:"
 
 # The optional post fields whose absence is counted into ``KeywordScrapeResult.field_misses``.
 OPTIONAL_POST_FIELDS: tuple[str, ...] = ("author_name", "author_profile_url", "author_headline", "posted_relative")
+# Phase 1.2: ``field_misses["text"]`` counts result containers with a ref but no readable text.
+TEXT_FIELD = "text"
 
 
 @dataclass(frozen=True)
 class ScrapedPost:
-    urn: str
-    url: str
+    # Phase 1.2 (was ``urn``): "urn:li:activity|ugcPost|share:N" when known, else "ck:<KEY>".
+    source_ref: str
+    url: str  # Phase 1.2: the card link — post permalink | author profile URL | search URL
     author_name: str | None
     author_profile_url: str | None
     author_headline: str | None
     posted_relative: str | None
     posted_date: date | None
     text: str
+    link_kind: LinkKind = "post"  # Phase 1.2: == scraper.urls.link_kind_of(url)
+    search_url: str | None = None  # Phase 1.2: the keyword's search URL (provenance)
+
+    @property
+    def urn(self) -> str | None:
+        """The post URN when the source ref is one, else None (a ``ck:`` ref)."""
+        return self.source_ref if self.source_ref.startswith(URN_REF_PREFIX) else None
 
 
 @dataclass(frozen=True)
@@ -36,7 +51,11 @@ class KeywordScrapeResult:
     cards_found: int = 0  # Phase 1.1: card elements discovered (before parsing)
     no_results: bool = False  # Phase 1.1: the "no results" marker was present
     # Phase 1.1: optional field name → number of parsed posts missing it (only non-zero entries).
+    #   Phase 1.2 adds key "text" (containers with a ref but no readable text).
     field_misses: dict[str, int] = field(default_factory=dict)
+    strategy: CardStrategy = "none"  # Phase 1.2: which card strategy won on this page
+    permalink_attempts: int = 0  # Phase 1.2: "Copy link to post" attempts
+    permalinks_found: int = 0  # Phase 1.2: attempts that yielded a post URL
 
 
 @dataclass(frozen=True)

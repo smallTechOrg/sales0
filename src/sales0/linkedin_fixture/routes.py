@@ -3,10 +3,16 @@
 Phase 1.1 (slice R3): current-LinkedIn markup (obfuscated classes, no global-nav), a
 login → 2FA → "remember this browser" → feed flow so Connect's cookie + URL rule is
 exercised, the ``/login?direct=1`` test shortcut, and the ``logout-test`` keyword.
+
+Phase 1.2 (slice S4): results pages render in LinkedIn's SDUI markup (``_sdui_card.html``);
+``legacy-urn-test`` keeps the Phase 1.1 URN card shapes; ``permalink-miss-test`` forces every
+"Copy link to post" to do nothing; ``layout-drift-test`` renders SDUI listitems with no post.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -16,15 +22,25 @@ from fastapi.templating import Jinja2Templates
 from sales0.linkedin_fixture.corpus import (
     CAPTCHA_KEYWORD,
     CHECKPOINT_KEYWORD,
+    COPY_LINK_QUERY,
+    DRIFT_ITEM_KEYS,
     DRIFT_KEYWORD,
     LAZY_PLANS,
     LAZY_REVEAL_DELAY_MS,
+    LEGACY_KEYWORD,
     LOGOUT_KEYWORD,
+    PERMALINK_MISS_KEYWORD,
     RATELIMIT_KEYWORD,
+    CopyLink,
+    FixturePost,
+    listitem_key,
+    load_corpus,
     normalize_keyword,
+    permalink_miss_posts,
     post_by_urn,
     posts_for,
 )
+
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 
@@ -33,6 +49,50 @@ templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates"))
 SESSION_COOKIE = "li_at"
 SESSION_VALUE = "fixture-session"
 SESSION_MAX_AGE_S = 365 * 24 * 3600
+
+# The layout-drift page's listitems: SDUI wrappers with text but no feed-full-update post.
+DRIFT_TEXTS = (
+    "Results are loading in a layout sales0 does not know.",
+    "Promoted · Grow your network with Premium",
+    "People also searched for: corporate training",
+)
+
+
+@dataclass(frozen=True)
+class SduiCard:
+    """One SDUI result as rendered for one keyword (``_sdui_card.html``)."""
+
+    post: FixturePost
+    key: str
+    copy_link: CopyLink
+
+    @property
+    def listitem_key(self) -> str:
+        return listitem_key(self.key)
+
+
+def sdui_cards(posts: Iterable[FixturePost], keyword: str, force_copy_link: CopyLink | None = None) -> list[SduiCard]:
+    """The SDUI cards for ``posts`` on ``keyword``'s results page (P1's KEY depends on ``keyword``)."""
+    return [SduiCard(post=p, key=p.key_for(keyword), copy_link=force_copy_link or p.copy_link) for p in posts]
+
+
+def _sdui_page(
+    request: Request, keyword: str, cards: list[SduiCard], lazy_cards: list[SduiCard] | None = None, **ctx: object
+) -> HTMLResponse:
+    every = [*cards, *(lazy_cards or [])]
+    # Only the share slug reaches the page (inside the menu script), never a /posts/ href or a URN.
+    share_slugs = {c.key: c.post.posts_slug for c in every if c.copy_link == "urn"}
+    return _page(
+        request,
+        "search.html",
+        keyword=keyword,
+        mode="sdui" if every else "empty",
+        cards=cards,
+        lazy_cards=lazy_cards or [],
+        share_slugs=share_slugs,
+        copy_query=COPY_LINK_QUERY,
+        **ctx,
+    )
 
 
 def _logged_in(request: Request) -> bool:
@@ -122,28 +182,32 @@ def search(request: Request, keywords: str = "", page: int = 1) -> Response:
     if key == RATELIMIT_KEYWORD:
         return _page(request, "ratelimit.html", status_code=429)
     if key == DRIFT_KEYWORD:
-        return _page(request, "search.html", keyword=keywords, posts=[], drift=True)
+        return _page(
+            request,
+            "search.html",
+            keyword=keywords,
+            mode="drift",
+            drift_keys=DRIFT_ITEM_KEYS,
+            drift_texts=DRIFT_TEXTS,
+            listitem_key=listitem_key,
+        )
+    if key == LEGACY_KEYWORD:
+        return _page(request, "search.html", keyword=keywords, mode="legacy", posts=list(load_corpus()))
+    if key == PERMALINK_MISS_KEYWORD:
+        return _sdui_page(request, keywords, sdui_cards(permalink_miss_posts(), key, force_copy_link="noop"))
     plan = LAZY_PLANS.get(key)
     if plan is not None:
         if plan.checkpoint_at_scroll is not None and page >= 2:
             return _to(request, "fixture_checkpoint")  # LinkedIn challenges the next page load
-        posts = posts_for(plan.source_keyword)
+        cards = sdui_cards(posts_for(plan.source_keyword), key)
         lazy = {
             "delay_ms": LAZY_REVEAL_DELAY_MS,
             "checkpoint_at": plan.checkpoint_at_scroll,
             "next_page_url": str(request.url.include_query_params(page=2)),
             "voyager_url": str(request.url_for("fixture_voyager_clusters")) if plan.background_rate_limit else None,
         }
-        return _page(
-            request,
-            "search.html",
-            keyword=keywords,
-            posts=posts[: plan.initial],
-            lazy_posts=posts[plan.initial :],
-            lazy=lazy,
-            drift=False,
-        )
-    return _page(request, "search.html", keyword=keywords, posts=posts_for(key), drift=False)
+        return _sdui_page(request, keywords, cards[: plan.initial], cards[plan.initial :], lazy=lazy)
+    return _sdui_page(request, keywords, sdui_cards(posts_for(key), key))
 
 
 @router.get("/voyager/api/search/dash/clusters", name="fixture_voyager_clusters")

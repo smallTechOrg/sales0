@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sales0.clock import utcnow
+from sales0.linkedin_fixture.corpus import post_by_id
 from tests.integration.web.conftest import HX, make_run, set_session
 
 
@@ -154,6 +155,15 @@ def test_unknown_run_is_a_human_404_page_and_json_error(client: TestClient) -> N
 
 
 # --------------------------------------------------------------------------- real journey
+def _ref_of(cards: dict[str, str], post_id: str) -> str:
+    """The one rendered ``data-urn`` among the corpus post's ``possible_refs()``."""
+    post = post_by_id(post_id)
+    assert post is not None, post_id
+    hits = [ref for ref in post.possible_refs() if ref in cards]
+    assert len(hits) == 1, (post_id, post.possible_refs(), sorted(cards))
+    return hits[0]
+
+
 @pytest.mark.llm
 @pytest.mark.browser
 @pytest.mark.timeout(240)
@@ -212,13 +222,17 @@ def test_connect_then_run_now_shows_live_progress_and_triaged_cards(fixture_serv
         assert "To review (<span data-count=\"review\">2</span>)" in inbox
         cards = {
             m.group(1): m.group(0)
-            for m in re.finditer(r'<article id="enquiry-\d+"[^>]*data-urn="(urn:li:activity:\d+)".*?</article>', inbox, re.S)
+            for m in re.finditer(r'<article id="enquiry-\d+"[^>]*data-urn="([^"]+)".*?</article>', inbox, re.S)
         }
-        p8, p9 = cards["urn:li:activity:7300000000000000008"], cards["urn:li:activity:7300000000000000009"]
+        # SDUI posts carry no URN in the DOM: a card's ref is the URN only when "Copy link to
+        # post" yielded it (P8), else ck:<componentkey> (P9's menu is a noop).
+        p8_ref, p9_ref = _ref_of(cards, "P8"), _ref_of(cards, "P9")
+        assert p8_ref.startswith("urn:li:activity:") and p9_ref.startswith("ck:"), (p8_ref, p9_ref)
+        p8, p9 = cards[p8_ref], cards[p9_ref]
         assert 'data-verdict="genuine"' in p8 and 'href="mailto:it-projects@meridian.example"' in p8
         assert re.search(r"AI \$0\.\d{4} · [\d.]+k? tok", p8)
         assert 'data-verdict="discard"' in p9
-        assert inbox.index("7300000000000000008") < inbox.index("7300000000000000009")  # genuine first
+        assert inbox.index(f'data-urn="{p8_ref}"') < inbox.index(f'data-urn="{p9_ref}"')  # genuine first
         badge = re.search(r"AI today <strong>\$(\d+\.\d+)</strong>", inbox)
         assert badge and float(badge.group(1)) > 0
 

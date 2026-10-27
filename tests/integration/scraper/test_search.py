@@ -1,5 +1,9 @@
-"""LinkedInSearcher on real headless Chromium against the fixture corpus (current-markup
-fixture: obfuscated classes, data-urn / data-id / /feed/update/ / /posts/ card shapes)."""
+"""LinkedInSearcher on real headless Chromium against the fixture corpus.
+
+Phase 1.2: results pages are LinkedIn's SDUI markup (no URN, no post link anywhere in the DOM;
+obfuscated classes). Posts are identified by their ``componentkey`` (``ck:<KEY>``) unless
+"Copy link to post" yields the URN. ``legacy-urn-test`` keeps the Phase 1.1 URN card shapes
+(data-urn / data-id / /feed/update/ / /posts/) for the fallback strategy."""
 
 from __future__ import annotations
 
@@ -14,16 +18,37 @@ import pytest
 
 from sales0.clock import local_today
 from sales0.config import Settings
+from sales0.linkedin_fixture.corpus import DRIFT_KEYWORD, LAZY_KEYWORD, LEGACY_KEYWORD, FixturePost, load_corpus, posts_for
+from sales0.scraper import selectors as S
 from sales0.scraper import search as search_module
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
 from sales0.scraper.pacing import Pacer
-from sales0.scraper.search import LinkedInSearcher
-from sales0.scraper.types import SessionCheckResult
-from sales0.scraper.urls import base_url
+from sales0.scraper.search import SCROLL_TARGET_JS, LinkedInSearcher
+from sales0.scraper.types import KeywordScrapeResult, SessionCheckResult
+from sales0.scraper.urls import base_url, permalink, search_url
 
 pytestmark = pytest.mark.browser
 
 URN = "urn:li:activity:73000000000000000{:02d}"
+
+
+def expected_ref(post: FixturePost, keyword: str) -> str:
+    """The ref the default run assigns: the URN when "Copy link to post" yields it, else ck:<KEY>."""
+    return post.urn if post.copy_link == "urn" else f"ck:{post.key_for(keyword)}"
+
+
+def assert_refs_and_links(result: KeywordScrapeResult, keyword: str, base: str) -> None:
+    corpus = posts_for(keyword)
+    assert [p.source_ref for p in result.posts] == [expected_ref(c, keyword) for c in corpus]
+    for post, fx in zip(result.posts, corpus, strict=True):
+        assert post.source_ref in fx.possible_refs()
+        if fx.copy_link == "urn":
+            assert (post.urn, post.link_kind, post.url) == (fx.urn, "post", permalink(base, fx.urn))
+        else:
+            assert (post.urn, post.link_kind) == (None, "profile")
+            assert post.url == post.author_profile_url == f"{base}/{fx.profile_path}/"
+    assert result.permalinks_found == sum(1 for c in corpus if c.copy_link == "urn")
+    assert result.permalink_attempts == sum(1 for c in corpus if c.copy_link != "none")
 
 
 def _norm(text: str) -> str:
@@ -53,59 +78,83 @@ def request_log(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     yield urls
 
 
-def test_run1_keywords_yield_nine_posts_through_every_card_shape(connected_settings: Settings) -> None:
+def test_run1_keywords_yield_nine_sdui_posts_identified_by_key_or_copied_urn(connected_settings: Settings) -> None:
     pacer = RecordingPacer(connected_settings)
     base = base_url(connected_settings)
     today = local_today(connected_settings.tz)
+    keywords = ("corporate ai training", "ai workshop", "ai consulting")
     with LinkedInSearcher(connected_settings, pacer) as searcher:
-        corp = searcher.search("corporate ai training", 15)
-        work = searcher.search("ai workshop", 15)
-        cons = searcher.search("ai consulting", 15)
+        corp, work, cons = (searcher.search(k, 15) for k in keywords)
 
-    assert [p.urn for p in corp.posts] == [URN.format(n) for n in (1, 2, 3)]  # data-urn cards
-    assert [p.urn for p in work.posts] == [URN.format(n) for n in (1, 5, 6, 7)]  # + li > div[data-id]
-    assert [p.urn for p in cons.posts] == [URN.format(n) for n in (8, 9)]  # anchor-only /feed/update/
     assert sum(len(r.posts) for r in (corp, work, cons)) == 9
-    for result in (corp, work, cons):
+    for result, keyword in zip((corp, work, cons), keywords, strict=True):
+        assert result.strategy == "sdui"
+        assert_refs_and_links(result, keyword, base)
         assert result.parse_errors == 0 and result.drift_warning is False and result.scrolls <= 1
         assert result.field_misses == {} and result.no_results is False
         assert result.cards_found == len(result.posts)
+        url = search_url(base, keyword, connected_settings.scrape_date_filter)
+        assert all(p.search_url == url for p in result.posts)
+    assert [p.urn for p in corp.posts] == [None, URN.format(2), None]  # P2's menu copies its share link
+    assert [p.urn for p in cons.posts] == [URN.format(8), None]
 
     p1 = corp.posts[0]
     assert p1.author_name == "Priya Menon"
     assert p1.author_headline == "Head of L&D at Acme Logistics"
     assert p1.author_profile_url == f"{base}/in/priya-menon-acme/"
     assert p1.posted_relative == "1d" and p1.posted_date == today - timedelta(days=1)
-    assert p1.url == f"{base}/feed/update/{URN.format(1)}/"
-    # The email sits after the "see more" fold: proves the toggle was found and expanded.
+    assert p1.url == p1.author_profile_url and p1.link_kind == "profile"  # its menu copies nothing
+    # The email sits after the "…more" fold: proves the toggle was found and expanded.
     assert "training@acmelogistics.example" in p1.text and "+91 98200 11111" in p1.text
-    assert "see more" not in p1.text.lower()
-    assert work.posts[0] == p1  # URN duplicate: identical post under a second keyword
+    assert not p1.text.rstrip().lower().endswith("more") and not p1.text.rstrip().endswith("…")
+    w1 = work.posts[0]  # the same post under a second keyword: its key changed, the content did not
+    assert w1.source_ref != p1.source_ref and w1.text == p1.text and w1.author_name == p1.author_name
 
     p5 = work.posts[1]
     assert re.search(r"[ऀ-ॿ]", p5.text) and "🤖" in p5.text and "arjun.rao@zentrix.example" in p5.text
     assert p5.author_name == "Arjun Rao" and p5.author_headline == "CTO at Zentrix Retail"
+    assert p5.link_kind == "post" and p5.url == permalink(base, URN.format(5))
     p2, p7 = corp.posts[1], work.posts[3]
-    assert p2.urn != p7.urn and _norm(p2.text) == _norm(p7.text)  # content duplicate survives scraping
+    assert p2.source_ref != p7.source_ref and _norm(p2.text) == _norm(p7.text)  # content duplicate survives
     assert "\n" in p2.text  # line structure preserved
     p8 = cons.posts[0]
     assert (p8.author_name, p8.author_headline) == ("Sanjay Gupta", "COO at Meridian Insurance")
     assert "it-projects@meridian.example" in p8.text
 
     assert pacer.slept, "live-style pacing must be applied between page actions"
-    assert all(connected_settings.scrape_delay_min_s <= s <= connected_settings.scrape_delay_max_s for s in pacer.slept)
     assert len(pacer.slept) >= 3  # at least one paced navigation per keyword
+    short = (connected_settings.scrape_delay_min_s / 4, connected_settings.scrape_delay_max_s / 4)
+    assert all(
+        connected_settings.scrape_delay_min_s <= s <= connected_settings.scrape_delay_max_s or short[0] <= s <= short[1]
+        for s in pacer.slept
+    )
 
 
-def test_posts_slug_cards_parse_for_the_run2_keyword(connected_settings: Settings) -> None:
+def test_the_run2_keyword_parses_a_person_and_a_company_author(connected_settings: Settings) -> None:
+    base = base_url(connected_settings)
     with LinkedInSearcher(connected_settings) as searcher:
         result = searcher.search("claude code training", 15)
-    assert [p.urn for p in result.posts] == [URN.format(n) for n in (10, 11)]  # article + /posts/<slug>-activity-<id>-…
+    assert result.strategy == "sdui"
+    assert_refs_and_links(result, "claude code training", base)
     p10, p11 = result.posts
+    assert p10.urn == URN.format(10)  # copied link: /posts/<slug>-activity-<id>-… → URN
     assert (p10.author_name, p10.author_headline) == ("Anita Desai", "Engineering Manager at QuantaWorks")
     assert "lead@quantaworks.example" in p10.text
     assert p11.author_name == "Briltus Academy" and "hr@briltus.example" in p11.text
+    assert p11.url.startswith(f"{base}/company/") and p11.link_kind == "profile"
     assert result.field_misses == {} and result.parse_errors == 0
+
+
+def test_legacy_urn_layout_still_parses_through_the_urn_strategy(connected_settings: Settings) -> None:
+    base = base_url(connected_settings)
+    with LinkedInSearcher(connected_settings) as searcher:
+        result = searcher.search(LEGACY_KEYWORD, 15)
+    corpus = load_corpus()
+    assert result.strategy == "urn"
+    assert [p.source_ref for p in result.posts] == [p.urn for p in corpus] and len(result.posts) == 10
+    assert all(p.link_kind == "post" and p.url == permalink(base, p.source_ref) for p in result.posts)
+    assert (result.permalink_attempts, result.permalinks_found) == (0, 0)
+    assert result.drift_warning is False and result.parse_errors == 0
 
 
 def test_per_keyword_cap_limits_posts(connected_settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -117,7 +166,8 @@ def test_per_keyword_cap_limits_posts(connected_settings: Settings, monkeypatch:
     reset_settings()
     capped = get_settings()
     with LinkedInSearcher(capped) as searcher:
-        assert [p.urn for p in searcher.search("ai workshop", 15).posts] == [URN.format(1)]  # config cap wins
+        p1 = posts_for("ai workshop")[0]
+        assert [p.source_ref for p in searcher.search("ai workshop", 15).posts] == [f"ck:{p1.key_for('ai workshop')}"]
 
 
 def test_zero_results_text_marker_is_empty_without_a_drift_warning(connected_settings: Settings) -> None:
@@ -127,13 +177,14 @@ def test_zero_results_text_marker_is_empty_without_a_drift_warning(connected_set
     assert result.no_results is True and result.cards_found == 0  # text-only "No results found", no legacy class
 
 
-def test_logged_in_page_without_cards_or_marker_flags_layout_drift(connected_settings: Settings) -> None:
+def test_sdui_listitems_without_posts_flag_layout_drift(connected_settings: Settings) -> None:
     with LinkedInSearcher(connected_settings) as searcher:
-        result = searcher.search("layout-drift-test", 15)
+        result = searcher.search(DRIFT_KEYWORD, 15)
         assert searcher.is_open  # a warning, not a stop
         assert len(searcher.search("ai consulting", 15).posts) == 2
-    assert result.posts == [] and result.drift_warning is True
-    assert result.no_results is False and result.cards_found == 0
+    assert result.posts == [] and result.drift_warning is True and result.strategy == "none"
+    assert result.no_results is False and result.cards_found == 3  # the listitems are counted
+    assert (result.permalink_attempts, result.permalinks_found) == (0, 0)
 
 
 def test_an_http_error_on_the_search_document_fails_only_that_keyword(connected_settings: Settings) -> None:
@@ -240,6 +291,7 @@ class ActionLog:
 
     def __init__(self) -> None:
         self.events: list[str] = []
+        self.hovers = 0
 
 
 class LoggingPacer(Pacer):
@@ -262,14 +314,23 @@ class LoggingSearcher(LinkedInSearcher):
         self.log.events.append("expand")
         super()._click(button)
 
+    def _hover_scroll_column(self, page):  # type: ignore[no-untyped-def]
+        self.log.hovers += 1  # not an event: the hover belongs to the scroll it precedes
+        super()._hover_scroll_column(page)
+
 
 def test_lazy_results_load_across_scrolls_and_each_action_is_preceded_by_a_delay(connected_settings: Settings) -> None:
     with LoggingSearcher(connected_settings) as searcher:
-        result = searcher.search("lazy-scroll-test", 15)
+        result = searcher.search(LAZY_KEYWORD, 15)
         events = searcher.log.events
+        # The wheel goes over the SDUI lazy column: its visible centre is a hover target.
+        point = searcher._page.evaluate(SCROLL_TARGET_JS, S.SDUI_SCROLL_CONTAINER)  # type: ignore[union-attr]
+        assert point and point["x"] > 0 and point["y"] > 0
+        assert searcher.log.hovers == 4
 
     # Cards arrive ~700ms after each scroll (slower than a fixed short wait): polling picks them up.
-    assert [p.urn for p in result.posts] == [URN.format(n) for n in (1, 5, 6, 7)]
+    assert result.strategy == "sdui" and len(result.posts) == 4
+    assert [p.source_ref for p in result.posts] == [expected_ref(c, LAZY_KEYWORD) for c in posts_for("ai workshop")]
     assert result.scrolls == 4  # 3 scrolls that loaded a card + 1 that found the end (= max_scrolls)
     assert "training@acmelogistics.example" in result.posts[0].text  # expanded after lazy loading
     assert events.count("scroll") == 4 and events.count("expand") == 4  # all four posts are long

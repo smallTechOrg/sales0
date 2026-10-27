@@ -79,7 +79,7 @@ def test_manifest_covers_every_required_case() -> None:
 
 def test_logged_in_samples_never_carry_global_nav_or_legacy_classes() -> None:
     logged_in = [c["file"] for c in CASES if c["file"] and c["cookie"] and c["expect"]["kind"] == "ok"]
-    assert len(logged_in) == 4
+    assert len(logged_in) == 5  # feed, content (URN layout), empty, drifted, SDUI (Phase 1.2)
     for name in logged_in:
         html = (PAGES / name).read_text(encoding="utf-8")
         assert html.count("global-nav") == 0, name
@@ -218,6 +218,23 @@ def test_signals_from_builds_signals_and_extras_from_one_evaluation() -> None:
     assert extras == {"no_results": True, "cards_found": 3}
     empty, extras = signals_from("about:blank", None, False, {})
     assert (empty.has_captcha, empty.soft_hints, extras) == (False, (), {"no_results": False, "cards_found": 0})
+
+
+def test_signals_from_passes_the_card_strategy_and_sdui_screen_through_as_information_only() -> None:
+    dom = {"has_captcha": False, "has_login_form": False, "has_authwall": False, "no_results": False,
+           "cards_found": 6, "strategy": "sdui", "sdui_screen": True, "soft_hints": []}
+    signals, extras = signals_from(f"{LIVE}/search/results/content/?keywords=ai", 200, True, dom)
+    assert extras == {"no_results": False, "cards_found": 6, "strategy": "sdui", "sdui_screen": True}
+    assert classify_page(signals) == PageVerdict("ok", "ok")  # never part of the verdict
+    _, none = signals_from(f"{LIVE}/feed/", 200, True, {**dom, "strategy": None, "sdui_screen": 0})
+    assert (none["strategy"], none["sdui_screen"]) == ("none", False)
+
+
+def test_the_sdui_sample_is_a_logged_in_results_page_in_the_manifest() -> None:
+    sdui = next(c for c in CASES if c["id"] == "search_results_sdui")
+    assert sdui["file"] == "search_results_sdui.html" and sdui["cookie"] is True
+    assert sdui["expect"]["kind"] == "ok" and sdui["expect"]["strategy"] == "sdui"
+    assert classify_page(_sig(sdui["url"], sdui["status"], sdui["cookie"])) == PageVerdict("ok", "ok")
 
 
 def test_no_logged_in_dom_marker_exists_anymore() -> None:

@@ -44,7 +44,7 @@ def test_settings_defaults_match_the_configuration_table(monkeypatch: pytest.Mon
     assert s.llm_model == "claude-haiku-5-5"
     assert (s.host, s.port) == ("127.0.0.1", 8765)
     assert s.llm_max_output_tokens == 900 and s.llm_max_retries == 3 and s.llm_timeout_s == 30
-    assert (s.llm_price_input_usd_per_mtok, s.llm_price_output_usd_per_mtok) == (1.0, 5.0)
+    assert (s.llm_price_input_usd_per_mtok, s.llm_price_output_usd_per_mtok) == (0.10, 0.50)
     assert s.database_url == "sqlite:///data/sales0.db"
     assert s.resolved_database_url == f"sqlite:///{(REPO_ROOT / 'data/sales0.db').as_posix()}"
     assert s.data_path == REPO_ROOT / "data"
@@ -93,7 +93,7 @@ def test_startup_refuses_missing_key_and_public_host() -> None:
 # --------------------------------------------------------------------------- pricing / clock / filters
 def test_cost_formula_is_tokens_times_price_per_mtok_in_micros() -> None:
     s = make_settings()
-    assert cost_usd_micros(1500, 200, s) == 1500 * 1 + 200 * 5
+    assert cost_usd_micros(1500, 200, s) == 250  # 1500 x $0.10 + 200 x $0.50 per MTok
     assert cost_usd_micros(0, 0, s) == 0
     with pytest.raises(ValueError):
         cost_usd_micros(-1, 0, s)
@@ -197,7 +197,7 @@ def test_structured_forces_the_tool_and_returns_usage_and_cost() -> None:
     assert sent["tool_choice"] == {"type": "tool", "name": "record_echo"}
     assert sent["tools"][0]["name"] == "record_echo" and sent["model"] == "claude-haiku-5-5"
     assert resp.tool_input == {"word": "hello"}
-    assert (resp.input_tokens, resp.output_tokens, resp.cost_usd_micros) == (100, 20, 100 + 100)
+    assert (resp.input_tokens, resp.output_tokens, resp.cost_usd_micros) == (100, 20, 10 + 10)
 
 
 def test_structured_returns_none_tool_input_when_model_skips_the_tool() -> None:

@@ -8,6 +8,7 @@ from sales0.scraper.parsing import (
     EXTRACT_JS,
     URN_RE,
     ParseError,
+    TextMissing,
     clean_text,
     drift_detected,
     field_misses_of,
@@ -36,7 +37,8 @@ def _raw(**over: object) -> dict:
 
 def test_post_from_raw_builds_a_clean_scraped_post() -> None:
     post = post_from_raw(_raw(), BASE, TODAY)
-    assert post.urn == "urn:li:activity:7300000000000000001"
+    assert post.urn == post.source_ref == "urn:li:activity:7300000000000000001"
+    assert post.link_kind == "post" and post.search_url is None
     assert post.url == f"{BASE}/feed/update/urn:li:activity:7300000000000000001/"
     assert post.author_name == "Priya Menon"
     assert post.author_profile_url == "https://www.linkedin.com/in/priya-menon"
@@ -65,14 +67,15 @@ def test_post_from_raw_tolerates_missing_optional_fields() -> None:
 @pytest.mark.parametrize(
     "urn", [None, "", "urn:li:group:1", "urn:li:fsd_profile:1", "activity:123", "urn:li:activity:abc", "urn:li:share:"]
 )
-def test_post_from_raw_rejects_a_missing_or_foreign_urn(urn: object) -> None:
-    with pytest.raises(ParseError):
+def test_post_from_raw_rejects_a_missing_or_foreign_urn_without_a_component_key(urn: object) -> None:
+    with pytest.raises(ParseError) as err:
         post_from_raw(_raw(urn=urn), BASE, TODAY)
+    assert not isinstance(err.value, TextMissing)  # no ref at all is a real parse error
 
 
-@pytest.mark.parametrize("text", [None, "", "   \n ", "…see more", "…more"])
-def test_post_from_raw_rejects_empty_text(text: object) -> None:
-    with pytest.raises(ParseError):
+@pytest.mark.parametrize("text", [None, "", "   \n ", "…see more", "…more", "… more"])
+def test_post_from_raw_signals_empty_text_with_a_ref_as_text_missing(text: object) -> None:
+    with pytest.raises(TextMissing):  # a ParseError subclass; parse_cards counts it as field_misses["text"]
         post_from_raw(_raw(text=text), BASE, TODAY)
 
 
@@ -83,6 +86,11 @@ def test_clean_text_strips_see_more_and_see_less_toggles() -> None:
     assert clean_text("Hello\n…show more") == "Hello"
     assert clean_text("Hello\r\nWorld  ") == "Hello\nWorld"
     assert clean_text("Learn more about us") == "Learn more about us"  # only a whole-line toggle is dropped
+    # Phase 1.2: SDUI renders the "…more" button inline at the end of the text
+    assert clean_text("We need a trainer … more") == "We need a trainer"
+    assert clean_text("We need a trainer…more") == "We need a trainer"
+    assert clean_text("We need a trainer...see more") == "We need a trainer"
+    assert clean_text("Tell me more") == "Tell me more"  # no ellipsis: a real word
 
 
 @pytest.mark.parametrize(
@@ -131,14 +139,15 @@ def test_parse_cards_dedupes_caps_counts_errors_and_field_misses() -> None:
         _raw(urn="urn:li:activity:1"),  # LinkedIn re-rendered the same card: not an error
         _raw(urn="urn:li:group:9"),  # parse error
         _raw(urn="urn:li:activity:2", author_headline=None, posted_relative=""),
-        _raw(urn="urn:li:activity:3", text="   "),  # parse error
+        _raw(urn="urn:li:activity:3", text="   "),  # Phase 1.2: a text miss, not a parse error
         _raw(urn="urn:li:activity:4", author_headline=None),
     ]
     parsed = parse_cards(raws, BASE, TODAY)
     assert [p.urn for p in parsed.posts] == ["urn:li:activity:1", "urn:li:activity:2", "urn:li:activity:4"]
-    assert parsed.parse_errors == 2 and len(parsed.errors) == 2
+    assert parsed.parse_errors == 1 and len(parsed.errors) == 1
     assert parsed.cards_found == 6
-    assert parsed.field_misses == {"author_headline": 2, "posted_relative": 1}
+    assert parsed.field_misses == {"text": 1, "author_headline": 2, "posted_relative": 1}
+    assert parsed.strategy == "urn"  # raws without a strategy are URN-layout cards
 
     capped = parse_cards(raws, BASE, TODAY, cap=1)
     assert [p.urn for p in capped.posts] == ["urn:li:activity:1"] and capped.field_misses == {}
@@ -147,6 +156,7 @@ def test_parse_cards_dedupes_caps_counts_errors_and_field_misses() -> None:
 def test_parse_cards_of_an_empty_page_is_empty() -> None:
     parsed = parse_cards([], BASE, TODAY, cap=15)
     assert (parsed.posts, parsed.parse_errors, parsed.cards_found, parsed.field_misses) == ([], 0, 0, {})
+    assert parsed.strategy == "none"
 
 
 def test_field_misses_reports_only_missing_optional_fields() -> None:
@@ -183,7 +193,10 @@ def test_card_selectors_cover_every_urn_prefix_on_both_attributes() -> None:
 
 def test_class_selectors_survive_only_as_last_fallbacks() -> None:
     assert selectors.TEXT_SELECTORS[-1] == ".update-components-text"
-    for sel in selectors.TEXT_SELECTORS[:-1] + selectors.CARD_ATTR_SELECTORS + selectors.POST_LINK_SELECTORS:
+    sdui = (selectors.SDUI_POST, selectors.SDUI_LISTITEM, selectors.SDUI_ACTOR, selectors.SDUI_EXPAND,
+            selectors.SDUI_CONTROL_MENU, selectors.SDUI_SCROLL_CONTAINER, selectors.SDUI_SCREEN,
+            *selectors.SDUI_TEXT, *selectors.SDUI_TEXT_EXCLUDE)
+    for sel in selectors.TEXT_SELECTORS[:-1] + selectors.CARD_ATTR_SELECTORS + selectors.POST_LINK_SELECTORS + sdui:
         assert "." not in sel.split("[")[0], sel  # no class selector outside the legacy fallback
     for name in ("LEGACY_AUTHOR_NAME", "LEGACY_AUTHOR_PROFILE_LINK", "LEGACY_AUTHOR_HEADLINE", "LEGACY_RELATIVE_TIME",
                  "LEGACY_SEE_MORE", "LEGACY_NO_RESULTS"):
@@ -193,8 +206,12 @@ def test_class_selectors_survive_only_as_last_fallbacks() -> None:
 def test_extract_and_see_more_scripts_receive_every_selector_they_use() -> None:
     import re
 
+    from sales0.scraper.parsing import CARD_ARGS, COUNT_CARDS_JS
+
     for key in set(re.findall(r"sel\.(\w+)", EXTRACT_JS)):
         assert key in EXTRACT_ARGS, key
+    for key in set(re.findall(r"sel\.(\w+)", COUNT_CARDS_JS)):
+        assert key in CARD_ARGS, key
     from sales0.scraper.parsing import SEE_MORE_JS
 
     args = see_more_args(3)

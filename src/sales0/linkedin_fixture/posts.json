@@ -7,6 +7,8 @@
     "author_headline": "Head of L&D at Acme Logistics",
     "profile_slug": "priya-menon-acme",
     "posted_relative": "1d",
+    "component_key": "sxQ3v9LmP1aZ0k",
+    "copy_link": "noop",
     "text": "We are looking for a training partner! 📣\nAcme Logistics wants a training partner to run a 2-day Generative AI workshop for 40 managers at our Pune office. The sessions will be offline (in person), in the week of 17 Nov.\nTopics: GenAI fundamentals, prompt writing for operations teams, and practical use cases in logistics.\nPlease send your proposals to training@acmelogistics.example or call +91 98200 11111."
   },
   {
@@ -17,6 +19,8 @@
     "author_headline": "Talent Acquisition at SkillBridge Learning — corporate training company",
     "profile_slug": "rahul-verma-skillbridge",
     "posted_relative": "2d",
+    "component_key": "Tb7wKd2RfN8qYe",
+    "copy_link": "urn",
     "text": "SkillBridge Learning is hiring freelance Generative AI trainers for our corporate clients.\nWe need trainers with 5+ yrs of experience delivering GenAI, ChatGPT and prompt engineering sessions.\nSend your trainer profile + per-day commercials to trainers@skillbridge.example"
   },
   {
@@ -27,6 +31,8 @@
     "author_headline": "Freelance IT Recruiter",
     "profile_slug": "neha-kapoor-recruiter",
     "posted_relative": "5h",
+    "component_key": "hZ4mUc6XpL0sWa",
+    "copy_link": "none",
     "text": "Urgent requirement: need an individual freelance trainer for a 3-day online batch on Prompt Engineering & ChatGPT.\nPayment on an hourly rate basis. Interested trainers please DM your profile."
   },
   {
@@ -37,6 +43,8 @@
     "author_headline": "CTO at Zentrix Retail",
     "profile_slug": "arjun-rao-zentrix",
     "posted_relative": "3d",
+    "component_key": "Rq9eJt3VbG5nKy",
+    "copy_link": "urn",
     "text": "नमस्ते दोस्तों! 🙏 हमें एक ट्रेनिंग पार्टनर चाहिए।\nZentrix Retail wants a hands-on \"AI agents\" workshop for our 30-person tech team at our Bengaluru office. 🤖🚀\nहम एक training partner ढूंढ रहे हैं जो practical, hands-on sessions करा सके।\nContact: arjun.rao@zentrix.example"
   },
   {
@@ -47,6 +55,8 @@
     "author_headline": "VP Engineering at Orbit Health",
     "profile_slug": "meera-iyer-orbit",
     "posted_relative": "4d",
+    "component_key": "mC2xYs8DhQ7fLu",
+    "copy_link": "noop",
     "text": "At Orbit Health we want a partner to run a \"Build your first AI agent\" workshop for 25 of our engineers.\nIt would be fully online, sometime in December.\nIf your team does this kind of hands-on workshop, reach out if you do this — comment below or message me here."
   },
   {
@@ -57,6 +67,8 @@
     "author_headline": "Recruiter at SkillBridge Learning",
     "profile_slug": "karan-shah-skillbridge",
     "posted_relative": "1w",
+    "component_key": "Wk5pNa1ZrE4gTb",
+    "copy_link": "none",
     "text": "SkillBridge Learning is Hiring freelance Generative AI trainers for our corporate clients. We need trainers with 5+ yrs of experience delivering GenAI, ChatGPT and prompt engineering sessions.\n\nSend your Trainer profile + per-day Commercials to trainers@skillbridge.example #hiring #trainers"
   },
   {
@@ -67,6 +79,8 @@
     "author_headline": "COO at Meridian Insurance",
     "profile_slug": "sanjay-gupta-meridian",
     "posted_relative": "2d",
+    "component_key": "Ld8vHq6MsJ2cXo",
+    "copy_link": "urn",
     "text": "Meridian Insurance (Mumbai) needs a partner to design and build an internal AI assistant over our SOP documents and claims manuals.\nWe are looking for consulting + build: discovery, architecture, implementation and handover to our IT team.\nVendors with relevant experience, please write to it-projects@meridian.example"
   },
   {
@@ -77,6 +91,8 @@
     "author_headline": "Certified AI Trainer | Open to work",
     "profile_slug": "vikram-shah-trainer",
     "posted_relative": "6d",
+    "component_key": "Fy3tBw9KnU6aPe",
+    "copy_link": "noop",
     "text": "I am a certified Generative AI trainer with 8 years of experience in ChatGPT, Copilot and prompt engineering.\nI am open to freelance corporate training assignments, online or onsite. Connect with me!"
   },
   {
@@ -87,6 +103,8 @@
     "author_headline": "Engineering Manager at QuantaWorks",
     "profile_slug": "anita-desai-quantaworks",
     "posted_relative": "1d",
+    "component_key": "Gn7rSe4YqA1mVd",
+    "copy_link": "urn",
     "text": "QuantaWorks wants Claude Code training for 15 developers on our platform team.\nFormat: online, 2 half-days, with hands-on exercises on our own codebase.\nIf you deliver this, email lead@quantaworks.example"
   },
   {
@@ -96,7 +114,10 @@
     "author_name": "Briltus Academy",
     "author_headline": "Hiring Trainers",
     "profile_slug": "briltus-academy",
+    "profile_kind": "company",
     "posted_relative": "3d",
+    "component_key": "Pj0kXz5CfT8wHr",
+    "copy_link": "none",
     "text": "Briltus Academy is onboarding freelance trainers for Claude Code and AI-agents batches.\nSend your CV and hourly rate to hr@briltus.example"
   }
 ]

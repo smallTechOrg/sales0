@@ -54,8 +54,9 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = Field(900, ge=1, le=8192)
     llm_timeout_s: float = Field(30.0, gt=0)
     llm_max_retries: int = Field(3, ge=0, le=10)
-    llm_price_input_usd_per_mtok: float = Field(1.00, ge=0)
-    llm_price_output_usd_per_mtok: float = Field(5.00, ge=0)
+    # claude-haiku-5-5 pricing for prompts up to 100K tokens (USD per 1M tokens).
+    llm_price_input_usd_per_mtok: float = Field(0.10, ge=0)
+    llm_price_output_usd_per_mtok: float = Field(0.50, ge=0)
 
     # --- Server ---
     host: str = "127.0.0.1"
@@ -95,6 +96,8 @@ class Settings(BaseSettings):
     scrape_keyword_pause_min_s: float = Field(20.0, ge=0)
     scrape_keyword_pause_max_s: float = Field(60.0, ge=0)
     scrape_max_scrolls: int = Field(4, ge=0)
+    # Phase 1.2: max "Copy link to post" attempts per keyword (posts without a URN); 0 = off.
+    scrape_permalink_max_per_keyword: int = Field(15, ge=0)
     scrape_date_filter: DateFilter = "past-week"
 
     # --- Triage ---

@@ -36,3 +36,20 @@ def test_pacer_factories_read_action_and_keyword_ranges_from_settings() -> None:
     keywords = Pacer.for_keywords(settings, random.Random(1), sleep=lambda _s: None)
     assert (actions.min_s, actions.max_s) == (3, 9)
     assert (keywords.min_s, keywords.max_s) == (20, 60)
+
+
+def test_short_pause_is_a_quarter_of_the_action_delay_range_from_the_same_rng_and_sleep() -> None:
+    slept: list[float] = []
+    pacer = Pacer(2.0, 8.0, random.Random(11), slept.append)
+    values = [pacer.short() for _ in range(200)]
+    assert slept == values
+    assert all(0.5 <= v <= 2.0 for v in values)
+    assert len(set(values)) > 150
+    twin = Pacer(2.0, 8.0, random.Random(11), lambda _s: None)
+    assert [twin.short() for _ in range(5)] == values[:5]  # deterministic with a seeded rng
+
+
+def test_short_pause_of_a_zero_range_pacer_is_zero() -> None:
+    slept: list[float] = []
+    assert Pacer(0, 0, random.Random(1), slept.append).short() == 0
+    assert slept == [0]

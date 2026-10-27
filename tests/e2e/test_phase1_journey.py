@@ -21,11 +21,13 @@ from playwright.sync_api import Page, expect
 
 from sales0.config import get_settings
 from tests.e2e._flows import (
+    LINK_LABELS,
     LOGIN_FLOW_PATHS,
     add_keyword,
     assert_server_logs_clean,
     card,
     connect_linkedin,
+    fixture_post,
     recheck_linkedin,
     run_now,
     settled,
@@ -146,6 +148,18 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
         ("corporate ai training", 3), ("ai workshop", 4), ("ai consulting", 2),
     ]
 
+    # --- scrape_keyword log lines (Phase 1.2): SDUI parse + "Copy link to post" counts.
+    # Fixture menus: corporate ai training = P1 noop, P2 urn, P3 none; ai workshop = P1 noop,
+    # P5 urn, P6 noop, P7 none; ai consulting = P8 urn, P9 noop.
+    lines = {e["keyword"]: e for e in server.log_events() if e.get("event") == "scrape_keyword"}
+    assert {
+        kw: (lines[kw]["strategy"], lines[kw]["permalink_attempts"], lines[kw]["permalinks_found"]) for kw in RUN1_KEYWORDS
+    } == {
+        "corporate ai training": ("sdui", 2, 1),
+        "ai workshop": ("sdui", 3, 1),
+        "ai consulting": ("sdui", 2, 1),
+    }, lines
+
     history_row = page.locator("#run-history").get_by_text("Succeeded", exact=False).first
     expect(history_row).to_be_visible()
     page.goto(f"{base}/runs/{run_id}")
@@ -165,6 +179,21 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
         expect(c.locator(".enquiry__cost")).to_have_text(COST_TEXT)
         assert "$0.00 " not in c.locator(".enquiry__cost").inner_text()
     expect(card(page, "P7")).to_have_count(0)  # content duplicate of P2, merged
+
+    # --- Phase 1.2 card links (ui.md): no URN in the SDUI DOM, so a post link exists only when
+    # "Copy link to post" yielded it (P5); P1's menu copies nothing → the author profile.
+    p5_link = card(page, "P5").locator("a.enquiry__link")
+    expect(p5_link).to_have_attribute("data-link-kind", "post")
+    expect(p5_link).to_have_text(LINK_LABELS["post"])
+    expect(p5_link).to_have_attribute("href", re.compile(rf"/feed/update/{re.escape(fixture_post('P5').urn)}/$"))
+    expect(p5_link).to_have_attribute("target", "_blank")
+    expect(p5_link).to_have_attribute("rel", "noopener")
+    expect(card(page, "P5")).to_have_attribute("data-urn", fixture_post("P5").urn)
+    p1_link = card(page, "P1").locator("a.enquiry__link")
+    expect(p1_link).to_have_attribute("data-link-kind", "profile")
+    expect(p1_link).to_have_text(LINK_LABELS["profile"])
+    expect(p1_link).to_have_attribute("href", re.compile(r"/in/[^/?#]+/?$"))
+    assert (card(page, "P1").get_attribute("data-urn") or "").startswith("ck:")
 
     p1 = card(page, "P1")
     expect(p1).to_have_attribute("data-verdict", "genuine")

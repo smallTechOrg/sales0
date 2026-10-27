@@ -3,7 +3,6 @@ only the waits a real user would do)."""
 
 from __future__ import annotations
 
-import json
 import re
 import time
 from pathlib import Path
@@ -11,22 +10,33 @@ from typing import Any
 
 from playwright.sync_api import Locator, Page, expect
 
-from sales0.config import REPO_ROOT
+from sales0.linkedin_fixture.corpus import FixturePost, post_by_id
 from sales0.linkedin_fixture.routes import SESSION_COOKIE, SESSION_VALUE
 from tests.support.live_server import LiveServer
 
 RUN_TIMEOUT_MS = 300_000
 TERMINAL_RUN_STATUSES = ("succeeded", "aborted", "failed")
-CORPUS = {p["id"]: p for p in json.loads((REPO_ROOT / "src/sales0/linkedin_fixture/posts.json").read_text(encoding="utf-8"))}
+# ui.md → card link label by ``link_kind`` (Phase 1.2).
+LINK_LABELS = {
+    "post": "View post ↗",
+    "profile": "Author profile (post link unavailable) ↗",
+}
 
 
-def urn(post_id: str) -> str:
-    return CORPUS[post_id]["urn"]
+def fixture_post(post_id: str) -> FixturePost:
+    post = post_by_id(post_id)
+    assert post is not None, f"no corpus post {post_id}"
+    return post
 
 
 def card(page: Page, post_id: str) -> Locator:
-    """The inbox card whose first source is the corpus post ``post_id``."""
-    return page.locator(f'#inbox-list article.card[data-urn="{urn(post_id)}"]')
+    """The inbox card whose first source is the corpus post ``post_id``.
+
+    SDUI pages carry no URN, so a card's ``data-urn`` (its first ``source_ref``) is the URN
+    only when "Copy link to post" yielded it, else ``ck:<componentkey>``: match any of the
+    post's ``FixturePost.possible_refs()``."""
+    refs = fixture_post(post_id).possible_refs()
+    return page.locator(", ".join(f'#inbox-list article.card[data-urn="{ref}"]' for ref in refs))
 
 
 def settled(page: Page) -> None:

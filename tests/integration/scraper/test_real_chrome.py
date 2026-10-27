@@ -1,4 +1,5 @@
-"""Real Google Chrome, HEADLESS, against the fixture LinkedIn (marker ``chrome``).
+"""Real Google Chrome, HEADLESS, against the fixture LinkedIn (marker ``chrome``; Phase 1.2: SDUI
+results + "Copy link to post").
 
 The profile lives under this test's tmp data dir (never ``data/``) and only the local fixture
 server is contacted. If Google Chrome is not installed the test FAILS (it is part of the
@@ -19,7 +20,7 @@ from sales0.scraper.browser import find_chrome, first_page, open_context, profil
 from sales0.scraper.connect import connect_interactive
 from sales0.scraper.search import LinkedInSearcher
 from sales0.scraper.session_check import check_session
-from sales0.scraper.urls import base_url
+from sales0.scraper.urls import base_url, permalink
 from tests.integration.scraper.conftest import log_in_profile
 
 pytestmark = [pytest.mark.browser, pytest.mark.chrome]
@@ -97,15 +98,32 @@ def test_fixture_2fa_login_is_detected_in_chrome_by_cookie_and_url(chrome_settin
     assert (check.logged_in, check.reason) == (True, "ok")
 
 
-def test_a_full_search_in_chrome_returns_the_four_ai_workshop_posts(chrome_settings: Settings) -> None:
+def test_a_full_search_in_chrome_returns_the_four_ai_workshop_posts_through_sdui_and_copy_link(
+    chrome_settings: Settings,
+) -> None:
     log_in_profile(chrome_settings)
-    expected = [p.urn for p in posts_for("ai workshop")]
-    assert len(expected) == 4
+    base = base_url(chrome_settings)
+    corpus = posts_for("ai workshop")  # P1 noop, P5 urn, P6 noop, P7 no menu
+    assert len(corpus) == 4
     with LinkedInSearcher(chrome_settings) as searcher:
+        searcher._context.add_init_script(  # type: ignore[union-attr]
+            "window.__original_clipboard_calls = [];"
+            "Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {"
+            "writeText: (t) => { window.__original_clipboard_calls.push(String(t)); return Promise.resolve(); }}});"
+        )
         result = searcher.search("ai workshop", 15)
-    assert sorted(p.urn for p in result.posts) == sorted(expected)
-    assert result.drift_warning is False
-    by_urn = {p.urn: p for p in result.posts}
-    for post in posts_for("ai workshop"):
-        assert by_urn[post.urn].author_name == post.author_name
-        assert by_urn[post.urn].text.strip()
+        state = searcher._page.evaluate(  # type: ignore[union-attr]
+            "() => ({clicks: window.__fixture_menu_clicks || [], original: window.__original_clipboard_calls || []})"
+        )
+    assert result.strategy == "sdui" and result.drift_warning is False and len(result.posts) == 4
+    assert (result.permalink_attempts, result.permalinks_found) == (3, 1)
+    for post, fx in zip(result.posts, corpus, strict=True):
+        assert post.source_ref in fx.possible_refs()
+        assert post.author_name == fx.author_name
+        assert post.text.strip()
+    p5 = next(fx for fx in corpus if fx.id == "P5")
+    hit = next(p for p in result.posts if p.urn == p5.urn)
+    assert hit.link_kind == "post" and hit.url == permalink(base, p5.urn)
+    assert all(p.link_kind == "profile" for p in result.posts if p is not hit)
+    assert set(state["clicks"]) == {"Copy link to post"}  # nothing else on the menu was pressed
+    assert state["original"] == []  # Chrome's own clipboard was never called

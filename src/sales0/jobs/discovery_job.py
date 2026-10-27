@@ -25,6 +25,9 @@ Phase 1.1:
   misses are a ``warning``; nothing is silent). ``scrape_keyword`` / ``scrape_run`` log
   the Phase 1.1 fields (``cards_found``, ``field_misses``, ``drift``, ``layout_warnings``,
   ``browser``).
+
+Phase 1.2: ``scrape_keyword`` also logs ``strategy`` (``sdui|urn|none``), ``permalink_attempts``
+and ``permalinks_found``; posts are identified by ``source_ref`` (a URN or ``ck:<KEY>``).
 """
 
 from __future__ import annotations
@@ -230,13 +233,13 @@ class _Run:
                     # fails. Earlier posts are committed; retry this one once as a
                     # text-only hit, and save the rest of this keyword's posts the same way.
                     self.db.rollback()
-                    log.warning("keyword_deleted_mid_save", keyword=row.keyword_text, urn=getattr(post, "urn", None))
+                    log.warning("keyword_deleted_mid_save", keyword=row.keyword_text, ref=getattr(post, "source_ref", None))
                     keyword_id = None
                     row = self.db.get(ScrapeRunKeyword, row.id) or row
                     kind, enquiry_id = dedupe.upsert_post(self.db, post, self.run_id, None, row.keyword_text)
             except Exception as exc:  # noqa: BLE001 — a malformed post must not lose the others
                 self.db.rollback()
-                log.exception("post_save_failed", urn=getattr(post, "urn", None), error_type=type(exc).__name__)
+                log.exception("post_save_failed", ref=getattr(post, "source_ref", None), error_type=type(exc).__name__)
                 row = self.db.get(ScrapeRunKeyword, row.id) or row
                 row.errors += 1
                 self.run.errors_count += 1
@@ -299,6 +302,9 @@ class _Run:
             field_misses=dict(getattr(result, "field_misses", None) or {}),
             drift=bool(getattr(result, "drift_warning", False)),
             no_results=bool(getattr(result, "no_results", False)),
+            strategy=str(getattr(result, "strategy", None) or "none"),
+            permalink_attempts=int(getattr(result, "permalink_attempts", 0) or 0),
+            permalinks_found=int(getattr(result, "permalinks_found", 0) or 0),
         )
 
 

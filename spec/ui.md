@@ -25,7 +25,12 @@ The UI bar is `ui-ux.md`. Every view designs its empty, loading, error and popul
   - Body, line 1: **requirement summary** (bold).
   - Body, line 2 (muted): author name · headline · date posted ("2d ago") · keyword chips · poster type label ("Buyer company" / "Training agency" / "Seeks individual trainer" / "Job seeker / self-promo" / "Other").
   - Extracted details (only the non-null ones are shown): Company, Contact person, Email (mailto), Phone, City, Mode, Dates, Topic.
-  - "Open post ↗" link (new tab, `rel="noopener"`).
+  - The source link (`a.enquiry__link`, new tab, `rel="noopener"`, `data-link-kind` = the card's `link_kind`). Phase 1.2 label by link kind (replaces Phase 1's "Open post ↗"):
+    - `post` → **"View post ↗"**
+    - `profile` → **"Author profile (post link unavailable) ↗"**
+    - `search` → **"Search results (post link unavailable) ↗"**
+    - `other` → "Open link ↗"
+    - no `source_url` → no link.
   - `<details>` "Full post text" with the raw text (`white-space: pre-wrap`).
   - Footer: checkbox (bulk), then **Accept** (primary), then **Discard** (opens an inline reason select: "Looking for individual trainers" / "Training agency / marketplace" / "Too specific / not our offering" / "Not a requirement" / "No response" / "Other — use AI reason"; it defaults to the AI reason when the AI said discard), then the muted cost text "AI $0.0011 · 1.3k tok".
   - When a decision disagreed with the AI, an "Overrode AI" badge is shown on Accepted and Discarded cards. Accepted cards show "Prospect · New". Discarded cards show the discard reason and an **Accept instead** button. Accepted cards show **Discard instead**.
@@ -74,6 +79,6 @@ A heading, a `.badge--stub` "Coming in Phase N", one sentence on what it will do
 
 ## Test hooks (stable ids used by E2E)
 
-`#status-light`, `#cost-badge`, `#alert-banner`, `#toasts`, `#inbox-tabs`, `#inbox-search`, `#inbox-list`, `#enquiry-{id}` (plus `data-urn` holding the first source ref, and `data-verdict`, `data-review-status`), `#bulk-bar`, `#run-panel`, `#run-now`, `#run-history`, `#run-keywords`, `#linkedin-card`, `#connect-linkedin`, `#check-linkedin`, `#keyword-input`, `#keyword-list`, `#offering-list`. Phase 1.1 adds `#browser-note` and `#run-drift-alert`.
+`#status-light`, `#cost-badge`, `#alert-banner`, `#toasts`, `#inbox-tabs`, `#inbox-search`, `#inbox-list`, `#enquiry-{id}` (plus `data-urn` holding the first source ref, and `data-verdict`, `data-review-status`), `#bulk-bar`, `#run-panel`, `#run-now`, `#run-history`, `#run-keywords`, `#linkedin-card`, `#connect-linkedin`, `#check-linkedin`, `#keyword-input`, `#keyword-list`, `#offering-list`. Phase 1.1 adds `#browser-note` and `#run-drift-alert`. Phase 1.2 adds `a.enquiry__link[data-link-kind]` inside `#enquiry-{id}`; `data-urn` may now hold a `ck:<KEY>` ref.
 
 **CSS (Phase 1.1):** `app.css` adds `.banner--warn` (warn colours from the existing `--color-warn` / `--color-warn-soft` tokens, AA contrast), used by `#run-drift-alert`. Existing classes are reused otherwise: `.badge--warn`, `.outcome--warn`.

@@ -13,6 +13,7 @@ from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, LlmCall,
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.llm import LLMAuthError, LLMModelNotFound
+from sales0.scraper.urls import link_kind_of
 from sales0.services._common import clip, not_found, now_or, record_history
 from sales0.services.views import EnquiryCardView, InboxPage, InboxTab
 
@@ -117,6 +118,7 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 source_ref=first_ref.get(e.id),
                 ai_priority=e.ai_priority,
                 ai_offering_id=e.ai_offering_id,
+                link_kind=link_kind_of(e.source_url),
             )
         )
     return cards

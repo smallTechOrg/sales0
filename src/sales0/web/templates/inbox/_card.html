@@ -75,7 +75,12 @@
     {% endif %}
 
     <div class="row">
-      {% if card.source_url %}<a href="{{ card.source_url }}" target="_blank" rel="noopener">Open post ↗</a>{% endif %}
+      {% if card.source_url %}
+        {% set link_labels = {"post": "View post ↗", "profile": "Author profile (post link unavailable) ↗",
+                              "search": "Search results (post link unavailable) ↗"} %}
+        <a class="enquiry__link" href="{{ card.source_url }}" target="_blank" rel="noopener"
+           data-link-kind="{{ card.link_kind or 'other' }}">{{ link_labels.get(card.link_kind, "Open link ↗") }}</a>
+      {% endif %}
     </div>
     <details class="enquiry__raw">
       <summary>Full post text</summary>

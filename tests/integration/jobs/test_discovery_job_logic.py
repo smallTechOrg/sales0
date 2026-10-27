@@ -23,6 +23,7 @@ from sales0.services import keywords, runs
 from tests.integration.services.helpers import (
     FakeSearcher,
     post,
+    sdui_post,
     safety,
     scrape_error,
     session_missing,
@@ -470,3 +471,82 @@ def test_run_start_logs_the_linkedin_session_line_without_cookie_values(db_url: 
     assert (line["action"], line["result"], line["reason"], line["cookie_present"], line["headless"]) == (
         "run_start", "not_connected", "no_cookie", False, True)
     assert line["final_path"] == "/__fixtures/linkedin/feed/" and line["browser"] == "chromium"
+
+
+# ---------------------------------------------------------------------- Phase 1.2
+SDUI_TEXT = {
+    1: TEXT[1] + " — 40 managers, offline, week of 17 Nov; proposals to training@acmelogistics.example please.",
+    2: TEXT[2] + " — send trainer profile and per-day commercials to trainers@skillbridge.example today.",
+}
+
+
+def test_scrape_keyword_logs_strategy_and_permalink_counters(db_url: str) -> None:
+    setup("ai workshop", "legacy-urn-test", "layout-drift-test")
+    searcher = FakeSearcher(
+        {"ai workshop": [sdui_post("K1", SDUI_TEXT[1]), sdui_post("K2", SDUI_TEXT[2], slug="in/rahul-fx",
+                                                                    urn="urn:li:activity:7300000000000000002")],
+         "legacy-urn-test": [post(5, TEXT[5])]},
+        drift={"layout-drift-test"},
+        extra={"ai workshop": {"strategy": "sdui", "permalink_attempts": 2, "permalinks_found": 1, "cards_found": 2},
+               "legacy-urn-test": {"strategy": "urn", "cards_found": 1},
+               "layout-drift-test": {"strategy": "none", "cards_found": 3}},
+    )
+    with capture_logs() as logs:
+        d = detail(run_job(searcher))
+    assert d.run.status == "succeeded" and (d.run.posts_seen, d.run.posts_new) == (3, 3)
+    kw = {e["keyword"]: e for e in logs if e["event"] == "scrape_keyword"}
+    assert {k: (v["strategy"], v["permalink_attempts"], v["permalinks_found"]) for k, v in kw.items()} == {
+        "ai workshop": ("sdui", 2, 1), "legacy-urn-test": ("urn", 0, 0), "layout-drift-test": ("none", 0, 0)}
+    assert kw["layout-drift-test"]["log_level"] == "warning"
+
+
+def test_result_without_phase_1_2_fields_logs_safe_defaults(db_url: str) -> None:
+    # A searcher whose result object lacks the new attributes must not break the log line.
+    setup("ai consulting")
+
+    class Bare:
+        keyword = "ai consulting"
+        posts = [post(8, TEXT[8])]
+        scrolls = 1
+        parse_errors = 0
+        drift_warning = False
+
+    class Old(FakeSearcher):
+        def search(self, keyword: str, max_posts: int):  # type: ignore[override]
+            self.searched.append(keyword)
+            return Bare()
+
+    with capture_logs() as logs:
+        d = detail(run_job(Old({})))
+    assert d.run.posts_new == 1
+    line = next(e for e in logs if e["event"] == "scrape_keyword")
+    assert (line["strategy"], line["permalink_attempts"], line["permalinks_found"]) == ("none", 0, 0)
+
+
+def test_sdui_run_dedupes_changed_keys_and_upgrades_links_across_runs(db_url: str) -> None:
+    """Two runs on scripted SDUI posts: P1's key differs per keyword (content merge), P2 is first
+    linked to the author profile, then a later run learns its URN (source row + permalink)."""
+    setup("corporate ai training", "ai workshop")
+    run1 = FakeSearcher({
+        "corporate ai training": [sdui_post("P1-cat", SDUI_TEXT[1]), sdui_post("P2", SDUI_TEXT[2], slug="in/rahul-fx")],
+        "ai workshop": [sdui_post("P1-aw", SDUI_TEXT[1])],
+    })
+    d1 = detail(run_job(run1))
+    assert (d1.run.posts_seen, d1.run.posts_new, d1.run.posts_dupe, d1.run.enquiries_triaged) == (3, 2, 1, 2)
+    with session_scope() as db:
+        p1 = db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref == "ck:P1-cat"))
+        assert db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref == "ck:P1-aw")) == p1
+        p2 = db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref == "ck:P2"))
+        assert db.get(Enquiry, p2).source_url == "https://www.linkedin.com/in/rahul-fx/"  # type: ignore[union-attr]
+
+    urn = "urn:li:activity:7300000000000000002"
+    run2 = FakeSearcher({
+        "corporate ai training": [sdui_post("P2-new", SDUI_TEXT[2], slug="in/rahul-fx", urn=urn)],
+        "ai workshop": [sdui_post("P1-aw", SDUI_TEXT[1])],
+    })
+    d2 = detail(run_job(run2))
+    assert (d2.run.posts_seen, d2.run.posts_new, d2.run.posts_dupe, d2.run.enquiries_triaged) == (2, 0, 2, 0)
+    with session_scope() as db:
+        assert db.scalar(select(func.count(Enquiry.id))) == 2
+        assert db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref == urn)) == p2
+        assert db.get(Enquiry, p2).source_url == f"https://www.linkedin.com/feed/update/{urn}/"  # type: ignore[union-attr]

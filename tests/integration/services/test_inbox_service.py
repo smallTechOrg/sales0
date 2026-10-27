@@ -178,3 +178,27 @@ def test_retry_triage_refuses_an_already_triaged_enquiry_without_calling_the_llm
         e = db.get(Enquiry, seeded["P1"])
         assert e is not None and e.triage_status == "done" and e.ai_verdict == "genuine"
         assert len(db.scalars(select(LlmCall)).all()) == calls_before
+
+
+# ---------------------------------------------------------------------- Phase 1.2: card link kind
+def test_card_link_kind_is_derived_from_the_source_url_shape(db_url: str) -> None:
+    from sales0.services import dedupe
+    from tests.integration.services.helpers import SEARCH_URL, sdui_post
+
+    run_id = make_run()
+    with session_scope() as db:
+        _, post_id = dedupe.upsert_post(db, sdui_post("K1", "A" * 150, urn="urn:li:activity:7300000000000000005"),
+                                        run_id, None, "ai workshop")
+        _, profile_id = dedupe.upsert_post(db, sdui_post("K2", "B" * 150), run_id, None, "ai workshop")
+        _, search_id = dedupe.upsert_post(db, sdui_post("K3", "C" * 150, slug=""), run_id, None, "ai workshop")
+        _, other_id = dedupe.upsert_post(db, sdui_post("K4", "D" * 150), run_id, None, "ai workshop")
+        _, none_id = dedupe.upsert_post(db, sdui_post("K5", "E" * 150), run_id, None, "ai workshop")
+        db.get(Enquiry, other_id).source_url = "https://example.invalid/somewhere"  # type: ignore[union-attr]
+        db.get(Enquiry, none_id).source_url = None  # type: ignore[union-attr]
+    with session_scope() as db:
+        kinds = {eid: inbox.get_card(db, eid).link_kind
+                 for eid in (post_id, profile_id, search_id, other_id, none_id)}
+        refs = {eid: inbox.get_card(db, eid).source_ref for eid in (post_id, profile_id)}
+        assert inbox.get_card(db, search_id).source_url == SEARCH_URL
+    assert kinds == {post_id: "post", profile_id: "profile", search_id: "search", other_id: "other", none_id: None}
+    assert refs == {post_id: "urn:li:activity:7300000000000000005", profile_id: "ck:K2"}

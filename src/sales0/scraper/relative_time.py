@@ -1,6 +1,7 @@
 """LinkedIn relative timestamps → a date estimate.
 
-Accepts the short form ("5h", "2d •", "1w • Edited •", "3mo", "1yr", "5 mins"), the long
+Accepts the short form ("24m", "5h", "2d •", "1w • Edited •", "3mo", "1yr", "5 mins"; a "·"
+separator works like "•"), the long
 form ("2 days ago", "1 week ago"), "now"/"Just now", and an ISO date/datetime (the
 ``datetime`` attribute of a ``<time>`` element). A leading "Edited •" and trailing "•"
 are stripped.
@@ -31,7 +32,7 @@ def normalize_relative(raw: str | None) -> str | None:
         return None
     text = " ".join(raw.split())
     text = _EDITED_PREFIX.sub("", text)
-    head = text.split("•", 1)[0].strip()
+    head = re.split(r"[•·]", text, maxsplit=1)[0].strip()
     return head or None
 
 

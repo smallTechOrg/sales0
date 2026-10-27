@@ -103,3 +103,43 @@ def test_every_settings_field_is_documented_in_env_example() -> None:
     documented = set(re.findall(r"^#?\s*(SALES0_[A-Z0-9_]+)=", text, flags=re.MULTILINE))
     expected = {f"SALES0_{name.upper()}" for name in Settings.model_fields}
     assert expected <= documented, sorted(expected - documented)
+
+
+# ----------------------------------------------------------------------- Phase 1.2
+def test_permalink_cap_defaults_to_15_and_accepts_zero_to_switch_capture_off(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert Settings(_env_file=None).scrape_permalink_max_per_keyword == 15
+    monkeypatch.setenv("SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD", "0")
+    assert Settings(_env_file=None).scrape_permalink_max_per_keyword == 0
+    monkeypatch.setenv("SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD", "3")
+    assert Settings(_env_file=None).scrape_permalink_max_per_keyword == 3
+
+
+@pytest.mark.parametrize("raw", ["-1", "many", "2.5"])
+def test_a_negative_or_non_integer_permalink_cap_is_rejected(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    monkeypatch.setenv("SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD", raw)
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=None)
+    assert "scrape_permalink_max_per_keyword" in str(caught.value)
+
+
+def test_env_example_lists_the_permalink_cap_right_after_max_scrolls() -> None:
+    text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    names = re.findall(r"^(SALES0_[A-Z0-9_]+)=", text, flags=re.MULTILINE)
+    at = names.index("SALES0_SCRAPE_MAX_SCROLLS")
+    assert names[at + 1] == "SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD"
+    assert "SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD=15" in text
+    comment = text.split("SALES0_SCRAPE_MAX_SCROLLS=", 1)[1].split("SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD=", 1)[0]
+    assert "Copy link to post" in comment and "0" in comment and "clipboard" in comment
+
+
+def test_llm_price_defaults_are_haiku_5_5_pricing(clean_env: None) -> None:
+    s = Settings(_env_file=None)
+    assert (s.llm_price_input_usd_per_mtok, s.llm_price_output_usd_per_mtok) == (0.10, 0.50)
+    text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "SALES0_LLM_PRICE_INPUT_USD_PER_MTOK=0.10" in text
+    assert "SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK=0.50" in text
+    assert "claude-haiku-5-5: $0.10 in / $0.50 out per MTok for prompts up to 100K tokens" in text

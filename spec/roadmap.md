@@ -38,7 +38,7 @@ Phases 1–4 use one shared login. Per-user accounts come in Phase 5. Every acto
 
 ## Phases of Development
 
-The phase plan is: **Scaffold → Phase 1 Discovery+Triage+Inbox → Phase 1.1 Real-Chrome connect + robust LinkedIn detection (spec change from the Phase 1 gate) → Phase 2 CRM Memory → Phase 3 Research+Outreach → Phase 4 Metrics+Automation → Phase 5 WhatsApp+Accounts+Replies.**
+The phase plan is: **Scaffold → Phase 1 Discovery+Triage+Inbox → Phase 1.1 Real-Chrome connect + robust LinkedIn detection (spec change from the Phase 1 gate) → Phase 1.2 Parse LinkedIn SDUI search results (spec change from the Phase 1.1 gate) → Phase 2 CRM Memory → Phase 3 Research+Outreach → Phase 4 Metrics+Automation → Phase 5 WhatsApp+Accounts+Replies.**
 
 Each phase ends at a human testing gate. All paths below are from `spec/architecture.md` → `## Layout`. Every command runs from the repo root `/Users/sai/Workspace/Code/sales0` (written as `./` below).
 
@@ -249,6 +249,71 @@ Gate assertions the tests must make (beyond the Phase 1 set, which must stay gre
 10. Optional: `uv run python -m sales0.cli check-browser` prints `browser OK channel=chrome version=156.…` without opening LinkedIn.
 11. Housekeeping: `data/linkedin-profile-fixture/` is unused and may be deleted. Keep `data/linkedin-profile/` only if you might ever run without Google Chrome.
 12. Stubs unchanged: Pipeline, Contacts, Competitors & Groups, Import, Outreach, Metrics and WhatsApp show "Coming in Phase N".
+
+---
+
+### Phase 1.2 — Parse LinkedIn SDUI search results
+
+**Why (user gate evidence, binding).** One real headless capture of a content search on the sales0 profile showed LinkedIn's new SDUI results markup: no `urn:li:activity`, no `data-urn`/`data-id`, no `/feed/update/` or `/posts/` links, obfuscated classes. The Phase 1.1 parser found 0 cards and the run showed the drift warning. The stable anchors are `data-view-name` (`feed-full-update`, `feed-actor`, `feed-commentary`, `feed-control-menu`), `data-testid` (`expandable-text-box`, `expandable-text-button`, `lazy-column`), `role="listitem"` and `componentkey`.
+
+**Goal:** Run now on real LinkedIn produces enquiries again. Posts are parsed from the SDUI structure (the URN layout stays as the fallback), identified and de-duplicated without URNs, dated from the relative time, and linked to the post when "Copy link to post" yields it, else to the author profile, labelled honestly. Drift stays visible. No schema change.
+
+**Capabilities touched (3):** [linkedin-discovery](capabilities/linkedin-discovery.md) (SDUI parsing, identity, permalink capture, drift), [review-inbox](capabilities/review-inbox.md) (card link label; behaviour otherwise unchanged), [search-setup](capabilities/search-setup.md) (no UI change; the new `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` limit). HOW: `architecture.md` → `## LinkedIn SDUI search results (Phase 1.2)`, Fixture markup (Phase 1.2), Contracts, Configuration, Logging. Schema: none (`data.md` → Phase 1.2). Out of scope: visiting post pages to find permalinks, reading the system clipboard, comments/reactions, scraping the "People" or "Jobs" tabs.
+
+**Real vs stubbed:** everything touched is REAL; every Phase-1 stub stays a labelled stub.
+
+**Independent slices.** S1–S6 fan out concurrently against the contracts in `architecture.md`. Paths are disjoint. "Gate-after" = the slice's own tests need that slice landed; its code does not wait.
+
+| Slice | Owns (disjoint paths) | Build dependency | Gate-after |
+|---|---|---|---|
+| **S1 — Sanitised SDUI sample** | `tests/fixtures/linkedin_pages/search_results_sdui.html` (new), `tests/fixtures/linkedin_pages/manifest.json` (adds the `search_results_sdui` case + its `synthetic` block; existing cases untouched), `tests/unit/scraper/test_sdui_sample_sanitized.py` (new). Reads the raw capture from the scratchpad path in `architecture.md`; never copies it into the repo. | none | S2 (`test_saved_pages.py` parses it) |
+| **S2 — SDUI parse** | `src/sales0/scraper/selectors.py`, `scraper/parsing.py`, `scraper/detection.py`, `scraper/relative_time.py`, `scraper/types.py`, `scraper/urls.py` (`link_kind_of`, `profile_slug`, `canonical_post_url`), `tests/unit/scraper/test_parsing.py`, `tests/unit/scraper/test_parsing_sdui.py` (new; pure `parse_cards` over raw dicts incl. text-less containers), `tests/unit/scraper/test_relative_time.py`, `tests/unit/scraper/test_urls.py` (new), `tests/unit/scraper/test_errors_and_types.py`, `tests/unit/scraper/test_classify_page.py`, `tests/integration/scraper/test_saved_pages.py` (new manifest keys `strategy`, `refs`, `link_kinds`), `tests/integration/scraper/test_dom_contract.py` | none (contract in `architecture.md`) | S1, S4 |
+| **S3 — Permalink + search** | `src/sales0/scraper/permalink.py` (new), `scraper/search.py`, `scraper/pacing.py` (`Pacer.short`), `src/sales0/config.py` + `.env.example` (`SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD`), `tests/unit/test_config.py`, `tests/unit/scraper/test_permalink.py` (new; hook/take JS strings and the eligibility + cap + 3-miss logic with a fake page), `tests/unit/scraper/test_pacing.py`, `tests/integration/scraper/test_search.py`, `tests/integration/scraper/test_permalink_capture.py` (new: clipboard isolation, cap 0/1/default, 3-miss stop, only "Copy link to post" clicked, checkpoint after each action), `tests/integration/scraper/test_real_chrome.py` (`ai workshop` still 4 posts, now through SDUI + copy link in real Chrome) | S2 contract (raw dict keys, `post_from_raw`/`parse_cards` signatures, selector names) | S2, S4 |
+| **S4 — Fixture SDUI markup** | `src/sales0/linkedin_fixture/**` (SDUI templates, control-menu variants, `posts.json` `component_key` + `copy_link`, `FixturePost.key_for` / `possible_refs`, `legacy-urn-test`, `permalink-miss-test`, SDUI drift page, lazy pages), `tests/integration/scraper/conftest.py` (only if the server fixture needs it), `tests/integration/scraper/test_fixture_routes.py`, `tests/unit/scraper/test_fixture_corpus.py`, `tests/unit/scraper/test_fixture_markup.py` (no `urn:li:`, `/feed/update/`, `/posts/` in SDUI pages; no legacy classes / `global-nav`) | none | — |
+| **S5 — Services, jobs, card link** | `src/sales0/services/dedupe.py` (match order, `near_duplicate`, alias, link upgrade), `services/views.py` (`link_kind`), `services/inbox.py`, `services/runs.py` (`text` field label + denominator), `src/sales0/jobs/discovery_job.py` (`scrape_keyword` fields `strategy`, `permalink_attempts`, `permalinks_found`), `src/sales0/web/templates/inbox/_card.html` (link label + `a.enquiry__link[data-link-kind]`), `tests/unit/services/**`, `tests/integration/services/**` (incl. `helpers.py`), `tests/integration/jobs/**`, `tests/integration/web/test_inbox_routes.py` | S2 contract (`ScrapedPost`, `link_kind_of`, `profile_slug`) | S2, S3, S4 |
+| **S6 — E2E + README** | `tests/e2e/**` (`_flows.card` locates by `FixturePost.possible_refs()`; asserts "View post ↗" on P5 and "Author profile (post link unavailable) ↗" on P1; run counts), `tests/support/live_server.py` (only if env needs it), `README.md` (SDUI note, the new limit, what the two link labels mean, the clipboard is never touched) | all | S1–S5 |
+
+**Gate (run in order; all must pass; real Haiku key from `.env`; SQLite production engine; never port 8765, never `data/sales0.db`, never the repo's `data/` profiles; no automated test opens real LinkedIn):**
+
+```bash
+# working directory: /Users/sai/Workspace/Code/sales0
+GATE_TMP="$(mktemp -d)"
+uv sync
+uv run playwright install chromium
+SALES0_DATABASE_URL="sqlite:///$GATE_TMP/gate.db" uv run alembic upgrade head
+SALES0_DATABASE_URL="sqlite:///$GATE_TMP/gate.db" uv run alembic current     # must print: 0002_phase1_discovery (head)
+test -z "$(git ls-files | grep -i 'scratchpad\|capture/')"                    # the raw capture is never in the repo
+uv run pytest tests/unit -q                 # incl. test_sdui_sample_sanitized.py, test_parsing_sdui.py, test_permalink.py
+uv run pytest tests/integration -q          # real Haiku; fixture LinkedIn (SDUI); saved SDUI sample in headless Chromium; real headless Chrome (marker chrome)
+uv run pytest tests/e2e -q                  # live server on 8766 (fixture mode) + headless Chromium + real Haiku
+# boot gate (live mode, temp DB + data dir) — launch with the terminal tool's background mechanism:
+SALES0_PORT=8767 SALES0_LINKEDIN_MODE=live SALES0_DATABASE_URL="sqlite:///$GATE_TMP/gate.db" SALES0_DATA_DIR="$GATE_TMP/data" uv run python -m sales0
+curl -fsS http://127.0.0.1:8767/api/health                                   # "db_revision":"0002_phase1_discovery"
+curl -fsS http://127.0.0.1:8767/setup | grep -q 'Connect LinkedIn'
+curl -fsS http://127.0.0.1:8767/runs | grep -q 'Run now'
+curl -fsS http://127.0.0.1:8767/inbox | grep -q 'Review inbox'
+curl -fsS http://127.0.0.1:8767/pipeline | grep -q 'Coming in Phase 2'
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8767/__fixtures/linkedin/feed/   # must print: 404
+# stop the 8767 server, then the real local browser smoke (about:blank only, throwaway profile):
+uv run python -m sales0.cli check-browser   # must print exactly one line: browser OK channel=chrome version=156.<…>  (exit 0)
+```
+
+Gate assertions the tests must make (beyond the Phase 1 + 1.1 sets, which stay green): the Phase 1.2 success criteria in [linkedin-discovery](capabilities/linkedin-discovery.md), in particular:
+1. Saved SDUI sample → 6 pinned posts, `strategy=sdui`; sanitisation test green; legacy sample + `legacy-urn-test` → `strategy=urn`.
+2. Fixture run counts 9/7/2/7 then 11/2/9/2 with no URN in the DOM; P1 and P7 merge by content.
+3. Permalink capture: P5 "View post ↗" with a clean `/feed/update/<urn>/` link; P1 "Author profile (post link unavailable) ↗"; only "Copy link to post" is ever clicked; cap 0/1 and the 3-miss stop hold; the page's original clipboard is never called.
+4. `layout-drift-test` (SDUI listitems, 0 posts) → `warning`, `layout_warnings=1`; text misses → `warning` "couldn't read post text".
+5. `scrape_keyword` log lines carry `strategy`, `permalink_attempts`, `permalinks_found`.
+
+**How the user tests it (handoff seed):**
+
+1. Stop sales0, restart it with `uv run python -m sales0`, open http://127.0.0.1:8765/runs. No re-login is needed (the sales0 Chrome profile is unchanged).
+2. Click **Run now** with 1–2 real keywords. No window appears. The run takes longer than before, on purpose: for posts without a link, sales0 opens the post's "…" menu and presses "Copy link to post", slowly. Your computer's clipboard is not changed.
+3. When it finishes, the run shows posts seen > 0 and **no** yellow layout alert. If the alert does show, open the run and report the keyword's Message.
+4. In the **Inbox**, each card links either **"View post ↗"** (opens the post) or **"Author profile (post link unavailable) ↗"** (opens the author's profile — the post is in their recent activity). Both are expected.
+5. Run again later with the same keywords: the same posts do not appear twice (they count as duplicates); a card that showed "Author profile" may now show "View post".
+6. Optional: set `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD=0` in `.env` and restart to skip the menu clicks entirely (faster runs; every new card links to the author profile).
+7. Stubs unchanged: Pipeline, Contacts, Competitors & Groups, Import, Outreach, Metrics and WhatsApp show "Coming in Phase N".
 
 ---
 

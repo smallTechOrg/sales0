@@ -17,6 +17,12 @@ Safety (architecture.md → "Mid-run safety"):
 Layout drift is never silent: a logged-in results page that has result cards, or lacks the
 "no results" marker, but yields 0 posts sets ``drift_warning`` and logs WARNING
 ``scraper_layout_drift``. Missing optional fields are counted into ``field_misses``.
+
+Phase 1.2 (SDUI results): cards come from ONE ordered strategy (``sdui`` → ``urn`` → ``none``,
+in ``parsing.py``). After "see more" and ``EXTRACT_JS``, ``permalink.capture_permalinks`` tries
+"Copy link to post" on posts without a URN (paced, checkpointed, capped by
+``SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD``; the system clipboard is never touched). Before each
+scroll wheel the mouse is moved over the SDUI lazy column when present.
 """
 
 from __future__ import annotations
@@ -43,6 +49,7 @@ from sales0.scraper.detection import (
     read_signals,
 )
 from sales0.scraper.errors import AccountSafetyStop, SafetyKind, ScrapeError, SessionMissing
+from sales0.scraper import selectors as S
 from sales0.scraper.pacing import Pacer
 from sales0.scraper.parsing import (
     CARD_ARGS,
@@ -54,6 +61,7 @@ from sales0.scraper.parsing import (
     parse_cards,
     see_more_args,
 )
+from sales0.scraper.permalink import PermalinkStats, capture_permalinks
 from sales0.scraper.session_check import verify_in_context
 from sales0.scraper.types import KeywordScrapeResult, SessionCheckResult
 from sales0.scraper.urls import base_url, search_url
@@ -79,6 +87,21 @@ def content_timeout_ms(settings: Settings) -> int:
 def scroll_settle_ms(settings: Settings) -> int:
     """How long to wait for more cards after a scroll before concluding the end of results."""
     return 1_200 if settings.linkedin_mode == "fixture" else 2_500
+
+
+# The point to hover before a wheel: the centre of the visible part of the SDUI lazy column
+# (null when there is none, or it is off-screen).
+SCROLL_TARGET_JS = r"""(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const top = Math.max(r.top, 0), bottom = Math.min(r.bottom, window.innerHeight);
+  const left = Math.max(r.left, 0), right = Math.min(r.right, window.innerWidth);
+  if (bottom - top < 2 || right - left < 2) return null;
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}"""
+
+SDUI_SCREEN_JS = "(sel) => !!document.querySelector(sel)"
 
 
 def extract_raw_cards(page: Page) -> list[dict[str, Any]]:
@@ -254,6 +277,7 @@ class LinkedInSearcher:
             while cards_found < cap and scrolls < self._settings.scrape_max_scrolls:
                 before = cards_found
                 self._pacer.delay()
+                self._hover_scroll_column(page)
                 self._wheel(page, self._pacer.randint(700, 1400))
                 scrolls += 1
                 grew = self._wait_for_more_cards(page, before)
@@ -268,7 +292,20 @@ class LinkedInSearcher:
         except PlaywrightError as exc:
             self._raise_if_latched()
             raise ScrapeError(f"Could not read result cards{what}: {exc}") from exc
-        parsed = parse_cards(raws, self._base, local_today(self._settings.tz), cap)
+        stats = PermalinkStats()
+        permalink_cap = self._settings.scrape_permalink_max_per_keyword
+        if raws and permalink_cap > 0:
+            # Eligible = the first `cap` raws (DOM order); a slice keeps the same dicts, so hits
+            # land on `raws` itself.
+            stats = capture_permalinks(
+                page,
+                raws[:cap],
+                cap=permalink_cap,
+                pacer=self._pacer,
+                checkpoint=lambda: self._checkpoint(page, what=what),
+                keyword=keyword,
+            )
+        parsed = parse_cards(raws, self._base, local_today(self._settings.tz), cap, search_url=url)
         cards_found = max(cards_found, parsed.cards_found)
         drift = drift_detected(len(parsed.posts), cards_found, no_results)
         for error in parsed.errors:
@@ -287,6 +324,10 @@ class LinkedInSearcher:
         log.debug(
             "scraper_search_done",
             keyword=keyword,
+            strategy=parsed.strategy,
+            sdui_screen=self._sdui_screen(page),
+            permalink_attempts=stats.attempts,
+            permalinks_found=stats.found,
             cards_found=cards_found,
             posts=len(parsed.posts),
             scrolls=scrolls,
@@ -304,6 +345,9 @@ class LinkedInSearcher:
             cards_found=cards_found,
             no_results=no_results,
             field_misses=parsed.field_misses,
+            strategy=parsed.strategy,
+            permalink_attempts=stats.attempts,
+            permalinks_found=stats.found,
         )
 
     # Raw page actions, kept separate so tests can observe that a paced delay precedes each.
@@ -313,6 +357,22 @@ class LinkedInSearcher:
         except PlaywrightError as exc:
             self._raise_if_latched()
             raise ScrapeError(f"Page closed while scrolling: {exc}") from exc
+
+    def _hover_scroll_column(self, page: Page) -> None:
+        """Move the mouse over the SDUI lazy column (if any) so the wheel scrolls it."""
+        try:
+            point = page.evaluate(SCROLL_TARGET_JS, S.SDUI_SCROLL_CONTAINER)
+            if point:
+                page.mouse.move(float(point["x"]), float(point["y"]), steps=self._pacer.randint(4, 12))
+        except PlaywrightError:
+            self._raise_if_latched()  # the wheel and the next checkpoint decide the rest
+
+    def _sdui_screen(self, page: Page) -> bool:
+        """Informational only (logged), never a verdict."""
+        try:
+            return bool(page.evaluate(SDUI_SCREEN_JS, S.SDUI_SCREEN))
+        except PlaywrightError:
+            return False
 
     def _click(self, button: ElementHandle) -> None:
         button.click(timeout=3_000)

@@ -32,6 +32,12 @@ class Pacer:
         self._sleep(seconds)
         return seconds
 
+    def short(self) -> float:
+        """A shorter pause (Phase 1.2, menu steps): uniform in [min_s/4, max_s/4]; return it."""
+        seconds = self._rng.uniform(self.min_s / 4, self.max_s / 4)
+        self._sleep(seconds)
+        return seconds
+
     def randint(self, low: int, high: int) -> int:
         """A random int from the same RNG (scroll distances etc.)."""
         return self._rng.randint(low, high)

@@ -35,6 +35,7 @@ COOLDOWN_REASON_PREFIX = "LinkedIn asked us to slow down — next run allowed af
 
 # keyword_outcome: field_misses keys in the order the message lists them (data flow step 3).
 FIELD_LABELS: dict[str, str] = {
+    "text": "post text",  # Phase 1.2: containers with a ref but no readable text (listed first)
     "author_name": "author",
     "author_headline": "headline",
     "posted_relative": "post time",
@@ -58,11 +59,15 @@ def keyword_outcome(result: KeywordScrapeResult) -> tuple[Literal["done", "warni
     """
     n_posts = len(result.posts)
     parse_errors = int(result.parse_errors or 0)
-    misses = {
-        name: min(int(count), n_posts)
+    raw_misses = {
+        name: int(count)
         for name, count in (getattr(result, "field_misses", None) or {}).items()
         if name in FIELD_LABELS and int(count) > 0
     }
+    # "text" misses are containers that yielded no post, so their denominator is
+    # posts + text misses; every other field is counted over the parsed posts.
+    totals = {name: (n_posts + raw_misses[name] if name == "text" else n_posts) for name in raw_misses}
+    misses = {name: min(count, totals[name]) for name, count in raw_misses.items()}
     ordered = [(name, misses[name]) for name in FIELD_LABELS if name in misses]
 
     if result.drift_warning:
@@ -70,7 +75,7 @@ def keyword_outcome(result: KeywordScrapeResult) -> tuple[Literal["done", "warni
         noun = "result card" if cards == 1 else "result cards"
         return "warning", f"No posts parsed — {LAYOUT_SUFFIX} ({cards} {noun} found)"
 
-    heavy = [(name, m) for name, m in ordered if n_posts >= 2 and m * 2 >= n_posts]
+    heavy = [(name, m) for name, m in ordered if totals[name] >= 2 and m * 2 >= totals[name]]
     if heavy:
         listed = ", ".join(f"{FIELD_LABELS[name]} on {m}" for name, m in heavy)
         message = f"Parsed {n_posts} posts, but couldn't read {listed} — {LAYOUT_SUFFIX}"
@@ -81,7 +86,7 @@ def keyword_outcome(result: KeywordScrapeResult) -> tuple[Literal["done", "warni
     parts: list[str] = []
     if parse_errors:
         parts.append(_cards_unreadable(parse_errors))
-    parts.extend(f"{FIELD_LABELS[name]} missing on {m}/{n_posts}" for name, m in ordered)
+    parts.extend(f"{FIELD_LABELS[name]} missing on {m}/{totals[name]}" for name, m in ordered)
     return "done", (" · ".join(parts) if parts else None)
 
 

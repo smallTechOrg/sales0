@@ -4,6 +4,8 @@ The product narrative is in `roadmap.md` and `capabilities/`. This file is the H
 
 > **Phase 1.1 change (binding; user gate evidence).** Phase 1's Connect opened Playwright's bundled Chromium on a fresh profile. To the user it looked like a separate incognito window. The user logged in (including 2FA), but sales0 stayed on "Waiting…", because the logged-in marker (`#global-nav` / `header.global-nav` / `nav.global-nav__nav`) does not exist on current LinkedIn, which ships obfuscated class names. Phase 1.1 makes these changes. Connect opens the user's **installed Google Chrome** (`channel="chrome"`) on a dedicated sales0 profile; the user logs in there once. Logged-in detection is based on the **`li_at` session cookie plus the final URL and HTTP status**, never on DOM classes. Post parsing uses stable attributes and URL patterns, with ordered fallbacks. Layout drift is always visible to the user. Everything else in Phase 1 is unchanged. The details are in `## LinkedIn browser (Phase 1.1)`. Out of scope: browser extensions, reading the user's own Chrome cookie store, pairing tokens.
 
+> **Phase 1.2 change (binding; user gate evidence from one real headless capture on the sales0 profile).** LinkedIn content search now ships **SDUI** markup (`data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent"`). The page has NO `urn:li:activity` anywhere, no `data-urn`/`data-id`, no `/feed/update/` or `/posts/` links, and obfuscated classes, so the Phase 1.1 parser found 0 cards and raised the drift warning. Phase 1.2 parses SDUI posts from `data-view-name` / `data-testid` / `role` / `componentkey` / href patterns (never classes), keeps the Phase 1.1 URN shapes as the fallback of ONE ordered strategy, identifies posts without a URN (`ck:<KEY>` + content dedupe + a same-author fingerprint), and recovers the permalink cheaply through the post's own "Copy link to post" menu item with the page clipboard intercepted. The schema does not change (head stays `0002_phase1_discovery`). Details: `## LinkedIn SDUI search results (Phase 1.2)`.
+
 ## System Overview
 
 sales0 is a single Python process: one uvicorn worker serving a FastAPI app. It contains:
@@ -73,7 +75,7 @@ User-binding constraints: Python 3.12 via asdf, `uv` with a project-local `.venv
 
 > **Assumed:** no LangGraph. The agent is a small explicit node graph in plain Python (`agent/graph.py`), because triage is one structured call with a repair edge. A framework would add weight without any capability the design uses. Phase 3's research loop is also hand-rolled (≤4 steps). Native tracing therefore does not apply. Observability is the structured logs plus the `llm_calls` table.
 
-> **Assumed:** Haiku pricing defaults are `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK=1.00` and `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK=5.00` (the Haiku-class price point). They are configurable via env, and the user should confirm them against current Anthropic pricing.
+**Confirmed pricing and model choice.** `claude-haiku-5-5` costs $0.10 per MTok input and $0.50 per MTok output for prompts up to 100K tokens. The pricing defaults are therefore `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK=0.10` and `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK=0.50`, still overridable via env. Above 100K prompt tokens the price is $0.50 input / $2.50 output. That tier is not modelled, because triage prompts (~1.5–3k tokens) are far below it. `llm/pricing.py` uses the flat ≤100K rate. The model is `claude-haiku-5-5` because it is the cheapest model available on this key: older Haiku models are not available, and `claude-haiku-4-5` costs about 10x more.
 
 > **Assumed:** no prompt caching in Phase 1. The system prompt plus few-shot is ~1.5k tokens, below the size where caching pays off reliably. Cost math therefore covers plain input and output tokens only.
 
@@ -150,7 +152,8 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   │   ├── detection.py            # PageSignals, PageVerdict, classify_url, classify_page (PURE); SIGNALS_JS; read_signals; session cookie helpers  (R2)
 │   │   ├── pacing.py               # Pacer(min_s, max_s, rng, sleep)
 │   │   ├── relative_time.py        # "5h"/"2d"/"1w"/"3mo"/"2 days ago" → date estimate  (R2)
-│   │   ├── parsing.py              # EXTRACT_JS (card discovery + per-field fallbacks), post_from_raw, ParseError  (R2)
+│   │   ├── parsing.py              # EXTRACT_JS (card discovery + per-field fallbacks), post_from_raw, ParseError  (R2; Phase 1.2: SDUI strategy first, URN fallback)
+│   │   ├── permalink.py            # Phase 1.2: CLIPBOARD_HOOK_JS, TAKE_COPIED_JS, capture_permalinks(page, raws, *, cap, pacer, checkpoint) -> PermalinkStats
 │   │   ├── session_check.py        # verify_in_context(context, base, timeout_ms), check_session(settings) → SessionCheckResult  (R1)
 │   │   ├── connect.py              # connect_interactive(...) → ConnectResult; cookie poll + /feed/ verify  (R1)
 │   │   └── search.py               # LinkedInSearcher (context manager) .search(keyword, max_posts); drift + safety latches  (R2)
@@ -194,6 +197,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
     ├── support/                    # fake_llm.py (B), live_server.py (I)
     ├── fixtures/
     │   └── linkedin_pages/         # Phase 1.1 (R2): authored, realistic saved LinkedIn HTML + manifest.json (no personal data)
+    │                               #   Phase 1.2: + search_results_sdui.html (SANITIZED from one real capture; synthetic data only)
     ├── unit/                       # pure; no network; agent/, scraper/, services/; test_test_isolation.py (R6)
     ├── integration/                # real SQLite files; real Haiku where marked; db/, agent/, scraper/, services/, jobs/, web/
     └── e2e/                        # live server subprocess + headless Chromium + real Haiku
@@ -221,7 +225,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 - Every new migration gets a test that upgrades a POPULATED previous-head DB (runs, run keywords, enquiries, sources, hits, decisions, llm_calls) and asserts that every row count and FK value survives.
 - Gates and tests never run migrations against `data/sales0.db`. They use a temp DB file.
 
-> **Assumed:** this is a rule for future migrations. 0001–0002 are not rewritten. Phase 1.1 adds no migration: the head stays `0002_phase1_discovery`.
+> **Assumed:** this is a rule for future migrations. 0001–0002 are not rewritten. Phase 1.1 adds no migration: the head stays `0002_phase1_discovery`. Phase 1.2 adds no migration either (link kind and fingerprint are derived; `data.md` → Phase 1.2).
 
 **Error shape**
 - JSON endpoints (`/api/*` and any `Accept: application/json`) return `{"ok": true, "data": {...}}`, or `{"ok": false, "error": {"code": "snake_code", "message": "Human sentence with next step."}}` with the matching HTTP status.
@@ -233,7 +237,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 - Every line has `timestamp` (ISO UTC), `level`, `event`, `logger`, plus bound context when present: `request_id`, `run_id`, `job`, `enquiry_id`.
 - `http_request`: `method`, `path`, `status`, `latency_ms`, `htmx` (bool), `input_summary` (query keys + form field names, no values for password fields), `output_summary` (content-type + bytes).
 - `llm_call`: `feature`, `model`, `prompt_version`, `input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `status` (`ok|error`), `error_type`, `fewshot_count`, `input_summary` (first 80 chars of the enquiry text), `output_summary` (verdict + priority + offering_id).
-- `scrape_keyword`: `keyword`, `posts_seen`, `posts_new`, `posts_dupe`, `errors`, `duration_ms`, `status`. Phase 1.1 adds `cards_found`, `parse_errors`, `field_misses` (dict of field → count), `drift` (bool), `no_results` (bool). The level is WARNING when `status=warning`.
+- `scrape_keyword`: `keyword`, `posts_seen`, `posts_new`, `posts_dupe`, `errors`, `duration_ms`, `status`. Phase 1.1 adds `cards_found`, `parse_errors`, `field_misses` (dict of field → count), `drift` (bool), `no_results` (bool). Phase 1.2 adds `strategy` (`sdui|urn|none`), `permalink_attempts`, `permalinks_found`. The level is WARNING when `status=warning`.
 - `scrape_run`: `status`, totals, `abort_reason`, `duration_ms`. Phase 1.1 adds `layout_warnings` and `browser` (`chrome|chromium`).
 - `linkedin_session`: `action` (`connect|check|run_start`), `result`, `reason`. Phase 1.1 adds `browser` (`chrome|chromium`), `browser_version`, `headless` (bool), `cookie_present` (bool, never the value), `final_path` (URL path only, no query), `status_code`, and `soft_hints` (names of the matched soft DOM hints, possibly empty). When `soft_hints` is empty on a logged-in verdict, a separate WARNING `linkedin_dom_hints_missing` is logged. This is informational and never blocks.
 - `browser_launch` (DEBUG): `channel`, `headless`, `profile` (dir name only), `user_agent_overridden` (bool).
@@ -297,8 +301,8 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 | `SALES0_LLM_MAX_OUTPUT_TOKENS` | `900` | Triage output cap |
 | `SALES0_LLM_TIMEOUT_S` | `30` | Per-request timeout |
 | `SALES0_LLM_MAX_RETRIES` | `3` | Retries on 429/5xx/timeouts (exponential backoff with jitter, base 1s) |
-| `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` | `1.00` | Input price per 1M tokens |
-| `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK` | `5.00` | Output price per 1M tokens |
+| `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` | `0.10` | Input price per 1M tokens (`claude-haiku-5-5`, prompts ≤100K tokens) |
+| `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK` | `0.50` | Output price per 1M tokens (`claude-haiku-5-5`, prompts ≤100K tokens) |
 | `SALES0_HOST` | `127.0.0.1` | Bind host |
 | `SALES0_PORT` | `8765` | Bind port (not a default port) |
 | `SALES0_DATA_DIR` | `data` | Runtime dir (DB, profiles, logs), relative to the repo root |
@@ -320,6 +324,7 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 | `SALES0_SCRAPE_DELAY_MIN_S` / `_MAX_S` | `3` / `9` | Random delay between page actions (scrolls, expands) |
 | `SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S` / `_MAX_S` | `20` / `60` | Random pause between keywords |
 | `SALES0_SCRAPE_MAX_SCROLLS` | `4` | Max scrolls per keyword results page |
+| `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | `15` | Phase 1.2. Max "Copy link to post" attempts per keyword (posts without a URN). Integer ≥ 0; 0 disables permalink capture (cards then link to the author profile). In `.env.example` right after `SALES0_SCRAPE_MAX_SCROLLS`. |
 | `SALES0_SCRAPE_DATE_FILTER` | `past-week` | `past-24h`, `past-week` or `past-month` |
 | `SALES0_FEWSHOT_MAX_EXAMPLES` | `6` | Few-shot cap per triage call |
 | `SALES0_FEWSHOT_TEXT_CHARS` | `600` | Truncation per example |
@@ -378,7 +383,7 @@ class LLMClient(Protocol):
     def ping(self) -> LLMResponse: ...  # max_tokens=5, "Reply with OK"
 ```
 
-`AnthropicClient.structured` calls `messages.create(model=settings.llm_model, system=..., messages=..., tools=[{name, description, input_schema}], tool_choice={"type":"tool","name":tool_name}, max_tokens=...)`. When `SALES0_ANTHROPIC_WORKSPACE_ID` is set, the client is built with `default_headers={"anthropic-workspace-id": <id>}`, so every request (including `ping`) carries it. The SDK's internal retries are disabled (`max_retries=0`); the adapter retries itself on `RateLimitError`, `APIStatusError` ≥500, `APIConnectionError` and `APITimeoutError`, up to `SALES0_LLM_MAX_RETRIES` with backoff. It maps 401/403 to `LLMAuthError("Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env")`, the HTTP 400 that says the key requires a workspace to `LLMAuthError("This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env")` (never retried), and 404 to `LLMModelNotFound("Model '<id>' not found — check SALES0_LLM_MODEL")`. Any other rejected request (another 4xx, e.g. HTTP 400 `invalid_request_error`) is not retried and surfaces to the user as "AI request rejected — see logs"; the Anthropic error detail goes only to the `llm_call` log line. It emits one `llm_call` log line per attempt-final outcome. It does NOT write to the DB; persistence of `llm_calls` is done by `services.triage` from the returned `LLMResponse`, which keeps the layer DB-free.
+`AnthropicClient.structured` calls `messages.create(model=settings.llm_model, system=..., messages=..., tools=[{name, description, input_schema}], tool_choice={"type":"tool","name":tool_name}, max_tokens=...)`. Call-shape rule: no `temperature`, `top_p`, `top_k` or thinking/budget parameters are ever sent, by `structured` or `ping`. Haiku 5.5 has rejected sampling parameters since 2026-10-21, and triage relies on forced tool use plus guards rather than sampling settings. When `SALES0_ANTHROPIC_WORKSPACE_ID` is set, the client is built with `default_headers={"anthropic-workspace-id": <id>}`, so every request (including `ping`) carries it. The SDK's internal retries are disabled (`max_retries=0`); the adapter retries itself on `RateLimitError`, `APIStatusError` ≥500, `APIConnectionError` and `APITimeoutError`, up to `SALES0_LLM_MAX_RETRIES` with backoff. It maps 401/403 to `LLMAuthError("Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env")`, the HTTP 400 that says the key requires a workspace to `LLMAuthError("This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env")` (never retried), and 404 to `LLMModelNotFound("Model '<id>' not found — check SALES0_LLM_MODEL")`. Any other rejected request (another 4xx, e.g. HTTP 400 `invalid_request_error`) is not retried and surfaces to the user as "AI request rejected — see logs"; the Anthropic error detail goes only to the `llm_call` log line. It emits one `llm_call` log line per attempt-final outcome. It does NOT write to the DB; persistence of `llm_calls` is done by `services.triage` from the returned `LLMResponse`, which keeps the layer DB-free.
 
 `python -m sales0.cli check-llm` calls `ping()` and prints `LLM OK model=<model> input_tokens=N output_tokens=M` with exit 0. On error it prints `LLM ERROR type=<auth|workspace-required|model-not-found|transient|bad-response> <mapped message>` to stderr with exit 1 (a missing key is still reported as missing). The type distinguishes a bad key, a key that needs `SALES0_ANTHROPIC_WORKSPACE_ID`, a wrong model slug, a temporary outage, and a rejected request or unusable response (`LLMBadResponse`), rather than a bare OK/MISSING.
 
@@ -422,15 +427,26 @@ def select_examples(candidates: list[DecisionExample], max_n: int, text_chars: i
 
 ```python
 # scraper/types.py
+LinkKind = Literal["post","profile","search","other"]   # Phase 1.2
 @dataclass(frozen=True)
-class ScrapedPost: urn: str; url: str; author_name: str | None; author_profile_url: str | None
+class ScrapedPost: source_ref: str                 # Phase 1.2 (was `urn: str`): "urn:li:activity|ugcPost|share:N" when known, else "ck:<KEY>"
+                   url: str                        # Phase 1.2: the card link — post permalink | author profile URL | search URL
+                   author_name: str | None; author_profile_url: str | None
                    author_headline: str | None; posted_relative: str | None; posted_date: date | None; text: str
+                   link_kind: LinkKind = "post"    # Phase 1.2: == scraper.urls.link_kind_of(url)
+                   search_url: str | None = None   # Phase 1.2: the keyword's search URL (provenance)
+                   @property
+                   def urn(self) -> str | None: ... # source_ref when it starts with "urn:li:", else None
 @dataclass(frozen=True)
 class KeywordScrapeResult: keyword: str; posts: list[ScrapedPost]; scrolls: int; parse_errors: int; drift_warning: bool
                            cards_found: int = 0                  # Phase 1.1: card elements discovered (before parsing)
                            no_results: bool = False              # Phase 1.1: the "no results" marker was present
                            field_misses: dict[str, int] = {}     # Phase 1.1 (field(default_factory=dict)): keys author_name,
                                                                  #   author_profile_url, author_headline, posted_relative → posts missing it
+                                                                 #   Phase 1.2 adds key "text" (containers with a ref but no readable text)
+                           strategy: Literal["sdui","urn","none"] = "none"   # Phase 1.2: which card strategy won on this page
+                           permalink_attempts: int = 0           # Phase 1.2: "Copy link to post" attempts
+                           permalinks_found: int = 0             # Phase 1.2: attempts that yielded a post URL
 @dataclass(frozen=True)
 class SessionCheckResult: logged_in: bool; reason: Literal["ok","no_cookie","redirected_login","checkpoint","captcha","rate_limited","error"]; url: str
                           soft_hints: tuple[str, ...] = ()       # Phase 1.1: matched soft DOM hints (logged only)
@@ -519,7 +535,8 @@ EnquiryCardView(id, review_status, stage, triage_status, triage_error,
                 requirement_summary, ai_verdict, ai_reason, ai_poster_type, ai_priority, ai_offering_id, priority, offering_id, offering_name,
                 company, contact_person, email, phone, city, mode, dates_mentioned, topic,
                 author_name, author_headline, source_url, source_ref, raw_text, date_posted, date_added, keywords: list[str],
-                discard_reason, is_override, decided_at, cost_usd_micros, tokens_total)
+                discard_reason, is_override, decided_at, cost_usd_micros, tokens_total,
+                link_kind: LinkKind | None = None)   # Phase 1.2: scraper.urls.link_kind_of(source_url); None when source_url is null
 InboxPage(tab, q, items: list[EnquiryCardView], total, page, page_size, counts: dict[str,int])   # counts keys: review, accepted, discarded
 CostSummary(today_usd_micros, month_usd_micros, today_calls, month_calls)
 
@@ -564,6 +581,8 @@ cost_summary(db, now: datetime | None = None) -> CostSummary
 normalize_text(text: str) -> str
 content_hash(text: str) -> str
 upsert_post(db, post: ScrapedPost, run_id: int, keyword_id: int, keyword_text: str) -> tuple[Literal["new","dupe_urn","dupe_content"], int]  # (kind, enquiry_id)
+#   Phase 1.2: "dupe_urn" now means "same source ref" (URN or ck:); match order + link upgrade in "## LinkedIn SDUI search results" → Identity
+near_duplicate(a_profile_url: str | None, a_text: str, b_profile_url: str | None, b_text: str) -> bool   # Phase 1.2, PURE
 # services/triage.py
 triage_enquiry(db, enquiry_id: int, llm: LLMClient | None = None) -> TriageOutcome
 # jobs/runner.py
@@ -765,7 +784,11 @@ These are authored, realistic HTML files modelled on CURRENT LinkedIn. They use 
 | `captcha_challenge.html` | `https://www.linkedin.com/checkpoint/challenge/AgG…` (arkoselabs iframe) | yes | `captcha` |
 | `search_results_drifted.html` | `…/search/results/content/?keywords=ai%20workshop&…` | yes | `ok`; result containers (`ul[role="list"] > li` with text but no URN attributes and no post links); 0 posts; `drift=true` |
 
+| `search_results_sdui.html` (Phase 1.2) | `…/search/results/content/?keywords=ai%20workshop&…` | yes | `ok`; `strategy=sdui`; exactly 6 posts; refs `ck:<synthetic KEY>` ×6 in DOM order; `drift=false`; every `link_kind=profile` (no permalink capture on a static sample). Pinned per ref: author_name, author_profile_url, author_headline, posted_relative, `text_contains`. Built and sanitised per `## LinkedIn SDUI search results` → Saved SDUI sample. |
+
 The table also contains three status-only manifest rows that need no file: status 429 → `rate_limited`, status 999 → `rate_limited`, and status 500 on `/feed/` with a cookie → `http_error`.
+
+Phase 1.2 manifest schema additions (all optional, read by `test_saved_pages.py`): `expect.strategy`, `expect.refs` (source refs in DOM order; `urns` stays for the legacy samples and means the same), `expect.link_kinds` (ref → kind), and `fields` keyed by ref. A top-level `synthetic` block on the SDUI case lists the allowed names, `/in/` + `/company/` slugs and componentkey KEYs (used by the sanitisation test).
 
 ### `python -m sales0.cli check-browser` (slice R1; real local smoke, part of the gate)
 
@@ -779,6 +802,117 @@ The whole command runs under a hard 60 s timeout. It is a watchdog thread; when 
 - **Failure** (stderr, exit 1): `browser ERROR type=<chrome-not-found|launch-failed|timeout|automation-tell> <message>`. `automation-tell` = `navigator.webdriver` is true, or the UA contains `HeadlessChrome`.
 
 Logs go to stderr, so stdout carries only the result line, as with `check-llm`. On this Mac the gate expects `browser OK channel=chrome version=156.`.
+
+## LinkedIn SDUI search results (Phase 1.2)
+
+Binding for slices S2 (parse), S3 (permalink + search), S4 (fixture), S5 (services). It extends `## LinkedIn browser` → Post parsing; everything there not contradicted here stands (field fallbacks, "see more", no-results marker, drift rule, safety checkpoints).
+
+### DOM contract (all in `scraper/selectors.py`; never a class name)
+
+| Constant | Value | Use |
+|---|---|---|
+| `SDUI_POST` | `[data-view-name="feed-full-update"]` | One post (6 on the capture). Outermost only. |
+| `SDUI_LISTITEM` | `[role="listitem"][componentkey]` | The post's wrapper; also the drift container count. |
+| `SDUI_LISTITEM_KEY_RE` | `^expanded(.+?)FeedType_[A-Za-z_]+$` | KEY from the wrapper's `componentkey` (`expanded<KEY>FeedType_FLAGSHIP_SEARCH`). |
+| `SDUI_KEY_ATTR` | `componentkey` | Inner `div[componentkey="<KEY>"]` (preferred source of KEY). |
+| `SDUI_ACTOR` | `[data-view-name="feed-actor"]` | Author block (2 per post: avatar link + name/meta). |
+| `SDUI_TEXT` | `[data-view-name="feed-commentary"]`, `[data-testid="expandable-text-box"]` | Post text, in order. |
+| `SDUI_EXPAND` | `[data-testid="expandable-text-button"]` | "…more"; becomes the FIRST entry of `SEE_MORE_ARIA_SELECTORS`' chain (clicked by the existing paced `_expand`). |
+| `SDUI_TEXT_EXCLUDE` | `[data-view-name="feed-update-image"]`, `[data-view-name="feed-article"]`, `[data-view-name="feed-document-container"]` | Text candidates inside these are ignored (article titles, document captions). |
+| `SDUI_CONTROL_MENU` | `[data-view-name="feed-control-menu"]` | The post's "…" menu (trigger + items). |
+| `COPY_LINK_TEXT` | `copy link to post` | Exact menu item text (trimmed, case-insensitive). |
+| `SDUI_SCROLL_CONTAINER` | `[data-testid="lazy-column"]` | Infinite-scroll column; the mouse is moved over it before each wheel. |
+| `SDUI_SCREEN` | `[data-sdui-screen*="SearchResultsContent"]` | Informational; logged as `sdui_screen` in `scraper_search_done`, never a verdict. |
+
+### Card discovery (ONE ordered strategy, in `CARDS_PRELUDE_JS`)
+
+1. **`sdui`**: every `SDUI_POST` in scope, outermost only. If ≥ 1 is found, this strategy wins for the page.
+2. **`urn`**: otherwise the Phase 1.1 discovery unchanged (URN attributes, then post links).
+3. **`none`**: neither found. `cards_found` is then the number of `SDUI_LISTITEM` elements in scope (so "listitems present but no posts" is drift). Otherwise `cards_found` = posts found by the winning strategy.
+
+`__cards(sel)` returns `{strategy, cards}`; `COUNT_CARDS_JS`, `SIGNALS_JS` (`cards_found`) and `CONTENT_READY_JS` use the same function, so "cards found" still means one thing everywhere. The strategy is logged per keyword (`scrape_keyword.strategy`).
+
+### SDUI field extraction (raw dict per post)
+
+`EXTRACT_JS` returns, per card, `{strategy, urn, component_key, post_href, author_name, author_profile_url, author_headline, posted_relative, text, has_control_menu, via}` (contract S2 → S3; the URN strategy fills `component_key=null`, `has_control_menu=false`).
+
+- **component_key**: the first descendant-or-self `[componentkey]` whose value does NOT match `SDUI_LISTITEM_KEY_RE` (the inner key), else the KEY captured from the closest ancestor `SDUI_LISTITEM`. Trimmed; must be non-empty, contain no whitespace, and be ≤ 197 characters (so `ck:<KEY>` fits `source_ref` String(200)); otherwise it is treated as absent.
+- **urn**: any `urn:li:(activity|ugcPost|share):\d+` found in an attribute or href inside the post (best effort; absent on the capture).
+- **Actor lines**: the `innerText` lines of every `SDUI_ACTOR` in the post (DOM order), excluding actors inside `SDUI_TEXT` or `SDUI_TEXT_EXCLUDE`; consecutive duplicate lines collapsed.
+  - **author anchor**: the first `a[href*="/in/"], a[href*="/company/"]` inside those actors → `author_profile_url`.
+  - **author_name**: the first actor line that is not skipped by the Phase 1.1 headline-skip rules (degree `• 3rd+`, Follow, Premium/Verified, `View … profile`, a relative time).
+  - **author_headline**: the next such line that does not contain the name.
+  - **posted_relative**: the first actor line (or `aria-label`) whose head passes `isRel` (accepts `now`, `24m`, `3h`, `2d`, `1w`, `3mo`, `1yr`, the long form, and `• Edited` suffixes).
+- **text**: the first `SDUI_TEXT` match with non-empty text outside `SDUI_TEXT_EXCLUDE`; its `innerText` minus a trailing occurrence of the `SDUI_EXPAND` element's text (`…more`) and a trailing `…`.
+- **has_control_menu**: the post contains `SDUI_CONTROL_MENU`.
+- `via` records `strategy=sdui` and which rule filled each field (DEBUG `scraper_parse_via`, as today).
+
+`post_from_raw(raw, base, today, search_url=None)` (pure) and `parse_cards(raws, base, today, cap=None, search_url=None)` (pure; `ParsedCards` gains `strategy`):
+- **source_ref** = the URN when `urn` is valid, else `urn_from_href(post_href)`, else `urn_from_href(raw["copied_url"])` (set by permalink capture), else `"ck:" + component_key`. None of these → `ParseError` (counted in `parse_errors`).
+- **Empty text with a ref** → not a post; counted as `field_misses["text"]` (Phase 1.2: no longer a parse error, for both strategies).
+- **url / link_kind**, first that applies: a URN → `permalink(base, urn)`, `post`; else `canonical_post_url(copied_url, base)` returns a URL (same-site `/posts/…` or `/feed/update/…`, query/fragment dropped) → that URL, `post`; `author_profile_url` → `profile`; `search_url` → `search`; else `ParseError`.
+- `posted_date = parse_relative(normalize_relative(posted_relative), today)` (`relative_time`; the estimate is a date, stored in `enquiries.date_posted`).
+- `parse_cards` de-duplicates by `source_ref` within the page (a re-rendered post is one post).
+
+`scraper/urls.py` adds PURE helpers shared by the scraper and services (one place): `canonical_post_url` (Permalink capture step 4), and:
+- `link_kind_of(url) -> LinkKind | None`: None for empty; path (fixture prefix stripped) containing `/feed/update/` or starting `/posts/` → `post`; starting `/in/` or `/company/` → `profile`; starting `/search/` → `search`; else `other`.
+- `profile_slug(url) -> str | None`: `"in/<slug>"` or `"company/<slug>"` from the path, URL-decoded and lower-cased; None otherwise.
+
+### Identity and dedupe (`services/dedupe.upsert_post`, no new column)
+
+> **Assumed:** `componentkey` is stable across loads of the same search, but this is NOT verified (one capture). Identity therefore never relies on it alone.
+
+Match order (first hit wins):
+1. **Same source ref**: an `enquiry_sources.source_ref == post.source_ref` → `dupe_urn` (the kind name is kept; it now means "same ref", URN or `ck:`).
+2. **Same content**: `enquiries.content_hash == content_hash(post.text)` (Phase 1 normalisation, unchanged) → `dupe_content`, plus a new source row. This is what merges the same post seen under two keywords or two runs when its key changed, and P7 ≈ P2.
+3. **Same-author fingerprint** (new; covers a re-rendered post whose text was captured truncated once and expanded once, so the full hashes differ): candidates = enquiries whose `author_profile_url` contains `/<profile_slug(post.author_profile_url)>` (bound parameter), filtered in Python by `near_duplicate(...)` → `dupe_content`, plus a new source row. `near_duplicate`: both `profile_slug`s non-null and equal; `a = normalize_text(strip_ellipsis(text))[:300]` for each (`strip_ellipsis` drops a trailing `…` / `...` and a trailing "…more"); with `n = min(len(a), len(b))`, `n ≥ 100` and `a[:n] == b[:n]`.
+4. Otherwise **new** (`content_hash` of the full text, as today; the empty-text guard uses `source_ref`).
+
+Rules on every duplicate:
+- **Alias**: if `post.urn` is set and no source row has it, insert a source row for the URN (a later run that finds the URN but a different key then matches at step 1).
+- **Link upgrade**: if `post.link_kind == "post"` and `link_kind_of(enquiry.source_url) != "post"`, set `enquiries.source_url = post.url`.
+- `raw_text`, author fields and `content_hash` of an existing enquiry are never rewritten.
+
+Stored values: `enquiries.source_url = post.url` (permalink, else author profile, else search URL). `enquiry_sources.source_url` = the permalink when `link_kind == "post"`, else `post.search_url` (where it was seen).
+
+> **Assumed:** the existing full-text hash already covers "same post, re-rendered" whenever the text is read fully, so the fingerprint is computed on read from existing columns (`author_profile_url`, `raw_text`) rather than stored. Thresholds (300 chars, 100-char minimum overlap) are chosen so that a LinkedIn "…more" truncation (~200 chars) of a long post still matches its expanded form.
+
+### Permalink capture (`scraper/permalink.py`, called by `search.py`)
+
+Runs per keyword AFTER "see more" expansion and AFTER `EXTRACT_JS`, so it can never change what was parsed. Eligible posts: the first `cap_posts` raws (DOM order) that have no URN, a `component_key` and `has_control_menu`. At most `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` attempts (0 = skip entirely; no hook installed, no clicks).
+
+1. **Hook (once per results page, `page.evaluate(CLIPBOARD_HOOK_JS)`)**: idempotent; sets `window.__sales0_copied = []` and replaces `navigator.clipboard` via `Object.defineProperty(navigator, "clipboard", {configurable: true, value: {...}})` with an object whose `writeText(t)` pushes `String(t)` and resolves, and whose `write()` resolves without effect. **It never calls the original**, so the system clipboard is never touched. It works even where `navigator.clipboard` is undefined.
+2. Per eligible post (locator: `[componentkey="<KEY>"]` → its `SDUI_POST`; fallback: the n-th `SDUI_POST`):
+   1. `pacer.delay()` (the normal action delay), then click the menu trigger: the first `button` / `[role="button"]` inside `SDUI_CONTROL_MENU` (or the element itself if it is one). Checkpoint.
+   2. `pacer.short()` (new: uniform in `[delay_min_s/4, delay_max_s/4]`), then wait ≤ 2 s for a visible element whose trimmed text equals `COPY_LINK_TEXT`: first inside `SDUI_CONTROL_MENU`, else inside a visible document-level `[role="menu"]`. Click the innermost such element. **No other menu item is ever clicked.** Checkpoint.
+   3. Poll `TAKE_COPIED_JS` (returns and clears the list) for ≤ 1.5 s. `pacer.short()`, press `Escape`. Checkpoint.
+   4. A safety stop at any checkpoint propagates (`AccountSafetyStop`, browser closed first). If the main-frame URL path is no longer the search path, capture stops for this keyword (the posts are already extracted).
+3. Outcome per post: `copied_url` (the last captured string) or a miss (`no_menu_item`, `no_copy`, `click_error`), logged DEBUG `scraper_permalink` with `keyword`, `index`, `outcome` (never the post text). **3 consecutive misses end capture for that keyword.**
+4. `scraper/urls.canonical_post_url(copied, base) -> (urn | None, url | None)` (pure; in `urls.py` because `post_from_raw` uses it): non-same-site → `(None, None)`; URN via `urn_from_href` → `(urn, permalink(base, urn))`; same-site `/posts/` or `/feed/update/` path → `(None, url without query/fragment)`; else `(None, None)`. Tracking query strings (`utm_*`, `rcm`) are therefore never stored.
+
+`capture_permalinks(page, raws, *, cap, pacer, checkpoint) -> PermalinkStats(attempts, found)` sets `raw["copied_url"]` on each hit (it never touches other keys); `search.py` then calls `parse_cards(..., search_url=url)`, and fills `strategy`, `permalink_attempts`, `permalinks_found` on `KeywordScrapeResult`. Before each scroll wheel it moves the mouse to the centre of `SDUI_SCROLL_CONTAINER` when present (paced; the existing wheel and growth wait are otherwise unchanged).
+
+> **Assumed:** live LinkedIn's "Copy link to post" calls `navigator.clipboard.writeText` at click time (the capture showed the item, not its handler). If it does not, every attempt misses, 3 misses end capture, and cards fall back to the author profile with no other effect. Live cost: ~1 normal + 2 short delays per post (≈ 9 s at the defaults, ≈ 2–3 min for 15 posts).
+
+### Drift and field misses (extends Layout drift; existing rules kept)
+
+- `drift_warning` keeps its formula; with SDUI `cards_found` counts listitems when no post was found, so a page with `SDUI_LISTITEM`s but 0 `SDUI_POST` parsed → drift.
+- `services.runs.keyword_outcome`: `FIELD_LABELS` gains `"text": "post text"` (listed first). Its half rule for `text` uses the denominator `len(posts) + field_misses["text"]` (≥ 2); the other fields keep `len(posts)`. Example: "Parsed 4 posts, but couldn't read post text on 3 — LinkedIn layout may have changed".
+
+### Saved SDUI sample (`tests/fixtures/linkedin_pages/search_results_sdui.html`)
+
+Built ONCE from the raw capture at `/private/tmp/claude-501/-Users-sai-Workspace-Code-sales0/b074bc78-7197-4abe-843f-5eea90d4cf2c/scratchpad/capture/search.html`. **The raw file contains real people's public posts and is never copied into the repo, never committed, never quoted in a test, log or commit message.** Any helper script used to sanitise it lives in the session scratchpad, not the repo.
+
+- **Keep** the exact element nesting and every `data-view-name`, `data-testid`, `role`, `componentkey` (shape), `data-sdui-screen`, `aria-*`, `dir`, `hidden`, `type` and the obfuscated `class` tokens of the 6 posts and their wrappers (the lazy column, the listitems, the control menus with "Copy link to post", media containers, social buttons). Unrelated page chrome may be cut down to `main`/landmark skeletons.
+- **Replace** every name, `/in/` and `/company/` slug, headline, post text, alt text, `aria-label` containing a name, image `src`/`srcset` (→ `data:` placeholder or `https://example.invalid/img/<n>.png`), and every `componentkey` KEY (→ synthetic KEYs of the same length and character class) with synthetic values. Post texts are synthetic training-enquiry texts with `.example` emails and `+91 90000 0000x` phones. Relative times keep the capture's mix (`24m`, `3h`, `2d`, `1w`, one `• Edited`).
+- **Strip** every `<script>`, `<noscript>`, `<iframe>`, `<link>` to LinkedIn hosts, inline event handlers, and every attribute outside the allowlist `{class, id, role, componentkey, href, src, alt, dir, hidden, type, tabindex, aria-*, data-view-name, data-testid, data-sdui-screen}`. hrefs other than `/in/`, `/company/` and `/search/` become `#`.
+- **Sanitisation test** (`tests/unit/scraper/test_sdui_sample_sanitized.py`, pure, reads the file as text + `html.parser`):
+  - every `/in/<slug>` and `/company/<slug>` is in the manifest `synthetic.slugs` list;
+  - every pinned `author_name` in the manifest is in `synthetic.names`, and every `feed-actor` text line that is not a headline, degree, time or "Follow" is a synthetic name;
+  - every `aria-label` and `alt` value is in `synthetic.labels` (the generic UI labels, e.g. "Like", "Open control menu for post by {name}", with `{name}` expanded over `synthetic.names`);
+  - every `componentkey` value is `<KEY>` or `expanded<KEY>FeedType_FLAGSHIP_SEARCH` with KEY in `synthetic.keys`;
+  - no `<script`, `<iframe`, `licdn.com`, `urn:li:member`, `urn:li:fsd_profile`, `ACoA` (member id prefix), `trackingId`, `trk=`, or `@` outside `.example` addresses;
+  - no attribute outside the allowlist; exactly 6 `[data-view-name="feed-full-update"]`; at least one `[data-view-name="feed-control-menu"]` containing "Copy link to post"; file < 300 KB.
 
 ## Fixture LinkedIn corpus
 
@@ -813,6 +947,42 @@ Logs go to stderr, so stdout carries only the result line, as with `check-llm`. 
 - **Permalink:** built as `{base}/feed/update/{urn}/`.
 - **After each scroll,** the searcher waits up to about 2.5 s (1.2 s in fixture mode) for `cards_found` to grow before it decides the page is exhausted.
 
+**Fixture markup (Phase 1.2, binding; supersedes the card-shape table above for every keyword except `legacy-urn-test`).** Results pages mirror the SDUI capture (`## LinkedIn SDUI search results`), still with obfuscated deterministic classes and still with no legacy classes / `global-nav`:
+
+```html
+<main><div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent">
+ <div data-testid="lazy-column">
+  <div role="listitem" componentkey="expanded{KEY}FeedType_FLAGSHIP_SEARCH">
+   <div componentkey="{KEY}">
+    <div data-view-name="feed-full-update">
+     <h2><span class="{visually-hidden token}">Feed post</span></h2>
+     <div data-view-name="feed-actor"><a href="{base}/in/{slug}/" aria-label="View {name}’s profile"><img alt="" src="data:,"></a></div>
+     <div data-view-name="feed-actor"><a href="{base}/in/{slug}/"><span>{name}</span></a><span>• 3rd+</span>
+       <p>{headline}</p><p><span>{posted_relative} • </span></p><button type="button">Follow</button></div>
+     {control menu — see copy_link}
+     <div data-view-name="feed-commentary"><span data-testid="expandable-text-box">{text_head}<span hidden>{text_tail}</span></span>
+       <button type="button" data-testid="expandable-text-button">…more</button></div>   <!-- only when text_tail -->
+     <div><button aria-label="React Like">Like</button><button>Comment</button><button>Repost</button><button>Send</button></div>
+    </div></div></div>
+ </div></div></main>
+```
+
+- `/company/{slug}/` for company authors (P11). No URN, no `data-urn`/`data-id`, no `/feed/update/` or `/posts/` href appears anywhere in the DOM (a unit test greps the rendered pages for `urn:li:`, `/feed/update/`, `/posts/` and requires 0 hits).
+- **KEY** = `posts.json` `component_key` (synthetic, opaque, e.g. `sxQ3v9LmP1aZ0k`). Exception: P1's KEY is `component_key + "-" + <keyword slug>`, so it differs between its two keywords (simulates an unstable key; P1 must still merge by content).
+- **Control menu** by `posts.json` `copy_link`:
+  - `urn` (P2, P5, P8, P10): `<div data-view-name="feed-control-menu"><button type="button" aria-label="Open control menu for post by {name}" aria-expanded="false">…</button><div role="menu" hidden>` with `role="menuitem"` items "Save", "Copy link to post", "Not interested", "Unfollow {name}", "Report post"`</div></div>`. The trigger unhides the menu; "Copy link to post" calls `navigator.clipboard.writeText("{base}/posts/{posts_slug}?utm_source=share&utm_medium=member_desktop&rcm=ACoAAFixture")`, hides the menu and shows a toast "Link copied to clipboard.".
+  - `noop` (P1, P6, P9): the same menu, but "Copy link to post" only hides the menu (nothing is written).
+  - `none` (P3, P7, P11): no `feed-control-menu` in the post.
+  - Every menu-item click is appended to `window.__fixture_menu_clicks` (item text) and every trigger click increments `window.__fixture_menu_opens`, so tests can assert that only "Copy link to post" is ever clicked and that the per-keyword cap holds.
+- `FixturePost` gains `component_key`, `copy_link`, `key_for(keyword) -> str` and `possible_refs() -> tuple[str, ...]` (the URN when `copy_link == "urn"`, plus `ck:` + every `key_for(k)` over its keywords), used by e2e to locate cards.
+- **`legacy-urn-test`** (new trigger keyword, `LEGACY_KEYWORD`): renders ALL corpus posts in their Phase 1.1 `CARD_SHAPES` (data-urn / data-id / update-link / posts-link), proving the URN fallback strategy: `strategy=urn`, 10 posts, refs = their URNs, 0 permalink attempts.
+- **`permalink-miss-test`** (new trigger keyword, `PERMALINK_MISS_KEYWORD`): renders P1, P6, P9, P2 in SDUI markup with every menu forced to `noop` → exactly 3 menu opens (3-consecutive-miss stop), 4 posts, all `ck:` refs.
+- **`layout-drift-test`** now renders 3 `SDUI_LISTITEM`s (`componentkey="expanded…FeedType_FLAGSHIP_SEARCH"`) with text but no `feed-full-update` → `strategy=none`, `cards_found=3`, `drift=true`.
+- Lazy keywords (`lazy-scroll-test`, `checkpoint-scroll-test`, `ratelimit-scroll-test`) render SDUI posts; revealed cards are appended as new listitems to the lazy column.
+- "No results found" page unchanged.
+
+**Run expectations (Phase 1.2) still hold without any DOM URN:** run 1 — P1 (`ck:` key A, new), P2 (URN from copy link, new), P3 (`ck:`), P1 again under `ai workshop` (`ck:` key B → content hash → `dupe_content`), P5 (URN), P6 (`ck:`), P7 (`ck:` → content hash with P2 → `dupe_content`), P8 (URN), P9 (`ck:`): seen 9 / new 7 / dupes 2 / triaged 7; P1 has 2 source rows (`ck:` A, B) and both chips; P2 has 2 source rows (its URN + `ck:` P7). Run 2 — P10 (URN) and P11 (`ck:`) new, all 9 others match by ref: 11 / 2 / 9 / 2.
+
 **Safety checkpoints:** `## LinkedIn browser` → Mid-run safety.
 
 > **Assumed:** the selectors model LinkedIn's DOM as of October 2026 as best known. Live LinkedIn changes markup often, so drift is made visible rather than prevented: a keyword `warning` plus the run-level alert. Fixing selectors means changing `selectors.py` (and the fixture templates or saved samples, if the shape is new).
@@ -832,7 +1002,7 @@ Logs go to stderr, so stdout carries only the result line, as with `check-llm`. 
 | P10 | 10 | `claude code training` | Anita Desai / "Engineering Manager at QuantaWorks" | QuantaWorks wants **Claude Code training** for 15 developers, online, 2 half-days; `lead@quantaworks.example` | verdict=genuine, offering=Technical AI training |
 | P11 | 11 | `claude code training` | "Briltus Academy" / "Hiring Trainers" | Briltus is **onboarding freelance trainers** for Claude Code and AI-agents batches; send CV and hourly rate to `hr@briltus.example` | verdict=discard |
 
-P1 appears under two keywords with the same URN (URN duplicate). P7 is the same text as P2 under a new URN (content duplicate).
+P1 appears under two keywords with the same URN (URN duplicate). P7 is the same text as P2 under a new URN (content duplicate). Phase 1.2: the URNs stay the corpus identity, but the SDUI DOM never shows them; P1 then merges by content (its `ck:` key differs per keyword) and P7 by content (Fixture markup (Phase 1.2) → Run expectations).
 
 **Deterministic run expectations** (keywords added in this order: `corporate ai training`, `ai workshop`, `ai consulting`):
 - Run 1: `posts_seen=9` (3+4+2), `posts_new=7` (P1,P2,P3,P5,P6,P8,P9), `posts_dupe=2` (P1 again, P7), `enquiries_triaged=7`. Enquiry P1 has keyword chips `corporate ai training` and `ai workshop`. Enquiry P2 has `corporate ai training` and `ai workshop` (via P7), and two `enquiry_sources` rows.

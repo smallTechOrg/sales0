@@ -71,3 +71,30 @@ def test_normalize_relative_strips_bullets_and_the_edited_marker() -> None:
 )
 def test_is_relative_time_recognises_only_time_labels(raw: str | None, expected: bool) -> None:
     assert is_relative_time(raw) is expected
+
+
+# --------------------------------------------------------------------------- Phase 1.2 (SDUI actor lines)
+@pytest.mark.parametrize(
+    ("raw", "head", "expected"),
+    [
+        ("24m", "24m", date(2026, 10, 27)),
+        ("3h", "3h", date(2026, 10, 27)),
+        ("2d", "2d", date(2026, 10, 25)),
+        ("1w", "1w", date(2026, 10, 20)),
+        ("24m • Edited", "24m", date(2026, 10, 27)),
+        ("2d • Edited •", "2d", date(2026, 10, 25)),
+        ("1w · Edited", "1w", date(2026, 10, 20)),  # middle dot separator
+        ("3h ·", "3h", date(2026, 10, 27)),
+        ("Edited · 2d", "2d", date(2026, 10, 25)),
+    ],
+)
+def test_sdui_time_lines_with_edited_suffixes_normalise_and_parse(raw: str, head: str, expected: date) -> None:
+    assert normalize_relative(raw) == head
+    assert is_relative_time(raw) is True
+    assert parse_relative(normalize_relative(raw), TODAY) == expected
+
+
+@pytest.mark.parametrize("raw", ["Edited", "• Edited", "Follow", "• 3rd+", "Feed post", "Visible to anyone on or off LinkedIn"])
+def test_sdui_non_time_actor_lines_are_not_times(raw: str) -> None:
+    assert is_relative_time(raw) is False
+    assert parse_relative(raw, TODAY) is None

@@ -6,7 +6,7 @@
 - Phase 3: company research and outreach drafting.
 - Phase 4: digest and suggestions.
 
-Each capability is a separately composed, bounded agent behind the `LLMClient` layer. Every one uses the configured Haiku model only (`SALES0_LLM_MODEL`, default `claude-haiku-5-5`), and every call is logged with tokens and cost. Provider access is the Anthropic API key (`SALES0_ANTHROPIC_API_KEY`) plus, for org-level keys that are not workspace-scoped (this user's key), `SALES0_ANTHROPIC_WORKSPACE_ID`, sent as the `anthropic-workspace-id` header. A missing workspace id surfaces as a fatal `LLMAuthError` naming the variable (`architecture.md` → LLM layer contract).
+Each capability is a separately composed, bounded agent behind the `LLMClient` layer. Every one uses the configured Haiku model only (`SALES0_LLM_MODEL`, default `claude-haiku-5-5`, the cheapest model available on this key; see `architecture.md` → Stack for prices and rationale), and every call is logged with tokens and cost. No sampling or thinking parameters are sent (`architecture.md` → LLM layer contract, call-shape rule). Provider access is the Anthropic API key (`SALES0_ANTHROPIC_API_KEY`) plus, for org-level keys that are not workspace-scoped (this user's key), `SALES0_ANTHROPIC_WORKSPACE_ID`, sent as the `anthropic-workspace-id` header. A missing workspace id surfaces as a fatal `LLMAuthError` naming the variable (`architecture.md` → LLM layer contract).
 
 ## Lens evaluation (catalogue in `agentic-ai.md`)
 
@@ -119,7 +119,7 @@ Fields and the meaning given in the system prompt:
   5. Return them in chronological order (oldest first).
 - In the prompt, each example is rendered as: `Post: <text>`, then `Team decision: ACCEPT (genuine)` or `DISCARD — reason: <reason>`, plus `(AI originally said <x>; the team overrode it)` for overrides.
 - With 0 candidates (cold start), only the 3 static seed examples in the system prompt are used, and `fewshot_count=0`.
-- The cost bound: ≤6 × 600 chars ≈ ≤1k extra input tokens per call (≈$0.001 at the default prices).
+- The cost bound: ≤6 × 600 chars ≈ ≤1k extra input tokens per call (≈$0.0001 at the default $0.10 / $0.50 per MTok, `architecture.md` → Stack). A typical triage call (~2.5k input + ~300 output tokens) costs ≈$0.0004, so 150 posts a day comes to ≈$0.06. These prompts stay far below the 100K-token threshold where the higher price tier starts.
 
 ### Observability
 

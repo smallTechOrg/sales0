@@ -6,6 +6,11 @@ Cards are found by their URN attributes and post links; every field has ordered 
 and the first non-empty value wins. No code may require a logged-in DOM marker: logged-in
 markers are soft hints only (logged, never part of a verdict).
 
+Phase 1.2: current search results ship LinkedIn's SDUI markup (no URN anywhere, no post
+links). Its stable anchors are ``data-view-name``, ``data-testid``, ``role="listitem"`` and
+``componentkey`` (architecture.md → "## LinkedIn SDUI search results"). Card discovery tries
+the SDUI posts first and falls back to the Phase 1.1 URN layout.
+
 When LinkedIn changes its markup, fix it here (plus the fixture templates / saved samples
 when the shape is new) and nowhere else.
 """
@@ -16,7 +21,39 @@ from __future__ import annotations
 # The session cookie LinkedIn sets on login (the fixture sets the same name).
 SESSION_COOKIE = "li_at"
 
-# --------------------------------------------------------------------------- cards
+# --------------------------------------------------------------------------- SDUI (Phase 1.2)
+# One post (outermost only). If >= 1 is found the "sdui" strategy wins for the page.
+SDUI_POST = '[data-view-name="feed-full-update"]'
+# The post's wrapper; also the drift container count when no post is found.
+SDUI_LISTITEM = '[role="listitem"][componentkey]'
+# KEY from the wrapper's componentkey ("expanded<KEY>FeedType_FLAGSHIP_SEARCH"); JS- and Python-compatible.
+SDUI_LISTITEM_KEY_RE = r"^expanded(.+?)FeedType_[A-Za-z_]+$"
+# The inner div[componentkey="<KEY>"] (preferred source of KEY).
+SDUI_KEY_ATTR = "componentkey"
+# ck:<KEY> must fit enquiry_sources.source_ref String(200).
+SDUI_KEY_MAX_LEN = 197
+SOURCE_REF_KEY_PREFIX = "ck:"
+# Author block (avatar link + name/meta).
+SDUI_ACTOR = '[data-view-name="feed-actor"]'
+# Post text, in order.
+SDUI_TEXT: tuple[str, ...] = ('[data-view-name="feed-commentary"]', '[data-testid="expandable-text-box"]')
+# "…more" (the first entry of SEE_MORE_ARIA_SELECTORS' chain).
+SDUI_EXPAND = '[data-testid="expandable-text-button"]'
+# Text candidates inside these are ignored (article titles, document captions).
+SDUI_TEXT_EXCLUDE: tuple[str, ...] = (
+    '[data-view-name="feed-update-image"]',
+    '[data-view-name="feed-article"]',
+    '[data-view-name="feed-document-container"]',
+)
+# The post's "…" menu (trigger + items) and the one item sales0 ever clicks in it.
+SDUI_CONTROL_MENU = '[data-view-name="feed-control-menu"]'
+COPY_LINK_TEXT = "copy link to post"
+# Infinite-scroll column; the mouse is moved over it before each wheel.
+SDUI_SCROLL_CONTAINER = '[data-testid="lazy-column"]'
+# Informational only (logged as sdui_screen), never a verdict.
+SDUI_SCREEN = '[data-sdui-screen*="SearchResultsContent"]'
+
+# --------------------------------------------------------------------------- cards (URN layout)
 URN_PREFIXES: tuple[str, ...] = ("urn:li:activity:", "urn:li:ugcPost:", "urn:li:share:")
 URN_ATTRIBUTES: tuple[str, ...] = ("data-urn", "data-id")
 
@@ -33,8 +70,10 @@ POST_LINK_SELECTORS: tuple[str, ...] = (
 )
 CARD_CONTAINERS = 'li, article, [role="article"], [data-view-name*="update" i], [data-view-name*="search-entity" i]'
 
-# URN from an href (JS-compatible regex sources; also compiled in ``parsing.py``).
+# URN from an href (JS-compatible regex sources; also compiled in ``urls.py``).
 FEED_UPDATE_HREF_RE = r"/feed/update/(urn:li:(?:activity|ugcPost|share):\d+)"
+# Any post URN in an attribute value (SDUI strategy: best effort).
+ANY_URN_RE = r"urn:li:(?:activity|ugcPost|share):\d+"
 POSTS_SLUG_HREF_RE = r"/posts/[^/?#]*-(activity|ugcPost|share)-(\d+)"
 
 # --------------------------------------------------------------------------- fields
@@ -66,6 +105,7 @@ RELATIVE_TIME_LONG_RE = r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+a
 
 # "See more", in order. Never an a[href], never an aria-label matching SEE_MORE_EXCLUDE_RE.
 SEE_MORE_ARIA_SELECTORS: tuple[str, ...] = (
+    SDUI_EXPAND,  # Phase 1.2: the SDUI "…more" button comes first
     'button[aria-label*="see more" i]',
     'button[aria-label*="show more" i]',
     '[role="button"][aria-label*="see more" i]',

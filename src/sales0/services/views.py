@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from sales0.scraper.types import LinkKind
+
 SessionStatus = Literal["not_connected", "connected", "needs_attention", "busy"]
 BusyAction = Literal["connect", "check", "run"]
 InboxTab = Literal["review", "accepted", "discarded"]
@@ -169,9 +171,12 @@ class EnquiryCardView(_View):
     cost_usd_micros: int
     tokens_total: int
     # additive
-    source_ref: str | None = None  # first source URN (ui.md: data-urn)
+    source_ref: str | None = None  # first source ref: a URN or ck:<KEY> (ui.md: data-urn)
     ai_priority: str | None = None
     ai_offering_id: int | None = None
+    # Phase 1.2: scraper.urls.link_kind_of(source_url), derived on read (never stored);
+    # None when source_url is null. Drives the card's link label (ui.md).
+    link_kind: LinkKind | None = None
 
 
 class InboxPage(_View):

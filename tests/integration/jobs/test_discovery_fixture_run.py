@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
+from structlog.testing import capture_logs
 
 from sales0.clock import utcnow
 from sales0.config import Settings, get_settings, reset_settings
@@ -16,6 +17,7 @@ from sales0.db.engine import session_scope
 from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, Keyword, LlmCall, ScrapeRun
 from sales0.jobs import discovery_job
 from sales0.jobs.runner import get_runner
+from sales0.linkedin_fixture.corpus import FixturePost, load_corpus
 from sales0.llm import reset_llm_client
 from sales0.services import inbox, keywords, offerings, runs
 from sales0.services.session import session_status
@@ -47,12 +49,26 @@ def detail(run_id: int):
         return runs.get_run(db, run_id)
 
 
+def fixture_post(n: int) -> FixturePost:
+    return next(p for p in load_corpus() if p.id == f"P{n}")
+
+
 def enquiry_for(n: int) -> Enquiry:
+    """Phase 1.2: the SDUI DOM carries no URN, so a post is located by any of its possible
+    refs (its URN when "Copy link to post" yields it, else ``ck:`` + its key per keyword)."""
+    refs = fixture_post(n).possible_refs()
     with session_scope() as db:
-        eid = db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref == URN.format(n)))
+        eid = db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref.in_(refs)).limit(1))
+        assert eid is not None, f"no enquiry for P{n} (refs {refs})"
         e = db.get(Enquiry, eid)
         assert e is not None
         return e
+
+
+def source_refs(eid: int) -> list[str]:
+    with session_scope() as db:
+        return list(db.scalars(select(EnquirySource.source_ref).where(EnquirySource.enquiry_id == eid)
+                               .order_by(EnquirySource.id)))
 
 
 def chips(eid: int) -> set[str]:
@@ -87,13 +103,25 @@ def test_fixture_run_dedupes_the_corpus_with_a_real_browser_and_fake_llm(connect
     assert llm.calls == 7
     assert [(k.keyword_text, k.posts_seen) for k in d.keywords] == [
         ("corporate ai training", 3), ("ai workshop", 4), ("ai consulting", 2)]
-    p1, p2 = enquiry_for(1), enquiry_for(2)
+    p1, p2, p5, p6 = enquiry_for(1), enquiry_for(2), enquiry_for(5), enquiry_for(6)
     assert chips(p1.id) == {"corporate ai training", "ai workshop"}
     assert chips(p2.id) == {"corporate ai training", "ai workshop"}
     with session_scope() as db:
         assert db.scalar(select(func.count(Enquiry.id))) == 7
-        assert db.scalar(select(func.count(EnquirySource.id)).where(EnquirySource.enquiry_id == p2.id)) == 2
-    assert p1.source_url == f"{discovery_base()}/feed/update/{URN.format(1)}/"
+    base = discovery_base()
+    # Phase 1.2: no URN in the DOM. P1's key differs per keyword -> 2 ck: rows, merged by content.
+    fp1 = fixture_post(1)
+    assert source_refs(p1.id) == [f"ck:{fp1.key_for('corporate ai training')}", f"ck:{fp1.key_for('ai workshop')}"]
+    # P2's URN comes from "Copy link to post"; P7 (same text, no menu) adds its ck: row.
+    assert source_refs(p2.id) == [URN.format(2), f"ck:{fixture_post(7).key_for('ai workshop')}"]
+    # Links: P5 copy link -> clean permalink; P1/P6 menus copy nothing -> author profile.
+    assert p5.source_url == f"{base}/feed/update/{URN.format(5)}/" and URN.format(5) in source_refs(p5.id)
+    assert p1.source_url == f"{base}/in/{fp1.profile_slug}/"
+    assert p6.source_url == f"{base}/in/{fixture_post(6).profile_slug}/"
+    with session_scope() as db:
+        cards = {n: inbox.get_card(db, e.id) for n, e in ((1, p1), (5, p5), (6, p6))}
+    assert {n: c.link_kind for n, c in cards.items()} == {1: "profile", 5: "post", 6: "profile"}
+    assert all("utm_" not in (c.source_url or "") and "rcm=" not in (c.source_url or "") for c in cards.values())
 
 
 def test_checkpoint_keyword_aborts_the_run_and_flags_the_session(connected: Settings) -> None:
@@ -207,3 +235,29 @@ def test_real_haiku_run_one_then_run_two_learns_from_decisions(connected: Settin
     with session_scope() as db:
         rows = db.scalars(select(LlmCall).where(LlmCall.run_id == r2.id, LlmCall.feature == "triage")).all()
         assert rows and all(row.fewshot_count >= 1 for row in rows)
+
+
+def test_fixture_run_logs_sdui_strategy_and_permalink_counts(connected: Settings) -> None:
+    add_keywords("ai workshop")
+    with session_scope() as db:
+        run = ScrapeRun(trigger="manual", mode="fixture", status="queued", started_at=utcnow())
+        db.add(run)
+        db.flush()
+        rid = run.id
+    with capture_logs() as logs:
+        discovery_job.execute(rid, llm=FakeLLMClient(responder=lambda req: triage_answer()))
+    d = detail(rid)
+    assert (d.run.status, d.run.posts_seen, d.run.posts_new) == ("succeeded", 4, 4)
+    line = next(e for e in logs if e["event"] == "scrape_keyword")
+    # ai workshop = P1 (noop), P5 (urn), P6 (noop), P7 (no menu): 3 attempts, 1 link found.
+    assert (line["strategy"], line["permalink_attempts"], line["permalinks_found"]) == ("sdui", 3, 1)
+
+
+def test_legacy_urn_keyword_still_identifies_posts_by_urn(connected: Settings) -> None:
+    add_keywords("legacy-urn-test")
+    d = detail(start_and_wait())
+    assert d.run.status == "succeeded" and d.keywords[0].status == "done"
+    assert d.run.posts_seen == 10
+    with session_scope() as db:
+        refs = set(db.scalars(select(EnquirySource.source_ref)))
+    assert refs and all(r.startswith("urn:li:activity:") for r in refs)

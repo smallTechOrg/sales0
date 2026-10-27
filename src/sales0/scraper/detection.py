@@ -15,11 +15,16 @@ import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlsplit
 
 from sales0.scraper import selectors as S
 from sales0.scraper.parsing import CARD_ARGS, CARDS_PRELUDE_JS
-from sales0.scraper.urls import FIXTURE_PREFIX
+from sales0.scraper.urls import linkedin_path, same_site
+
+__all__ = [
+    "CONTENT_READY_JS", "SIGNALS_JS", "SIGNAL_ARGS", "PageKind", "PageSignals", "PageVerdict", "classify_page",
+    "classify_url", "is_rate_limit_response", "linkedin_path", "read_signals", "same_site", "session_cookie_present",
+    "session_cookie_valid", "signals_from",
+]
 
 if TYPE_CHECKING:
     from playwright.sync_api import BrowserContext, Page, Response
@@ -51,20 +56,7 @@ class PageVerdict:
 
 
 # --------------------------------------------------------------------------- URL rules
-def linkedin_path(url: str) -> str | None:
-    """The LinkedIn-shaped path of ``url`` (fixture prefix removed), or None for non-web URLs."""
-    try:
-        parts = urlsplit(url)
-    except ValueError:
-        return None
-    if parts.scheme not in ("http", "https"):
-        return None
-    path = parts.path or "/"
-    if path == FIXTURE_PREFIX or path.startswith(FIXTURE_PREFIX + "/"):
-        path = path[len(FIXTURE_PREFIX) :] or "/"
-    return path
-
-
+# ``linkedin_path`` / ``same_site`` live in ``scraper.urls`` (pure, shared) and are re-exported here.
 def classify_url(url: str, base: str | None = None) -> UrlKind | None:
     """Path-only rules (the navigation latch, the Connect poll, ``classify_page``).
 
@@ -117,24 +109,6 @@ def classify_page(signals: PageSignals) -> PageVerdict:
 
 
 # --------------------------------------------------------------------------- site rules
-def same_site(url: str, base: str) -> bool:
-    """True when ``url`` is served by the site ``base`` points at.
-
-    Live: any ``linkedin.com`` host (``www.``, the bare domain...), so a 429/999 on a
-    background ``/voyager/api/...`` call counts. Fixture: the exact fixture host:port.
-    """
-    try:
-        target, home = urlsplit(url), urlsplit(base)
-        host, home_host = (target.hostname or "").lower(), (home.hostname or "").lower()
-    except ValueError:
-        return False
-    if target.scheme not in ("http", "https"):
-        return False
-    if home_host == "linkedin.com" or home_host.endswith(".linkedin.com"):
-        return host == "linkedin.com" or host.endswith(".linkedin.com")
-    return target.netloc.lower() == home.netloc.lower()
-
-
 def is_rate_limit_response(url: str, status: int, base: str) -> bool:
     """A response (document, XHR or fetch) that means LinkedIn is throttling this session."""
     return status in RATE_LIMIT_STATUSES and same_site(url, base)
@@ -168,9 +142,10 @@ SIGNAL_ARGS: dict[str, Any] = {
     "authwall": list(S.AUTHWALL_MARKERS),
     "captcha": list(S.CAPTCHA_MARKERS),
     "soft_hints": dict(S.SOFT_LOGGED_IN_HINTS),
+    "sdui_screen": S.SDUI_SCREEN,  # Phase 1.2: informational only
 }
 
-# () => {has_captcha, has_login_form, has_authwall, no_results, cards_found, soft_hints}
+# () => {has_captcha, has_login_form, has_authwall, no_results, cards_found, strategy, sdui_screen, soft_hints}
 SIGNALS_JS = (
     "(sel) => {"
     + CARDS_PRELUDE_JS
@@ -180,7 +155,9 @@ return {
   has_login_form: __any(sel.login_form),
   has_authwall: __any(sel.authwall),
   no_results: __noResults(sel),
-  cards_found: __cards(sel).length,
+  cards_found: __cardsFound(sel),
+  strategy: __cards(sel).strategy,
+  sdui_screen: !!document.querySelector(sel.sdui_screen),
   soft_hints: Object.entries(sel.soft_hints).filter(([, css]) => __any([css])).map(([name]) => name),
 };
 }"""
@@ -190,7 +167,7 @@ return {
 CONTENT_READY_JS = (
     "(sel) => {"
     + CARDS_PRELUDE_JS
-    + "return __cards(sel).length > 0 || __noResults(sel) || __any(sel.captcha) || __any(sel.login_form)"
+    + "return __cardsFound(sel) > 0 || __noResults(sel) || __any(sel.captcha) || __any(sel.login_form)"
     + " || __any(sel.authwall); }"
 )
 
@@ -207,6 +184,11 @@ def signals_from(url: str, status: int | None, has_cookie: bool, dom: Mapping[st
         soft_hints=tuple(str(h) for h in (dom.get("soft_hints") or ())),
     )
     extras = {"no_results": bool(dom.get("no_results")), "cards_found": int(dom.get("cards_found") or 0)}
+    # Phase 1.2 (informational, logged only; never part of a verdict).
+    if "strategy" in dom:
+        extras["strategy"] = str(dom.get("strategy") or "none")
+    if "sdui_screen" in dom:
+        extras["sdui_screen"] = bool(dom.get("sdui_screen"))
     return signals, extras
 
 

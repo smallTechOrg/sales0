@@ -7,6 +7,8 @@ from typing import Any, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 Feature = Literal["triage", "ping", "research", "drafting", "suggest"]
+# Anthropic ``output_config.effort``. None = the field is not sent (provider default).
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
 class StructuredRequest(BaseModel):
@@ -21,6 +23,7 @@ class StructuredRequest(BaseModel):
     max_tokens: int = Field(gt=0)
     prompt_version: str
     log_context: dict[str, Any] = Field(default_factory=dict)  # enquiry_id, run_id, fewshot_count, input_summary
+    effort: Effort | None = None  # sent as output_config={"effort": ...} only when set
 
 
 class LLMResponse(BaseModel):
