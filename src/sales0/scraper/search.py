@@ -1,46 +1,104 @@
-"""LinkedInSearcher: content search per keyword on the persistent profile.
+"""LinkedInSearcher: content search per keyword on sales0's own (headless) browser profile.
 
 Slow and human-like: a random delay (``Pacer``) before every page action, at most
 ``SALES0_SCRAPE_MAX_SCROLLS`` scrolls and ``SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD`` posts.
-Any logout/checkpoint/captcha/rate-limit page closes the browser at once and raises
-``AccountSafetyStop`` — never retried, never pushed through. A 429/999 on ANY LinkedIn
-response (including background XHR/fetch such as ``/voyager/api/...``) counts as a rate
-limit; it is recorded by a context-wide response listener and checked at every checkpoint
-(after navigation, after each scroll, after each "see more" click).
+
+Safety (architecture.md → "Mid-run safety"):
+- **Latches**, registered at ``__enter__`` before the run-start check: a context-wide
+  ``response`` listener (any same-site 429/999, including background ``/voyager/api/``
+  calls) and a main-frame ``framenavigated`` listener (``classify_url`` not None, e.g. a
+  redirect to ``/authwall``, ``/login`` or ``/checkpoint/…``).
+- **Checkpoints** before each keyword, after each navigation, scroll and "see more" click,
+  and (latch only) on every poll while waiting for more cards: latch → stop; else
+  ``read_signals`` → ``classify_page``. ``ok`` continues; ``http_error`` on the search
+  document is a keyword ``ScrapeError``; anything else is a stop.
+- **Stop** = close the browser FIRST, then raise ``AccountSafetyStop``. Never retried.
+
+Layout drift is never silent: a logged-in results page that has result cards, or lacks the
+"no results" marker, but yields 0 posts sets ``drift_warning`` and logs WARNING
+``scraper_layout_drift``. Missing optional fields are counted into ``field_misses``.
 """
 
 from __future__ import annotations
 
 import time
+from collections import Counter
 from contextlib import ExitStack
 from typing import Any
+from urllib.parse import urlsplit
 
-from playwright.sync_api import BrowserContext, Locator, Page, Response
+from playwright.sync_api import BrowserContext, ElementHandle, Frame, Page, Response
 from playwright.sync_api import Error as PlaywrightError
 
 from sales0.clock import local_today
 from sales0.config import Settings
 from sales0.logging import get_logger
-from sales0.scraper import selectors
-from sales0.scraper.browser import (
-    first_page,
-    open_context,
-    profile_dir,
-    run_headless,
-    scroll_settle_ms,
-    wait_timeout_ms,
+from sales0.scraper.browser import first_page, open_context
+from sales0.scraper.detection import (
+    CONTENT_READY_JS,
+    SIGNAL_ARGS,
+    classify_page,
+    classify_url,
+    is_rate_limit_response,
+    read_signals,
 )
-from sales0.scraper.detection import classify, is_rate_limit_response, read_signals
-from sales0.scraper.errors import AccountSafetyStop, ScrapeError
+from sales0.scraper.errors import AccountSafetyStop, SafetyKind, ScrapeError, SessionMissing
 from sales0.scraper.pacing import Pacer
-from sales0.scraper.parsing import EXTRACT_ARGS, EXTRACT_JS, ParseError, post_from_raw
-from sales0.scraper.session_check import REASON_TO_KIND, verify_logged_in
-from sales0.scraper.types import KeywordScrapeResult, ScrapedPost, SessionCheckResult
+from sales0.scraper.parsing import (
+    CARD_ARGS,
+    COUNT_CARDS_JS,
+    EXTRACT_ARGS,
+    EXTRACT_JS,
+    SEE_MORE_JS,
+    drift_detected,
+    parse_cards,
+    see_more_args,
+)
+from sales0.scraper.session_check import verify_in_context
+from sales0.scraper.types import KeywordScrapeResult, SessionCheckResult
 from sales0.scraper.urls import base_url, search_url
 
 log = get_logger("sales0.scraper.search")
 
 _POLL_MS = 250
+
+# verify_in_context reason → the stop it means at run start (no_cookie / error handled separately).
+_SESSION_STOP: dict[str, SafetyKind] = {
+    "redirected_login": "logout",
+    "checkpoint": "checkpoint",
+    "captcha": "captcha",
+    "rate_limited": "rate_limited",
+}
+
+
+def content_timeout_ms(settings: Settings) -> int:
+    """How long to wait for page content (LinkedIn is a slow SPA; the fixture is not)."""
+    return 5_000 if settings.linkedin_mode == "fixture" else 15_000
+
+
+def scroll_settle_ms(settings: Settings) -> int:
+    """How long to wait for more cards after a scroll before concluding the end of results."""
+    return 1_200 if settings.linkedin_mode == "fixture" else 2_500
+
+
+def extract_raw_cards(page: Page) -> list[dict[str, Any]]:
+    """Run ``EXTRACT_JS`` on the page: one raw dict per discovered card."""
+    raws = page.evaluate(EXTRACT_JS, EXTRACT_ARGS)
+    return list(raws or [])
+
+
+def count_cards(page: Page) -> int:
+    return int(page.evaluate(COUNT_CARDS_JS, CARD_ARGS) or 0)
+
+
+def see_more_buttons(page: Page, n: int) -> list[ElementHandle]:
+    """The "see more" toggle of each of the first ``n`` cards (cards without one are skipped)."""
+    handle = page.evaluate_handle(SEE_MORE_JS, see_more_args(n))
+    try:
+        elements = [prop.as_element() for prop in handle.get_properties().values()]
+    finally:
+        handle.dispose()
+    return [el for el in elements if el is not None]
 
 
 class LinkedInSearcher:
@@ -52,32 +110,41 @@ class LinkedInSearcher:
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self.session: SessionCheckResult | None = None
-        self._rate_limited_url: str | None = None  # first throttled LinkedIn response seen
+        self._latch: tuple[SafetyKind, str] | None = None  # first safety signal seen by a listener
 
     # ------------------------------------------------------------------ lifecycle
     def __enter__(self) -> LinkedInSearcher:
         stack = ExitStack()
         try:
-            context = stack.enter_context(open_context(profile_dir(self._settings), run_headless(self._settings)))
+            context = stack.enter_context(open_context(self._settings, headless=True))
             self._stack, self._context = stack, context
-            self._rate_limited_url = None
+            self._latch = None
+            page = first_page(context)
+            self._page = page
             context.on("response", self._on_response)
-            self.session = verify_logged_in(context, self._base, wait_timeout_ms(self._settings))
-            if self._rate_limited_url is not None:
-                log.warning("scraper_safety_stop", kind="rate_limited", url=self._rate_limited_url, stage="session_check")
-                raise AccountSafetyStop("rate_limited", self._rate_limited_url)
-            if not self.session.logged_in:
-                if self.session.reason == "error":
-                    raise ScrapeError(f"Could not load the LinkedIn feed at {self.session.url}")
-                kind = REASON_TO_KIND[self.session.reason]
-                log.warning("scraper_safety_stop", kind=kind, url=self.session.url, stage="session_check")
-                raise AccountSafetyStop(kind, self.session.url)
-            self._page = first_page(context)
+            page.on("framenavigated", self._on_navigated)
+            self.session = verify_in_context(context, self._base, content_timeout_ms(self._settings), page=page)
+            self._enter_verdict(self.session)
         except BaseException:
             self.close()
             stack.close()
             raise
         return self
+
+    def _enter_verdict(self, session: SessionCheckResult) -> None:
+        if session.reason == "no_cookie":
+            log.warning("scraper_session_missing", url=session.url)
+            self.close()
+            raise SessionMissing(session.url)
+        if self._latch is not None:
+            raise self._stop(*self._latch, stage="session_check")
+        if session.logged_in:
+            log.debug("scraper_session_ok", url=session.url, soft_hints=list(session.soft_hints))
+            return
+        if session.reason == "error":
+            self.close()
+            raise ScrapeError(f"Could not load the LinkedIn feed at {session.url}")
+        raise self._stop(_SESSION_STOP[session.reason], session.url, stage="session_check")
 
     def __exit__(self, *exc: object) -> None:
         self.close()
@@ -93,44 +160,68 @@ class LinkedInSearcher:
             stack.close()
 
     # ------------------------------------------------------------------ safety
-    def _stop(self, kind: Any, url: str) -> AccountSafetyStop:
-        log.warning("scraper_safety_stop", kind=kind, url=url, stage="search")
-        self.close()
+    def _stop(self, kind: SafetyKind, url: str, stage: str = "search") -> AccountSafetyStop:
+        log.warning("scraper_safety_stop", kind=kind, url=url, stage=stage)
+        self.close()  # close FIRST, then the caller raises
         return AccountSafetyStop(kind, url)
 
+    def _set_latch(self, kind: SafetyKind, url: str) -> None:
+        if self._latch is None:
+            self._latch = (kind, url)
+
     def _on_response(self, response: Response) -> None:
-        """Context-wide listener: remember the first 429/999 from LinkedIn (document or background)."""
-        if self._rate_limited_url is not None:
+        """Context-wide: any same-site 429/999 (document or background) latches ``rate_limited``."""
+        if self._latch is not None:
             return
         try:
             url, status = response.url, response.status
         except PlaywrightError:
             return
         if is_rate_limit_response(url, status, self._base):
-            self._rate_limited_url = url
             log.warning("scraper_rate_limit_response", url=url, status=status)
+            self._set_latch("rate_limited", url)
 
-    def _check_safety(self, page: Page, response: Response | None) -> None:
-        if self._rate_limited_url is not None:
-            raise self._stop("rate_limited", self._rate_limited_url)
+    def _on_navigated(self, frame: Frame) -> None:
+        """Main frame only: a navigation to a login/checkpoint/captcha path latches that kind."""
         try:
-            signals = read_signals(page, response)
+            if frame.parent_frame is not None:
+                return
+            url = frame.url
+        except PlaywrightError:
+            return
+        kind = classify_url(url, self._base)
+        if kind is not None:
+            log.warning("scraper_safety_navigation", kind=kind, url=url)
+            self._set_latch(kind, url)
+
+    def _raise_if_latched(self) -> None:
+        if self._latch is not None:
+            raise self._stop(*self._latch)
+
+    def _checkpoint(self, page: Page, response: Response | None = None, *, what: str = "") -> dict:
+        """Latch → stop; else classify the page. Returns the SIGNALS_JS extras on ``ok``."""
+        self._raise_if_latched()
+        context = self._context
+        if context is None:
+            raise ScrapeError("LinkedInSearcher is closed")
+        try:
+            signals, extras = read_signals(page, response, context, self._base)
         except PlaywrightError:
             # Usually a navigation in flight (e.g. a redirect to a checkpoint): let it land, re-read once.
             try:
-                page.wait_for_load_state("domcontentloaded", timeout=wait_timeout_ms(self._settings))
-                signals = read_signals(page, response)
+                page.wait_for_load_state("domcontentloaded", timeout=content_timeout_ms(self._settings))
+                signals, extras = read_signals(page, response, context, self._base)
             except PlaywrightError as exc:
-                if self._rate_limited_url is not None:
-                    raise self._stop("rate_limited", self._rate_limited_url) from exc
+                self._raise_if_latched()
                 raise ScrapeError(f"Could not read the LinkedIn page: {exc}") from exc
-        if self._rate_limited_url is not None:
-            raise self._stop("rate_limited", self._rate_limited_url)
-        kind = classify(signals)
-        if kind is None and not signals.has_logged_in_marker:
-            kind = "logout"  # logged-out pages never carry the global nav
-        if kind is not None:
-            raise self._stop(kind, signals.url)
+        self._raise_if_latched()
+        verdict = classify_page(signals)
+        if verdict.kind == "ok":
+            return extras
+        if verdict.kind == "http_error":
+            raise ScrapeError(f"LinkedIn returned HTTP {signals.status}{what}")
+        log.debug("scraper_checkpoint_verdict", kind=verdict.kind, reason=verdict.reason, url=signals.url)
+        raise self._stop(verdict.kind, signals.url)  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------ search
     def search(self, keyword: str, max_posts: int) -> KeywordScrapeResult:
@@ -138,59 +229,81 @@ class LinkedInSearcher:
         if page is None or not self.is_open:
             raise ScrapeError("LinkedInSearcher is not open (use it as a context manager)")
         cap = max(0, min(max_posts, self._settings.scrape_max_posts_per_keyword))
-        url = search_url(self._base, keyword, self._settings.scrape_date_filter)
+        url = search_url(self._base, keyword, self._settings.scrape_date_filter)  # ValueError on a blank keyword
         started = time.monotonic()
+        what = f" for '{keyword}'"
 
+        self._checkpoint(page, what=what)  # before each keyword (e.g. li_at gone since the last one)
         self._pacer.delay()
         try:
             response = page.goto(url, wait_until="domcontentloaded")
         except PlaywrightError as exc:
-            self._check_safety(page, None)
-            raise ScrapeError(f"Could not open search results for '{keyword}': {exc}") from exc
-        self._check_safety(page, response)
-        if response is not None and response.status >= 400:
-            raise ScrapeError(f"LinkedIn returned HTTP {response.status} for '{keyword}'")
+            self._raise_if_latched()
+            raise ScrapeError(f"Could not open search results{what}: {exc}") from exc
+        self._checkpoint(page, response, what=what)
 
-        content_ready = f"{selectors.RESULT_CARD}, {selectors.NO_RESULTS_MARKER}"
         try:
-            page.wait_for_selector(content_ready, state="attached", timeout=wait_timeout_ms(self._settings))
+            page.wait_for_function(CONTENT_READY_JS, arg=SIGNAL_ARGS, timeout=content_timeout_ms(self._settings))
         except PlaywrightError:
-            pass  # neither appeared: possible layout drift, decided below
-        self._check_safety(page, None)
-
-        cards = page.locator(selectors.RESULT_CARD)
-        no_results = page.locator(selectors.NO_RESULTS_MARKER).count() > 0
-        if cards.count() == 0:
-            drift = not no_results
-            if drift:
-                log.warning("scraper_layout_drift", keyword=keyword, url=page.url)
-            return KeywordScrapeResult(keyword=keyword, posts=[], scrolls=0, parse_errors=0, drift_warning=drift)
+            pass  # nothing appeared: possible layout drift, decided below
+        extras = self._checkpoint(page, what=what)
+        cards_found, no_results = extras["cards_found"], extras["no_results"]
 
         scrolls = 0
-        while cards.count() < cap and scrolls < self._settings.scrape_max_scrolls:
-            before = cards.count()
-            self._pacer.delay()
-            self._wheel(page, self._pacer.randint(700, 1400))
-            scrolls += 1
-            grew = self._wait_for_more_cards(page, before)
-            self._check_safety(page, None)
-            if not grew:
-                break  # end of results
+        if cards_found > 0:
+            while cards_found < cap and scrolls < self._settings.scrape_max_scrolls:
+                before = cards_found
+                self._pacer.delay()
+                self._wheel(page, self._pacer.randint(700, 1400))
+                scrolls += 1
+                grew = self._wait_for_more_cards(page, before)
+                extras = self._checkpoint(page, what=what)
+                cards_found, no_results = extras["cards_found"], extras["no_results"]
+                if not grew:
+                    break  # end of results
+            self._expand(page, min(cap, cards_found), what)
 
-        self._expand(page, min(cap, cards.count()))
-        self._check_safety(page, None)
-        posts, parse_errors = self._parse(page, cap)
+        try:
+            raws = extract_raw_cards(page) if cards_found > 0 else []
+        except PlaywrightError as exc:
+            self._raise_if_latched()
+            raise ScrapeError(f"Could not read result cards{what}: {exc}") from exc
+        parsed = parse_cards(raws, self._base, local_today(self._settings.tz), cap)
+        cards_found = max(cards_found, parsed.cards_found)
+        drift = drift_detected(len(parsed.posts), cards_found, no_results)
+        for error in parsed.errors:
+            log.debug("scraper_parse_error", keyword=keyword, error=error)
+        if raws:
+            via = Counter(f"{k}={v}" for raw in raws for k, v in (raw.get("via") or {}).items())
+            log.debug("scraper_parse_via", keyword=keyword, via=dict(via))
+        if drift:
+            log.warning(
+                "scraper_layout_drift",
+                keyword=keyword,
+                final_path=urlsplit(page.url).path,
+                cards_found=cards_found,
+                parse_errors=parsed.parse_errors,
+            )
         log.debug(
             "scraper_search_done",
             keyword=keyword,
-            cards=cards.count(),
-            posts=len(posts),
+            cards_found=cards_found,
+            posts=len(parsed.posts),
             scrolls=scrolls,
-            parse_errors=parse_errors,
+            parse_errors=parsed.parse_errors,
+            field_misses=parsed.field_misses,
+            no_results=no_results,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
         return KeywordScrapeResult(
-            keyword=keyword, posts=posts, scrolls=scrolls, parse_errors=parse_errors, drift_warning=False
+            keyword=keyword,
+            posts=parsed.posts,
+            scrolls=scrolls,
+            parse_errors=parsed.parse_errors,
+            drift_warning=drift,
+            cards_found=cards_found,
+            no_results=no_results,
+            field_misses=parsed.field_misses,
         )
 
     # Raw page actions, kept separate so tests can observe that a paced delay precedes each.
@@ -198,68 +311,49 @@ class LinkedInSearcher:
         try:
             page.mouse.wheel(0, delta_y)
         except PlaywrightError as exc:
+            self._raise_if_latched()
             raise ScrapeError(f"Page closed while scrolling: {exc}") from exc
 
-    def _click(self, button: Locator) -> None:
+    def _click(self, button: ElementHandle) -> None:
         button.click(timeout=3_000)
 
     def _wait_for_more_cards(self, page: Page, before: int) -> bool:
-        """Poll up to ``scroll_settle_ms`` for more cards than ``before``. False = end of results
-        (or the page navigated away / LinkedIn throttled us — the next safety check decides)."""
+        """Poll up to ``scroll_settle_ms`` for more cards than ``before`` (latch checked every poll).
+        False = end of results, or the page is mid-navigation (the next checkpoint decides)."""
         deadline = time.monotonic() + scroll_settle_ms(self._settings) / 1000
         while True:
             try:
-                page.wait_for_timeout(_POLL_MS)  # also pumps Playwright events (response listener)
+                page.wait_for_timeout(_POLL_MS)  # also pumps Playwright events (the latches)
             except PlaywrightError as exc:
+                self._raise_if_latched()
                 raise ScrapeError(f"Page closed while scrolling: {exc}") from exc
-            if self._rate_limited_url is not None:
-                return False
+            self._raise_if_latched()
             try:
-                if page.locator(selectors.RESULT_CARD).count() > before:
+                if count_cards(page) > before:
                     return True
             except PlaywrightError:
                 return False  # mid-navigation (e.g. redirected to a checkpoint)
             if time.monotonic() >= deadline:
                 return False
 
-    def _expand(self, page: Page, n: int) -> None:
-        """Click 'see more' on the first ``n`` cards, pacing each click like a human and
-        re-checking account safety after each one."""
-        cards = page.locator(selectors.RESULT_CARD)
-        for i in range(n):
-            button = cards.nth(i).locator(selectors.SEE_MORE_BUTTON)
+    def _expand(self, page: Page, n: int, what: str) -> None:
+        """Click "see more" on the first ``n`` cards, paced like a human, with a checkpoint after each."""
+        if n <= 0:
+            return
+        try:
+            buttons = see_more_buttons(page, n)
+        except PlaywrightError:
+            self._raise_if_latched()
+            return
+        for button in buttons:
             try:
-                if button.count() == 0 or not button.first.is_visible():
+                if not button.is_visible():
                     continue
             except PlaywrightError:
                 continue
             self._pacer.delay()
             try:
-                self._click(button.first)
+                self._click(button)
             except PlaywrightError:
                 pass  # an unexpandable card is parsed as-is
-            self._check_safety(page, None)
-
-    def _parse(self, page: Page, cap: int) -> tuple[list[ScrapedPost], int]:
-        try:
-            raws: list[dict[str, Any]] = page.eval_on_selector_all(selectors.RESULT_CARD, EXTRACT_JS, EXTRACT_ARGS)
-        except PlaywrightError as exc:
-            raise ScrapeError(f"Could not read result cards: {exc}") from exc
-        today = local_today(self._settings.tz)
-        posts: list[ScrapedPost] = []
-        seen: set[str] = set()
-        errors = 0
-        for raw in raws:
-            if len(posts) >= cap:
-                break
-            try:
-                post = post_from_raw(raw, self._base, today)
-            except ParseError as exc:
-                errors += 1
-                log.debug("scraper_parse_error", error=str(exc))
-                continue
-            if post.urn in seen:
-                continue
-            seen.add(post.urn)
-            posts.append(post)
-        return posts, errors
+            self._checkpoint(page, what=what)

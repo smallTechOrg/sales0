@@ -1,0 +1,5 @@
+{# Layout-drift alert (Phase 1.1, ui.md). Needs: drift_alert (str), drift_run (RunView). Not dismissible; runs stay allowed. #}
+<div id="run-drift-alert" class="banner banner--warn" role="status">
+  <p class="banner__text"><strong>{{ drift_alert }}</strong></p>
+  <a class="btn btn--sm" href="/runs/{{ drift_run.id }}#run-keywords">Open the per-keyword log</a>
+</div>

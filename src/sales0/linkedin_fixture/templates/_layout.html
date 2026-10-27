@@ -1,3 +1,5 @@
+{#- Current-LinkedIn-shaped markup (architecture.md → Fixture markup, Phase 1.1): obfuscated,
+    deterministic class names; no global-nav; nothing the scraper may depend on by class. -#}
 <!doctype html>
 <html lang="en">
 <head>
@@ -5,21 +7,26 @@
   <title>{% block title %}LinkedIn (fixture){% endblock %}</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; background: #f4f2ee; color: #1d1d1d; }
-    .global-nav { background: #fff; padding: 8px 24px; border-bottom: 1px solid #ddd; }
-    main { max-width: 720px; margin: 24px auto; padding: 0 16px; }
-    .feed-shared-update-v2 { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-    .update-components-actor__meta-link { display: block; color: inherit; text-decoration: none; }
-    .update-components-actor__title { font-weight: 600; display: block; }
-    .update-components-actor__description, .update-components-actor__sub-description { color: #666; font-size: 14px; display: block; }
-    .update-components-text { white-space: pre-line; margin-top: 8px; }
-    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-    .fixture-banner { background: #fff3cd; padding: 4px 24px; font-size: 12px; }
+    .q7fz2 { background: #fff3cd; padding: 4px 24px; font-size: 12px; }
+    .h4kx9 { background: #fff; padding: 8px 24px; border-bottom: 1px solid #ddd; }
+    .n8rq3 a { color: inherit; text-decoration: none; margin-right: 12px; }
+    .w2jd5 { max-width: 720px; margin: 24px auto; padding: 0 16px; }
+    .u5rt7 { list-style: none; margin: 0; padding: 0; }
+    .k3v9q { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .a1lp4 { display: block; color: inherit; text-decoration: none; }
+    .d9zh3 { display: block; font-weight: 600; }
+    .e2mc8, ._s4tv { display: block; color: #666; font-size: 14px; }
+    .t5wq1 { white-space: pre-line; margin-top: 8px; }
+    .b7lm2 { border: 0; background: none; color: #666; cursor: pointer; padding: 0; }
+    .f6yu1 { display: block; margin-top: 8px; font-size: 12px; color: #0a66c2; }
+    ._vh3k { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .c8pz1 { background: #fff; border-radius: 8px; padding: 24px; max-width: 400px; margin: 48px auto; }
   </style>
 </head>
 <body>
-  <div class="fixture-banner">FIXTURE MODE — fake LinkedIn served by sales0</div>
-  {% block nav %}<nav class="global-nav" aria-label="Primary"><strong>in</strong> Home · My Network · Jobs · Messaging</nav>{% endblock %}
-  <main>{% block content %}{% endblock %}</main>
+  <div class="q7fz2">FIXTURE MODE — fake LinkedIn served by sales0</div>
+  {% block nav %}<header class="h4kx9"><nav class="n8rq3 _p3z9" aria-label="Primary"><a class="x4dm2" href="{{ base }}/feed/"><strong>in</strong> Home</a><a class="x4dm2" href="{{ base }}/mynetwork/">My Network</a><a class="x4dm2" href="{{ base }}/jobs/">Jobs</a><a class="x4dm2" href="{{ base }}/messaging/">Messaging</a><a class="x4dm2 _r7yq" href="{{ base }}/in/sales0-fixture-me/" aria-label="Me">Me</a></nav></header>{% endblock %}
+  <main class="w2jd5">{% block content %}{% endblock %}</main>
   {% block scripts %}{% endblock %}
 </body>
 </html>

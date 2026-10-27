@@ -3,7 +3,17 @@
 import re
 import unicodedata
 
-from sales0.linkedin_fixture.corpus import SEE_MORE_AT, load_corpus, normalize_keyword, post_by_urn, posts_for
+from sales0.linkedin_fixture.corpus import (
+    CARD_SHAPES,
+    LAZY_PLANS,
+    LOGOUT_KEYWORD,
+    SEE_MORE_AT,
+    TRIGGER_KEYWORDS,
+    load_corpus,
+    normalize_keyword,
+    post_by_urn,
+    posts_for,
+)
 from sales0.scraper.parsing import URN_RE
 
 
@@ -73,3 +83,34 @@ def test_long_posts_split_into_head_and_hidden_tail_without_losing_text() -> Non
     short = _by_id()["P11"]
     assert short.text_tail == "" and short.text_head == short.text
     assert post_by_urn(p1.urn) is p1 and post_by_urn("urn:li:activity:0") is None
+
+
+def test_card_shapes_rotate_by_corpus_position_as_specified() -> None:
+    shapes = {p.id: p.shape for p in load_corpus()}
+    assert shapes == {
+        "P1": "data-urn", "P2": "data-urn", "P3": "data-urn",
+        "P5": "data-id", "P6": "data-id", "P7": "data-id",
+        "P8": "update-link", "P9": "update-link",
+        "P10": "posts-link", "P11": "posts-link",
+    }
+    assert set(CARD_SHAPES) == {p.id for p in load_corpus()}  # no orphan or missing entry
+
+
+def test_posts_slug_carries_the_urn_in_linkedins_posts_permalink_form() -> None:
+    p10 = _by_id()["P10"]
+    assert p10.activity_id == "7300000000000000010"
+    match = re.fullmatch(r"[^/]*-(activity|ugcPost|share)-(\d+)-AbCd", p10.posts_slug)
+    assert match and f"urn:li:{match.group(1)}:{match.group(2)}" == p10.urn
+    assert p10.posts_slug.startswith(p10.profile_slug)
+
+
+def test_trigger_keywords_include_logout_and_never_collide_with_corpus_keywords() -> None:
+    assert LOGOUT_KEYWORD == "logout-test"
+    assert TRIGGER_KEYWORDS == {
+        "checkpoint-test", "captcha-test", "ratelimit-test", "logout-test", "layout-drift-test",
+        "lazy-scroll-test", "checkpoint-scroll-test", "ratelimit-scroll-test",
+    }
+    corpus_keywords = {k for p in load_corpus() for k in p.keywords}
+    assert not (TRIGGER_KEYWORDS & corpus_keywords)
+    assert all(posts_for(k) == [] for k in TRIGGER_KEYWORDS)
+    assert all(posts_for(plan.source_keyword) for plan in LAZY_PLANS.values())

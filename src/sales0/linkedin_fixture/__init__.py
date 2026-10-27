@@ -1,8 +1,9 @@
-"""Fake LinkedIn for offline tests and demos (slice C).
+"""Fake LinkedIn for offline tests and demos (slice C; Phase 1.1: R3).
 
 Mounted at ``/__fixtures/linkedin`` ONLY when ``SALES0_LINKEDIN_MODE=fixture`` (see
-``sales0.web.app``). Its DOM matches ``sales0.scraper.selectors`` exactly, so the same
-scraper code runs against it and against live LinkedIn.
+``sales0.web.app``). Its markup is shaped like CURRENT LinkedIn (obfuscated class names, no
+global-nav, four post-card shapes), so the same scraper code runs against it and against
+live LinkedIn without depending on class names.
 """
 
 from __future__ import annotations

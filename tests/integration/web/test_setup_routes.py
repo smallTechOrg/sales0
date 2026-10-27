@@ -48,7 +48,8 @@ def test_setup_page_lists_seeded_offerings_by_group_and_empty_keywords(client: T
     assert 'id="keyword-input"' in html and 'id="keyword-list"' in html
     assert "Change these in .env" in html and "Posts per day" in html and "150" in html
     card = html.split('id="linkedin-card"', 1)[1].split("</section>", 1)[0]
-    assert "sales0 uses your team's own LinkedIn login in a dedicated browser profile on this computer." in card
+    assert "sales0 opens Google Chrome with its own sales0 profile on this computer." in card
+    assert 'id="browser-note"' in card
     assert 'id="connect-linkedin"' in card and 'id="check-linkedin"' in card
     assert "every 1s" not in card  # idle: no polling
 
@@ -173,6 +174,8 @@ def test_needs_attention_card_shows_last_error_and_session_api(client: TestClien
     card = html.split('id="linkedin-card"', 1)[1].split("</section>", 1)[0]
     assert "Needs attention" in card and "Captcha page at /search/results/content/" in card
     assert "Connect LinkedIn" in card
+    assert "Press Connect LinkedIn — the sales0 Chrome window opens on LinkedIn so you can resolve it there." in card
+    assert "normal browser" not in card  # Phase 1 guidance is gone
     body = client.get("/api/session").json()
     assert body["ok"] is True
     assert body["data"]["status"] == "needs_attention" and body["data"]["last_error"].startswith("Captcha page")

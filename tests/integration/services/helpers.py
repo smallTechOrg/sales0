@@ -9,7 +9,7 @@ from typing import Any
 
 from sales0.db.engine import session_scope
 from sales0.db.models import Enquiry, LinkedInSession, ScrapeRun
-from sales0.scraper.errors import AccountSafetyStop, ScrapeError
+from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
 from sales0.scraper.types import KeywordScrapeResult, ScrapedPost
 from sales0.services import dedupe
 from tests.support.fake_llm import triage_answer
@@ -78,6 +78,9 @@ class FakeSearcher:
     enter_error: Exception | None = None
     searched: list[str] = field(default_factory=list)
     drift: set[str] = field(default_factory=set)
+    # Phase 1.1: keyword -> extra KeywordScrapeResult fields (cards_found, no_results,
+    # field_misses, parse_errors) merged into the scripted result.
+    extra: dict[str, dict[str, Any]] = field(default_factory=dict)
     closed: bool = False
 
     def __call__(self, _settings: Any) -> FakeSearcher:
@@ -96,13 +99,17 @@ class FakeSearcher:
         item = self.results.get(keyword.lower(), [])
         if isinstance(item, Exception):
             raise item
-        return KeywordScrapeResult(
-            keyword=keyword, posts=list(item)[:max_posts], scrolls=1, parse_errors=0, drift_warning=keyword in self.drift
-        )
+        fields: dict[str, Any] = {"parse_errors": 0, "drift_warning": keyword in self.drift}
+        fields.update(self.extra.get(keyword.lower(), {}))
+        return KeywordScrapeResult(keyword=keyword, posts=list(item)[:max_posts], scrolls=1, **fields)
 
 
 def safety(kind: str) -> AccountSafetyStop:
     return AccountSafetyStop(kind, "http://127.0.0.1/__fixtures/linkedin/checkpoint/challenge/")  # type: ignore[arg-type]
+
+
+def session_missing() -> SessionMissing:
+    return SessionMissing("http://127.0.0.1/__fixtures/linkedin/feed/")
 
 
 def scrape_error(msg: str = "timeout loading results") -> ScrapeError:

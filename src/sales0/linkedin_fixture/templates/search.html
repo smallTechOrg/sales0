@@ -1,24 +1,30 @@
 {% extends "_layout.html" %}
 {% block title %}"{{ keyword }}" | Search | LinkedIn (fixture){% endblock %}
 {% block content %}
-<h1 class="visually-hidden">Search results for {{ keyword }}</h1>
+<h1 class="_vh3k">Search results for {{ keyword }}</h1>
 {% if drift %}
-<div class="search-results-container-v2"><p>Results are loading in a layout sales0 does not know.</p></div>
-{% elif posts %}
-<ul class="reusable-search__entity-result-list">
-  {% for post in posts %}<li>{% include "_post_card.html" %}</li>{% endfor %}
+<ul role="list" class="u5rt7 _b2xe">
+  <li class="k3v9q"><div class="g4nu7">Results are loading in a layout sales0 does not know.</div></li>
+  <li class="k3v9q"><div class="g4nu7">Promoted · Grow your network with Premium</div></li>
+  <li class="k3v9q"><div class="g4nu7">People also searched for: corporate training</div></li>
 </ul>
-{% for post in lazy_posts or [] %}<template class="lazy-result"><li>{% include "_post_card.html" %}</li></template>{% endfor %}
+{% elif posts %}
+<ul role="list" class="u5rt7 _b2xe">
+  {% for post in posts %}{% include "_post_card.html" %}
+  {% endfor %}
+</ul>
+{% for post in lazy_posts or [] %}<template class="l0vr6">{% include "_post_card.html" %}</template>{% endfor %}
 {% else %}
-<div class="search-reusable-search-no-results"><h2>No results found</h2><p>Try shortening or rephrasing your search.</p></div>
+<div class="k3v9q _n4ow"><h2 class="o2ty5">No results found</h2><p class="e2mc8">Try shortening or rephrasing your search.</p></div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
+  // "…see more" reveals the hidden tail of the post text (no classes involved).
   document.addEventListener("click", (event) => {
-    const button = event.target.closest(".feed-shared-inline-show-more-text__see-more-less-toggle");
+    const button = event.target.closest('button[aria-label*="see more" i]');
     if (!button) return;
-    const rest = button.parentElement.querySelector(".see-more-rest");
+    const rest = button.parentElement.querySelector('[dir="ltr"] [hidden]');
     if (rest) rest.hidden = false;
     button.remove();
   });
@@ -28,7 +34,7 @@
   // Lazy results: each scroll gesture reveals the next card after a delay, like LinkedIn's XHR paging.
   (() => {
     const lazy = {{ lazy | tojson }};
-    const list = document.querySelector(".reusable-search__entity-result-list");
+    const list = document.querySelector('main > ul[role="list"]');
     const ping = () => { if (lazy.voyager_url) fetch(lazy.voyager_url, { credentials: "include" }).catch(() => {}); };
     let scrolls = 0, last = 0;
     ping();
@@ -40,7 +46,7 @@
       ping();
       if (lazy.checkpoint_at && scrolls >= lazy.checkpoint_at) { window.location.assign(lazy.next_page_url); return; }
       setTimeout(() => {
-        const next = document.querySelector("template.lazy-result");
+        const next = document.querySelector("main > template");
         if (next && list) { list.appendChild(next.content.cloneNode(true)); next.remove(); }
       }, lazy.delay_ms);
     }, { passive: true });

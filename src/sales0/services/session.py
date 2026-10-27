@@ -10,17 +10,26 @@ from sqlalchemy.orm import Session
 from sales0.config import get_settings
 from sales0.db.models import LinkedInSession
 from sales0.jobs.runner import get_runner
+from sales0.logging import get_logger
 from sales0.services._common import clip, now_or, record_history
 from sales0.services.views import SessionStatusView
 
 SESSION_ID = 1
 
+log = get_logger("sales0.services.session")
+
+# Phase 1.1 wording: the user resolves a stop in sales0's own Chrome window, which
+# Connect LinkedIn opens on LinkedIn (never "a normal browser" — that has no sales0 login).
 _SAFETY_TEMPLATES: dict[str, str] = {
-    "logout": "Logged out of LinkedIn (login page at {path}) — Connect LinkedIn again",
-    "checkpoint": "Checkpoint page at {path} — open LinkedIn manually, resolve it, then Connect again",
-    "captcha": "Captcha shown at {path} — open LinkedIn manually, solve it, then Connect again",
+    "logout": "Logged out of LinkedIn (login page at {path}) — press Connect LinkedIn to log in again",
+    "checkpoint": "Checkpoint page at {path} — press Connect LinkedIn and resolve it in the sales0 Chrome window",
+    "captcha": "Captcha shown at {path} — press Connect LinkedIn and solve it in the sales0 Chrome window",
     "rate_limited": "LinkedIn rate-limited the session at {path} — wait a few hours, then Re-check",
 }
+
+# Data flow step 2: the profile has no li_at cookie at all (not a safety stop).
+NOT_LOGGED_IN_MESSAGE = "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup"
+CHROME_MISSING_LABEL = "Google Chrome (not installed)"
 
 
 def _path(url: str | None) -> str:
@@ -98,11 +107,40 @@ def mark_successful_run(db: Session, *, now: datetime | None = None) -> None:
     db.flush()
 
 
+def browser_info() -> tuple[str, str | None, str | None]:
+    """(label, note, channel) for the Setup browser line; never raises.
+
+    Called through the module attribute so tests can stub ``resolve_browser``.
+    """
+    from sales0.scraper import browser as browser_mod
+    from sales0.scraper.errors import BrowserUnavailable
+
+    try:
+        choice = browser_mod.resolve_browser(get_settings())
+    except BrowserUnavailable as exc:
+        return CHROME_MISSING_LABEL, str(exc) or None, None
+    except Exception as exc:  # noqa: BLE001 — a detection bug must not 500 every page
+        log.exception("browser_resolve_failed", error_type=type(exc).__name__)
+        return "Browser unknown", "Could not detect the browser — see the server log", None
+    return choice.label, choice.note, choice.channel
+
+
+def browser_channel() -> str | None:
+    """The resolved channel for log lines (``chrome|chromium``), or None when unavailable."""
+    try:
+        return browser_info()[2]
+    except Exception:  # noqa: BLE001 — logging must never fail a job
+        return None
+
+
 def session_status(db: Session) -> SessionStatusView:
+    from sales0.services.runs import safety_cooldown_until
+
     row = get_session_row(db)
     runner = get_runner()
     busy = runner.busy()
     stored = row.status if row.status in ("not_connected", "connected", "needs_attention") else "not_connected"
+    label, note, channel = browser_info()
     return SessionStatusView(
         status="busy" if busy else stored,  # type: ignore[arg-type]
         busy_action=busy,  # type: ignore[arg-type]
@@ -113,6 +151,10 @@ def session_status(db: Session) -> SessionStatusView:
         connect_elapsed_s=runner.connect_elapsed_s() if busy == "connect" else None,
         stored_status=stored,  # type: ignore[arg-type]
         last_connected_at=row.last_connected_at,
+        browser_label=label,
+        browser_note=note,
+        browser_channel=channel,  # type: ignore[arg-type]
+        cooldown_until=safety_cooldown_until(db),
     )
 
 
@@ -131,6 +173,10 @@ def start_check(db: Session) -> SessionStatusView:
 
 
 __all__ = [
+    "CHROME_MISSING_LABEL",
+    "NOT_LOGGED_IN_MESSAGE",
+    "browser_channel",
+    "browser_info",
     "get_session_row",
     "mark_connected",
     "mark_needs_attention",

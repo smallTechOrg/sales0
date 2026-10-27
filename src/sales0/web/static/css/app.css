@@ -183,6 +183,13 @@ a:hover { color: var(--color-primary-hover); }
   border-color: #f4b4ae;
   color: #7a1810;
 }
+.banner--warn {           /* Phase 1.1: #run-drift-alert — #8a5300 on #fff4e0 ≈ 5.2:1 (AA) */
+  background: var(--color-warn-soft);
+  border-color: #f1d29c;
+  color: var(--color-warn);
+  margin: 0;
+  max-width: none;
+}
 .banner__text { flex: 1 1 20rem; }
 .banner-slot { padding: 0 var(--space-4); }
 .banner-slot:empty { display: none; }

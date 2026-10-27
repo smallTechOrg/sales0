@@ -14,6 +14,17 @@ Runs on the JobRunner thread with its own DB session, committing after every pos
 5. Fatal LLM error (bad key / workspace / model): triage stops, remaining keywords are
    skipped, the run ends ``failed`` with the mapped message; scraped enquiries stay
    ``pending`` (Retry triage in the inbox once the key is fixed).
+
+Phase 1.1:
+- ``SessionMissing`` (no ``li_at`` in the profile; raised before any LinkedIn request):
+  the run ends ``failed`` "Not logged in …", keywords ``skipped``, session
+  ``not_connected``; ``abort_reason`` stays null, so no cool-down and no banner.
+- The keyword whose search tripped an ``AccountSafetyStop`` gets ``last_run_at = now``
+  so the next run plans it last. A stop at the run-start check stamps nothing.
+- Keyword status/message come from ``services.runs.keyword_outcome`` (drift and field
+  misses are a ``warning``; nothing is silent). ``scrape_keyword`` / ``scrape_run`` log
+  the Phase 1.1 fields (``cards_found``, ``field_misses``, ``drift``, ``layout_warnings``,
+  ``browser``).
 """
 
 from __future__ import annotations
@@ -21,9 +32,10 @@ from __future__ import annotations
 import random
 import time
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import case, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -33,11 +45,12 @@ from sales0.db.engine import get_sessionmaker
 from sales0.db.models import Enquiry, Keyword, ScrapeRun, ScrapeRunKeyword
 from sales0.llm import LLMClient
 from sales0.logging import bind_context, get_logger, unbind_context
-from sales0.scraper.errors import AccountSafetyStop, ScrapeError
+from sales0.jobs.session_log import log_run_start
+from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
 from sales0.services import dedupe
 from sales0.services import session as session_service
 from sales0.services._common import clip, record_history
-from sales0.services.runs import posts_seen_today
+from sales0.services.runs import keyword_outcome, posts_seen_today
 from sales0.services.triage import FATAL_LLM_ERRORS, triage_enquiry
 
 log = get_logger("sales0.jobs.discovery")
@@ -50,6 +63,9 @@ SAFETY_LABELS = {
     "captcha": "LinkedIn captcha detected",
     "rate_limited": "LinkedIn rate limit detected",
 }
+
+
+NOT_LOGGED_IN_SKIP = "Not searched — not logged in"
 
 
 class _FatalLLM(Exception):
@@ -177,12 +193,14 @@ class _Run:
         self.step(f"Searching '{row.keyword_text}' ({index}/{total})", row.keyword_text)
         remaining_today = self.settings.scrape_max_posts_per_day - posts_seen_today(self.db)
         max_posts = max(1, min(self.settings.scrape_max_posts_per_keyword, remaining_today))
-        status = "done"
         try:
             result = searcher.search(row.keyword_text, max_posts)
         except AccountSafetyStop:
             row.status = "error"
             row.duration_ms = int((time.monotonic() - started) * 1000)
+            # The keyword that tripped LinkedIn counts as "just run": the next run plans it
+            # last instead of opening with the same search (data flow step 6).
+            self._mark_keyword_run(row, at=utcnow())
             self.db.commit()
             raise
         except ScrapeError as exc:
@@ -194,7 +212,7 @@ class _Run:
             run.keywords_done += 1
             self._mark_keyword_run(row)
             self.db.commit()
-            self._log_keyword(row, "error")
+            self._log_keyword(row, "error", None)
             return
 
         self.step(f"Saving {len(result.posts)} posts for '{row.keyword_text}' ({index}/{total})")
@@ -239,15 +257,15 @@ class _Run:
         if result.parse_errors:
             row.errors += int(result.parse_errors)
             self.run.errors_count += int(result.parse_errors)
-        if result.drift_warning:
-            status = "warning"
-            row.error_message = "No posts parsed — LinkedIn layout may have changed"
+        status, message = keyword_outcome(result)
+        if message:
+            row.error_message = clip(message, 300)
         row.status = status
         row.duration_ms = int((time.monotonic() - started) * 1000)
         self.run.keywords_done += 1
         self._mark_keyword_run(row)
         self.db.commit()
-        self._log_keyword(row, status)
+        self._log_keyword(row, status, result)
 
     def _live_keyword_id(self, row: ScrapeRunKeyword) -> int | None:
         if row.keyword_id is None:
@@ -255,18 +273,19 @@ class _Run:
         found = self.db.scalar(select(Keyword.id).where(Keyword.id == row.keyword_id))
         return int(found) if found is not None else None
 
-    def _mark_keyword_run(self, row: ScrapeRunKeyword) -> None:
+    def _mark_keyword_run(self, row: ScrapeRunKeyword, *, at: datetime | None = None) -> None:
         # Core UPDATE: a keyword deleted mid-run simply matches 0 rows.
         if row.keyword_id is not None:
             self.db.execute(
                 update(Keyword)
                 .where(Keyword.id == row.keyword_id)
-                .values(last_run_at=utcnow())
+                .values(last_run_at=at or utcnow())
                 .execution_options(synchronize_session=False)
             )
 
-    def _log_keyword(self, row: ScrapeRunKeyword, status: str) -> None:
-        log.info(
+    def _log_keyword(self, row: ScrapeRunKeyword, status: str, result: Any | None) -> None:
+        emit = log.warning if status == "warning" else log.info
+        emit(
             "scrape_keyword",
             keyword=row.keyword_text,
             posts_seen=row.posts_seen,
@@ -275,6 +294,11 @@ class _Run:
             errors=row.errors,
             duration_ms=row.duration_ms,
             status=status,
+            cards_found=int(getattr(result, "cards_found", 0) or 0),
+            parse_errors=int(getattr(result, "parse_errors", 0) or 0),
+            field_misses=dict(getattr(result, "field_misses", None) or {}),
+            drift=bool(getattr(result, "drift_warning", False)),
+            no_results=bool(getattr(result, "no_results", False)),
         )
 
 
@@ -314,9 +338,22 @@ def execute(
                 errors_count=run.errors_count,
                 abort_reason=run.abort_reason,
                 duration_ms=int((time.monotonic() - started) * 1000),
+                layout_warnings=_layout_warnings(db, run_id),
+                browser=session_service.browser_channel(),
             )
         db.close()
         unbind_context("run_id")
+
+
+def _layout_warnings(db: Session, run_id: int) -> int:
+    return int(
+        db.scalar(
+            select(func.count(ScrapeRunKeyword.id)).where(
+                ScrapeRunKeyword.run_id == run_id, ScrapeRunKeyword.status == "warning"
+            )
+        )
+        or 0
+    )
 
 
 def _finalise_crash(db: Session, run_id: int, message: str) -> None:
@@ -369,9 +406,15 @@ def _execute(
     abort_kind: str | None = None
     abort_url: str | None = None
     open_error: str | None = None
+    session_missing = False
+    entered = False
     cap_hit = False
     try:
         with factory(settings) as searcher:
+            entered = True
+            check = getattr(searcher, "session", None)
+            log_run_start("connected", "ok", url=getattr(check, "url", None), cookie_present=True,
+                          soft_hints=tuple(getattr(check, "soft_hints", ()) or ()))
             for index, row in enumerate(rows, start=1):
                 if index > 1:
                     seconds = rng.uniform(settings.scrape_keyword_pause_min_s, settings.scrape_keyword_pause_max_s)
@@ -384,10 +427,16 @@ def _execute(
                 if posts_seen_today(db) >= settings.scrape_max_posts_per_day and index < len(rows):
                     cap_hit = True
                     break
+    except SessionMissing as missing:
+        db.rollback()
+        session_missing = True
+        log_run_start("not_connected", "no_cookie", url=getattr(missing, "url", None), cookie_present=False)
     except AccountSafetyStop as stop:
         db.rollback()
         abort_kind, abort_url = stop.kind, stop.url
-        log.warning("scrape_safety_stop", kind=stop.kind, url=stop.url)
+        if not entered:
+            log_run_start("needs_attention", stop.kind, url=stop.url, cookie_present=True)
+        log.warning("scrape_safety_stop", kind=stop.kind, url=stop.url, at_run_start=not entered)
     except ScrapeError as exc:  # only the session check on open raises it outside a keyword
         db.rollback()
         open_error = clip(f"Could not open LinkedIn: {exc}", 500)
@@ -417,6 +466,14 @@ def _execute(
         run.error_message = clip(stopped, 500)
         state.set_status("aborted", note=abort_kind)
         run.current_step = f"Run stopped: {SAFETY_LABELS.get(abort_kind, abort_kind)}"
+    elif session_missing:
+        message = session_service.NOT_LOGGED_IN_MESSAGE
+        session_service.mark_not_connected(db, message)
+        state.skip_remaining(rows, NOT_LOGGED_IN_SKIP)
+        run = state.run
+        run.error_message = message
+        state.set_status("failed", note="not_logged_in")
+        run.current_step = "Run failed — not logged in to LinkedIn in sales0's browser"
     elif open_error is not None:
         state.skip_remaining(rows, "Not searched — LinkedIn could not be opened")
         run = state.run

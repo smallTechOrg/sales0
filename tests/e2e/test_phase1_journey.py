@@ -1,9 +1,12 @@
-"""Phase-1 golden path, end to end (roadmap gate assertion 6).
+"""Phase-1 golden path, end to end (roadmap gate assertion 6), re-proven through the Phase 1.1
+connect + detection + parsing paths (Phase 1.1 gate assertions 2 and 3).
 
 Live ``python -m sales0`` (fixture LinkedIn, port 8766, temp SQLite) + headless Chromium +
 the REAL Haiku key from ``.env``:
 
-setup (keywords) → Connect LinkedIn → light green → Run now (live progress) → run 1 counters
+setup (keywords) → Connect LinkedIn (headless fixture window walks login → 2FA →
+"remember this browser" → feed, and only then turns green) → Re-check (headless) → Run now
+(live progress) → run 1 counters
 → inbox cards with real Haiku content + cost → accept P1 → bulk discard with a reason →
 Discarded search → server restart: state survives → run 2 on the restarted server learns
 from the decisions (few-shot) → server JSON log has llm_call + http_request lines.
@@ -17,7 +20,17 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from sales0.config import get_settings
-from tests.e2e._flows import add_keyword, card, connect_linkedin, run_now, settled, tab_count
+from tests.e2e._flows import (
+    LOGIN_FLOW_PATHS,
+    add_keyword,
+    assert_server_logs_clean,
+    card,
+    connect_linkedin,
+    recheck_linkedin,
+    run_now,
+    settled,
+    tab_count,
+)
 from tests.support.live_server import LiveServer
 
 RUN1_KEYWORDS = ["corporate ai training", "ai workshop", "ai consulting"]
@@ -29,6 +42,37 @@ COST_TEXT = re.compile(r"^AI \$\d+\.\d{2,} · [\d.]+k? tok$")
 
 def _llm_calls(server: LiveServer) -> list[dict]:
     return [e for e in server.log_events() if e.get("event") == "llm_call"]
+
+
+def _request_paths(server: LiveServer) -> list[str]:
+    return [str(e.get("path")) for e in server.log_events() if e.get("event") == "http_request"]
+
+
+def _assert_connect_walked_the_2fa_flow(server: LiveServer) -> None:
+    """The fixture login was walked step by step, and Connect turned green only after the feed."""
+    events = server.log_events()
+    paths = [(i, e.get("path")) for i, e in enumerate(events) if e.get("event") == "http_request"]
+    positions: list[int] = []
+    cursor = -1
+    for step in LOGIN_FLOW_PATHS:
+        hit = next((i for i, path in paths if path == step and i > cursor), None)
+        assert hit is not None, f"Connect never requested {step} (after the previous step); saw {[p for _, p in paths]}"
+        positions.append(hit)
+        cursor = hit
+    connected = [
+        i
+        for i, e in enumerate(events)
+        if e.get("event") == "linkedin_session" and e.get("action") == "connect" and e.get("result") == "connected"
+    ]
+    assert len(connected) == 1, [e for e in events if e.get("event") == "linkedin_session"]
+    remember_browser_at, feed_at = positions[-2], positions[-1]
+    assert connected[0] > feed_at > remember_browser_at, "Connect turned green before the feed was reached"
+    event = events[connected[0]]
+    assert event["headless"] is True, event  # fixture-mode Connect is headless
+    assert event["browser"] == "chromium", event  # the harness pins the bundled Chromium
+    assert event["cookie_present"] is True and event["reason"] == "ok", event
+    assert str(event["final_path"]).endswith("/feed/"), event
+    assert str(event["verdict"]).split(":", 1)[0] == "ok", event
 
 
 def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: LiveServer, ui: Page) -> None:
@@ -56,9 +100,29 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
         add_keyword(page, kw)
     expect(page.locator("#keyword-list li")).to_have_count(3)
 
-    # --- Connect LinkedIn (fixture) → header light green
+    # --- Phase 1.1 card copy before Connect: the browser line + the sales0-profile explanation
+    card_el = page.locator("#linkedin-card")
+    expect(page.locator("#browser-note")).to_have_text("Browser: Built-in browser (Chromium)")
+    expect(card_el).to_contain_text("sales0 opens Google Chrome with its own sales0 profile on this computer.")
+    expect(card_el).to_contain_text("your everyday Chrome profile isn't touched")
+    assert not [p for p in _request_paths(server) if p.startswith("/__fixtures/")], "no LinkedIn page before Connect"
+
+    # --- Connect LinkedIn (fixture: login → 2FA → remember-browser → feed) → header light green
     connect_linkedin(page, base)
     expect(page.locator("#status-light")).to_contain_text("no runs yet")
+    expect(card_el).to_contain_text("LinkedIn is connected. Checks and runs reuse this login invisibly")
+    expect(page.locator("#connect-linkedin")).to_have_text("Connect again")
+    _assert_connect_walked_the_2fa_flow(server)
+    session = server.get_json("/api/session")
+    assert session["status"] == "connected" and session["cooldown_until"] is None, session
+    assert session["browser_label"] == "Built-in browser (Chromium)" and session["browser_note"] is None, session
+
+    # --- Re-check: headless, green again, no new login
+    logins_before = _request_paths(server).count(LOGIN_FLOW_PATHS[0])
+    check = recheck_linkedin(page, server)
+    assert check["result"] == "connected" and check["headless"] is True, check
+    assert check["browser"] == "chromium" and check["cookie_present"] is True, check
+    assert _request_paths(server).count(LOGIN_FLOW_PATHS[0]) == logins_before, "Re-check must not log in again"
 
     # --- Run now with live progress
     run_id, progress = run_now(page, base)
@@ -193,3 +257,4 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
     key = get_settings().anthropic_api_key
     if key is not None and key.get_secret_value() in log_text:
         pytest.fail("the Anthropic API key leaked into the server log")
+    assert_server_logs_clean(server)  # never the li_at cookie value

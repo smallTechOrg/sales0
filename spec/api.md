@@ -1,4 +1,4 @@
-# sales0 — HTTP Contract (Phase 1)
+# sales0 — HTTP Contract (Phase 1 + 1.1)
 
 Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials are HTML fragments for htmx: a request is treated as htmx when it carries the `HX-Request: true` header. JSON endpoints live under `/api/` and use the envelope from `architecture.md` → Conventions. Forms are `application/x-www-form-urlencoded`. Every mutating form route accepts htmx and returns a fragment. Without htmx it redirects 303 back to the page.
 
@@ -45,7 +45,7 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 |---|---|---|
 | GET | `/api/health` | `{"status":"ok","db_revision":"<rev>","linkedin_mode":"live\|fixture","model":"<SALES0_LLM_MODEL>","api_key_present":true}` |
 | GET | `/api/runs/{id}` | `RunDetailView` serialised (used by E2E for exact counter assertions). Served by `web/routes/runs.py` (G); unknown id → `not_found` 404. |
-| GET | `/api/session` | `SessionStatusView` serialised. Served by `web/routes/setup.py` (F). |
+| GET | `/api/session` | `SessionStatusView` serialised. Served by `web/routes/setup.py` (F). Phase 1.1 adds `browser_label`, `browser_note` and `cooldown_until`. It never contains a cookie value. |
 
 ## Fixture-only routes
 
@@ -64,7 +64,8 @@ These are mounted at `/__fixtures/linkedin` only when `SALES0_LINKEDIN_MODE=fixt
 | `job_busy` | 409 | "LinkedIn is busy (<action> in progress) — wait for it to finish." |
 | `run_in_progress` | 409 | "A run is already in progress." |
 | `not_connected` | 409 | "Connect LinkedIn first (Setup → Connect LinkedIn)." |
-| `needs_attention` | 409 | "LinkedIn needs attention: <last_error>. Resolve it in a normal browser, then Connect again." |
+| `needs_attention` | 409 | "LinkedIn needs attention: <last_error>. Press Connect LinkedIn in Setup — the sales0 Chrome window opens on LinkedIn so you can resolve it." (Phase 1.1 wording) |
+| `safety_cooldown` | 429 | Phase 1.1. "LinkedIn asked us to slow down — next run allowed after HH:MM". `HH:MM` is `safety_cooldown_until` in `SALES0_TIMEZONE`, 24-hour; when that falls on a later local day it reads "HH:MM tomorrow". |
 | `no_keywords` | 409 | "Add at least one active keyword in Setup." |
 | `daily_run_cap` | 429 | "Daily run limit reached (<n>/<cap>). Runs reset at midnight (<tz>)." |
 | `daily_post_cap` | 429 | "Daily post limit reached (<n>/<cap>) — protects your LinkedIn account." |
@@ -72,3 +73,7 @@ These are mounted at `/__fixtures/linkedin` only when `SALES0_LINKEDIN_MODE=fixt
 | `field_invalid` | 400 | Raised by `update_fields` for a priority outside high/medium/low or an inactive/unknown offering, and by `POST /inbox/{id}/fields` when neither field is sent ("Choose a priority or an offering to change."). |
 | `triage_failed` | 502 | "AI triage failed: <error>. Try again in a minute." |
 | `llm_auth` | 502 | "Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env.", or for a key that is not workspace-scoped: "This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env." |
+
+**`start_run` / eligibility order** (Phase 1.1; the first failing check wins; `Eligibility.reason_code` is the code): `run_in_progress` → `needs_attention` → `safety_cooldown` → `not_connected` → `job_busy` → `no_keywords` → `daily_run_cap` → `daily_post_cap`.
+
+**Routes are unchanged in Phase 1.1.** `/setup/linkedin/connect`, `/connect/cancel`, `/check` and `/status` keep their paths and fragments. Only the card copy changes (`ui.md`). The CLI gains `python -m sales0.cli check-browser` (`architecture.md` → LinkedIn browser).

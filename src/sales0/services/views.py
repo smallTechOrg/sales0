@@ -68,6 +68,15 @@ class SessionStatusView(_View):
     # additive: the stored status underneath "busy" (never "busy" itself)
     stored_status: Literal["not_connected", "connected", "needs_attention"] = "not_connected"
     last_connected_at: datetime | None = None
+    # Phase 1.1: the browser sales0 uses (scraper.browser.resolve_browser), e.g. label
+    # "Google Chrome 156" / "Built-in browser (Chromium)"; note = the auto-fallback note, or
+    # the BrowserUnavailable message (then label "Google Chrome (not installed)").
+    browser_label: str = "Google Chrome"
+    browser_note: str | None = None
+    # additive: the resolved channel; None when the browser is unavailable
+    browser_channel: Literal["chrome", "chromium"] | None = None
+    # Phase 1.1: services.runs.safety_cooldown_until (UTC); None = no cool-down in effect
+    cooldown_until: datetime | None = None
 
 
 class Eligibility(_View):
@@ -113,6 +122,8 @@ class RunView(_View):
     abort_reason: str | None
     error_message: str | None
     cost_usd_micros: int
+    # Phase 1.1: number of this run's keyword rows with status "warning" (computed on read)
+    layout_warnings: int = 0
 
     @property
     def is_active(self) -> bool:

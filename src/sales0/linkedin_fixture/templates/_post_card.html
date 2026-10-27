@@ -1,13 +1,11 @@
-<div class="feed-shared-update-v2" data-urn="{{ post.urn }}">
-  <div class="update-components-actor">
-    <a class="update-components-actor__meta-link" href="{{ base }}/in/{{ post.profile_slug }}/">
-      <span class="update-components-actor__title"><span aria-hidden="true">{{ post.author_name }}</span><span class="visually-hidden">View {{ post.author_name }}’s profile</span></span>
-      <span class="update-components-actor__description"><span aria-hidden="true">{{ post.author_headline }}</span></span>
-    </a>
-    <span class="update-components-actor__sub-description"><span aria-hidden="true">{{ post.posted_relative }} • </span><span class="visually-hidden">{{ post.posted_relative }} ago</span></span>
-  </div>
-  <div class="feed-shared-inline-show-more-text">
-    <div class="update-components-text">{{ post.text_head }}{% if post.text_tail %}<span class="see-more-rest" hidden>{{ post.text_tail }}</span>{% endif %}</div>
-    {% if post.text_tail %}<button type="button" class="feed-shared-inline-show-more-text__see-more-less-toggle" aria-expanded="false">…see more</button>{% endif %}
-  </div>
-</div>
+{#- One search result, in the card shape assigned to the post (corpus.CARD_SHAPES):
+    data-urn div | li > div[data-id] | li with only a /feed/update/ link | li > article with only a /posts/ link. -#}
+{%- if post.shape == "data-urn" -%}
+<li class="y6ob2"><div class="k3v9q _m1x7" data-urn="{{ post.urn }}">{% include "_post_body.html" %}</div></li>
+{%- elif post.shape == "data-id" -%}
+<li class="y6ob2"><div class="k3v9q _q2ln" data-id="{{ post.urn }}">{% include "_post_body.html" %}</div></li>
+{%- elif post.shape == "update-link" -%}
+<li class="y6ob2 k3v9q"><div class="_j5hc">{% include "_post_body.html" %}</div></li>
+{%- else -%}
+<li class="y6ob2"><article class="k3v9q _z8de">{% include "_post_body.html" %}</article></li>
+{%- endif -%}

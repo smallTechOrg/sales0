@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from sales0.config import get_settings
 from sales0.db.engine import session_scope
 from sales0.db.models import Keyword, ScrapeRun
 from sales0.web.app import create_app
@@ -68,7 +69,9 @@ def test_lookalike_and_opaque_origins_are_rejected(client: TestClient) -> None:
 
 
 def test_same_origin_post_is_allowed_for_configured_and_actual_host(local_client: TestClient) -> None:
-    for i, origin in enumerate(("http://127.0.0.1:8765", "http://localhost:8765", "http://127.0.0.1:5999", "http://LOCALHOST:5999")):
+    port = get_settings().port  # the harness's pinned test port (never 8765)
+    configured = (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
+    for i, origin in enumerate((*configured, "http://127.0.0.1:5999", "http://LOCALHOST:5999")):
         resp = local_client.post("/setup/keywords", data={"text": f"ai workshop {i}"}, headers={**HX, "Origin": origin})
         assert resp.status_code == 200 and "toast--error" not in resp.text, (origin, resp.text)
     assert _keyword_count() == 4

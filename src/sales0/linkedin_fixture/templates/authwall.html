@@ -1,4 +1,9 @@
 {% extends "_layout.html" %}
 {% block title %}Sign Up | LinkedIn (fixture){% endblock %}
 {% block nav %}{% endblock %}
-{% block content %}<h1>Join LinkedIn or sign in</h1><p><a href="{{ base }}/login">Sign in</a></p>{% endblock %}
+{% block content %}
+<div class="authwall c8pz1 _a6ri" data-test-id="authwall-join-form">
+  <h1 class="o2ty5">Join LinkedIn or sign in</h1>
+  <form class="p5ki2" method="get" action="{{ base }}/login"><button type="submit" class="s9fe4">Sign in</button></form>
+</div>
+{% endblock %}

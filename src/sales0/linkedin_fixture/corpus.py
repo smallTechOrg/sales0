@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 CORPUS_PATH = Path(__file__).with_name("posts.json")
 # Posts longer than this render with a collapsed tail and a "see more" toggle, like LinkedIn.
@@ -16,6 +17,8 @@ CHECKPOINT_KEYWORD = "checkpoint-test"
 CAPTCHA_KEYWORD = "captcha-test"
 RATELIMIT_KEYWORD = "ratelimit-test"
 DRIFT_KEYWORD = "layout-drift-test"
+# Phase 1.1: a session that expired mid-run (the cookie is still there; the page 302s to /authwall).
+LOGOUT_KEYWORD = "logout-test"
 
 # Lazy-loading result pages (results arrive on scroll, like LinkedIn's infinite list).
 # Each reuses the posts of an existing corpus keyword, so P1-P11 stay untouched.
@@ -40,6 +43,27 @@ LAZY_PLANS: dict[str, LazyPlan] = {
 }
 
 
+TRIGGER_KEYWORDS: frozenset[str] = frozenset(
+    {CHECKPOINT_KEYWORD, CAPTCHA_KEYWORD, RATELIMIT_KEYWORD, LOGOUT_KEYWORD, DRIFT_KEYWORD, *LAZY_PLANS}
+)
+
+# Phase 1.1 card shapes (architecture.md → Fixture markup), assigned by corpus post id so the
+# Phase-1 counts hold through every fallback path of the parser.
+CardShape = Literal["data-urn", "data-id", "update-link", "posts-link"]
+CARD_SHAPES: dict[str, CardShape] = {
+    "P1": "data-urn",
+    "P2": "data-urn",
+    "P3": "data-urn",
+    "P5": "data-id",
+    "P6": "data-id",
+    "P7": "data-id",
+    "P8": "update-link",
+    "P9": "update-link",
+    "P10": "posts-link",
+    "P11": "posts-link",
+}
+
+
 @dataclass(frozen=True)
 class FixturePost:
     id: str
@@ -50,6 +74,20 @@ class FixturePost:
     profile_slug: str
     posted_relative: str
     text: str
+
+    @property
+    def shape(self) -> CardShape:
+        return CARD_SHAPES[self.id]
+
+    @property
+    def activity_id(self) -> str:
+        """The numeric part of the URN (``urn:li:activity:<n>``)."""
+        return self.urn.rsplit(":", 1)[-1]
+
+    @property
+    def posts_slug(self) -> str:
+        """The ``/posts/<slug>/`` permalink segment LinkedIn uses: ``<profile>_<words>-activity-<n>-<hash>``."""
+        return f"{self.profile_slug}_update-activity-{self.activity_id}-AbCd"
 
     @property
     def text_head(self) -> str:

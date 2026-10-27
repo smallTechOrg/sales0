@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!--
+  Saved-page sample (authored) modelled on LinkedIn's sign-in page (Oct 2026): obfuscated
+  classes; the form posts to /checkpoint/lg/login-submit; input#username[name=session_key].
+  Served at /login (no cookie) → logout path:/login; served at /feed/ with a cookie → logout
+  login_form (the DOM logged-out marker works when the URL looks fine).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LinkedIn Login, Sign in | LinkedIn</title>
+</head>
+<body class="Ue3k9 _o0p2">
+<header class="Bx7c1"><a class="Ru5c1" href="https://www.linkedin.com/" aria-label="LinkedIn"><svg width="84" height="21" aria-hidden="true"></svg></a></header>
+<main class="Hj2n6" role="main">
+  <div class="Vy0t5">
+    <h1 class="Lw4q8">Sign in</h1>
+    <p class="Ic6m2">Stay updated on your professional world.</p>
+    <form class="Fr2s0 _l1k9" method="post" action="/checkpoint/lg/login-submit" novalidate>
+      <input type="hidden" name="loginCsrfParam" value="00000000-0000-0000-0000-000000000000">
+      <div class="Ot8b3">
+        <input class="Gd5e1" id="username" name="session_key" type="email" autocomplete="username" aria-label="Email or phone" required>
+        <label class="Mx9z0" for="username">Email or phone</label>
+      </div>
+      <div class="Ot8b3">
+        <input class="Gd5e1" id="password" name="session_password" type="password" autocomplete="current-password" aria-label="Password" required>
+        <label class="Mx9z0" for="password">Password</label>
+      </div>
+      <a class="Kk1r7" href="https://www.linkedin.com/checkpoint/rp/request-password-reset">Forgot password?</a>
+      <button class="Pz4h2" type="submit" aria-label="Sign in">Sign in</button>
+    </form>
+  </div>
+  <p class="Yt3v1">New to LinkedIn? <a href="https://www.linkedin.com/signup/cold-join">Join now</a></p>
+</main>
+</body>
+</html>

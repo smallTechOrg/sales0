@@ -156,6 +156,22 @@ def clock_text(seconds: int | None) -> str:
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
+def cooldown_clock(until: datetime | None, now: datetime | None = None) -> str:
+    """The safety cool-down instant as local ``HH:MM`` (rounded up; "HH:MM tomorrow" on a
+    later local day). Delegates to the service so the Run-now reason and the page lines
+    always print the same time."""
+    if until is None:
+        return ""
+    return runs_service.cooldown_clock(until, now)
+
+
+def browser_is_chrome(session: SessionStatusView) -> bool:
+    """True when Connect opens Google Chrome (copy says "Chrome window"), False for the
+    built-in-browser fallback (copy says "browser window")."""
+    label = getattr(session, "browser_label", "") or ""
+    return label.startswith("Google Chrome") and not getattr(session, "browser_note", None)
+
+
 def usd_precise(micros: int | None) -> str:
     """Cost totals: 4 decimals below $1 (ui.md "AI today $0.0123 · month $0.4567"), else 2."""
     if micros is None:
@@ -183,6 +199,8 @@ HELPERS: dict[str, Any] = {
     "poster_label": poster_label,
     "usd_precise": usd_precise,
     "ago_text": ago_text,
+    "cooldown_clock": cooldown_clock,
+    "browser_is_chrome": browser_is_chrome,
 }
 
 
@@ -244,6 +262,8 @@ __all__ = [
     "NAV",
     "NavItem",
     "banner_text",
+    "browser_is_chrome",
+    "cooldown_clock",
     "cost_badge_oob",
     "is_htmx",
     "nav_items",

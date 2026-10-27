@@ -104,6 +104,23 @@ def test_finished_progress_stops_polling_and_shows_outcome(client: TestClient) -
     assert "Interrupted by server restart" in client.get(f"/runs/{failed}/progress", headers=HX).text
 
 
+def test_not_logged_in_failure_links_to_setup_and_stopped_run_guides_to_connect(client: TestClient) -> None:
+    message = "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup"
+    failed = make_run("failed", error_message=message, keywords=[("ai workshop", "skipped")])
+    body = unescape(client.get(f"/runs/{failed}/progress", headers=HX).text)
+    panel = body.split('id="run-history"')[0]
+    assert message in panel and 'href="/setup#linkedin-card"' in panel and "Go to Setup" in panel
+    assert "Go to Setup" in unescape(client.get(f"/runs/{failed}").text)
+
+    other = make_run("failed", error_message="Interrupted by server restart")
+    assert "Go to Setup" not in client.get(f"/runs/{other}/progress", headers=HX).text.split('id="run-history"')[0]
+
+    stopped = make_run("aborted", abort_reason="logout", keywords=[("logout-test", "error")])
+    body = unescape(client.get(f"/runs/{stopped}/progress", headers=HX).text)
+    assert "Press Connect LinkedIn in Setup — the sales0 Chrome window opens on LinkedIn so you can resolve it." in body
+    assert "normal browser" not in body
+
+
 def test_history_and_detail_show_per_keyword_log(client: TestClient) -> None:
     started = utcnow() - timedelta(minutes=3)
     run_id = make_run(

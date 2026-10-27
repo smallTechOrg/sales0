@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sales0.clock import utcnow
 from sales0.config import Settings, get_settings, reset_settings
 from sales0.db.engine import session_scope
-from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, LlmCall, ScrapeRun
+from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, Keyword, LlmCall, ScrapeRun
 from sales0.jobs import discovery_job
 from sales0.jobs.runner import get_runner
 from sales0.llm import reset_llm_client
@@ -116,12 +116,46 @@ def test_captcha_and_rate_limit_keywords_abort(connected: Settings, keyword: str
     assert (d.run.status, d.run.abort_reason) == ("aborted", reason)
 
 
-def test_cleared_profile_aborts_with_logout(db_url: str, fixture_settings: Settings) -> None:
-    set_session_status("connected")  # DB says connected, but the profile has no cookie
-    add_keywords("ai workshop")
+def test_profile_without_a_session_cookie_fails_the_run_as_not_connected(db_url: str,
+                                                                        fixture_settings: Settings) -> None:
+    set_session_status("connected")  # DB says connected (e.g. Phase 1), but this profile has no li_at
+    add_keywords("ai workshop", "ai consulting")
+    d = detail(start_and_wait())
+    assert (d.run.status, d.run.abort_reason) == ("failed", None)
+    assert d.run.error_message == "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup"
+    assert [k.status for k in d.keywords] == ["skipped", "skipped"]
+    with session_scope() as db:
+        s = session_status(db)
+        assert s.stored_status == "not_connected" and s.cooldown_until is None
+        assert runs.run_eligibility(db).reason_code == "not_connected"
+
+
+def test_logout_keyword_aborts_with_logout_and_stamps_that_keyword(connected: Settings) -> None:
+    add_keywords("logout-test", "ai workshop")
     d = detail(start_and_wait())
     assert (d.run.status, d.run.abort_reason) == ("aborted", "logout")
-    assert [k.status for k in d.keywords] == ["skipped"]
+    assert [k.status for k in d.keywords] == ["error", "skipped"]
+    with session_scope() as db:
+        assert session_status(db).stored_status == "needs_attention"
+        stamps = {k.text: k.last_run_at for k in db.scalars(select(Keyword))}
+    assert stamps["logout-test"] is not None and stamps["ai workshop"] is None
+
+
+def test_checkpoint_during_scroll_aborts_at_the_scroll_checkpoint(connected: Settings) -> None:
+    add_keywords("checkpoint-scroll-test")
+    d = detail(start_and_wait())
+    assert (d.run.status, d.run.abort_reason) == ("aborted", "checkpoint")
+
+
+def test_layout_drift_keyword_is_a_warning_and_counts_as_a_layout_warning(connected: Settings) -> None:
+    add_keywords("layout-drift-test", "ai consulting")
+    d = detail(start_and_wait())
+    assert d.run.status == "succeeded" and d.run.layout_warnings == 1
+    by_kw = {k.keyword_text: k for k in d.keywords}
+    assert by_kw["layout-drift-test"].status == "warning"
+    assert (by_kw["layout-drift-test"].error_message or "").startswith(
+        "No posts parsed — LinkedIn layout may have changed")
+    assert by_kw["ai consulting"].status == "done" and by_kw["ai consulting"].posts_seen == 2
 
 
 @pytest.mark.llm

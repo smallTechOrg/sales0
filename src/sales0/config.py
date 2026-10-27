@@ -23,6 +23,7 @@ LinkedInMode = Literal["live", "fixture"]
 LogFormat = Literal["json", "console"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 DateFilter = Literal["past-24h", "past-week", "past-month"]
+BrowserChannel = Literal["auto", "chrome", "chromium"]
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
@@ -75,8 +76,14 @@ class Settings(BaseSettings):
 
     # --- LinkedIn ---
     linkedin_mode: LinkedInMode = "live"
-    linkedin_headless: bool = False
+    # Phase 1.1: auto = installed Google Chrome, else the bundled Chromium (with a Setup note);
+    # chrome = Google Chrome only; chromium = bundled Chromium only (tests). Connect is always
+    # headed and every check/run headless, so there is no headless setting any more.
+    linkedin_browser_channel: BrowserChannel = "auto"
     linkedin_connect_timeout_s: int = Field(300, ge=10)
+    # Phase 1.1: minutes Run now stays refused after a safety stop (0 = off).
+    safety_cooldown_min: int = Field(60, ge=0)  # after rate_limited / captcha
+    safety_cooldown_checkpoint_min: int = Field(15, ge=0)  # after checkpoint / logout
 
     # --- Scrape caps and pacing ---
     scrape_max_keywords_per_run: int = Field(10, ge=1)
@@ -96,7 +103,7 @@ class Settings(BaseSettings):
     triage_max_input_chars: int = Field(4000, ge=200)
 
     # ------------------------------------------------------------------ validators
-    @field_validator("linkedin_mode", "log_format", "scrape_date_filter", mode="before")
+    @field_validator("linkedin_mode", "linkedin_browser_channel", "log_format", "scrape_date_filter", mode="before")
     @classmethod
     def _strip_enum_lower(cls, value: Any) -> Any:
         value = _clean_enum_value(value)

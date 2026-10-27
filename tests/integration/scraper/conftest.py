@@ -44,20 +44,36 @@ def fixture_linkedin_server() -> Iterator[int]:
 
 @pytest.fixture
 def fixture_settings(fixture_linkedin_server: int, monkeypatch: pytest.MonkeyPatch) -> Settings:
-    """Settings in fixture mode pointed at the test server; profile under this test's tmp data dir."""
+    """Settings in fixture mode pointed at the test server; profile under this test's tmp data dir.
+
+    The browser channel (``chromium``) and the dead-port pin come from ``tests/conftest.py``.
+    """
     monkeypatch.setenv("SALES0_LINKEDIN_MODE", "fixture")
     monkeypatch.setenv("SALES0_HOST", "127.0.0.1")
     monkeypatch.setenv("SALES0_PORT", str(fixture_linkedin_server))
-    monkeypatch.setenv("SALES0_LINKEDIN_HEADLESS", "false")  # fixture mode must still run headless
     reset_settings()
     return get_settings()
 
 
+def log_in_profile(settings: Settings) -> None:
+    """Log the fixture-mode profile in through the ``/login?direct=1`` test shortcut.
+
+    Skips the 2FA pages (Connect's own tests walk those); the profile ends with a persistent
+    ``li_at`` cookie exactly as after a completed Connect.
+    """
+    from sales0.scraper.browser import first_page, open_context
+    from sales0.scraper.urls import base_url
+
+    base = base_url(settings)
+    with open_context(settings, headless=True) as context:
+        page = first_page(context)
+        page.goto(f"{base}/login?direct=1", wait_until="domcontentloaded")
+        assert page.url == f"{base}/feed/", page.url
+        assert any(c["name"] == "li_at" and c["value"] for c in context.cookies(base))
+
+
 @pytest.fixture
 def connected_settings(fixture_settings: Settings) -> Settings:
-    """Fixture settings whose persistent profile has completed Connect."""
-    from sales0.scraper.connect import connect_interactive
-
-    result = connect_interactive(fixture_settings, on_tick=lambda _s: None, should_cancel=lambda: False)
-    assert result.connected, result
+    """Fixture settings whose persistent profile is logged in (as after Connect)."""
+    log_in_profile(fixture_settings)
     return fixture_settings

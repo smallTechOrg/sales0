@@ -49,7 +49,7 @@ def test_settings_defaults_match_the_configuration_table(monkeypatch: pytest.Mon
     assert s.resolved_database_url == f"sqlite:///{(REPO_ROOT / 'data/sales0.db').as_posix()}"
     assert s.data_path == REPO_ROOT / "data"
     assert s.timezone == "Asia/Kolkata" and s.linkedin_mode == "live" and s.log_format == "json"
-    assert s.linkedin_headless is False and s.scrape_date_filter == "past-week"
+    assert s.linkedin_browser_channel == "auto" and s.scrape_date_filter == "past-week"
     assert (s.scrape_max_keywords_per_run, s.scrape_max_posts_per_keyword) == (10, 15)
     assert (s.scrape_max_posts_per_day, s.scrape_max_runs_per_day) == (150, 3)
     assert (s.fewshot_max_examples, s.fewshot_text_chars, s.triage_max_input_chars) == (6, 600, 4000)

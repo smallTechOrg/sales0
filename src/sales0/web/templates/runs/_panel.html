@@ -1,4 +1,4 @@
-{# Run panel. Needs: run (RunView|None), last_run (RunView|None — fresh-load outcome only, no data-run-id), active (bool), outcome, eligibility (Eligibility|None), caps. #}
+{# Run panel. Needs: run (RunView|None), last_run (RunView|None — fresh-load outcome only, no data-run-id), active (bool), outcome, drift_alert (str|None), eligibility (Eligibility|None), caps. #}
 {% set outcome_run = run or last_run %}
 <section id="run-panel" class="card" aria-labelledby="run-panel-title" aria-live="polite"
   {% if active %}data-run-id="{{ run.id }}" data-status="{{ run.status }}" hx-get="/runs/{{ run.id }}/progress" hx-trigger="every 1s" hx-swap="outerHTML"{% elif run %}data-run-id="{{ run.id }}" data-status="{{ run.status }}"{% endif %}>
@@ -24,7 +24,7 @@
         <span>Triaged <strong data-counter="triaged">{{ run.enquiries_triaged }}</strong></span>
         <span>Elapsed <strong class="mono">{{ duration_text(elapsed_ms(run.started_at)) }}</strong></span>
       </p>
-      <p class="muted">The pauses between keywords are deliberate — they keep the search human-paced to protect your account.</p>
+      <p class="muted">Runs in the background — no browser window. The pauses between keywords are deliberate — they keep the search human-paced to protect your account.</p>
     {% else %}
       {% if outcome %}
         <div class="outcome outcome--{{ outcome.kind }}"{% if last_run %} data-last-run-id="{{ last_run.id }}"{% endif %} {% if outcome.kind == "error" %}role="alert"{% endif %}>
@@ -33,15 +33,18 @@
             {% if outcome_run.status == "succeeded" %}<a class="btn btn--primary btn--sm" href="/inbox">Open inbox ({{ outcome_run.posts_new }} new)</a>{% endif %}
           </p>
           {% if outcome.guidance %}<p>{{ outcome.guidance }}</p>{% endif %}
+          {% if outcome.cooldown %}<p class="run-cooldown"><strong>{{ outcome.cooldown }}</strong></p>{% endif %}
+          {% if outcome.setup_link %}<p><a class="btn btn--primary btn--sm" href="/setup#linkedin-card">Go to Setup</a></p>{% endif %}
         </div>
       {% endif %}
+      {% if drift_alert %}{% with drift_run=outcome_run %}{% include "runs/_drift_alert.html" %}{% endwith %}{% endif %}
       <div class="row">
         <form method="post" action="/runs" hx-post="/runs" hx-target="#run-panel">
           <button id="run-now" class="btn btn--primary" type="submit" hx-disabled-elt="this"
                   {% if not eligibility.can_run %}disabled aria-describedby="run-now-reason"{% endif %}>Run now</button>
         </form>
         {% if not eligibility.can_run and eligibility.reason %}
-          <span id="run-now-reason" class="field__error">{{ eligibility.reason }}</span>
+          <span id="run-now-reason" class="field__error" data-reason-code="{{ eligibility.reason_code or '' }}">{{ eligibility.reason }}</span>
         {% endif %}
       </div>
       <p class="muted">Today: {{ eligibility.runs_today }}/{{ eligibility.runs_cap }} runs · {{ eligibility.posts_today }}/{{ eligibility.posts_cap }} posts · max {{ caps.max_keywords }} keywords × {{ caps.max_posts }} posts per run</p>

@@ -4,9 +4,13 @@
   data dir (fixture browser profile) and the logs.
 * The server is ``[sys.executable, "-m", "sales0"]``. Under ``uv run pytest`` that is the
   project ``.venv`` interpreter, i.e. exactly ``uv run python -m sales0``.
-* Env: port 8766, ``SALES0_LINKEDIN_MODE=fixture``, temp DB/data dir, JSON logs to
-  ``SALES0_LOG_FILE``, fast test pacing. The Anthropic key is NOT passed here: the child
-  reads the repo-root ``.env`` itself, like the real command does.
+* Env: port 8766 (always passed explicitly; ``tests/conftest.py`` pins the parent's
+  ``SALES0_PORT`` to a dead port and every inherited ``SALES0_*`` is dropped),
+  ``SALES0_LINKEDIN_MODE=fixture``, temp DB/data dir, JSON logs to ``SALES0_LOG_FILE``,
+  fast test pacing, and (Phase 1.1) both safety cool-downs 0 and the bundled Chromium
+  channel. ``extra_env`` overrides any of them. The Anthropic key is NOT passed here: the
+  child reads the repo-root ``.env`` itself, like the real command does.
+* Port 8765 is the user's own sales0: the harness refuses it outright.
 * ``restart()`` keeps the DB and data dir (state-survival check). ``stop()`` always kills
   the whole process group (uvicorn + the Playwright driver + Chromium), and an ``atexit``
   hook stops any server a crashed test left behind.
@@ -43,6 +47,16 @@ TEST_PACING_ENV = {
     "SALES0_SCRAPE_MAX_RUNS_PER_DAY": "50",
 }
 
+# architecture.md → E2E harness step 2 (Phase 1.1): safety stops run back to back, and the
+# suite never depends on an installed Google Chrome. ``extra_env`` can override both.
+PHASE11_ENV = {
+    "SALES0_SAFETY_COOLDOWN_MIN": "0",
+    "SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN": "0",
+    "SALES0_LINKEDIN_BROWSER_CHANNEL": "chromium",
+}
+
+FORBIDDEN_PORT = 8765
+
 _RUNNING: set[LiveServer] = set()
 
 
@@ -58,6 +72,9 @@ def _port_in_use(port: int) -> bool:
 
 class LiveServer:
     def __init__(self, root: Path, *, port: int = E2E_PORT, extra_env: dict[str, str] | None = None) -> None:
+        extra = dict(extra_env or {})
+        if port == FORBIDDEN_PORT or extra.get("SALES0_PORT", "").strip() == str(FORBIDDEN_PORT):
+            raise LiveServerError(f"refusing to start on port {FORBIDDEN_PORT} — that is the user's own sales0")
         self.root = root
         self.port = port
         self.base_url = f"http://127.0.0.1:{port}"
@@ -65,7 +82,7 @@ class LiveServer:
         self.db_url = f"sqlite:///{self.db_path.as_posix()}"
         self.data_dir = root / "data"
         self.log_file = root / "server.jsonl"
-        self.extra_env = dict(extra_env or {})
+        self.extra_env = extra
         self.starts = 0
         self._proc: subprocess.Popen[bytes] | None = None
         self._stdout_files: list[Path] = []
@@ -86,9 +103,12 @@ class LiveServer:
                 "SALES0_LOG_FORMAT": "json",
                 "SALES0_LOG_LEVEL": "INFO",
                 **TEST_PACING_ENV,
+                **PHASE11_ENV,
                 **self.extra_env,
             }
         )
+        if env["SALES0_PORT"].strip() == str(FORBIDDEN_PORT):  # belt and braces
+            raise LiveServerError(f"refusing to start on port {FORBIDDEN_PORT} — that is the user's own sales0")
         return env
 
     def migrate(self) -> None:
@@ -234,4 +254,4 @@ def _stop_leftovers() -> None:
         server.stop()
 
 
-__all__ = ["E2E_PORT", "LiveServer", "LiveServerError", "live_server"]
+__all__ = ["E2E_PORT", "FORBIDDEN_PORT", "PHASE11_ENV", "LiveServer", "LiveServerError", "live_server"]

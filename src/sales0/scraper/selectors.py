@@ -1,30 +1,111 @@
-"""ALL DOM selectors in one place (architecture.md → DOM contract).
+"""ALL LinkedIn DOM selectors, in one place (architecture.md → "## LinkedIn browser").
 
-The fixture templates in ``sales0/linkedin_fixture/templates`` use exactly these. When
-LinkedIn changes its markup, fix it here (plus the fixture templates) and nowhere else.
+Phase 1.1: current LinkedIn ships obfuscated, random-looking class names, so nothing here
+depends on a class except the LAST fallback of a field (``LEGACY_*``, Phase 1's markup).
+Cards are found by their URN attributes and post links; every field has ordered fallbacks
+and the first non-empty value wins. No code may require a logged-in DOM marker: logged-in
+markers are soft hints only (logged, never part of a verdict).
+
+When LinkedIn changes its markup, fix it here (plus the fixture templates / saved samples
+when the shape is new) and nowhere else.
 """
 
 from __future__ import annotations
 
-# One search-result post card; the URN comes from the data-urn attribute. LinkedIn renders
-# activity URNs on most cards, but some cards carry the ugcPost/share URN instead.
-URN_PREFIXES = ("urn:li:activity:", "urn:li:ugcPost:", "urn:li:share:")
-RESULT_CARD = ", ".join(f'div[data-urn^="{prefix}"]' for prefix in URN_PREFIXES)
-URN_ATTRIBUTE = "data-urn"
-
-AUTHOR_NAME = '.update-components-actor__title span[aria-hidden="true"]'
-AUTHOR_PROFILE_LINK = "a.update-components-actor__meta-link"
-AUTHOR_HEADLINE = '.update-components-actor__description span[aria-hidden="true"]'
-RELATIVE_TIME = '.update-components-actor__sub-description span[aria-hidden="true"]'
-POST_TEXT = ".update-components-text"
-SEE_MORE_BUTTON = "button.feed-shared-inline-show-more-text__see-more-less-toggle"
-
-# Present on every logged-in LinkedIn page. Real LinkedIn renders
-# ``<header id="global-nav" class="global-nav ..."><nav class="global-nav__nav">``; the
-# fixture renders ``<nav class="global-nav">``. Any one of them counts.
-LOGGED_IN_MARKER = "#global-nav, header.global-nav, nav.global-nav__nav, nav.global-nav"
-NO_RESULTS_MARKER = ".search-reusable-search-no-results"
-CAPTCHA_MARKER = 'iframe[src*="captcha"]'
-
-# The session cookie LinkedIn sets on login (fixture sets the same name).
+# --------------------------------------------------------------------------- session
+# The session cookie LinkedIn sets on login (the fixture sets the same name).
 SESSION_COOKIE = "li_at"
+
+# --------------------------------------------------------------------------- cards
+URN_PREFIXES: tuple[str, ...] = ("urn:li:activity:", "urn:li:ugcPost:", "urn:li:share:")
+URN_ATTRIBUTES: tuple[str, ...] = ("data-urn", "data-id")
+
+# 1. Cards carrying a post URN attribute (outermost only: a nested match is a reshared original).
+CARD_ATTR_SELECTORS: tuple[str, ...] = tuple(
+    f'[{attr}^="{prefix}"]' for attr in URN_ATTRIBUTES for prefix in URN_PREFIXES
+)
+# 2. Post permalinks; a card is the anchor's closest CARD_CONTAINERS ancestor.
+POST_LINK_SELECTORS: tuple[str, ...] = (
+    'a[href*="/feed/update/urn:li:activity:"]',
+    'a[href*="/feed/update/urn:li:ugcPost:"]',
+    'a[href*="/feed/update/urn:li:share:"]',
+    'a[href*="/posts/"]',
+)
+CARD_CONTAINERS = 'li, article, [role="article"], [data-view-name*="update" i], [data-view-name*="search-entity" i]'
+
+# URN from an href (JS-compatible regex sources; also compiled in ``parsing.py``).
+FEED_UPDATE_HREF_RE = r"/feed/update/(urn:li:(?:activity|ugcPost|share):\d+)"
+POSTS_SLUG_HREF_RE = r"/posts/[^/?#]*-(activity|ugcPost|share)-(\d+)"
+
+# --------------------------------------------------------------------------- fields
+AUTHOR_ANCHOR = 'a[href*="/in/"], a[href*="/company/"]'
+# author_name, in order (1–2 inside the author anchor; 3 = its aria-label; 4 = its first text line).
+AUTHOR_NAME_IN_ANCHOR: tuple[str, ...] = ('[aria-hidden="true"]', "span[dir]")
+AUTHOR_ARIA_LABEL_STRIP: tuple[str, ...] = ("View ", "’s profile", "'s profile", "’ profile", "' profile", ", graphic")
+LEGACY_AUTHOR_NAME = '.update-components-actor__title span[aria-hidden="true"]'
+LEGACY_AUTHOR_PROFILE_LINK = "a.update-components-actor__meta-link"
+LEGACY_AUTHOR_HEADLINE = '.update-components-actor__description span[aria-hidden="true"]'
+LEGACY_RELATIVE_TIME = '.update-components-actor__sub-description span[aria-hidden="true"]'
+# Lines of the author block that are never a headline.
+HEADLINE_SKIP_RE = (
+    r"^(?:[•·]\s*)?(?:1st|2nd|3rd\+?|\d+(?:st|nd|rd|th)\+?|\+?\s*follow|following|premium|verified)$"
+    r"|degree connection$"
+)
+
+# Post text: the LONGEST candidate wins; a tie goes to the earlier selector.
+TEXT_SELECTORS: tuple[str, ...] = (
+    '[data-test-id*="commentary" i]',
+    '[dir="ltr"]',
+    "span[dir]",
+    ".update-components-text",  # legacy
+)
+
+# Relative time (JS- and Python-compatible sources; matched case-insensitively).
+RELATIVE_TIME_SHORT_RE = r"^\s*(\d+)\s*(mins|min|mo|m|hrs|hr|h|s|d|wk|w|yrs|yr|y)\b"
+RELATIVE_TIME_LONG_RE = r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago"
+
+# "See more", in order. Never an a[href], never an aria-label matching SEE_MORE_EXCLUDE_RE.
+SEE_MORE_ARIA_SELECTORS: tuple[str, ...] = (
+    'button[aria-label*="see more" i]',
+    'button[aria-label*="show more" i]',
+    '[role="button"][aria-label*="see more" i]',
+)
+SEE_MORE_TEXT_CANDIDATES = 'button, [role="button"]'
+SEE_MORE_TEXT_RE = r"^(…|\.\.\.)?\s*(see|show)?\s*more$"
+LEGACY_SEE_MORE = "button.feed-shared-inline-show-more-text__see-more-less-toggle"
+SEE_MORE_EXCLUDE_RE = r"actions|options|menu|comment|reaction"
+
+# --------------------------------------------------------------------------- page markers
+LEGACY_NO_RESULTS = ".search-reusable-search-no-results"
+NO_RESULTS_TEXT_TAGS = "h1, h2, h3, p"
+NO_RESULTS_PREFIX = "no results found"
+NO_RESULTS_EXACT = "no results"
+
+# Logged-out markers (additional logged-out signals only).
+LOGIN_FORM_MARKERS: tuple[str, ...] = ("input#username", 'input[name="session_key"]', 'form[action*="login"]')
+AUTHWALL_MARKERS: tuple[str, ...] = (".authwall", '[data-test-id*="authwall"]', "#authwall")
+CAPTCHA_MARKERS: tuple[str, ...] = (
+    'iframe[src*="captcha" i]',
+    'iframe[src*="recaptcha"]',
+    'iframe[src*="arkoselabs"]',
+    'iframe[src*="funcaptcha"]',
+    'iframe[title*="captcha" i]',
+    "#captcha-internal",
+    'form[action*="captcha"]',
+)
+# Soft logged-in hints: name → selector. Reported by name; NEVER used in a verdict.
+SOFT_LOGGED_IN_HINTS: dict[str, str] = {
+    "self_profile_link": 'a[href*="/in/"]',
+    "global_nav_attr": "[data-test-global-nav]",
+    "nav_aria": "nav[aria-label]",
+    "main_landmark": 'main, [role="main"]',
+    "legacy_global_nav": "#global-nav, header.global-nav",
+}
+
+# verify_in_context waits (bounded) for any of these to be attached; missing content never fails it.
+SESSION_CONTENT_READY = 'main, [role="main"], form, iframe'
+
+
+def join(selectors: tuple[str, ...] | list[str]) -> str:
+    """One CSS selector list from ordered alternatives."""
+    return ", ".join(selectors)

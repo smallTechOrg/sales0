@@ -81,7 +81,7 @@ Group seeds: Training (1), Services (2), Products (3).
 | run_id | FK scrape_runs | |
 | keyword_id | FK keywords null (`SET NULL` on delete) | |
 | keyword_text | str | Snapshot |
-| status | `pending` \| `running` \| `done` \| `warning` \| `error` \| `skipped` | `skipped` = not reached because of an abort or cap |
+| status | `pending` \| `running` \| `done` \| `warning` \| `error` \| `skipped` | `skipped` = not reached because of an abort or cap. `warning` = a possible LinkedIn layout change. Phase 1.1 uses it for both cases: no posts parsed (drift), and a field missing on at least half of the parsed posts (`architecture.md` data flow step 3). |
 | posts_seen, posts_new, posts_dupe, errors | int | |
 | duration_ms | int null | |
 | error_message | str(300) null | |
@@ -189,6 +189,14 @@ Generic history of every status change.
 | changed_at | datetime | |
 | actor_user_id | FK users null | |
 Index `(entity_type, entity_id, changed_at)`.
+
+### Phase 1.1: no schema change (head stays `0002_phase1_discovery`)
+- The **safety cool-down** is derived from `scrape_runs` (`status='aborted'`, `abort_reason`, `finished_at`) by `services.runs.safety_cooldown_until`. Nothing new is stored.
+- **`RunView.layout_warnings`** is a count of `scrape_run_keywords.status='warning'`, computed on read.
+- The **"just run" stamp** after a safety stop writes the existing `keywords.last_run_at`.
+- The **browser channel/label** is resolved at runtime (`scraper.browser.resolve_browser`) and is never stored.
+- A run that fails because the profile has no session cookie keeps `abort_reason` null (it is not a safety stop) and sets `linkedin_session.status='not_connected'` with `last_error` "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup".
+- Future migrations follow `architecture.md` → Conventions → Migrations: never batch-rebuild an FK-referenced table under `foreign_keys=ON`.
 
 ### app_meta (scaffold)
 `key` str PK, `value` str. Holds `schema_note`.

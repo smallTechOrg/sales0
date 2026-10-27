@@ -1,4 +1,11 @@
-"""Scraper errors. ``AccountSafetyStop`` aborts the whole run; ``ScrapeError`` fails one keyword."""
+"""Scraper errors.
+
+- ``AccountSafetyStop`` aborts the whole run (never retried, never pushed through).
+- ``ScrapeError`` fails one keyword (or the run-start open) without touching the account.
+- ``SessionMissing`` (Phase 1.1): the profile has no LinkedIn session cookie at all, detected
+  before ANY LinkedIn request. Not a safety stop and not a ``ScrapeError``.
+- ``BrowserUnavailable`` (Phase 1.1): the requested browser is missing or failed to launch.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +20,8 @@ _MESSAGES: dict[str, str] = {
     "captcha": "LinkedIn showed a captcha",
     "rate_limited": "LinkedIn rate-limited the session",
 }
+
+SESSION_MISSING_MESSAGE = "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup"
 
 
 class AccountSafetyStop(Exception):
@@ -36,3 +45,23 @@ class AccountSafetyStop(Exception):
 
 class ScrapeError(Exception):
     """A non-safety page failure (navigation error, timeout). The job marks the keyword ``error``."""
+
+
+class SessionMissing(Exception):
+    """No (non-expired) ``li_at`` cookie in the profile; raised before any LinkedIn request.
+
+    Deliberately neither an ``AccountSafetyStop`` nor a ``ScrapeError``: the run ends
+    ``failed`` + ``not_connected`` with no cool-down.
+    """
+
+    def __init__(self, url: str) -> None:
+        self.url: str = url
+        super().__init__(f"{SESSION_MISSING_MESSAGE} ({url})")
+
+    @property
+    def message(self) -> str:
+        return SESSION_MISSING_MESSAGE
+
+
+class BrowserUnavailable(ScrapeError):
+    """Google Chrome was requested but is not installed, or the browser failed to launch."""

@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
+from structlog.testing import capture_logs
 
 from sales0.config import reset_settings
 from sales0.db.engine import reset_engine, session_scope
@@ -19,7 +20,14 @@ from sales0.db.models import Enquiry, EnquirySource, Keyword, LinkedInSession, S
 from sales0.jobs import discovery_job
 from sales0.llm import LLMAuthError
 from sales0.services import keywords, runs
-from tests.integration.services.helpers import FakeSearcher, post, safety, scrape_error, set_session_status
+from tests.integration.services.helpers import (
+    FakeSearcher,
+    post,
+    safety,
+    scrape_error,
+    session_missing,
+    set_session_status,
+)
 from tests.support.fake_llm import FakeLLMClient, triage_answer
 
 TEXT = {
@@ -155,14 +163,16 @@ def test_logged_out_profile_aborts_with_logout_before_any_search(db_url: str) ->
 def test_page_error_marks_only_that_keyword_and_drift_is_a_warning(db_url: str) -> None:
     setup("ai workshop", "ai consulting", "corporate ai training")
     searcher = FakeSearcher({"ai workshop": scrape_error(), "ai consulting": [], "corporate ai training": [post(1, TEXT[1])]},
-                            drift={"ai consulting"})
+                            drift={"ai consulting"}, extra={"ai consulting": {"cards_found": 6}})
     d = detail(run_job(searcher))
     assert d.run.status == "succeeded" and d.run.errors_count == 1 and d.run.posts_new == 1
     by_kw = {k.keyword_text: k for k in d.keywords}
     assert by_kw["ai workshop"].status == "error" and "Page error" in (by_kw["ai workshop"].error_message or "")
     assert by_kw["ai consulting"].status == "warning"
-    assert by_kw["ai consulting"].error_message == "No posts parsed — LinkedIn layout may have changed"
+    assert by_kw["ai consulting"].error_message == (
+        "No posts parsed — LinkedIn layout may have changed (6 result cards found)")
     assert by_kw["corporate ai training"].status == "done"
+    assert d.run.layout_warnings == 1
 
 
 def test_fatal_llm_error_fails_the_run_keeps_enquiries_pending_and_stops_searching(db_url: str) -> None:
@@ -366,3 +376,97 @@ def test_keyword_deleted_between_posts_retries_the_post_without_the_keyword(db_u
         # second and third were retried / saved with keyword_id NULL. All keep the text.
         assert len(hits) == 3 and all(h.keyword_id is None for h in hits)
         assert [k.text for k in db.scalars(select(Keyword))] == ["ai workshop"]
+
+
+# ---------------------------------------------------------------------- Phase 1.1
+NOT_LOGGED_IN = "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup"
+
+
+def test_no_session_cookie_at_run_start_fails_the_run_and_sets_not_connected(db_url: str,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SALES0_SAFETY_COOLDOWN_MIN", "60")
+    monkeypatch.setenv("SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN", "15")
+    reset_settings()
+    setup("ai workshop", "ai consulting")
+    searcher = FakeSearcher({}, enter_error=session_missing())
+    llm = genuine_llm()
+    d = detail(run_job(searcher, llm))
+    assert (d.run.status, d.run.abort_reason, d.run.error_message) == ("failed", None, NOT_LOGGED_IN)
+    assert d.run.finished_at is not None and searcher.searched == [] and llm.calls == 0
+    assert [(k.status, k.error_message) for k in d.keywords] == [("skipped", "Not searched — not logged in")] * 2
+    with session_scope() as db:
+        s = db.get(LinkedInSession, 1)
+        assert s is not None and (s.status, s.last_error) == ("not_connected", NOT_LOGGED_IN)
+        assert runs.safety_cooldown_until(db) is None  # not a safety stop
+        e = runs.run_eligibility(db)
+        assert e.reason_code == "not_connected"
+        assert set(db.scalars(select(Keyword.last_run_at))) == {None}
+
+
+def test_the_keyword_that_tripped_a_stop_is_stamped_with_the_stop_time(db_url: str) -> None:
+    setup("ai workshop", "captcha-test", "ai consulting")
+    before = datetime.now(UTC)
+    searcher = FakeSearcher({"ai workshop": [post(5, TEXT[5])], "captcha-test": safety("captcha")})
+    rid = run_job(searcher)
+    after = datetime.now(UTC)
+    from sales0.clock import ensure_utc
+
+    with session_scope() as db:
+        stamps = {k.text: k.last_run_at for k in db.scalars(select(Keyword))}
+        run = db.get(ScrapeRun, rid)
+        assert run is not None and run.finished_at is not None
+        assert stamps["ai consulting"] is None
+        stopped = ensure_utc(stamps["captcha-test"])
+        assert before <= stopped <= ensure_utc(run.finished_at) <= after
+        # The next plan opens with the never-run keyword and ends with the one that tripped LinkedIn.
+        assert [t for _i, t in discovery_job.select_keywords(db, 10)] == ["ai consulting", "ai workshop",
+                                                                           "captcha-test"]
+
+
+def test_a_field_missing_on_half_the_posts_is_a_layout_warning_and_a_small_miss_is_written_down(
+        db_url: str) -> None:
+    setup("ai workshop", "ai consulting")
+    searcher = FakeSearcher(
+        {"ai workshop": [post(5, TEXT[5]), post(6, TEXT[6]), post(1, TEXT[1]), post(8, TEXT[8])],
+         "ai consulting": [post(9, TEXT[9]), post(3, TEXT[3])]},
+        extra={"ai workshop": {"field_misses": {"author_name": 2}, "cards_found": 4},
+               "ai consulting": {"field_misses": {"author_headline": 0}, "parse_errors": 1, "cards_found": 3}},
+    )
+    with capture_logs() as logs:
+        d = detail(run_job(searcher))
+    assert d.run.status == "succeeded" and d.run.layout_warnings == 1
+    by_kw = {k.keyword_text: k for k in d.keywords}
+    assert (by_kw["ai workshop"].status, by_kw["ai workshop"].error_message) == (
+        "warning", "Parsed 4 posts, but couldn't read author on 2 — LinkedIn layout may have changed")
+    assert (by_kw["ai consulting"].status, by_kw["ai consulting"].error_message) == (
+        "done", "1 card couldn't be read")
+    assert by_kw["ai consulting"].errors == 1  # parse errors still count as errors
+    kw_logs = {e["keyword"]: e for e in logs if e["event"] == "scrape_keyword"}
+    warn = kw_logs["ai workshop"]
+    assert (warn["log_level"], warn["status"], warn["drift"], warn["cards_found"]) == ("warning", "warning", False, 4)
+    assert warn["field_misses"] == {"author_name": 2} and warn["no_results"] is False
+    ok = kw_logs["ai consulting"]
+    assert (ok["log_level"], ok["parse_errors"]) == ("info", 1)
+    run_log = next(e for e in logs if e["event"] == "scrape_run")
+    assert run_log["layout_warnings"] == 1 and run_log["browser"] == "chromium"
+
+
+def test_drift_logs_a_warning_with_drift_true(db_url: str) -> None:
+    setup("layout-drift-test")
+    searcher = FakeSearcher({"layout-drift-test": []}, drift={"layout-drift-test"},
+                            extra={"layout-drift-test": {"cards_found": 3}})
+    with capture_logs() as logs:
+        d = detail(run_job(searcher))
+    assert (d.run.status, d.run.layout_warnings, d.keywords[0].status) == ("succeeded", 1, "warning")
+    line = next(e for e in logs if e["event"] == "scrape_keyword")
+    assert (line["log_level"], line["drift"], line["cards_found"]) == ("warning", True, 3)
+
+
+def test_run_start_logs_the_linkedin_session_line_without_cookie_values(db_url: str) -> None:
+    setup("ai workshop")
+    with capture_logs() as logs:
+        run_job(FakeSearcher({}, enter_error=session_missing()))
+    line = next(e for e in logs if e["event"] == "linkedin_session")
+    assert (line["action"], line["result"], line["reason"], line["cookie_present"], line["headless"]) == (
+        "run_start", "not_connected", "no_cookie", False, True)
+    assert line["final_path"] == "/__fixtures/linkedin/feed/" and line["browser"] == "chromium"

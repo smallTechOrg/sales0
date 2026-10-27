@@ -14,7 +14,7 @@
           {% for run in runs %}
             <tr id="run-row-{{ run.id }}">
               <td><a href="/runs/{{ run.id }}">{{ run.started_at | localdt }}</a></td>
-              <td>{% with status=run.status %}{% include "runs/_status_badge.html" %}{% endwith %}{% if run.abort_reason and run.status == "aborted" %} <span class="muted">{{ run.abort_reason | replace("_", " ") }}</span>{% endif %}</td>
+              <td>{% with status=run.status %}{% include "runs/_status_badge.html" %}{% endwith %}{% if run.abort_reason and run.status == "aborted" %} <span class="muted">{{ run.abort_reason | replace("_", " ") }}</span>{% endif %}{% if run.layout_warnings %} <span class="badge badge--warn" title="{{ run.layout_warnings }} keyword(s) may have hit a LinkedIn layout change">Layout warning</span>{% endif %}</td>
               <td class="num">{{ run.keywords_done }}/{{ run.keywords_planned }}</td>
               <td class="num">{{ run.posts_seen }}</td>
               <td class="num">{{ run.posts_new }}</td>

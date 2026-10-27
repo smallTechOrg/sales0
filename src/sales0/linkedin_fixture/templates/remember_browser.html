@@ -1,0 +1,16 @@
+{% extends "_layout.html" %}
+{% block title %}Remember this browser? | LinkedIn (fixture){% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="c8pz1 _w3bn">
+  <h1 class="o2ty5">Remember this browser?</h1>
+  <p class="e2mc8">We won't ask for a verification code on this browser again.</p>
+  <div class="v6qa1"><a class="s9fe4" href="{{ base }}/feed/">Remember</a> <a class="s9fe4 _y2nc" href="{{ base }}/feed/">Not now</a></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The fixture "user" clicks "Remember" after 600 ms.
+  setTimeout(() => window.location.assign({{ (base ~ "/feed/") | tojson }}), 600);
+</script>
+{% endblock %}

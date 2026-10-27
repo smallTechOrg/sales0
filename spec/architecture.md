@@ -1,6 +1,8 @@
 # sales0 — Architecture
 
-The product narrative is in `roadmap.md` and `capabilities/`. This file is the HOW: system overview, stack, layout, conventions, configuration, inter-slice contracts, and the fixture LinkedIn corpus. The AI composition is in `agent.md`. The schema is in `data.md`. Routes are in `api.md`.
+The product narrative is in `roadmap.md` and `capabilities/`. This file is the HOW: system overview, stack, layout, conventions, configuration, inter-slice contracts, the LinkedIn browser design, and the fixture LinkedIn corpus. The AI composition is in `agent.md`. The schema is in `data.md`. Routes are in `api.md`.
+
+> **Phase 1.1 change (binding; user gate evidence).** Phase 1's Connect opened Playwright's bundled Chromium on a fresh profile. To the user it looked like a separate incognito window. The user logged in (including 2FA), but sales0 stayed on "Waiting…", because the logged-in marker (`#global-nav` / `header.global-nav` / `nav.global-nav__nav`) does not exist on current LinkedIn, which ships obfuscated class names. Phase 1.1 makes these changes. Connect opens the user's **installed Google Chrome** (`channel="chrome"`) on a dedicated sales0 profile; the user logs in there once. Logged-in detection is based on the **`li_at` session cookie plus the final URL and HTTP status**, never on DOM classes. Post parsing uses stable attributes and URL patterns, with ordered fallbacks. Layout drift is always visible to the user. Everything else in Phase 1 is unchanged. The details are in `## LinkedIn browser (Phase 1.1)`. Out of scope: browser extensions, reading the user's own Chrome cookie store, pairing tokens.
 
 ## System Overview
 
@@ -8,8 +10,8 @@ sales0 is a single Python process: one uvicorn worker serving a FastAPI app. It 
 
 1. **Web layer.** Server-rendered Jinja2 pages with htmx partial updates, on one origin at `http://127.0.0.1:8765/`.
 2. **Services.** Synchronous domain functions over SQLAlchemy sessions. Routes and jobs call only these.
-3. **Job runner.** A single-flight background thread that runs browser jobs: `connect`, `check`, `discovery_run`. Only one runs at a time, because the persistent browser profile cannot be opened twice.
-4. **Scraper.** Playwright (sync API, Chromium) on a persistent profile under `data/linkedin-profile/` (live) or `data/linkedin-profile-fixture/` (fixture). It returns plain dataclasses and never touches the DB.
+3. **Job runner.** A single-flight background thread that runs browser jobs: `connect`, `check`, `discovery_run`. Only one runs at a time. The persistent browser profile must never be opened by two browser contexts at once. This rule is binding in Phase 1.1: Connect (headed), Re-check and runs (headless) all use the same profile directory.
+4. **Scraper.** Playwright (sync API) `launch_persistent_context` on a dedicated sales0 profile under `data/`. It uses the installed **Google Chrome** (`channel="chrome"`), or the bundled Chromium only when Chrome is not installed (`## LinkedIn browser (Phase 1.1)`). Connect is the only headed launch. Every check and run is headless. The scraper returns plain dataclasses and never touches the DB.
 5. **Triage agent.** A deterministic graph of plain-Python nodes around ONE structured Haiku call per enquiry (`agent.md`).
 6. **LLM layer.** The internal `LLMClient` protocol and its Anthropic adapter: retry/backoff, token usage, cost, and one structured log per call.
 7. **Persistence.** SQLite file `data/sales0.db` (WAL mode), with migrations managed by Alembic.
@@ -29,14 +31,22 @@ Browser (htmx) ──HTTP──> FastAPI routes ──> services ──> SQLAlch
 ### Discovery run data flow
 
 1. `POST /runs` calls `services.runs.start_run`. This checks eligibility, inserts a `scrape_runs` row with status `queued`, and submits `discovery_job.execute(run_id)` to the runner.
-2. The job sets status `running`. It selects keywords: active ones, ordered by `last_run_at` (never-run first) then `id`, capped at `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN`. It opens the persistent context and runs a session check on `{base}/feed/`. If the session is not logged in, the run aborts with reason `logout`.
-3. For each keyword: `LinkedInSearcher.search(keyword, max_posts)` returns a list of `ScrapedPost`. For each post, `services.dedupe.upsert_post` returns `new | dupe_urn | dupe_content`. It inserts or merges the enquiry, its source and the keyword hit. The job then commits and updates the run and run-keyword counters.
+2. The job sets status `running`. It selects keywords: active ones, ordered by `last_run_at` (never-run first) then `id`, capped at `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN`. It opens the persistent context headless and runs the login check (`## LinkedIn browser` → Logged-in detection) on `{base}/feed/`:
+   - **No `li_at` cookie in the profile at all.** No LinkedIn request has been made yet. This raises `SessionMissing`. The run ends `failed` with "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup". Every keyword becomes `skipped` "Not searched — not logged in". The session becomes `not_connected` with the same message. `abort_reason` stays null, so there is no cool-down and no banner. This is the first-run-after-upgrade case: the Phase-1 Chromium profile is not reused by Chrome.
+   - **Cookie present, but `/feed/` lands on a login, authwall, checkpoint or captcha page, or returns HTTP 429/999.** This raises `AccountSafetyStop(<kind>)` (step 6).
+   - **Any other HTTP status of 400 or above, or a navigation error.** This raises `ScrapeError`, and the run ends `failed` "Could not open LinkedIn: …" (the existing open-failure path).
+3. For each keyword: `LinkedInSearcher.search(keyword, max_posts)` returns a `KeywordScrapeResult`. For each post, `services.dedupe.upsert_post` returns `new | dupe_urn | dupe_content`. It inserts or merges the enquiry, its source and the keyword hit. The job then commits and updates the run and run-keyword counters. **Phase 1.1 keyword status and message** are set by `services.runs.keyword_outcome(result)` (pure; Contracts), in this order:
+   - `drift_warning` → `warning` "No posts parsed — LinkedIn layout may have changed (N result cards found)".
+   - Otherwise, any field in `field_misses` missing on at least half of the parsed posts (and at least 2 posts parsed) → `warning` "Parsed N posts, but couldn't read <author / headline / post time / profile link> on M — LinkedIn layout may have changed".
+   - Otherwise `done`. Any smaller misses or parse errors are still written to the Message column, e.g. "2 cards couldn't be read · headline missing on 1/8". Nothing is silent.
+   - `parse_errors` are added to `errors` as before.
 4. For each NEW enquiry from that keyword: `services.triage.triage_enquiry(db, enquiry_id, llm)` loads the offerings and few-shot examples, calls `agent.graph.run_triage`, and persists the result, the `llm_calls` row and a `status_history` row.
 5. A paced pause runs between keywords. The job stops early when the daily post cap is reached.
-6. `AccountSafetyStop` (logout / checkpoint / captcha / rate_limited) closes the browser immediately. The run becomes `aborted` and the session becomes `needs_attention`. Enquiries already saved but still untriaged ARE triaged, because that makes no LinkedIn request.
+6. `AccountSafetyStop` (logout / checkpoint / captcha / rate_limited) closes the browser immediately. The run becomes `aborted` and the session becomes `needs_attention`. Enquiries already saved but still untriaged ARE triaged, because that makes no LinkedIn request. **Phase 1.1:** the keyword whose search was running when the stop tripped gets `keywords.last_run_at = now` (Core `UPDATE`; a deleted keyword matches 0 rows). The next run therefore plans it last and does not open with the search that tripped LinkedIn. A stop raised by the run-start login check (step 2) stamps no keyword. The stop starts the safety cool-down (step 6c).
+6c. **Safety cool-down (Phase 1.1).** `services.runs.safety_cooldown_until(db, now=None) -> datetime | None` reads the latest `scrape_runs` row with `status='aborted'` and `abort_reason` in (`rate_limited`, `captcha`, `checkpoint`, `logout`), ordered by `finished_at` desc. For `rate_limited`/`captcha` it returns `finished_at + SALES0_SAFETY_COOLDOWN_MIN` minutes. For `checkpoint`/`logout` it returns `finished_at + SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN` minutes. It returns None when that instant is not in the future, or when the setting that applies is 0. While the instant is in the future, `run_eligibility` fails with `safety_cooldown` (order in `api.md`), and the message shows the instant as `HH:MM` in `SALES0_TIMEZONE`. The cool-down is derived from existing columns; nothing new is stored and there is no migration. A green Re-check or a successful Connect clears `needs_attention` but never the cool-down.
 6a. A fatal LLM error (`LLMAuthError` / `LLMModelNotFound`) mid-run stops the run. It ends `failed` with the adapter's message in `error_message`. Remaining keywords become `skipped`. Enquiries already scraped stay `triage_status=pending`, so the user can use Retry triage later. The `llm_calls` error row is kept. `abort_reason` stays null, because `aborted` is reserved for account-safety stops. Exception: if the fatal LLM error happens during the post-stop triage of step 6 (after an `AccountSafetyStop`), the run stays `aborted` with its `abort_reason`, and the LLM message is still recorded in `error_message`.
 6b. The keyword list is snapshotted at step 2. A keyword deleted (or deactivated) mid-run does not change the run: it is still searched if planned, and its hits are saved with `keyword_text` set and `keyword_id` null (`SET NULL`, `data.md`). If the keyword is deleted while that keyword's posts are being saved, the insert of a keyword hit raises an `IntegrityError` (FK). The job rolls back that post and retries its `upsert_post` once with `keyword_id` null. Deletion never fails the run or a keyword row.
-7. The run is finalised: status `succeeded` (or `aborted`/`failed`) and `finished_at` are set, and on success `linkedin_session.last_successful_run_at` is updated.
+7. The run is finalised: status `succeeded` (or `aborted`/`failed`) and `finished_at` are set, and on success `linkedin_session.last_successful_run_at` is updated. **Phase 1.1:** `RunView.layout_warnings` is the number of the run's keyword rows with status `warning`. It is computed on read, not stored. When it is above 0, the Runs panel and the run detail show the run-level drift alert (`ui.md`), and the `scrape_run` log line carries `layout_warnings`.
 
 At startup, any run left in `queued` or `running` is marked `failed` with the error "Interrupted by server restart".
 
@@ -50,7 +60,7 @@ User-binding constraints: Python 3.12 via asdf, `uv` with a project-local `.venv
 | Web framework | FastAPI + uvicorn (`uvicorn[standard]`), **workers=1** | Light and typed, with an easy JSON envelope and Jinja2 support. One worker because the in-process job runner and browser profile lock must be singletons. |
 | Frontend | Server-rendered Jinja2 + **htmx 2.x vendored** at `web/static/vendor/htmx.min.js` + one small `app.js`, plain CSS | Zero-build and single-origin. The UI is lists, cards, forms and polling, with no complex client state. |
 | Database | **SQLite (production engine)** with SQLAlchemy 2.0 ORM + Alembic | 1–3 users and low thousands of rows on one laptop. Zero ops, single-file backup. |
-| Browser automation | Playwright for Python (sync API) with Chromium `launch_persistent_context` | It can drive the team's real logged-in profile in headed or headless mode. The same library drives the E2E tests. |
+| Browser automation | Playwright for Python (sync API) `chromium.launch_persistent_context`, **`channel="chrome"`** (the installed Google Chrome) on a dedicated sales0 profile. It falls back to bundled Chromium (`channel="chromium"`, new headless) only when Chrome is absent (Phase 1.1). | User gate (binding): the user logs in once in a real Google Chrome window, not in a window that looks like incognito. The installed Chrome engine and version match a normal user's fingerprint. The same library drives the E2E tests. |
 | LLM | Anthropic Python SDK, model `claude-haiku-5-5` from `SALES0_LLM_MODEL` | Binding (Haiku only, cheapest). Structured output via forced tool use. |
 | Config | pydantic-settings (`env_prefix="SALES0_"`, `env_file=".env"`, `extra="ignore"`), `SecretStr` for keys | Typed and validated at startup. Secrets cannot be printed. |
 | Logging | structlog → JSON lines on stdout (and `SALES0_LOG_FILE` if set) | Structured request, LLM and scrape logs from day one. |
@@ -69,7 +79,7 @@ User-binding constraints: Python 3.12 via asdf, `uv` with a project-local `.venv
 
 Dependency rule: everything needed at runtime or deploy time goes in `[project].dependencies`: fastapi, uvicorn[standard], jinja2, python-multipart, sqlalchemy>=2.0, alembic, pydantic>=2, pydantic-settings, structlog, anthropic, playwright, tzdata, httpx. Only pytest, pytest-playwright and pytest-timeout go in `[dependency-groups].dev`. Versions are the latest at scaffold time, locked by the committed `uv.lock`. `uv sync` installs both groups.
 
-**Run command (documented, canonical):** `uv run python -m sales0`. This runs `.venv/bin/python -m sales0` on the pinned 3.12 and serves `http://127.0.0.1:8765/`. Override with `SALES0_PORT` or `SALES0_HOST`.
+**Run command (documented, canonical):** `uv run python -m sales0`. This runs `.venv/bin/python -m sales0` on the pinned 3.12 and serves `http://127.0.0.1:8765/`. Override with `SALES0_PORT` or `SALES0_HOST`. **From Phase 1.1, no automated gate or test uses port 8765, and none connects to it**, because the user's own server may be running there (Conventions → Tests → Port isolation). E2E uses 8766 and the boot gate uses 8767. No gate or test reads or migrates `data/sales0.db`, and none opens a profile under the repo's `data/`.
 
 ## Layout
 
@@ -85,8 +95,10 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 ├── spec/                           # this spec
 ├── data/                           # GITIGNORED runtime dir (created at startup)
 │   ├── sales0.db                   # SQLite production DB
-│   ├── linkedin-profile/           # persistent Chromium profile (live mode)
-│   ├── linkedin-profile-fixture/   # persistent profile (fixture mode)
+│   ├── linkedin-chrome-profile/    # Phase 1.1: persistent Google Chrome profile (live, channel chrome)
+│   ├── linkedin-profile/           # persistent bundled-Chromium profile (live, channel chromium; Phase 1's dir, reused only for the fallback)
+│   ├── linkedin-profile-fixture-chrome/    # Phase 1.1: fixture mode, channel chrome
+│   ├── linkedin-profile-fixture-chromium/  # Phase 1.1: fixture mode, channel chromium (Phase 1's linkedin-profile-fixture/ is unused)
 │   └── logs/                       # optional SALES0_LOG_FILE target
 ├── migrations/
 │   ├── env.py                      # imports sales0.db.models metadata; render_as_batch=True
@@ -101,7 +113,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   ├── logging.py                  # structlog JSON config; bind/unbind contextvars
 │   ├── errors.py                   # DomainError(code, message, http_status=400)
 │   ├── clock.py                    # utcnow(), local_today(tz) — the injectable time seam
-│   ├── cli.py                      # `python -m sales0.cli check-llm`
+│   ├── cli.py                      # `python -m sales0.cli check-llm` | `check-browser` (Phase 1.1)
 │   ├── db/
 │   │   ├── __init__.py
 │   │   ├── base.py                 # DeclarativeBase + MetaData(naming_convention)
@@ -128,24 +140,26 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   │   ├── graph.py                # run_triage(inp, deps) — assembly + routing
 │   │   ├── guards.py               # pure output guardrails
 │   │   └── fewshot.py              # select_examples (pure) + load_candidates(db)
-│   ├── scraper/                    # slice C: no DB access
+│   ├── scraper/                    # slice C (Phase 1.1: R1 browser/login, R2 detection/parsing): no DB access
 │   │   ├── __init__.py
-│   │   ├── types.py                # ScrapedPost, KeywordScrapeResult, SessionCheckResult, ConnectResult
-│   │   ├── errors.py               # AccountSafetyStop(kind, url), ScrapeError
-│   │   ├── browser.py              # open_context(profile_dir, headless) → persistent context
-│   │   ├── urls.py                 # base_url(settings), search_url(base, keyword, date_filter)
-│   │   ├── selectors.py            # ALL DOM selectors in one place
-│   │   ├── detection.py            # detect_safety_stop(page, response) → kind | None
+│   │   ├── types.py                # ScrapedPost, KeywordScrapeResult, SessionCheckResult, ConnectResult  (R2)
+│   │   ├── errors.py               # AccountSafetyStop(kind, url), ScrapeError, SessionMissing  (R2)
+│   │   ├── browser.py              # resolve_browser, launch_options, profile_dir, open_context, user_agent_for  (R1)
+│   │   ├── urls.py                 # base_url(settings), search_url, feed_url, login_url, permalink
+│   │   ├── selectors.py            # ALL DOM selectors + ordered fallbacks, in one place  (R2)
+│   │   ├── detection.py            # PageSignals, PageVerdict, classify_url, classify_page (PURE); SIGNALS_JS; read_signals; session cookie helpers  (R2)
 │   │   ├── pacing.py               # Pacer(min_s, max_s, rng, sleep)
-│   │   ├── relative_time.py        # "5h"/"2d"/"1w"/"3mo" → date estimate
-│   │   ├── session_check.py        # check_session(context, base) → SessionCheckResult
-│   │   ├── connect.py              # connect_interactive(settings, on_tick, should_cancel) → ConnectResult
-│   │   └── search.py               # LinkedInSearcher (context manager) .search(keyword, max_posts)
-│   ├── linkedin_fixture/           # slice C: fake LinkedIn, mounted at /__fixtures/linkedin ONLY in fixture mode
+│   │   ├── relative_time.py        # "5h"/"2d"/"1w"/"3mo"/"2 days ago" → date estimate  (R2)
+│   │   ├── parsing.py              # EXTRACT_JS (card discovery + per-field fallbacks), post_from_raw, ParseError  (R2)
+│   │   ├── session_check.py        # verify_in_context(context, base, timeout_ms), check_session(settings) → SessionCheckResult  (R1)
+│   │   ├── connect.py              # connect_interactive(...) → ConnectResult; cookie poll + /feed/ verify  (R1)
+│   │   └── search.py               # LinkedInSearcher (context manager) .search(keyword, max_posts); drift + safety latches  (R2)
+│   ├── linkedin_fixture/           # slice C (Phase 1.1: R3): fake LinkedIn, mounted at /__fixtures/linkedin ONLY in fixture mode
 │   │   ├── __init__.py
-│   │   ├── routes.py               # login, feed, authwall, search/results/content, checkpoint/challenge
+│   │   ├── routes.py               # login (2FA flow), feed, authwall, search/results/content, checkpoint/challenge
+│   │   ├── corpus.py               # trigger keywords + corpus loader
 │   │   ├── posts.json              # the corpus (see "Fixture LinkedIn corpus")
-│   │   └── templates/              # DOM shaped to match scraper/selectors.py
+│   │   └── templates/              # CURRENT-LinkedIn-shaped DOM: obfuscated classes, no global-nav (Phase 1.1)
 │   ├── services/                   # slice D: the only DB-writing domain layer
 │   │   ├── __init__.py
 │   │   ├── views.py                # typed view models returned to routes (see Contracts)
@@ -176,9 +190,11 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │           ├── css/app.css (E)   js/app.js (E)   vendor/htmx.min.js (scaffold)
 └── tests/
     ├── __init__.py
-    ├── conftest.py                 # scaffold: env isolation, tmp SQLite + alembic upgrade, resets
+    ├── conftest.py                 # scaffold: env isolation, tmp SQLite + alembic upgrade, resets; Phase 1.1 (R6): dead-port pin + 8765 guard + cooldowns 0 + channel chromium
     ├── support/                    # fake_llm.py (B), live_server.py (I)
-    ├── unit/                       # pure; no network; agent/, scraper/, services/
+    ├── fixtures/
+    │   └── linkedin_pages/         # Phase 1.1 (R2): authored, realistic saved LinkedIn HTML + manifest.json (no personal data)
+    ├── unit/                       # pure; no network; agent/, scraper/, services/; test_test_isolation.py (R6)
     ├── integration/                # real SQLite files; real Haiku where marked; db/, agent/, scraper/, services/, jobs/, web/
     └── e2e/                        # live server subprocess + headless Chromium + real Haiku
 ```
@@ -198,6 +214,15 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 
 **SQLite engine setup** (`db/engine.py`): `connect_args={"check_same_thread": False}`. On every connect it sets `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000`. It uses `sessionmaker(expire_on_commit=False)`, and `session_scope()` commits on success and rolls back on exception. The background thread opens its own sessions and never shares one with a request.
 
+**Migrations (binding from Phase 1.1)**
+- **Never batch-rebuild a table that other tables reference by foreign key** while SQLite runs with `foreign_keys=ON`. Examples: `keywords`, `scrape_runs`, `enquiries`, `offerings`, `offering_groups`, `users`; check `data.md` for every `FK <table>`. A batch rebuild copies the table, DROPs the original and renames the copy. With enforcement on, the DROP fires the children's `ON DELETE CASCADE` / `SET NULL` actions, which silently deletes or nulls child rows, or it fails with a constraint error.
+- **Add columns in place** with plain `op.add_column(...)`, nullable or with a `server_default`. Do not use `batch_alter_table` to add columns. Enum-like new columns enforce their allowed values in the model/service layer, or by a CHECK added only on a table that nothing references.
+- Batch mode stays allowed for leaf tables (no inbound FKs), e.g. `status_history`, `linkedin_session`. A migration that truly must rebuild a referenced table does it in four steps: run `PRAGMA foreign_keys=OFF` outside the transaction, rebuild, run `PRAGMA foreign_key_check` (it must return no rows), then turn enforcement back on. That migration carries a one-line justification in its docstring.
+- Every new migration gets a test that upgrades a POPULATED previous-head DB (runs, run keywords, enquiries, sources, hits, decisions, llm_calls) and asserts that every row count and FK value survives.
+- Gates and tests never run migrations against `data/sales0.db`. They use a temp DB file.
+
+> **Assumed:** this is a rule for future migrations. 0001–0002 are not rewritten. Phase 1.1 adds no migration: the head stays `0002_phase1_discovery`.
+
 **Error shape**
 - JSON endpoints (`/api/*` and any `Accept: application/json`) return `{"ok": true, "data": {...}}`, or `{"ok": false, "error": {"code": "snake_code", "message": "Human sentence with next step."}}` with the matching HTTP status.
 - htmx endpoints raise `DomainError`. The handler returns HTTP 200 with an HTML toast fragment `<div class="toast toast--error" role="alert">message</div>` and headers `HX-Retarget: #toasts` and `HX-Reswap: beforeend`, so the page never breaks. A non-htmx full-page request with an error renders `error.html` (owned by E) with a link back.
@@ -208,9 +233,11 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 - Every line has `timestamp` (ISO UTC), `level`, `event`, `logger`, plus bound context when present: `request_id`, `run_id`, `job`, `enquiry_id`.
 - `http_request`: `method`, `path`, `status`, `latency_ms`, `htmx` (bool), `input_summary` (query keys + form field names, no values for password fields), `output_summary` (content-type + bytes).
 - `llm_call`: `feature`, `model`, `prompt_version`, `input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `status` (`ok|error`), `error_type`, `fewshot_count`, `input_summary` (first 80 chars of the enquiry text), `output_summary` (verdict + priority + offering_id).
-- `scrape_keyword`: `keyword`, `posts_seen`, `posts_new`, `posts_dupe`, `errors`, `duration_ms`, `status`.
-- `scrape_run`: `status`, totals, `abort_reason`, `duration_ms`.
-- `linkedin_session`: `action` (`connect|check`), `result`, `reason`.
+- `scrape_keyword`: `keyword`, `posts_seen`, `posts_new`, `posts_dupe`, `errors`, `duration_ms`, `status`. Phase 1.1 adds `cards_found`, `parse_errors`, `field_misses` (dict of field → count), `drift` (bool), `no_results` (bool). The level is WARNING when `status=warning`.
+- `scrape_run`: `status`, totals, `abort_reason`, `duration_ms`. Phase 1.1 adds `layout_warnings` and `browser` (`chrome|chromium`).
+- `linkedin_session`: `action` (`connect|check|run_start`), `result`, `reason`. Phase 1.1 adds `browser` (`chrome|chromium`), `browser_version`, `headless` (bool), `cookie_present` (bool, never the value), `final_path` (URL path only, no query), `status_code`, and `soft_hints` (names of the matched soft DOM hints, possibly empty). When `soft_hints` is empty on a logged-in verdict, a separate WARNING `linkedin_dom_hints_missing` is logged. This is informational and never blocks.
+- `browser_launch` (DEBUG): `channel`, `headless`, `profile` (dir name only), `user_agent_overridden` (bool).
+- Cookie values are never logged at any level, never rendered, and never returned by an endpoint. Only presence booleans are allowed.
 - Never log secret values (`api_key_present: bool` only). Never log full raw post text above DEBUG.
 
 **Templates/CSS contract** (so slices E/F/G/H stay disjoint)
@@ -223,19 +250,35 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 - Layout: `tests/unit` is pure (no network, no browser; `FakeLLMClient` from `tests/support/fake_llm.py`; fixed clock and seeded RNG). `tests/integration` uses real SQLite files, the real Haiku where the feature needs it, and real headless Chromium against the fixture server for scraper tests. `tests/e2e` runs the live server subprocess, headless Chromium and the real Haiku.
 - Names are sentences: `test_upsert_post_merges_same_text_with_different_urn`.
 - `tests/conftest.py` (scaffold) loads `.env` via `get_settings()` and fails the session with "SALES0_ANTHROPIC_API_KEY missing in .env" if the key is absent for `integration`/`e2e` (the gate is BLOCKED, not skipped). It provides a `db_url` fixture: `sqlite:///{tmp_path}/test.db` migrated with `alembic.command.upgrade(cfg, "head")`. It sets `SALES0_DATA_DIR={tmp_path}/data` and resets all singletons per test.
-- Markers (declared in `pyproject.toml`): `llm` (real Haiku), `browser` (Playwright), `e2e`. Nothing is skipped by default.
-- Fixture-mode scraper tests run the fixture router in a uvicorn thread on a free port (fixture `fixture_linkedin_server` in `tests/integration/scraper/conftest.py`, owned by C).
+- **From Phase 1.1 (slice R6), `tests/conftest.py` also does the following:**
+  - pins `SALES0_PORT` (Port isolation below);
+  - sets `SALES0_SAFETY_COOLDOWN_MIN=0` and `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN=0` by default, so safety tests can run back to back (the cool-down's own tests set them explicitly);
+  - sets `SALES0_LINKEDIN_BROWSER_CHANNEL=chromium` by default, so the suite is deterministic on any machine. Tests that exercise the real Chrome set `chrome` explicitly (Real-Chrome tests below);
+  - drops `SALES0_LINKEDIN_HEADLESS` from `TEST_ENV`, since the setting no longer exists;
+  - adds `("sales0.scraper.browser", "reset_browser_cache")` to the reset seams.
+- **Port isolation** (`tests/conftest.py`, session-scoped autouse, Phase 1.1). 8765 is the default port, and the user may be running their own sales0 on it. A test that falls back to the default could talk to (and mutate) the user's real server and DB.
+  - At session start, pick a free **dead** port: bind `127.0.0.1:0`, read the port, close the socket, so nothing listens there. Set `SALES0_PORT` to it in `os.environ` before any `Settings` is built. Every URL derived from settings (`settings.base_url`, the fixture `base_url`) then points at that dead port, unless a test sets its own server port (ephemeral, or 8766). An accidental connection fails fast with "connection refused".
+  - Guard: patch `socket.socket.connect` / `connect_ex` (and so `create_connection`, httpx, and the Python side of Playwright's driver connection). Any connection to `127.0.0.1`, `localhost` or `::1` on port **8765** then raises `ConnectionRefusedError("tests must never connect to 8765 (the user's sales0)")`. The guard also records the violation in a module-level `guard_violations` list. An autouse per-test teardown fails the test if the list grew, which catches code that swallowed the error. `FORBIDDEN_PORT = 8765` is exported. Subprocesses (live servers) get `SALES0_PORT` explicitly from the harness, never the default.
+  - `tests/unit/test_test_isolation.py` asserts six things: `get_settings().port != 8765`; `:8765` is not in `settings.base_url`; the default test port has no listener (`httpx.ConnectError`); the DB URL is under `tmp_path` and is never `data/sales0.db`; an explicit `SALES0_PORT=8799` is respected; and `socket.connect(("127.0.0.1", 8765))`, `connect_ex(("localhost", 8765))` and `httpx.get("http://127.0.0.1:8765/…")` are all refused and recorded (the test then clears its own deliberate violations). It also asserts that both cool-down settings are 0, that the channel is `chromium`, and that `scraper.browser.profile_dir(get_settings(), "chromium")` is under `tmp_path`.
+- **Every-page render test** (`tests/integration/web/test_every_page_renders.py`, slice R5). The user once hit a 500 when a template referenced a shell/context key that its route did not provide. This test GETs every page route through the real app and the real `render_page`/`shell_context`. The routes are `/` (following the redirect), `/inbox?tab=review`, `/inbox?tab=accepted`, `/inbox?tab=discarded`, `/inbox?tab=discarded&q=zzz`, `/setup`, `/runs`, `/runs/{id}` (a seeded finished run), `/pipeline`, `/contacts`, `/competitors`, `/import`, `/outreach`, `/metrics` and `/whatsapp`. It also covers the error page (a full-page `GET /runs/999999` renders `error.html` with HTTP 404 and "That item no longer exists") and the fragments `/_shell/status-light`, `/_shell/banner`, `/setup/linkedin/status` and `/runs/{id}/progress`.
+  - It runs that set once for each seeded state: never checked; `connected`; `not_connected` with a last_error; `needs_attention`; busy `connect`; busy `check`; an active run; an active safety cool-down; a finished run with `layout_warnings > 0`; and the browser fallback (a stubbed `resolve_browser` returning chromium with its note).
+  - Each response must be 200 (404 for the error page) and contain its key text: "Review inbox"; "Connect LinkedIn" or "Connect again" on /setup; "Run now" on /runs; "Coming in Phase N" on stubs; the status-light label.
+  - The route list is asserted against `app.routes`: every GET route that returns HTML and has no path parameter must be in the list, so a new page cannot skip the test.
+- **Saved-page tests** (slice R2). `tests/fixtures/linkedin_pages/` holds authored, realistic LinkedIn HTML (`## LinkedIn browser` → Saved page samples). `tests/unit/scraper/test_classify_page.py` runs `classify_page` over every manifest entry's recorded signals, plus a table of URL/status/cookie cases (pure). `tests/integration/scraper/test_saved_pages.py` serves each file in headless Chromium through `page.route(<manifest url>, fulfill(status, body))`. It adds a `li_at` cookie for the samples whose manifest says `cookie: true`. It runs the real `SIGNALS_JS` + `EXTRACT_JS` + `classify_page` + `post_from_raw`, then asserts the manifest's expected verdict, post count, URNs, field values, `drift` and `field_misses`.
+- **Real-Chrome tests** (`tests/integration/scraper/test_real_chrome.py`, slice R1, marker `chrome`). These set `SALES0_LINKEDIN_BROWSER_CHANNEL=chrome` and launch HEADLESS against the fixture server, on a profile under `tmp_path`, never `data/`. They assert six things in Chrome: `navigator.webdriver === false`; `navigator.userAgent` has no `HeadlessChrome` and contains `Chrome/<installed major>.`; `Intl.DateTimeFormat().resolvedOptions().timeZone == SALES0_TIMEZONE`; `navigator.language` equals the resolved locale; the fixture 2FA login detected via cookie + URL; and a full `search("ai workshop")` returns the 4 corpus posts. If Google Chrome is not installed, the test FAILS with "Google Chrome not installed — install it, or run this gate on the user's Mac". It is not skipped.
+- Markers (declared in `pyproject.toml`): `llm` (real Haiku), `browser` (Playwright), `e2e`, and `chrome` (needs installed Google Chrome; Phase 1.1). Nothing is skipped by default.
+- Fixture-mode scraper tests run the fixture router in a uvicorn thread on a free port (fixture `fixture_linkedin_server` in `tests/integration/scraper/conftest.py`, owned by C; Phase 1.1: R3).
 - Pacing in tests: `SALES0_SCRAPE_DELAY_MIN_S=0.05`, `MAX_S=0.15`, `KEYWORD_PAUSE_MIN_S=0.05`, `MAX_S=0.1`, `MAX_RUNS_PER_DAY=50`.
 - Real-LLM assertions check structure and the stable facts in the fixture expectation table, never prose.
 - pytest-timeout: 120s per test, 600s for `e2e`.
 - **E2E harness** (`tests/support/live_server.py`, slice I):
   1. Create a temp dir and run `alembic upgrade head` against `sqlite:///<tmp>/e2e.db`.
-  2. Spawn `[sys.executable, "-m", "sales0"]`. Under `uv run pytest`, this is the same `.venv` interpreter as the documented run command. The env is: `SALES0_PORT=8766`, `SALES0_LINKEDIN_MODE=fixture`, `SALES0_DATABASE_URL` and `SALES0_DATA_DIR` set to the temp locations, the test pacing values, and the real key from `.env`.
+  2. Spawn `[sys.executable, "-m", "sales0"]`. Under `uv run pytest`, this is the same `.venv` interpreter as the documented run command. The env is: `SALES0_PORT=8766`, `SALES0_LINKEDIN_MODE=fixture`, `SALES0_DATABASE_URL` and `SALES0_DATA_DIR` set to the temp locations, the test pacing values, and the real key from `.env`. Phase 1.1 adds `SALES0_SAFETY_COOLDOWN_MIN=0`, `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN=0` and `SALES0_LINKEDIN_BROWSER_CHANNEL=chromium`; `extra_env` can override any of them. The harness refuses to start when `port == 8765`.
   3. Poll `/api/health` until 200 (30s max), capturing stdout lines for the log assertions.
   4. Provide `restart()`, which keeps the DB for the state-survival check.
   5. Terminate the server on teardown.
 
-  The browser is pytest-playwright's headless Chromium `page`. The checkpoint, captcha and logout E2E uses its own server instance.
+  The browser is pytest-playwright's headless Chromium `page`. The checkpoint, captcha and logout E2E uses its own server instance (also on 8766, started after the journey server has stopped).
 
 **Startup hooks** (`web/app.py` lifespan):
 - The scaffold version runs `configure_logging`, ensures `data/` exists, and calls `assert_at_head()`.
@@ -266,8 +309,10 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 | `SALES0_LOG_FORMAT` | `json` | `json` or `console` |
 | `SALES0_LOG_FILE` | (unset) | Optional JSONL file path |
 | `SALES0_LINKEDIN_MODE` | `live` | `live` or `fixture` |
-| `SALES0_LINKEDIN_HEADLESS` | `false` | Live runs headed by default (lower detection risk). Fixture mode is always headless. Connect is always headed in live mode. |
+| `SALES0_LINKEDIN_BROWSER_CHANNEL` | `auto` | Phase 1.1. `auto`: use the installed Google Chrome when present, else the bundled Chromium with the note "Google Chrome not found — using the built-in browser". `chrome`: Google Chrome only (an error when it is missing). `chromium`: the bundled Chromium only (tests). Resolved by `scraper.browser.resolve_browser`. |
 | `SALES0_LINKEDIN_CONNECT_TIMEOUT_S` | `300` | How long Connect waits for a login |
+| `SALES0_SAFETY_COOLDOWN_MIN` | `60` | Phase 1.1. Minutes Run now stays refused (`safety_cooldown`) after a run aborted with `rate_limited` or `captcha`. 0 = off (tests). |
+| `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN` | `15` | Phase 1.1. Same, after a run aborted with `checkpoint` or `logout`. 0 = off (tests). |
 | `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` | `10` | Cap |
 | `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` | `15` | Cap |
 | `SALES0_SCRAPE_MAX_POSTS_PER_DAY` | `150` | Cap across runs (posts seen, local day) |
@@ -279,6 +324,13 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 | `SALES0_FEWSHOT_MAX_EXAMPLES` | `6` | Few-shot cap per triage call |
 | `SALES0_FEWSHOT_TEXT_CHARS` | `600` | Truncation per example |
 | `SALES0_TRIAGE_MAX_INPUT_CHARS` | `4000` | Truncation of the enquiry text sent to the LLM |
+
+**Phase 1.1 config changes.**
+- `SALES0_LINKEDIN_HEADLESS` is **removed** from `Settings` and `.env.example`. Connect is always headed, and every check and run is always headless. `extra="ignore"` tolerates a stale line in an old `.env`.
+- New: `SALES0_LINKEDIN_BROWSER_CHANNEL`, `SALES0_SAFETY_COOLDOWN_MIN` and `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN`. In `.env.example` they go in the `# --- LinkedIn ---` block, right after `SALES0_LINKEDIN_MODE` / `SALES0_LINKEDIN_CONNECT_TIMEOUT_S`, each with a comment.
+- Validators: `linkedin_browser_channel` goes through the enum-strip/lower validator and must be `auto|chrome|chromium`. Both cool-down values are integers ≥ 0.
+- The Setup "Safety limits" rows drop "Browser window during runs" and add "Browser" (the resolved label), "Runs" ("hidden (headless)"), "Cool-down after rate limit / captcha" (`N min`) and "Cool-down after checkpoint / logout" (`N min`).
+- Locale and timezone are not configurable in Phase 1.1. They are derived (`## LinkedIn browser` → Launch options).
 
 Phase 2 adds `SALES0_APP_PASSWORD` and `SALES0_SESSION_SECRET`. Phase 3 adds `SALES0_GOOGLE_CLIENT_SECRETS_FILE`, `SALES0_GMAIL_SENDER`, `SALES0_GMAIL_TEST_RECIPIENT` and `SALES0_LINKEDIN_MAX_PROFILES_PER_DAY` (30). Phase 5 adds `SALES0_WHATSAPP_INGEST_TOKEN`. Each is appended to `.env.example` in its phase.
 
@@ -375,24 +427,70 @@ class ScrapedPost: urn: str; url: str; author_name: str | None; author_profile_u
                    author_headline: str | None; posted_relative: str | None; posted_date: date | None; text: str
 @dataclass(frozen=True)
 class KeywordScrapeResult: keyword: str; posts: list[ScrapedPost]; scrolls: int; parse_errors: int; drift_warning: bool
+                           cards_found: int = 0                  # Phase 1.1: card elements discovered (before parsing)
+                           no_results: bool = False              # Phase 1.1: the "no results" marker was present
+                           field_misses: dict[str, int] = {}     # Phase 1.1 (field(default_factory=dict)): keys author_name,
+                                                                 #   author_profile_url, author_headline, posted_relative → posts missing it
 @dataclass(frozen=True)
 class SessionCheckResult: logged_in: bool; reason: Literal["ok","no_cookie","redirected_login","checkpoint","captcha","rate_limited","error"]; url: str
+                          soft_hints: tuple[str, ...] = ()       # Phase 1.1: matched soft DOM hints (logged only)
 @dataclass(frozen=True)
 class ConnectResult: connected: bool; reason: Literal["ok","timeout","window_closed","cancelled","error"]; detail: str | None
+                     browser: Literal["chrome","chromium"] | None = None   # Phase 1.1
 
 # scraper/errors.py
 class AccountSafetyStop(Exception): kind: Literal["logout","checkpoint","captcha","rate_limited"]; url: str
 class ScrapeError(Exception): ...   # AccountSafetyStop is NOT a ScrapeError subclass (callers catch them separately)
+class SessionMissing(Exception): url: str   # Phase 1.1: no li_at in the profile before ANY LinkedIn request (not a safety stop, not a ScrapeError)
+class BrowserUnavailable(ScrapeError): ...  # Phase 1.1: channel "chrome" requested but not installed, or the browser failed to launch
 
-# scraper/session_check.py
-def check_session(settings: Settings, *, headless: bool = True) -> SessionCheckResult   # opens+closes own context
-# scraper/connect.py
-def connect_interactive(settings: Settings, on_tick: Callable[[int], None], should_cancel: Callable[[], bool]) -> ConnectResult
-#   During login a checkpoint page is NOT a stop (2FA is expected); it keeps polling until the feed loads or the timeout.
-# scraper/search.py
+# scraper/browser.py  (Phase 1.1, slice R1)
+@dataclass(frozen=True)
+class BrowserChoice: channel: Literal["chrome","chromium"]; version: str | None   # e.g. "156.0.7311.42"; None if unknown
+                     label: str            # "Google Chrome 156" | "Built-in browser (Chromium)"
+                     note: str | None      # "Google Chrome not found — using the built-in browser" only on an auto fallback
+def resolve_browser(settings: Settings) -> BrowserChoice      # cached per process; raises BrowserUnavailable for channel=chrome when absent
+def reset_browser_cache() -> None
+def profile_dir(settings: Settings, channel: str) -> Path      # table in "## LinkedIn browser" → Profiles
+def user_agent_for(version: str, platform: str = sys.platform) -> str   # reduced Chrome UA, e.g. "...Chrome/156.0.0.0 Safari/537.36"
+def system_locale() -> str                                   # "en-IN"-style BCP-47; fallback "en-US"
+def launch_options(settings: Settings, choice: BrowserChoice, *, headless: bool) -> dict   # kwargs for launch_persistent_context (pure)
+@contextmanager
+def open_context(settings: Settings, *, headless: bool) -> Iterator[BrowserContext]   # resolve → profile → launch → always close
+def first_page(context: BrowserContext) -> Page
+
+# scraper/detection.py  (Phase 1.1, slice R2 — PURE except read_signals/session helpers)
+PageKind = Literal["ok","logout","checkpoint","captcha","rate_limited","http_error"]
+@dataclass(frozen=True)
+class PageSignals:
+    url: str; status: int | None                 # final URL; main-document status (None = unknown)
+    has_session_cookie: bool                     # non-expired li_at applicable to base
+    has_captcha: bool; has_login_form: bool; has_authwall: bool
+    soft_hints: tuple[str, ...] = ()             # NEVER affects the verdict
+@dataclass(frozen=True)
+class PageVerdict: kind: PageKind; reason: str    # reason e.g. "path:/authwall", "status:429", "no_cookie", "login_form"
+def classify_url(url: str) -> Literal["logout","checkpoint"] | None   # path-only rules (navigation latch, connect poll)
+def classify_page(signals: PageSignals) -> PageVerdict                # the ONE classifier for live pages AND tests
+def session_cookie_present(context: BrowserContext, base: str, now: float | None = None) -> bool
+SIGNALS_JS: str                                   # () => {has_captcha, has_login_form, has_authwall, no_results, cards_found, soft_hints}
+def read_signals(page: Page, response: Response | None, context: BrowserContext, base: str) -> tuple[PageSignals, dict]
+#   (signals, extras) — extras = {"no_results": bool, "cards_found": int} from the same SIGNALS_JS evaluation
+def same_site(url: str, base: str) -> bool; def is_rate_limit_response(url: str, status: int, base: str) -> bool   # unchanged
+
+# scraper/session_check.py  (slice R1)
+def verify_in_context(context: BrowserContext, base: str, timeout_ms: int, page: Page | None = None) -> SessionCheckResult
+#   no navigation when the cookie is absent (reason "no_cookie"); else ONE goto {base}/feed/ → read_signals → classify_page
+def check_session(settings: Settings) -> SessionCheckResult   # opens+closes its own HEADLESS context (Re-check)
+# scraper/connect.py  (slice R1)
+def connect_interactive(settings: Settings, on_tick: Callable[[int], None], should_cancel: Callable[[], bool], *,
+                        poll_interval_s: float = 1.0, timeout_s: float | None = None) -> ConnectResult
+#   HEADED in live mode (headless in fixture mode). Poll rule: "## LinkedIn browser" → Connect.
+# scraper/search.py  (slice R2)
 class LinkedInSearcher:
     def __init__(self, settings: Settings, pacer: Pacer | None = None): ...
-    def __enter__(self) -> "LinkedInSearcher": ...   # opens persistent context; verifies session → AccountSafetyStop("logout") if not
+    def __enter__(self) -> "LinkedInSearcher": ...   # open_context(headless=True); verify_in_context →
+                                                     #   no_cookie → SessionMissing; logout/checkpoint/captcha/rate_limited → AccountSafetyStop;
+                                                     #   error → ScrapeError
     def search(self, keyword: str, max_posts: int) -> KeywordScrapeResult: ...   # raises AccountSafetyStop, ScrapeError
     def __exit__(self, *exc) -> None: ...            # always closes the context
 ```
@@ -406,12 +504,16 @@ OfferingView(id, name, group_id, group_name, description, active, sort_order, en
 OfferingInput(name: str 1..80, group_name: str 1..60, description: str 0..500)
 SessionStatusView(status: Literal["not_connected","connected","needs_attention","busy"], busy_action: Literal["connect","check","run"] | None,
                   stored_status: Literal["not_connected","connected","needs_attention"],   # the DB value; `status` may be the derived "busy"
-                  last_checked_at, last_connected_at, last_successful_run_at, last_error: str | None, mode: Literal["live","fixture"], connect_elapsed_s: int | None)
+                  last_checked_at, last_connected_at, last_successful_run_at, last_error: str | None, mode: Literal["live","fixture"], connect_elapsed_s: int | None,
+                  browser_label: str, browser_note: str | None,          # Phase 1.1: from scraper.browser.resolve_browser; on BrowserUnavailable:
+                                                                          #   label "Google Chrome (not installed)", note = the error message
+                  cooldown_until: datetime | None)                        # Phase 1.1: services.runs.safety_cooldown_until (UTC)
 Eligibility(can_run: bool, reason: str | None, reason_code: str | None,   # reason_code = the DomainError code start_run would raise
             runs_today: int, runs_cap: int, posts_today: int, posts_cap: int)
 RunKeywordView(keyword_text, status, posts_seen, posts_new, posts_dupe, errors, duration_ms, error_message)
 RunView(id, status, trigger, mode, started_at, finished_at, duration_ms, keywords_planned, keywords_done, current_keyword, current_step,
-        posts_seen, posts_new, posts_dupe, enquiries_triaged, triage_failed, errors_count, abort_reason, error_message, cost_usd_micros)
+        posts_seen, posts_new, posts_dupe, enquiries_triaged, triage_failed, errors_count, abort_reason, error_message, cost_usd_micros,
+        layout_warnings: int = 0)   # Phase 1.1: count of this run's keyword rows with status "warning" (computed on read)
 RunDetailView(run: RunView, keywords: list[RunKeywordView])
 EnquiryCardView(id, review_status, stage, triage_status, triage_error,
                 requirement_summary, ai_verdict, ai_reason, ai_poster_type, ai_priority, ai_offering_id, priority, offering_id, offering_name,
@@ -439,7 +541,9 @@ start_connect(db) -> SessionStatusView                     # DomainError job_bus
 start_check(db) -> SessionStatusView                       # DomainError job_busy
 # services/runs.py
 run_eligibility(db, now: datetime | None = None) -> Eligibility
-start_run(db, actor_user_id: int | None = None) -> RunView # DomainError run_in_progress|not_connected|needs_attention|no_keywords|daily_run_cap|daily_post_cap|job_busy
+start_run(db, actor_user_id: int | None = None) -> RunView # DomainError run_in_progress|needs_attention|safety_cooldown|not_connected|job_busy|no_keywords|daily_run_cap|daily_post_cap (api.md order)
+safety_cooldown_until(db, now: datetime | None = None) -> datetime | None   # Phase 1.1 (data flow step 6c)
+keyword_outcome(result: KeywordScrapeResult) -> tuple[Literal["done","warning"], str | None]   # Phase 1.1, PURE (data flow step 3)
 get_run(db, run_id: int) -> RunDetailView                  # DomainError not_found
 list_runs(db, limit: int = 20) -> list[RunView]
 active_run(db) -> RunView | None
@@ -472,32 +576,246 @@ execute(run_id: int) -> None
 
 `web/context.py` (E): `shell_context(request, db) -> dict` with keys `session: SessionStatusView`, `cost: CostSummary`, `active_run: RunView | None`, `nav: list[NavItem(label, href, phase: int | None, active: bool)]`, `banner: str | None`, `mode: str`.
 
+## LinkedIn browser (Phase 1.1)
+
+This section is binding for slices R1 (browser + login) and R2 (detection + parsing). It replaces Phase 1's bundled-Chromium profile and its DOM-marker login detection.
+
+### Browser resolution (`scraper/browser.resolve_browser`, cached; `reset_browser_cache` seam)
+
+| `SALES0_LINKEDIN_BROWSER_CHANNEL` | Google Chrome installed | Result |
+|---|---|---|
+| `auto` (default) | yes | `chrome`, label "Google Chrome <major>", note None |
+| `auto` | no | `chromium`, label "Built-in browser (Chromium)", note **"Google Chrome not found — using the built-in browser"** |
+| `chrome` | yes | `chrome` |
+| `chrome` | no | raises `BrowserUnavailable("Google Chrome is not installed — install it from https://www.google.com/chrome/ or set SALES0_LINKEDIN_BROWSER_CHANNEL=auto")` |
+| `chromium` | any | `chromium`, note None |
+
+- **"Installed"** means the binary at one of Playwright's standard channel locations exists:
+  - macOS: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, else `~/Applications/Google Chrome.app/…`. In the second case Playwright gets `executable_path` instead of `channel`, because Playwright only looks in `/Applications`.
+  - Linux: `/opt/google/chrome/chrome`.
+- **Chrome version:**
+  - macOS: `CFBundleShortVersionString` from `Contents/Info.plist`, via `plistlib`.
+  - Linux: `<binary> --version`, 5 s timeout.
+  - Neither starts a browser. On this Mac the result is `156.x`.
+- **Chromium version:** `browserVersion` of the `chromium` entry in Playwright's bundled `driver/package/browsers.json`. If that is unreadable, it is `None`.
+- **Playwright launch:**
+  - `chrome` → `channel="chrome"`. Its headless mode is Chrome's own new headless.
+  - `chromium` → `channel="chromium"`. This opts into new headless for the bundled Chromium (not `chromium-headless-shell`). It requires `uv run playwright install chromium`, which installs both builds.
+
+> **Assumed:** the Chromium version comes from Playwright's `browsers.json` so that no browser has to be launched just to build the headless UA. If it is unreadable, the headless launch keeps Chromium's own UA and logs WARNING `headless_ua_unmasked`. This is a best-effort fallback that matters only when Chrome is absent.
+
+### Profiles (`scraper/browser.profile_dir(settings, channel)`, all under `settings.data_path`, gitignored)
+
+| Mode | Channel | Directory |
+|---|---|---|
+| live | chrome | `linkedin-chrome-profile/` (new in Phase 1.1) |
+| live | chromium | `linkedin-profile/` (Phase 1's Chromium profile, reused only by the fallback) |
+| fixture | chrome | `linkedin-profile-fixture-chrome/` |
+| fixture | chromium | `linkedin-profile-fixture-chromium/` |
+
+A Chrome profile and a Chromium profile are never shared, because the two builds' profile formats and versions differ. The Phase-1 login (in `linkedin-profile/`) is therefore not reused by Chrome, and the user logs in once more. This is the "No `li_at` cookie" path of data flow step 2, which is not a safety stop. Phase 1's `linkedin-profile-fixture/` is unused; the README says it can be deleted.
+
+**One context per profile, ever.** The `JobRunner` single-flight rule guarantees it inside sales0. `open_context` additionally checks the profile's `SingletonLock`. When a live process holds it (for example, the user left the sales0 Chrome window open from an aborted Connect), it raises `BrowserUnavailable("The sales0 browser window is still open — close it and try again")` instead of letting Playwright fail obscurely. The sales0 profile is separate from the user's everyday Chrome profiles. A different `user_data_dir` starts a separate Chrome instance, so it works while the user's own Chrome is open, and it never reads or changes their profiles.
+
+### Launch options (`scraper/browser.launch_options`, pure, unit-tested)
+
+The headed (Connect) and headless (Re-check, runs) launches use the **identical** argument set, except for the rows marked as differing. This matters because Playwright's default args `--use-mock-keychain` and `--password-store=basic` decide how Chrome encrypts the profile's cookies. Changing them between launches would make the Connect login unreadable to the headless runs, so they are kept as they are. The only default arg removed is `--enable-automation`.
+
+| Option | Headed (Connect, live) | Headless (check, run; and fixture-mode Connect) |
+|---|---|---|
+| `user_data_dir` | `profile_dir(settings, choice.channel)` | same |
+| `channel` / `executable_path` | from `BrowserChoice` | same |
+| `headless` | `False` | `True` |
+| `ignore_default_args` | `["--enable-automation"]` | same |
+| `args` | `--disable-blink-features=AutomationControlled`, `--no-first-run`, `--no-default-browser-check`, `--window-size=1280,860` | the same, without `--window-size` |
+| `chromium_sandbox` | `True` (sandbox on) | `True` |
+| viewport | `no_viewport=True` (a normal window that the user can resize) | `viewport={"width": 1280, "height": 860}` |
+| `user_agent` | not set (Chrome's natural UA) | `user_agent_for(choice.version)` = `Mozilla/5.0 (<platform>) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<major>.0.0.0 Safari/537.36`. `<platform>` is `Macintosh; Intel Mac OS X 10_15_7` on macOS (Chrome's frozen value, also on Apple Silicon), `X11; Linux x86_64` on Linux, and `Windows NT 10.0; Win64; x64` on Windows. This is byte-for-byte the reduced UA that headed Chrome sends, and it never contains `HeadlessChrome`. |
+| `locale` | `system_locale()` | same |
+| `timezone_id` | `settings.timezone` (`SALES0_TIMEZONE`) | same |
+
+- `system_locale()` (cached) tries three sources in order:
+  1. On macOS, `defaults read -g AppleLocale` (2 s timeout). `en_IN` becomes `en-IN`, and any `@…` suffix is dropped.
+  2. Otherwise `LC_ALL` / `LANG`. `en_IN.UTF-8` becomes `en-IN`.
+  3. Otherwise `en-US`.
+- `open_context` logs `browser_launch` (DEBUG) and maps every launch `PlaywrightError` to `BrowserUnavailable` with a next step, e.g. "Could not start Google Chrome (…) — quit any sales0 Chrome window and try again".
+
+> **Assumed:** the "Chrome is being controlled by automated test software" infobar can still appear in the headed Connect window on some Chrome versions, even with `--enable-automation` removed. The Setup copy says so (`ui.md`). UA client hints (`Sec-CH-UA`) are not overridden. Headless new-mode Chrome reports Chrome's own brands, and overriding them would need CDP per page. This is accepted as best-effort.
+
+### Logged-in detection (`scraper/detection.classify_page`, the ONE classifier for live pages and tests)
+
+**Primary signals:**
+- The **session cookie**: a non-expired `li_at` cookie applicable to `{base}`, from `context.cookies(base)`. In live mode that means domain `.linkedin.com`; in fixture mode, the fixture host. "Non-expired" means `expires == -1` (a session cookie) or `expires > now`, and the value is non-empty.
+- The **final URL path** of the page.
+- The **main-document HTTP status**.
+
+DOM markers for logged-out pages count only as additional logged-out signals. DOM markers for logged-in pages are **soft hints**: they are logged and never required.
+
+`classify_page(signals)` rules (first match wins):
+
+| # | Condition | Verdict `kind` (`reason`) |
+|---|---|---|
+| 1 | `status` ∈ {429, 999} | `rate_limited` (`status:<n>`) |
+| 2 | `has_captcha`, or `classify_url(url) == "captcha"` | `captcha` |
+| 3 | `classify_url(url) == "checkpoint"` | `checkpoint` (`path:<path>`) |
+| 4 | `classify_url(url) == "logout"` | `logout` (`path:<path>`) |
+| 5 | `not has_session_cookie` | `logout` (`no_cookie`) |
+| 6 | `has_login_form` or `has_authwall` | `logout` (`login_form` / `authwall`) |
+| 7 | `status` ≥ 400 | `http_error` (`status:<n>`) |
+| 8 | otherwise | `ok` |
+
+`classify_url(url) -> "logout" | "checkpoint" | "captcha" | None` is path-only. The query is never inspected, so a search keyword like "login" never trips it. It returns None for a URL that is not `same_site` with base. Path segments are lower-cased, and the first matching rule wins:
+- **captcha:** any segment contains `captcha` (e.g. `/uas/consumer-captcha-v2`).
+- **logout (login/challenge-to-login paths):** the first segment is one of `login`, `login-submit`, `uas`, `authwall`, `signup`, `signin`, `reg`. Also any path that starts with `/checkpoint/lg/` (LinkedIn's login form, e.g. `/checkpoint/lg/login-submit`), `/checkpoint/rm/sign-in-another-account`, or `/m/login`.
+- **checkpoint:** the first segment is `checkpoint` (every other `/checkpoint/*`, e.g. `/checkpoint/challenge/…`, `/checkpoint/challengesV2/…`, `/checkpoint/pk/…`).
+
+DOM markers, all in `selectors.py`, read in ONE `page.evaluate(SIGNALS_JS, SIGNAL_ARGS)`:
+- `LOGIN_FORM_MARKERS` (logged-out): `input#username`, `input[name="session_key"]`, `form[action*="login"]`.
+- `AUTHWALL_MARKERS` (logged-out): `.authwall`, `[data-test-id*="authwall"]`, `#authwall`.
+- `CAPTCHA_MARKERS`: `iframe[src*="captcha" i]`, `iframe[src*="recaptcha"]`, `iframe[src*="arkoselabs"]`, `iframe[src*="funcaptcha"]`, `iframe[title*="captcha" i]`, `#captcha-internal`, `form[action*="captcha"]`.
+- `SOFT_LOGGED_IN_HINTS` (name → selector; reported as names, never used in a verdict): `self_profile_link` → `a[href*="/in/"]`, `global_nav_attr` → `[data-test-global-nav]`, `nav_aria` → `nav[aria-label]`, `main_landmark` → `main, [role="main"]`, `legacy_global_nav` → `#global-nav, header.global-nav`.
+
+`LOGGED_IN_MARKER` (Phase 1) is **deleted**. No code may require a logged-in DOM marker.
+
+Where the classifier runs:
+- **Connect poll:** cookie + URL only; see Connect.
+- **Re-check:** `check_session(settings)`, which is headless and opens and closes its own context, then calls `verify_in_context`.
+- **Run start:** `LinkedInSearcher.__enter__` → `verify_in_context`.
+- **Mid-run:** every safety checkpoint; see Mid-run safety.
+
+`verify_in_context` works like this:
+- If the cookie is absent, it returns `SessionCheckResult(False, "no_cookie", feed_url)` without navigating.
+- Otherwise it does ONE `goto({base}/feed/, wait_until="domcontentloaded")`, then waits up to `timeout_ms` for `main, [role="main"], form, iframe` to be attached. Missing content does not fail the check.
+- It then runs `read_signals` → `classify_page`.
+- Mapping: `ok` → `("ok", logged_in=True)`; `logout` → `"redirected_login"`, or `"no_cookie"` when the reason is `no_cookie`; `checkpoint` / `captcha` / `rate_limited` map to themselves; `http_error` or a navigation error → `"error"`.
+- `soft_hints` are copied into the result.
+
+### Connect (`scraper/connect.connect_interactive`)
+
+1. `resolve_browser`. Then `open_context(headless = settings.linkedin_mode == "fixture")`: headed in live mode.
+2. Go to `{base}/login` in the first page. A navigation error is ignored, because the user may already be interacting.
+3. Every `poll_interval_s` (1 s), pumping events with `page.wait_for_timeout`:
+   1. All windows closed → `window_closed`.
+   2. `should_cancel()` → `cancelled`.
+   3. Elapsed ≥ timeout → `timeout`.
+   4. Otherwise call `on_tick(elapsed)` and check the **cheap rule**: `session_cookie_present(context, base)` (no navigation) AND at least one open page P whose `P.url` is `same_site` with base and has `classify_url(P.url) is None`. This means the user has reached the feed or any logged-in page: after 2FA, and after LinkedIn's "remember this browser" step. While the user is on `/login`, `/checkpoint/…` (2FA, remember-browser) or `/authwall`, the rule is false and Connect keeps waiting. These pages are never stops during Connect.
+   5. When the rule holds, **verify** once in that same window: `verify_in_context(context, base, timeout_ms, page=P)`, which navigates P to `/feed/`. `logged_in` → return `ConnectResult(True, "ok", None, browser=choice.channel)`, and the context closes, so the window disappears. `rate_limited` → return `("error", "LinkedIn is rate-limiting this browser — wait a few hours, then Connect again")`. Any other failed verdict → keep polling. P is not verified again until its URL changes, which means the user did something.
+4. Expected latency: cookie set → next poll (≤ 1 s) → one `/feed/` load → closed. That is about 2 s on live LinkedIn and under 3 s in the fixture (success criterion). If the profile is already logged in, `/login` redirects to `/feed/`, and Connect succeeds on the first poll.
+5. `BrowserUnavailable` → `("error", <its message>)`.
+
+### Mid-run safety (`scraper/search.LinkedInSearcher`)
+
+**Latches** are registered at `__enter__`, before the run-start check:
+- A `context.on("response")` listener: any `same_site` response (document, XHR, fetch, including background `/voyager/api/…`) with status 429 or 999 latches `rate_limited` with its URL.
+- A `page.on("framenavigated")` listener on the main frame: `classify_url(url)` not None latches that kind with its URL. This catches a redirect to `/authwall`, `/login` or `/checkpoint/…` the moment it happens.
+
+**Checkpoints** run before each keyword, after each navigation, after each scroll, after each "see more" click, and on every poll inside the wait-for-more-cards loop (latch only). Each checkpoint does this:
+1. If a latch is set → stop.
+2. Otherwise `read_signals` (cookie + one `SIGNALS_JS` evaluation) → `classify_page`.
+3. `ok` → continue. `http_error` on the search document → `ScrapeError`, which is a keyword `error`, and the run continues. Any other kind → stop.
+4. **Stop** = close the context FIRST, then raise `AccountSafetyStop(kind, url)`.
+
+A stop is never retried and never pushed through. `li_at` disappearing mid-run is caught at the next checkpoint by rule 5.
+
+### Post parsing (`scraper/selectors.py` + `scraper/parsing.py`)
+
+`EXTRACT_JS` is evaluated with `page.evaluate(EXTRACT_JS, EXTRACT_ARGS)`. It discovers the cards itself, and `EXTRACT_ARGS` is a JSON dict of the selector lists below. It returns one raw dict per card: `urn`, `author_name`, `author_profile_url`, `author_headline`, `posted_relative`, `text`, plus `via` (which fallback matched each field, logged at DEBUG). Class-based selectors survive only as the LAST fallback of a field (`legacy_*`). Every field has ordered fallbacks, and the first non-empty value wins. The scope is `main` when present, else `document`.
+
+- **Cards.**
+  1. Elements matching `CARD_ATTR_SELECTORS`: `[data-urn^="urn:li:activity:"]`, `[data-urn^="urn:li:ugcPost:"]`, `[data-urn^="urn:li:share:"]`, `[data-id^="urn:li:activity:"]`, `[data-id^="urn:li:ugcPost:"]`, `[data-id^="urn:li:share:"]`. Outermost only: a match nested inside another match is a reshared original and belongs to its outer card.
+  2. Then, always also: every `POST_LINK_SELECTORS` anchor (`a[href*="/feed/update/urn:li:activity:"]`, `a[href*="/feed/update/urn:li:ugcPost:"]`, `a[href*="/feed/update/urn:li:share:"]`, `a[href*="/posts/"]`) that is not inside a card already found. Its card is `anchor.closest(CARD_CONTAINERS)`, where `CARD_CONTAINERS` = `li, article, [role="article"], [data-view-name*="update" i], [data-view-name*="search-entity" i]`. If there is no container, the anchor is skipped. Cards are de-duplicated by element.
+- **URN**, in order:
+  1. The card's `data-urn` / `data-id` (a valid prefix).
+  2. The first descendant carrying one.
+  3. An href matching `/feed/update/(urn:li:(activity|ugcPost|share):\d+)`.
+  4. An href matching `/posts/[^/]*-(activity|ugcPost|share)-(\d+)` → `urn:li:<type>:<n>`.
+
+  None of these → `ParseError`, counted.
+- **Author anchor:** the first `a[href*="/in/"], a[href*="/company/"]` in card DOM order, outside any nested reshared card.
+- **author_name**, in order: `[aria-hidden="true"]` text inside the author anchor; `span[dir]` inside it; the anchor's `aria-label`, cleaned of `View `, `’s profile` / `'s profile`, `, graphic`; the first line of the anchor's `innerText`; legacy `.update-components-actor__title span[aria-hidden="true"]`.
+- **author_profile_url**, in order: the author anchor's `href`; legacy `a.update-components-actor__meta-link`.
+- **author_headline**, in order: the first line of the author anchor's (or its parent's) `innerText` that is not the name, not a connection degree (`• 1st|2nd|3rd+`), not "Follow", and not a relative time; legacy `.update-components-actor__description span[aria-hidden="true"]`.
+- **posted_relative**, in order: a `time` element's text or `datetime`; the first element before the text block whose own text or `aria-label` matches `RELATIVE_TIME_RE`; legacy `.update-components-actor__sub-description span[aria-hidden="true"]`.
+- **text:** the candidate with the LONGEST `innerText` among `TEXT_SELECTORS` = `[data-test-id*="commentary" i]`, `[dir="ltr"]`, `span[dir]`, legacy `.update-components-text`. Candidates inside the author anchor or a nested reshared card are excluded. A tie goes to the earlier selector. None → `ParseError` "no post text".
+- **"See more"** (clicked by `search.py`, paced, then a checkpoint), in order:
+  1. `button[aria-label*="see more" i]`, `button[aria-label*="show more" i]`, `[role="button"][aria-label*="see more" i]`.
+  2. A `button` or `[role="button"]` whose trimmed text matches `^(…|\.\.\.)?\s*(see|show)?\s*more$`i.
+  3. Legacy `button.feed-shared-inline-show-more-text__see-more-less-toggle`.
+
+  Never an `a[href]`, and never an element whose `aria-label` matches `actions|options|menu|comment|reaction`.
+- **No-results marker:** legacy `.search-reusable-search-no-results`, OR any `h1, h2, h3, p` in scope whose trimmed text starts with "No results found" or equals "No results" (case-insensitive).
+- **`RELATIVE_TIME_RE`:** `^\s*(\d+)\s*(s|m|min|mins|h|hr|hrs|d|w|wk|mo|y|yr|yrs)\b`, or `(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago`. A leading "Edited •" and trailing "•" are stripped. `relative_time.parse_relative` accepts both forms.
+- **`post_from_raw`** (pure) is unchanged in contract. Missing optional fields stay None. `search.py` counts them into `field_misses`.
+
+**Layout drift.** After the content wait (`wait_for_function` until `cards_found > 0`, or `no_results`, or the timeout) and an `ok` safety checkpoint, a drift check runs. `drift_warning = (posts parsed == 0) and (cards_found > 0 or not no_results)`. In words: a logged-in results page that has result containers, or that lacks a "no results" marker, but yields 0 posts. When it is true, it logs WARNING `scraper_layout_drift` with `keyword`, `final_path`, `cards_found`, `parse_errors`. The keyword row becomes `warning`, and the run-level alert shows (data flow steps 3 and 7). Partial field failures are counted in `field_misses` and surfaced the same way. Nothing is silent.
+
+### Saved page samples (`tests/fixtures/linkedin_pages/`, slice R2)
+
+These are authored, realistic HTML files modelled on CURRENT LinkedIn. They use obfuscated, random-looking class names (e.g. `class="t8kq2 _p3z9x"`), and no element has a `global-nav` id or class. A test greps every logged-in sample for `global-nav` and requires 0 hits. There is no personal data: fictional names, `.example` emails, `+91 90000 0000x` phones. `manifest.json` lists one entry per case: `{file, url, status, cookie, expect: {kind, reason?, posts?, urns?, drift?, no_results?, cards_found?, fields?, field_misses?, soft_hints_nonempty?}}`.
+
+| File | Served at (manifest `url`) | cookie | Expected |
+|---|---|---|---|
+| `feed_logged_in.html` | `https://www.linkedin.com/feed/` | yes | `ok`; `soft_hints` non-empty; no `global-nav` |
+| `search_results_content.html` | `…/search/results/content/?keywords=ai%20workshop&…` | yes | `ok`; 6 posts: 2 `data-urn` activity, 1 `data-urn` ugcPost, 1 `data-id` activity, 1 anchor-only `/feed/update/urn:li:activity:…`, and 1 anchor-only `/posts/<slug>-activity-<n>-xxxx`. It also includes one reshare (nested card, not double-counted), one truncated post with a "…see more" button, and one post with no headline (`field_misses == {"author_headline": 1}`). The manifest pins author_name, headline, posted_relative and a text snippet per URN. |
+| `search_results_empty.html` | `…/search/results/content/?keywords=zzqx…` | yes | `ok`; 0 posts; `no_results=true`; `drift=false` (text "No results found", no legacy class) |
+| `login.html` | `https://www.linkedin.com/login` | no | `logout` (`path:/login`) |
+| `login.html` | `https://www.linkedin.com/feed/` | yes | `logout` (`login_form`). This proves the DOM logged-out marker works when the URL looks fine. |
+| `authwall.html` | `https://www.linkedin.com/authwall?trk=…` | yes | `logout` (`path:/authwall`) |
+| `checkpoint_challenge.html` | `https://www.linkedin.com/checkpoint/challenge/AgF…` | yes | `checkpoint` |
+| `captcha_challenge.html` | `https://www.linkedin.com/checkpoint/challenge/AgG…` (arkoselabs iframe) | yes | `captcha` |
+| `search_results_drifted.html` | `…/search/results/content/?keywords=ai%20workshop&…` | yes | `ok`; result containers (`ul[role="list"] > li` with text but no URN attributes and no post links); 0 posts; `drift=true` |
+
+The table also contains three status-only manifest rows that need no file: status 429 → `rate_limited`, status 999 → `rate_limited`, and status 500 on `/feed/` with a cookie → `http_error`.
+
+### `python -m sales0.cli check-browser` (slice R1; real local smoke, part of the gate)
+
+1. `resolve_browser(get_settings())`.
+2. In a **throwaway** `tempfile.TemporaryDirectory()` profile, never `data/` and never the sales0 profile, launch `launch_persistent_context` HEADLESS with `launch_options(...)`.
+3. Open **`about:blank` only**. It never navigates anywhere else and never contacts LinkedIn.
+4. Read `Browser.getVersion` over a CDP session (`product`, e.g. `Chrome/156.0.7311.42`), `navigator.userAgent` and `navigator.webdriver`. Close the context and delete the temp dir.
+
+The whole command runs under a hard 60 s timeout. It is a watchdog thread; when it fires, it kills the browser process group and exits.
+- **Success** (stdout, exit 0), exactly one line: `browser OK channel=<chrome|chromium> version=<version>`. On an auto fallback, the same line is followed by ` (Google Chrome not found — using the built-in browser)`.
+- **Failure** (stderr, exit 1): `browser ERROR type=<chrome-not-found|launch-failed|timeout|automation-tell> <message>`. `automation-tell` = `navigator.webdriver` is true, or the UA contains `HeadlessChrome`.
+
+Logs go to stderr, so stdout carries only the result line, as with `check-llm`. On this Mac the gate expects `browser OK channel=chrome version=156.`.
+
 ## Fixture LinkedIn corpus
 
 **Purpose.** Fixture mode lets the SAME `LinkedInSearcher` and Playwright code run offline, for tests and demos. `scraper/urls.base_url(settings)` returns `https://www.linkedin.com` in live mode and `http://{host}:{port}/__fixtures/linkedin` in fixture mode. Every path below is relative to that base and is identical in shape to LinkedIn's.
 
-**Fixture routes** (slice C, `linkedin_fixture/routes.py`; mounted only when mode=fixture):
-- `GET /login`: sets cookie `li_at=fixture-session` (path `/`, httponly) and redirects 302 to `/feed/`.
-- `GET /feed/`: with `li_at`, renders a feed page containing `nav.global-nav`. Without it, redirects 302 to `/authwall`.
-- `GET /authwall`: a login wall page (no `global-nav`).
-- `GET /search/results/content/?keywords=K&...`: without `li_at` → 302 to `/authwall`. When K (lower-cased, trimmed) is `checkpoint-test` → 302 to `/checkpoint/challenge/`. When K is `captcha-test` → renders a page containing `iframe[src*="captcha"]`. When K is `ratelimit-test` → HTTP 429. When K is `ratelimit-scroll-test` → the results page renders normally, but a background XHR/fetch it issues returns HTTP 429. When K is `checkpoint-scroll-test` → the results page lazy-loads more cards on the first scroll, and the page load triggered by the second scroll redirects to the checkpoint, to exercise the per-scroll checkpoint. When K is `lazy-scroll-test` → the `ai workshop` posts are served lazily: one more card is revealed ~700ms after each scroll (longer than a fixed short post-scroll wait), to exercise the wait-for-growth logic. When K is `layout-drift-test` → a logged-in results page with neither parseable result cards nor the no-results marker, so the searcher sets `drift_warning=True`. Trigger keywords are defined in `linkedin_fixture/corpus.py`. Otherwise it renders every post whose `keywords` contains K, in corpus order. Zero matches renders the no-results marker `.search-reusable-search-no-results`.
+**Fixture routes** (slice C, `linkedin_fixture/routes.py`; mounted only when mode=fixture; Phase 1.1 changes owned by R3):
+- `GET /login` (Phase 1.1: a 2FA flow, so Connect's cookie + URL rule is exercised):
+  - With a valid `li_at` → 302 to `/feed/` (already logged in).
+  - Otherwise it renders a login page: `input#username`, `form[action*="login-submit"]`, obfuscated classes. A script on that page navigates after 300 ms to `/checkpoint/challenge/verify` (the "user submitted the form" step).
+  - `GET /login?direct=1` keeps Phase 1's behaviour: it sets the cookie and 302s to `/feed/`. Test setup helpers use it.
+- `GET /checkpoint/challenge/verify` (Phase 1.1): a 2FA code page. No cookie is set yet. After 600 ms its script goes to `/checkpoint/challenge/verify-submit`.
+- `GET /checkpoint/challenge/verify-submit` (Phase 1.1): sets cookie `li_at=fixture-session` (path `/`, httponly, `max_age` 1 year) and 302s to `/checkpoint/challenge/remember-browser`.
+- `GET /checkpoint/challenge/remember-browser` (Phase 1.1): a "Remember this browser?" page. The cookie is already set, but the path is a checkpoint, so Connect must keep waiting. After 600 ms its script goes to `/feed/`.
+- `GET /feed/`: with `li_at`, it renders a feed page in **current LinkedIn markup** (Phase 1.1: obfuscated class names, `main` landmark, `nav[aria-label="Primary"]`, a self-profile `a[href*="/in/"]`, and **no** `global-nav` id or class anywhere). Without the cookie it 302s to `/authwall`.
+- `GET /authwall`: a guest/login-wall page with `.authwall` and `form[action*="login"]`, and no `global-nav`.
+- `GET /search/results/content/?keywords=K&...`: without `li_at` → 302 to `/authwall`. When K (lower-cased, trimmed) is `checkpoint-test` → 302 to `/checkpoint/challenge/`. **`logout-test` (Phase 1.1)** → 302 to `/authwall`. This simulates an expired session mid-run: the cookie is still present, and the path classifies as `logout`. When K is `captcha-test` → renders a page containing `iframe[src*="captcha"]`. When K is `ratelimit-test` → HTTP 429. When K is `ratelimit-scroll-test` → the results page renders normally, but a background XHR/fetch it issues returns HTTP 429. When K is `checkpoint-scroll-test` → the results page lazy-loads more cards on the first scroll, and the page load triggered by the second scroll redirects to the checkpoint, to exercise the per-scroll checkpoint. When K is `lazy-scroll-test` → the `ai workshop` posts are served lazily: one more card is revealed ~700ms after each scroll (longer than a fixed short post-scroll wait), to exercise the wait-for-growth logic. When K is `layout-drift-test` → a logged-in results page with neither parseable result cards nor the no-results marker, so the searcher sets `drift_warning=True`. Trigger keywords are defined in `linkedin_fixture/corpus.py` (`LOGOUT_KEYWORD = "logout-test"` is added in Phase 1.1). Otherwise it renders every post whose `keywords` contains K, in corpus order. Zero matches renders a "No results found" heading. Phase 1.1: there is no `.search-reusable-search-no-results` class; the text marker alone must be detected. `layout-drift-test` renders `main > ul[role="list"] > li` items with text but no URN attributes and no post links.
 - `GET /checkpoint/challenge/`: a security-check page.
 
-**DOM contract** (`scraper/selectors.py` is the single source; the fixture templates use exactly these):
-- result card `div[data-urn]` whose `data-urn` starts with `urn:li:activity:`, `urn:li:ugcPost:` or `urn:li:share:` (URN from the `data-urn` attribute; other prefixes are ignored)
-- author name `.update-components-actor__title span[aria-hidden="true"]`
-- author profile link `a.update-components-actor__meta-link` (href)
-- author headline `.update-components-actor__description span[aria-hidden="true"]`
-- relative time `.update-components-actor__sub-description span[aria-hidden="true"]` (e.g. `2d •`)
-- text `.update-components-text` (expand via `button.feed-shared-inline-show-more-text__see-more-less-toggle` if present)
-- logged-in marker (`LOGGED_IN_MARKER`, a union selector; any match = logged in) `#global-nav, header.global-nav, nav.global-nav__nav, nav.global-nav`
-- no-results marker `.search-reusable-search-no-results`
-- The post permalink is built as `{base}/feed/update/{urn}/`.
-- After each scroll, the searcher waits up to ~2.5s for the result-card count to grow before deciding the page is exhausted.
+**Fixture markup (Phase 1.1, binding: it proves detection and parsing do not depend on class names).** Every fixture template uses obfuscated, deterministic class names, e.g. `class="k3v9q _m1x7"`. None of the old `update-components-*`, `feed-shared-*`, `global-nav*` or `search-reusable-*` classes appear. A unit test (R3) greps the rendered pages for them. The corpus posts rotate through the card shapes that `## LinkedIn browser` → Post parsing must handle, by corpus position:
 
-**Safety checkpoints** (`scraper/search.py`): the searcher listens to EVERY LinkedIn response in the context, including background XHR/fetch requests, not only the main document. Any HTTP 429 or 999 seen is latched and raised as `AccountSafetyStop("rate_limited")` at the next checkpoint. Checkpoints run after each navigation, after each scroll and after each "see more" expand; each also checks for the logout, checkpoint and captcha signals.
+| Posts | Card shape |
+|---|---|
+| P1, P2, P3 | `div[data-urn="urn:li:activity:…"]` |
+| P5, P6, P7 | `li > div[data-id="urn:li:activity:…"]` |
+| P8, P9 | `li` with no URN attribute, URN only in `a[href*="/feed/update/urn:li:activity:…/"]` |
+| P10, P11 | `article` with no URN attribute, URN only in `a[href*="/posts/<slug>-activity-<id>-AbCd/"]` |
 
-> **Assumed:** the selectors model LinkedIn's current DOM as best known. Live LinkedIn changes markup often, so drift is handled operationally. If a live results page is logged in, shows neither result cards nor the no-results marker, then `drift_warning=True`. The keyword row is then marked `warning` with "No posts parsed — LinkedIn layout may have changed", and the run detail shows it. Fixing selectors is a one-file change (`selectors.py` plus the fixture templates).
+- **Author block:** `a[href*="/in/<profile_slug>/"]` containing `span[aria-hidden="true"]` (the name), then a line with the headline, then a `span` with `2d •`-style relative time. There are no actor classes.
+- **Text:** `div[dir="ltr"]` (or `span[dir="ltr"]`).
+- **"See more":** posts longer than `SEE_MORE_AT` render a `button[aria-label="…see more, visually reveals content which is already detected by screen readers"]` that reveals the tail.
+- **Counts:** the corpus, URNs and expected counts are unchanged, so Phase 1's run expectations (seen 9 / new 7 / dupes 2; then 11 / 2 / 9) still hold, now through the fallback paths.
+- **Permalink:** built as `{base}/feed/update/{urn}/`.
+- **After each scroll,** the searcher waits up to about 2.5 s (1.2 s in fixture mode) for `cards_found` to grow before it decides the page is exhausted.
+
+**Safety checkpoints:** `## LinkedIn browser` → Mid-run safety.
+
+> **Assumed:** the selectors model LinkedIn's DOM as of October 2026 as best known. Live LinkedIn changes markup often, so drift is made visible rather than prevented: a keyword `warning` plus the run-level alert. Fixing selectors means changing `selectors.py` (and the fixture templates or saved samples, if the shape is new).
 
 **Corpus** (`linkedin_fixture/posts.json`). These are the exact URNs and keywords. The posts must contain the listed facts in their text, so the real-Haiku expectations are stable.
 
@@ -530,4 +848,4 @@ P1 appears under two keywords with the same URN (URN duplicate). P7 is the same 
 
 ## Portability to a VPS (later)
 
-The same command runs on any Linux host after `uv sync && uv run playwright install --with-deps chromium`. The live headed **Connect** needs a display. On a VPS, either run it under `xvfb-run` and reach it through a VNC/noVNC tunnel, or log in on the laptop and copy `data/linkedin-profile/`. This is documented in the README in Phase 2, together with the shared login. A Postgres switch is a URL change (see Stack).
+The same command runs on any Linux host after `uv sync && uv run playwright install --with-deps chromium`. With `SALES0_LINKEDIN_BROWSER_CHANNEL=auto`, sales0 uses Google Chrome when `google-chrome-stable` is installed (`/opt/google/chrome/chrome`), and otherwise the bundled Chromium with the Setup note. The live headed **Connect** needs a display. On a VPS, either run it under `xvfb-run` and reach it through a VNC/noVNC tunnel, or log in on the laptop and copy the profile directory for the channel in use (`data/linkedin-chrome-profile/` for Chrome). Copying works only between the same browser channel. This is documented in the README in Phase 2, together with the shared login. A Postgres switch is a URL change (see Stack).

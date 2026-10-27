@@ -1,0 +1,19 @@
+{% extends "_layout.html" %}
+{% block title %}Security Verification | LinkedIn (fixture){% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="c8pz1 _k7sd">
+  <h1 class="o2ty5">Enter the code we sent</h1>
+  <p class="e2mc8">We sent a 6-digit code to your phone ending in ••05. It may take a minute to arrive.</p>
+  <form class="p5ki2" method="get" action="{{ base }}/checkpoint/challenge/verify-submit">
+    <input id="input__phone_verification_pin" class="i3gh7" name="pin" inputmode="numeric" maxlength="6" value="000000" aria-label="Verification code">
+    <button type="submit" class="s9fe4">Submit</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The fixture "user" types the code and submits after 600 ms.
+  setTimeout(() => window.location.assign({{ (base ~ "/checkpoint/challenge/verify-submit") | tojson }}), 600);
+</script>
+{% endblock %}

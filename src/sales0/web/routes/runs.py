@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
@@ -10,7 +12,7 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db
 from sales0.services import runs as runs_service
 from sales0.services.views import RunView
-from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page
+from sales0.web.context import cooldown_clock, cost_badge_oob, is_htmx, redirect, render_html, render_page
 from sales0.web.envelope import ok
 
 router = APIRouter()
@@ -25,11 +27,20 @@ ABORT_LABELS = {
 }
 
 
-def outcome_view(run: RunView, *, last: bool = False) -> dict[str, str] | None:
+NOT_LOGGED_IN_PREFIX = "Not logged in to LinkedIn"
+
+DRIFT_ALERT_TEXT = (
+    "LinkedIn's page layout may have changed — {n} keyword(s) returned results sales0 couldn't fully read. "
+    "Some posts may be missing. See the per-keyword log."
+)
+
+
+def outcome_view(run: RunView, *, last: bool = False, cooldown_until: datetime | None = None) -> dict[str, str] | None:
     """The one-line outcome for a finished run (None while it is still active).
 
     ``last=True`` phrases it as the previous run's outcome ("Last run finished — …") for a
-    fresh /runs load after the run ended."""
+    fresh /runs load after the run ended. ``cooldown_until`` (Phase 1.1) adds the
+    "Next run allowed after HH:MM" line to a safety stop while the cool-down applies."""
     if run.status in ACTIVE_STATUSES:
         return None
     subject = "Last run" if last else "Run"
@@ -41,14 +52,27 @@ def outcome_view(run: RunView, *, last: bool = False) -> dict[str, str] | None:
         return {"kind": "ok", "text": text}
     if run.status == "aborted":
         label = ABORT_LABELS.get(run.abort_reason or "", f"LinkedIn safety stop ({run.abort_reason or 'unknown'})")
-        return {
+        view = {
             "kind": "error",
             "text": f"{subject} stopped: {label}",
-            "guidance": "Posts saved before the stop were kept and triaged. Open LinkedIn in a normal browser, "
-            "resolve it, then press Connect LinkedIn in Setup before running again.",
+            "guidance": "Posts saved before the stop were kept and triaged. Press Connect LinkedIn in Setup — "
+            "the sales0 Chrome window opens on LinkedIn so you can resolve it.",
         }
+        if cooldown_until is not None:
+            view["cooldown"] = f"Next run allowed after {cooldown_clock(cooldown_until)}"
+        return view
     message = run.error_message or "The run failed — details are in the server log."
-    return {"kind": "error", "text": f"Last run failed: {message}" if last else message}
+    view = {"kind": "error", "text": f"Last run failed: {message}" if last else message}
+    if message.startswith(NOT_LOGGED_IN_PREFIX):
+        view["setup_link"] = "1"
+    return view
+
+
+def drift_alert(run: RunView | None) -> str | None:
+    """The run-level layout-drift alert text (ui.md) for a finished run with warnings."""
+    if run is None or run.status in ACTIVE_STATUSES or not getattr(run, "layout_warnings", 0):
+        return None
+    return DRIFT_ALERT_TEXT.format(n=run.layout_warnings)
 
 
 def _caps() -> dict[str, int]:
@@ -61,18 +85,24 @@ def _panel_ctx(db: Session, run: RunView | None, last_run: RunView | None = None
     shown as a "Last run …" outcome on a fresh idle page and never sets data-run-id, so a
     client waiting for the panel to pick up a NEW run is not fooled by the old one."""
     active = run is not None and run.status in ACTIVE_STATUSES
+    cooldown = None if active else runs_service.safety_cooldown_until(db)
     if run is not None:
-        outcome = outcome_view(run)
+        outcome = outcome_view(run, cooldown_until=cooldown)
     elif last_run is not None:
-        outcome = outcome_view(last_run, last=True)
+        outcome = outcome_view(last_run, last=True, cooldown_until=cooldown)
     else:
         outcome = None
+    eligibility = None if active else runs_service.run_eligibility(db)
+    if outcome and eligibility is not None and eligibility.reason_code == "safety_cooldown":
+        # The disabled Run-now reason already states the time; say it once (ui-ux.md).
+        outcome = {k: v for k, v in outcome.items() if k != "cooldown"}
     return {
+        "drift_alert": drift_alert(run if run is not None else last_run),
         "run": run,
         "last_run": last_run if run is None else None,
         "active": active,
         "outcome": outcome,
-        "eligibility": None if active else runs_service.run_eligibility(db),
+        "eligibility": eligibility,
         "caps": _caps(),
     }
 
@@ -115,11 +145,22 @@ def run_progress(request: Request, run_id: int, db: Session = Depends(get_db)) -
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
 def run_detail(request: Request, run_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
     detail = runs_service.get_run(db, run_id)
+    active = detail.run.status in ACTIVE_STATUSES
+    # The cool-down line belongs to the latest run only (the stop that started it).
+    latest = runs_service.list_runs(db, limit=1)
+    is_latest = bool(latest) and latest[0].id == detail.run.id
+    cooldown = runs_service.safety_cooldown_until(db) if is_latest and not active else None
     return render_page(
         request,
         db,
         "runs/detail.html",
-        {"detail": detail, "run": detail.run, "outcome": outcome_view(detail.run), "active": detail.run.status in ACTIVE_STATUSES},
+        {
+            "detail": detail,
+            "run": detail.run,
+            "outcome": outcome_view(detail.run, cooldown_until=cooldown),
+            "drift_alert": drift_alert(detail.run),
+            "active": active,
+        },
     )
 
 
@@ -128,4 +169,4 @@ def api_run(run_id: int, db: Session = Depends(get_db)) -> JSONResponse:
     return ok(runs_service.get_run(db, run_id).model_dump(mode="json"))
 
 
-__all__ = ["router", "outcome_view"]
+__all__ = ["drift_alert", "outcome_view", "router"]

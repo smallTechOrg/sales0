@@ -46,4 +46,5 @@ markers = [
     "llm: makes a real Anthropic (Haiku) call using the key from .env",
     "browser: drives a real Playwright Chromium",
     "e2e: live server subprocess + headless Chromium + real Haiku",
+    "chrome: needs the installed Google Chrome (real headless Chrome; Phase 1.1)",
 ]

@@ -1,4 +1,9 @@
-"""Fixture LinkedIn routes (architecture.md → Fixture routes). Paths mirror LinkedIn's."""
+"""Fixture LinkedIn routes (architecture.md → Fixture routes). Paths mirror LinkedIn's.
+
+Phase 1.1 (slice R3): current-LinkedIn markup (obfuscated classes, no global-nav), a
+login → 2FA → "remember this browser" → feed flow so Connect's cookie + URL rule is
+exercised, the ``/login?direct=1`` test shortcut, and the ``logout-test`` keyword.
+"""
 
 from __future__ import annotations
 
@@ -14,22 +19,24 @@ from sales0.linkedin_fixture.corpus import (
     DRIFT_KEYWORD,
     LAZY_PLANS,
     LAZY_REVEAL_DELAY_MS,
+    LOGOUT_KEYWORD,
     RATELIMIT_KEYWORD,
     normalize_keyword,
     post_by_urn,
     posts_for,
 )
-from sales0.scraper import selectors
-
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 
+# LinkedIn's session cookie name (the scraper reads the same name); defined here so the fixture
+# does not depend on scraper internals.
+SESSION_COOKIE = "li_at"
 SESSION_VALUE = "fixture-session"
 SESSION_MAX_AGE_S = 365 * 24 * 3600
 
 
 def _logged_in(request: Request) -> bool:
-    return bool(request.cookies.get(selectors.SESSION_COOKIE))
+    return bool(request.cookies.get(SESSION_COOKIE))
 
 
 def _base(request: Request) -> str:
@@ -45,12 +52,38 @@ def _page(request: Request, name: str, status_code: int = 200, **ctx: object) ->
     return templates.TemplateResponse(request, name, {"base": _base(request), **ctx}, status_code=status_code)
 
 
-@router.get("/login", name="fixture_login")
-def login(request: Request) -> Response:
-    response = _to(request, "fixture_feed")
+def _set_session(response: Response) -> Response:
     # Persistent (max_age) like LinkedIn's real li_at, so the session survives a browser restart.
-    response.set_cookie(selectors.SESSION_COOKIE, SESSION_VALUE, path="/", httponly=True, max_age=SESSION_MAX_AGE_S)
+    response.set_cookie(SESSION_COOKIE, SESSION_VALUE, path="/", httponly=True, max_age=SESSION_MAX_AGE_S)
     return response
+
+
+@router.get("/login", name="fixture_login")
+def login(request: Request, direct: str | None = None) -> Response:
+    if _logged_in(request):
+        return _to(request, "fixture_feed")  # already logged in
+    if direct == "1":
+        return _set_session(_to(request, "fixture_feed"))  # test shortcut: Phase 1's one-step login
+    # The page's script "submits" after 300 ms and lands on the 2FA code page.
+    return _page(request, "login.html")
+
+
+@router.get("/checkpoint/challenge/verify", name="fixture_2fa_verify")
+def two_factor_verify(request: Request) -> Response:
+    """The 2FA code page. No cookie yet; its script submits after 600 ms."""
+    return _page(request, "verify.html")
+
+
+@router.get("/checkpoint/challenge/verify-submit", name="fixture_2fa_submit")
+def two_factor_submit(request: Request) -> Response:
+    """The code is accepted: the session cookie is set, but LinkedIn still asks to remember the browser."""
+    return _set_session(_to(request, "fixture_remember_browser"))
+
+
+@router.get("/checkpoint/challenge/remember-browser", name="fixture_remember_browser")
+def remember_browser(request: Request) -> Response:
+    """Cookie already set, path still a checkpoint (Connect must keep waiting); script goes to /feed/ after 600 ms."""
+    return _page(request, "remember_browser.html")
 
 
 @router.get("/feed/", name="fixture_feed")
@@ -82,6 +115,8 @@ def search(request: Request, keywords: str = "", page: int = 1) -> Response:
     key = normalize_keyword(keywords)
     if key == CHECKPOINT_KEYWORD:
         return _to(request, "fixture_checkpoint")
+    if key == LOGOUT_KEYWORD:
+        return _to(request, "fixture_authwall")  # the session "expired" mid-run; the cookie stays
     if key == CAPTCHA_KEYWORD:
         return _page(request, "captcha.html")
     if key == RATELIMIT_KEYWORD:

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!--
+  Saved-page sample (authored) modelled on LinkedIn's captcha challenge under
+  /checkpoint/challenge/ (Oct 2026): an Arkose Labs (FunCaptcha) iframe. Obfuscated classes.
+  The iframe URL is never fetched in tests (every non-sample request is aborted).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Security Verification | LinkedIn</title>
+</head>
+<body class="Ue3k9">
+<main class="Hj2n6" role="main">
+  <div class="Vy0t5">
+    <h1 class="Lw4q8">Let’s do a quick security check</h1>
+    <p class="Ic6m2">Please solve this puzzle so we know you’re a real person.</p>
+    <div class="Cz1k8" id="game-core-frame-wrap">
+      <iframe class="Rk4n2" title="Verification challenge" width="400" height="400"
+              src="https://iframe.arkoselabs.com/3117BF26-4762-4F5A-8ED9-A85E69209A46/index.html?mkt=en"></iframe>
+    </div>
+    <form class="Fr2s0" method="post" action="/checkpoint/challenge/verify">
+      <input type="hidden" name="challengeId" value="AgGsampleChallenge0002">
+      <input type="hidden" name="captchaUserResponseToken" value="">
+    </form>
+  </div>
+</main>
+</body>
+</html>

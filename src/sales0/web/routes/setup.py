@@ -28,7 +28,7 @@ def _status_key(session: SessionStatusView) -> str:
     return f"{session.status}:{session.busy_action or ''}"
 
 
-def _safety_caps() -> list[tuple[str, str]]:
+def _safety_caps(session: SessionStatusView) -> list[tuple[str, str]]:
     s = get_settings()
     return [
         ("Keywords per run", f"{s.scrape_max_keywords_per_run}"),
@@ -40,7 +40,10 @@ def _safety_caps() -> list[tuple[str, str]]:
         ("Scrolls per keyword", f"{s.scrape_max_scrolls}"),
         ("Post date filter", s.scrape_date_filter),
         ("Connect waits for login", f"{s.linkedin_connect_timeout_s} s"),
-        ("Browser window during runs", "hidden (headless)" if s.linkedin_headless or s.linkedin_mode == "fixture" else "visible"),
+        ("Browser", session.browser_label),
+        ("Runs", "hidden (headless)"),
+        ("Cool-down after rate limit / captcha", f"{s.safety_cooldown_min} min"),
+        ("Cool-down after checkpoint / logout", f"{s.safety_cooldown_checkpoint_min} min"),
     ]
 
 
@@ -89,14 +92,15 @@ def _offering_list_html(request: Request, db: Session) -> str:
 # ---------------------------------------------------------------------- page
 @router.get("/setup", response_class=HTMLResponse)
 def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    session = session_service.session_status(db)
     return render_page(
         request,
         db,
         "setup/page.html",
         {
-            "session": session_service.session_status(db),
+            "session": session,
             "keywords": keywords_service.list_keywords(db),
-            "caps": _safety_caps(),
+            "caps": _safety_caps(session),
             **_offerings_ctx(db),
         },
     )

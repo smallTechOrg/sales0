@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from playwright.sync_api import Locator, Page, expect
 
 from sales0.config import REPO_ROOT
+from sales0.linkedin_fixture.routes import SESSION_COOKIE, SESSION_VALUE
+from tests.support.live_server import LiveServer
 
 RUN_TIMEOUT_MS = 300_000
 TERMINAL_RUN_STATUSES = ("succeeded", "aborted", "failed")
@@ -52,7 +55,8 @@ def remove_keyword(page: Page, text: str) -> None:
 
 
 def connect_linkedin(page: Page, base_url: str) -> None:
-    """Setup → Connect LinkedIn (fixture login) → card + header light turn green."""
+    """Setup → Connect LinkedIn (fixture login: login → 2FA → remember-browser → feed,
+    headless in fixture mode) → card + header light turn green."""
     page.goto(f"{base_url}/setup")
     page.locator("#connect-linkedin").click()
     expect(page.locator("#linkedin-card")).to_have_attribute("data-status", "connected", timeout=60_000)
@@ -60,6 +64,27 @@ def connect_linkedin(page: Page, base_url: str) -> None:
     expect(light).to_have_attribute("data-status", "connected", timeout=15_000)
     expect(light).to_have_class(re.compile(r"status-light--connected"))
     expect(light).to_contain_text("LinkedIn connected")
+
+
+def recheck_linkedin(page: Page, server: LiveServer) -> dict[str, Any]:
+    """Setup → Re-check (headless session check) → card + header light turn green.
+
+    Returns the check's ``linkedin_session`` log line. Waits for that line, not just the card:
+    a card that was already green would otherwise satisfy the wait before the check ran."""
+    checks_before = len(session_events(server, "check"))
+    page.goto(f"{server.base_url}/setup")
+    page.locator("#check-linkedin").click()
+    deadline = time.monotonic() + 60
+    while len(session_events(server, "check")) <= checks_before:
+        assert time.monotonic() < deadline, "Re-check never logged a linkedin_session line"
+        page.wait_for_timeout(200)
+    expect(page.locator("#linkedin-card")).to_have_attribute("data-status", "connected", timeout=60_000)
+    expect(page.locator("#status-light")).to_have_attribute("data-status", "connected", timeout=15_000)
+    return session_events(server, "check")[-1]
+
+
+def keyword_row(page: Page, text: str) -> Locator:
+    return page.locator("#keyword-list li").filter(has=page.locator("strong", has_text=text)).first
 
 
 def run_now(page: Page, base_url: str) -> tuple[int, dict[str, Any]]:
@@ -94,3 +119,35 @@ def run_now(page: Page, base_url: str) -> tuple[int, dict[str, Any]]:
 
 def read_log(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+FIXTURE = "/__fixtures/linkedin"
+# The fixture's 2FA login, in the order the headless Connect window must walk it.
+LOGIN_FLOW_PATHS = [
+    f"{FIXTURE}/login",
+    f"{FIXTURE}/checkpoint/challenge/verify",
+    f"{FIXTURE}/checkpoint/challenge/verify-submit",
+    f"{FIXTURE}/checkpoint/challenge/remember-browser",
+    f"{FIXTURE}/feed/",
+]
+
+
+def session_events(server: LiveServer, action: str | None = None) -> list[dict[str, Any]]:
+    """The server's ``linkedin_session`` log lines (connect / check), optionally by action."""
+    return [
+        e
+        for e in server.log_events()
+        if e.get("event") == "linkedin_session" and (action is None or e.get("action") == action)
+    ]
+
+
+def assert_server_logs_clean(server: LiveServer) -> None:
+    """Every server log carries the request + LLM lines and never a session cookie value."""
+    text = server.log_text()
+    assert re.search(r'"event":\s*"http_request"', text), "no http_request lines in the server log"
+    assert SESSION_VALUE not in text, f"the {SESSION_COOKIE} cookie value leaked into the server log"
+    assert not re.search(rf"{SESSION_COOKIE}=[^;\s\"]+", text), f"a {SESSION_COOKIE}=<value> pair is in the server log"
+    for path in server.root.glob("server-*.stdout.log"):
+        assert SESSION_VALUE not in path.read_text(encoding="utf-8", errors="replace"), (
+            f"the {SESSION_COOKIE} cookie value leaked into {path.name}"
+        )

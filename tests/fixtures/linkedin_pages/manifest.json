@@ -1,0 +1,185 @@
+{
+  "about": "Saved LinkedIn page samples (authored, realistic, fictional data) modelled on CURRENT LinkedIn markup (Oct 2026): obfuscated classes, no global-nav. One case per entry. 'signals' are the DOM signals SIGNALS_JS must read off the page (recorded for the pure classify_page test; re-checked in a real browser). 'file' null = a status-only case served with an empty body. architecture.md → Saved page samples.",
+  "base": "https://www.linkedin.com",
+  "today": "2026-10-27",
+  "cases": [
+    {
+      "id": "feed_logged_in",
+      "file": "feed_logged_in.html",
+      "url": "https://www.linkedin.com/feed/",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "ok", "reason": "ok", "soft_hints_nonempty": true, "no_results": false}
+    },
+    {
+      "id": "search_results_content",
+      "file": "search_results_content.html",
+      "url": "https://www.linkedin.com/search/results/content/?keywords=ai%20workshop&datePosted=%22past-week%22&sortBy=%22date_posted%22&origin=FACETED_SEARCH",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {
+        "kind": "ok",
+        "reason": "ok",
+        "soft_hints_nonempty": true,
+        "posts": 6,
+        "cards_found": 6,
+        "no_results": false,
+        "drift": false,
+        "field_misses": {"author_headline": 1},
+        "urns": [
+          "urn:li:activity:7390000000000000101",
+          "urn:li:activity:7390000000000000102",
+          "urn:li:ugcPost:7390000000000000103",
+          "urn:li:activity:7390000000000000104",
+          "urn:li:activity:7390000000000000105",
+          "urn:li:activity:7390000000000000106"
+        ],
+        "never_urns": ["urn:li:activity:7390000000000000199"],
+        "fields": {
+          "urn:li:activity:7390000000000000101": {
+            "shape": "data-urn activity (truncated, see more)",
+            "author_name": "Ishaan Malhotra",
+            "author_profile_url": "https://www.linkedin.com/in/ishaan-malhotra-cf/",
+            "author_headline": "Head of Learning at Corvane Foods",
+            "posted_relative": "3h",
+            "text_contains": "1-day Generative AI workshop for 35 regional managers",
+            "text_after_expand_contains": "learning@corvanefoods.example"
+          },
+          "urn:li:activity:7390000000000000102": {
+            "shape": "data-urn activity (reshare with commentary)",
+            "author_name": "Leela Fernandes",
+            "author_profile_url": "https://www.linkedin.com/in/leela-fernandes-bp/",
+            "author_headline": "Director, People Development at Brightpath Insurance",
+            "posted_relative": "1d",
+            "text_contains": "AI literacy workshop for 60 claims staff",
+            "text_excludes": "Harbor Steel"
+          },
+          "urn:li:ugcPost:7390000000000000103": {
+            "shape": "data-urn ugcPost (no headline)",
+            "author_name": "Rohan Desai",
+            "author_profile_url": "https://www.linkedin.com/in/rohan-desai-77/",
+            "author_headline": null,
+            "posted_relative": "2d",
+            "text_contains": "building AI agents for 12 engineers"
+          },
+          "urn:li:activity:7390000000000000104": {
+            "shape": "li > div[data-id] activity",
+            "author_name": "Kavya Nair",
+            "author_profile_url": "https://www.linkedin.com/in/kavya-nair-lumio/",
+            "author_headline": "CTO at Lumio Health",
+            "posted_relative": "5d",
+            "text_contains": "\"Build your first AI agent\" workshop for 20 developers"
+          },
+          "urn:li:activity:7390000000000000105": {
+            "shape": "anchor-only /feed/update/",
+            "author_name": "Arvind Pillai",
+            "author_profile_url": "https://www.linkedin.com/in/arvind-pillai-tl/",
+            "author_headline": "COO at Tessera Logistics",
+            "posted_relative": "4d",
+            "text_contains": "internal AI assistant over our SOPs"
+          },
+          "urn:li:activity:7390000000000000106": {
+            "shape": "anchor-only /posts/<slug>-activity-<n>-xxxx",
+            "author_name": "Sneha Kulkarni",
+            "author_profile_url": "https://www.linkedin.com/in/sneha-kulkarni-4f2a1b/",
+            "author_headline": "L&D Partner at Orchid Retail",
+            "posted_relative": "6d",
+            "text_contains": "ld@orchidretail.example"
+          }
+        }
+      }
+    },
+    {
+      "id": "search_results_empty",
+      "file": "search_results_empty.html",
+      "url": "https://www.linkedin.com/search/results/content/?keywords=zzqx%20unicorn%20lattice&datePosted=%22past-week%22&sortBy=%22date_posted%22&origin=FACETED_SEARCH",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "ok", "reason": "ok", "posts": 0, "cards_found": 0, "no_results": true, "drift": false, "field_misses": {}}
+    },
+    {
+      "id": "search_results_drifted",
+      "file": "search_results_drifted.html",
+      "url": "https://www.linkedin.com/search/results/content/?keywords=ai%20workshop&datePosted=%22past-week%22&sortBy=%22date_posted%22&origin=FACETED_SEARCH",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "ok", "reason": "ok", "posts": 0, "cards_found": 0, "no_results": false, "drift": true, "field_misses": {}}
+    },
+    {
+      "id": "login_at_login",
+      "file": "login.html",
+      "url": "https://www.linkedin.com/login",
+      "status": 200,
+      "cookie": false,
+      "signals": {"has_captcha": false, "has_login_form": true, "has_authwall": false},
+      "expect": {"kind": "logout", "reason": "path:/login"}
+    },
+    {
+      "id": "login_served_at_feed",
+      "file": "login.html",
+      "url": "https://www.linkedin.com/feed/",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": true, "has_authwall": false},
+      "expect": {"kind": "logout", "reason": "login_form"}
+    },
+    {
+      "id": "authwall",
+      "file": "authwall.html",
+      "url": "https://www.linkedin.com/authwall?trk=bf&trkInfo=AQE-sample&original_referer=&sessionRedirect=https%3A%2F%2Fwww.linkedin.com%2Ffeed%2F",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": true, "has_authwall": true},
+      "expect": {"kind": "logout", "reason": "path:/authwall"}
+    },
+    {
+      "id": "checkpoint_challenge",
+      "file": "checkpoint_challenge.html",
+      "url": "https://www.linkedin.com/checkpoint/challenge/AgFsampleChallenge0001?ut=0sample",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "checkpoint", "reason": "path:/checkpoint/challenge/AgFsampleChallenge0001"}
+    },
+    {
+      "id": "captcha_challenge",
+      "file": "captcha_challenge.html",
+      "url": "https://www.linkedin.com/checkpoint/challenge/AgGsampleChallenge0002?ut=0sample",
+      "status": 200,
+      "cookie": true,
+      "signals": {"has_captcha": true, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "captcha", "reason": "captcha_marker"}
+    },
+    {
+      "id": "status_429",
+      "file": null,
+      "url": "https://www.linkedin.com/search/results/content/?keywords=ai%20workshop",
+      "status": 429,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "rate_limited", "reason": "status:429"}
+    },
+    {
+      "id": "status_999",
+      "file": null,
+      "url": "https://www.linkedin.com/feed/",
+      "status": 999,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "rate_limited", "reason": "status:999"}
+    },
+    {
+      "id": "status_500_feed",
+      "file": null,
+      "url": "https://www.linkedin.com/feed/",
+      "status": 500,
+      "cookie": true,
+      "signals": {"has_captcha": false, "has_login_form": false, "has_authwall": false},
+      "expect": {"kind": "http_error", "reason": "status:500"}
+    }
+  ]
+}

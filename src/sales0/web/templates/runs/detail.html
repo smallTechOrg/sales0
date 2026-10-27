@@ -12,6 +12,7 @@
 {% block content %}
   <div id="run-detail" class="stack"
     {% if active %}hx-get="/runs/{{ run.id }}" hx-select="#run-detail" hx-target="#run-detail" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+    {% if drift_alert %}{% with drift_run=run %}{% include "runs/_drift_alert.html" %}{% endwith %}{% endif %}
     <section class="card" aria-labelledby="totals-title">
       <div class="card__header">
         <h2 id="totals-title">Totals</h2>
@@ -21,7 +22,7 @@
         {% if active %}
           <p class="row"><span class="spinner" aria-hidden="true"></span><span>{{ run.current_step or "Run in progress…" }}</span></p>
         {% elif outcome %}
-          <div class="outcome outcome--{{ outcome.kind }}"><p><strong>{{ outcome.text }}</strong></p>{% if outcome.guidance %}<p>{{ outcome.guidance }}</p>{% endif %}</div>
+          <div class="outcome outcome--{{ outcome.kind }}"><p><strong>{{ outcome.text }}</strong></p>{% if outcome.guidance %}<p>{{ outcome.guidance }}</p>{% endif %}{% if outcome.cooldown %}<p class="run-cooldown"><strong>{{ outcome.cooldown }}</strong></p>{% endif %}{% if outcome.setup_link %}<p><a class="btn btn--primary btn--sm" href="/setup#linkedin-card">Go to Setup</a></p>{% endif %}</div>
         {% endif %}
         <dl class="kv">
           <dt>Keywords</dt><dd>{{ run.keywords_done }}/{{ run.keywords_planned }}</dd>

@@ -23,3 +23,11 @@ Branch: feature/sales0-20261027-1816-v0.1 (base: main)
 - Spec amended 3x after code (workspace id, contract additions, CSRF/selectors/safety, wording). Spec-writer as single design authority handled amendments quickly (~1–2 min each).
 - Real LinkedIn scraping cannot be gated automatically; fixture mode covers the parser/safety paths; live selectors remain a judgement risk (flagged to user).
 - Final Phase 1 gate (run by orchestrator after last fix): unit 186, integration 277 (real Haiku), e2e 2 (live server + headless Chromium + real Haiku), boot/curl checks all OK.
+
+## Phase 1.1 (after user gate)
+- User gate found two real problems the automated gates could not: (1) bundled-Chromium fresh profile looks like a separate incognito window; (2) the logged-in check keyed on `#global-nav` class markers that current LinkedIn doesn't ship → user logged in (incl. 2FA) and sales0 never noticed. Lesson: never gate "logged in" on DOM classes of a third-party site; fixture markup mirrored our own selectors, so tests proved nothing about the real DOM. Fixture now uses obfuscated classes deliberately.
+- Direction churn: Chrome-extension redesign (full spec + 9 slices built, ~1.5h) was rejected by the user ("should be easily usable"); stashed as stash@{0}. Next direction (decrypt Chrome cookie store) was declined by the spec-writer partway; escalated to root rather than re-prompting around it. Final: Playwright channel="chrome" persistent sales0 profile + cookie/URL-based detection. Lesson: for UX-shaped feedback, confirm the approach with the user (via root) before fanning out a large build.
+- Root served the user's server from the same working tree while generators edited it → user hit a 500 from half-edited templates. Mitigation: every-page render test; recommend a separate worktree for builds when a live server runs from the repo.
+- A test reached the user's live 8765 server during the extension work → test harness now pins a dead port and refuses loopback 8765 from any thread.
+- Kept from the rejected attempt: port guard, safety cool-down, pure classify_page, fixture logout-test.
+- Final gate (orchestrator-run): unit 420, integration 439 (real Haiku + real headless Chrome 156 against fixture), e2e 6, check-browser OK, boot on 8767 OK.

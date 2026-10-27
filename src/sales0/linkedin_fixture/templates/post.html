@@ -2,9 +2,6 @@
 {% block title %}Post | LinkedIn (fixture){% endblock %}
 {% block content %}
 {% if post %}
-<div class="feed-shared-update-v2" data-urn="{{ post.urn }}">
-  <p><strong>{{ post.author_name }}</strong> — {{ post.author_headline }}</p>
-  <div class="update-components-text">{{ post.text }}</div>
-</div>
-{% else %}<h1>This post is not available</h1>{% endif %}
+<div class="k3v9q _m1x7" data-urn="{{ post.urn }}">{% include "_post_body.html" %}</div>
+{% else %}<div class="c8pz1 _d3oq"><h1 class="o2ty5">This post is not available</h1></div>{% endif %}
 {% endblock %}

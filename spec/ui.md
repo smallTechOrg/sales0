@@ -42,23 +42,31 @@ The UI bar is `ui-ux.md`. Every view designs its empty, loading, error and popul
 ## Runs (`/runs`)
 
 - **Run panel** (`#run-panel`):
-  - Idle: a **Run now** button (`#run-now`), or the same button disabled with the reason text (e.g. "Connect LinkedIn first", "Daily run limit reached (3/3)"). Below it, the caps line: "Today: 1/3 runs · 42/150 posts · max 10 keywords × 15 posts per run".
-  - Running: progress `<progress>` keywords_done/keywords_planned, the current_step text, counters "Seen 9 · New 7 · Duplicates 2 · Triaged 5", and elapsed time. It polls every 1s.
-  - Finished: an outcome line. Succeeded: "Run finished — 7 new enquiries" + [Open inbox]. Aborted: a red "Run stopped: LinkedIn checkpoint detected" + guidance. Failed: the error message.
-- **History table** (`#run-history`): Started · Status badge · Keywords · Seen · New · Dupes · Triaged · Cost · Duration, with each row linking to the detail. Empty: "No runs yet."
-- **Run detail** (`/runs/{id}`): the totals and cost, then the per-keyword table (`#run-keywords`): Keyword · Status · Seen · New · Dupes · Errors · Duration · Message (drift warnings appear here).
+  - Idle: a **Run now** button (`#run-now`), or the same button disabled with the reason text (e.g. "Connect LinkedIn first", "Daily run limit reached (3/3)", or, Phase 1.1, "LinkedIn asked us to slow down — next run allowed after 14:35"). Below it, the caps line: "Today: 1/3 runs · 42/150 posts · max 10 keywords × 15 posts per run".
+  - Running: progress `<progress>` keywords_done/keywords_planned, the current_step text, counters "Seen 9 · New 7 · Duplicates 2 · Triaged 5", and elapsed time. It polls every 1s. The window stays invisible ("Runs in the background — no browser window").
+  - Finished: an outcome line. Succeeded: "Run finished — 7 new enquiries" + [Open inbox]. Aborted: a red "Run stopped: LinkedIn checkpoint detected" + guidance, plus (Phase 1.1) the cool-down line "Next run allowed after HH:MM" when one applies. Failed: the error message. For the not-logged-in failure the guidance is a [Go to Setup] link.
+  - **Drift alert (Phase 1.1)** (`#run-drift-alert`, `.banner` with the warn style, `role="status"`). It appears on a finished run with `layout_warnings > 0`, both in the panel and in the run detail: "LinkedIn's page layout may have changed — N keyword(s) returned results sales0 couldn't fully read. Some posts may be missing. See the per-keyword log." It links to `/runs/{id}#run-keywords`. It is not dismissible. Runs stay allowed.
+- **History table** (`#run-history`): Started · Status badge · Keywords · Seen · New · Dupes · Triaged · Cost · Duration, with each row linking to the detail. Empty: "No runs yet." (Phase 1.1) A run with `layout_warnings > 0` shows a `.badge--warn` "Layout warning" next to its status badge.
+- **Run detail** (`/runs/{id}`): the drift alert when it applies, then the totals and cost, then the per-keyword table (`#run-keywords`): Keyword · Status · Seen · New · Dupes · Errors · Duration · Message. Drift warnings, field-miss counts and unreadable-card counts appear in the Message column. A `warning` row uses the `warning` status badge.
 
 ## Setup (`/setup`)
 
-- **LinkedIn connection card** (`#linkedin-card`):
-  - The current status with an explanation. Not connected: "sales0 uses your team's own LinkedIn login in a dedicated browser profile on this computer. Log in once; we never store your password."
-  - **Connect LinkedIn** (`#connect-linkedin`). While connecting: "A browser window opened — log in to LinkedIn there. Waiting… 0:42", with [Cancel].
-  - **Re-check** (`#check-linkedin`).
+- **LinkedIn connection card** (`#linkedin-card`). Phase 1.1 copy is binding:
+  - The current status with an explanation. Not connected: "sales0 opens Google Chrome with its own sales0 profile on this computer. Log in to LinkedIn there once — your everyday Chrome profile isn't touched, and sales0 never sees or stores your password."
+  - **Browser line** (`#browser-note`, always shown): "Browser: Google Chrome 156" (from `session.browser_label`). When `session.browser_note` is set, it shows that note instead, in the warn style: "Google Chrome not found — using the built-in browser". When channel `chrome` is configured but missing, it shows the `BrowserUnavailable` message.
+  - **Connect LinkedIn** (`#connect-linkedin`). While connecting:
+    - Line 1, with spinner and elapsed time: "A Google Chrome window opened. Waiting… 0:42". In the fallback it reads "A browser window opened".
+    - Line 2, exact text: **"Log in and finish LinkedIn's 2FA in the Chrome window — this is one time only."** In the fallback it reads "…in the browser window — this is one time only."
+    - Line 3 (muted): "It closes by itself a moment after you reach your LinkedIn feed. If Chrome shows “Chrome is being controlled by automated test software”, that's sales0's window — it's safe to continue."
+    - [Cancel].
+  - Connected: "LinkedIn is connected. Checks and runs reuse this login invisibly in the background — no window opens."
+  - **Re-check** (`#check-linkedin`): "Checking your LinkedIn session in the background…" while busy.
   - The last checked and last successful run times.
-  - In needs_attention, the last_error and instructions.
+  - In needs_attention, the last_error and the instruction "Press Connect LinkedIn — the sales0 Chrome window opens on LinkedIn so you can resolve it there. Runs stay paused until then." When a cool-down is active (`session.cooldown_until`), it adds "After that, the next run is allowed after HH:MM."
+  - A connect failure (timeout, window closed, browser unavailable) shows `last_error` in the error style above the buttons.
 - **Keywords card**: an add form (`#keyword-input` + [Add keyword]) and a list (`#keyword-list`). Each row has the text, an active toggle, the last run time and a Remove button (with confirm). Empty: "No keywords yet — add 10–20 phrases buyers use, e.g. 'corporate AI training'."
 - **Offerings card**: a list grouped by group (`#offering-list`), each row with name, description, Edit and Delete. Delete confirms "Delete '<name>'?"; an offering used by enquiries is deactivated instead, with a toast. An add form takes name, group (text input with a datalist of existing groups) and description.
-- **Safety limits** (read-only): the effective caps and delays, with the note "Change these in .env".
+- **Safety limits** (read-only): the effective caps and delays, with the note "Change these in .env". The Phase 1.1 rows are in `architecture.md` → Configuration → Phase 1.1 config changes.
 
 ## Stub pages
 
@@ -66,4 +74,6 @@ A heading, a `.badge--stub` "Coming in Phase N", one sentence on what it will do
 
 ## Test hooks (stable ids used by E2E)
 
-`#status-light`, `#cost-badge`, `#alert-banner`, `#toasts`, `#inbox-tabs`, `#inbox-search`, `#inbox-list`, `#enquiry-{id}` (plus `data-urn` holding the first source ref, and `data-verdict`, `data-review-status`), `#bulk-bar`, `#run-panel`, `#run-now`, `#run-history`, `#run-keywords`, `#linkedin-card`, `#connect-linkedin`, `#check-linkedin`, `#keyword-input`, `#keyword-list`, `#offering-list`.
+`#status-light`, `#cost-badge`, `#alert-banner`, `#toasts`, `#inbox-tabs`, `#inbox-search`, `#inbox-list`, `#enquiry-{id}` (plus `data-urn` holding the first source ref, and `data-verdict`, `data-review-status`), `#bulk-bar`, `#run-panel`, `#run-now`, `#run-history`, `#run-keywords`, `#linkedin-card`, `#connect-linkedin`, `#check-linkedin`, `#keyword-input`, `#keyword-list`, `#offering-list`. Phase 1.1 adds `#browser-note` and `#run-drift-alert`.
+
+**CSS (Phase 1.1):** `app.css` adds `.banner--warn` (warn colours from the existing `--color-warn` / `--color-warn-soft` tokens, AA contrast), used by `#run-drift-alert`. Existing classes are reused otherwise: `.badge--warn`, `.outcome--warn`.
