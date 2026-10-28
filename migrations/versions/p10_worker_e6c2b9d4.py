@@ -30,6 +30,26 @@ RUN_COLUMNS = (
 )
 
 
+# Rows seeded with explicit ids (offering groups, offerings, the default account...) leave a PostgreSQL SERIAL
+# sequence at 1, so the first normal INSERT would collide with them. Move every id sequence past its table's MAX(id).
+# Re-runnable; sales0.db.pgseq holds the same statement for boot-time use (a migration never imports app code).
+SYNC_SEQUENCES = """
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT table_name FROM information_schema.columns
+           WHERE table_schema = current_schema() AND column_name = 'id'
+  LOOP
+    IF pg_get_serial_sequence(format('%I', r.table_name), 'id') IS NOT NULL THEN
+      EXECUTE format(
+        'SELECT setval(pg_get_serial_sequence(%L, ''id''), COALESCE((SELECT MAX(id) FROM %I), 0) + 1, false)',
+        format('%I', r.table_name), r.table_name);
+    END IF;
+  END LOOP;
+END $$;
+"""
+
+
 def _columns(table: str) -> set[str]:
     return {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}
 
@@ -57,6 +77,8 @@ def upgrade() -> None:
             op.execute(f"ALTER TABLE scrape_runs ADD COLUMN {name} {sqlite_ddl if bind.dialect.name == 'sqlite' else pg_ddl}")
     if "upload_seq" not in _columns("scrape_run_keywords"):
         op.execute("ALTER TABLE scrape_run_keywords ADD COLUMN upload_seq INTEGER NOT NULL DEFAULT 0")
+    if bind.dialect.name == "postgresql":
+        op.execute(SYNC_SEQUENCES)
 
 
 def downgrade() -> None:

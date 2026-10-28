@@ -48,6 +48,7 @@ from sales0.web.routes import (
     sync,
     tracked,
     users,
+    worker_api,
 )
 from sales0.web.templating import STATIC_DIR
 
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             crm.startup_backfill(db)  # once per DB (app_meta crm_flags_backfilled_v1)
         log.info(
             "app_started",
+            mode=settings.mode,
             db_revision=revision,
             linkedin_mode=settings.linkedin_mode,
             model=settings.llm_model,
@@ -92,7 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from sales0.jobs.scheduler import get_scheduler
 
         scheduler = get_scheduler()
-        if settings.scheduler_enabled:
+        if settings.scheduler_enabled and not settings.is_hosted:  # hosted: every job is a manual action
             scheduler.start()  # persisted scheduled_jobs state; jobs are opt-in on /schedule
         poller = get_poller()
         poller.start()  # no-op when SALES0_REPLY_POLL_MINUTES=0
@@ -106,7 +108,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Fixscrape D (#5): one sales0 process per data dir, BEFORE recover_interrupted_runs_on_startup.
         settings.data_path.mkdir(parents=True, exist_ok=True)
         lock = DataDirLock(settings.data_path)
-        if not settings.allow_multi_process:
+        # Hosted: PostgreSQL is the shared state and no run lives in this process, so there is nothing a second
+        # instance could corrupt (and /tmp is per instance anyway): no data-dir lock.
+        if not settings.allow_multi_process and not settings.is_hosted:
             lock.acquire()  # raises DataDirLocked with the explanation when another process holds it
         try:
             async with _lifespan_body(_app):
@@ -136,6 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(replies.router)
     app.include_router(metrics.router)
     app.include_router(users.router)  # Phase 5: admin Users page
+    app.include_router(worker_api.router)  # hosted: the laptop worker (bearer token; 404 without SALES0_WORKER_TOKEN)
     for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):
         app.include_router(r)
 

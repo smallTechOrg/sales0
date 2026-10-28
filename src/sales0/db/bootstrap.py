@@ -14,6 +14,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 
 from sales0.db.migrate_check import alembic_config
+from sales0.db.pgseq import sync_sequences
 from sales0.logging import get_logger
 
 log = get_logger("sales0.db.bootstrap")
@@ -38,12 +39,17 @@ def ensure_database(url: str) -> bool:
     admin = create_engine(parsed.set(database="postgres"), isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as conn:
-            exists = conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": parsed.database}).scalar()
-            if not exists:
-                quoted = '"' + parsed.database.replace('"', '""') + '"'
-                conn.execute(text(f"CREATE DATABASE {quoted}"))
-                log.info("database_created", database=parsed.database)
-                return True
+            # Serialise two instances starting together (advisory locks are per database: both use `postgres`).
+            conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _MIGRATION_LOCK_KEY + 1})
+            try:
+                exists = conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": parsed.database}).scalar()
+                if not exists:
+                    quoted = '"' + parsed.database.replace('"', '""') + '"'
+                    conn.execute(text(f"CREATE DATABASE {quoted}"))
+                    log.info("database_created", database=parsed.database)
+                    return True
+            finally:
+                conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _MIGRATION_LOCK_KEY + 1})
     finally:
         admin.dispose()
     return False
@@ -62,6 +68,7 @@ def upgrade_to_head(url: str) -> None:
             conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _MIGRATION_LOCK_KEY})
             try:
                 command.upgrade(alembic_config(url), "head")
+                sync_sequences(conn)  # a seeding migration with explicit ids must not leave a sequence behind
             finally:
                 conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _MIGRATION_LOCK_KEY})
     finally:

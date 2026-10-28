@@ -15,7 +15,7 @@ from sales0.services import runs as runs_service
 from sales0.services.views import RunView
 from sales0.web.acting import get_acting_member_optional, require_admin
 from sales0.web.context import PathId
-from sales0.web.context import cooldown_clock, cost_badge_oob, is_htmx, redirect, render_html, render_page
+from sales0.web.context import cooldown_clock, cost_badge_oob, hosted_worker, is_htmx, redirect, render_html, render_page
 from sales0.web.envelope import ok
 
 router = APIRouter()
@@ -114,6 +114,8 @@ def _panel_ctx(db: Session, run: RunView | None, last_run: RunView | None = None
         "outcome": outcome,
         "eligibility": eligibility,
         "caps": _caps(),
+        "hosted": get_settings().is_hosted,
+        "worker": hosted_worker(db),
     }
 
 
@@ -121,8 +123,17 @@ def _history_html(request: Request, db: Session, *, oob: bool = False) -> str:
     return render_html(request, "runs/_history.html", {"runs": runs_service.list_runs(db), "oob": oob})
 
 
+def _reap_if_hosted(db: Session) -> None:
+    """Hosted: a claimed run whose worker went silent is ended when someone looks (no timer thread exists)."""
+    if get_settings().is_hosted:
+        from sales0.services import worker_service
+
+        worker_service.reap_stale(db)
+
+
 @router.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    _reap_if_hosted(db)
     history = runs_service.list_runs(db)
     active = runs_service.active_run(db)
     ctx = _panel_ctx(db, active, last_run=history[0] if active is None and history else None)
@@ -141,8 +152,24 @@ def run_now(
     return HTMLResponse(panel + _history_html(request, db, oob=True), headers={"HX-Trigger": "session-changed"})
 
 
+@router.post("/runs/{run_id}/cancel", response_model=None, dependencies=[Depends(require_admin)])
+def cancel_run(
+    request: Request, run_id: PathId, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+) -> Response:
+    """Hosted: drop a queued run, or ask the worker to stop a claimed one at its next heartbeat."""
+    from sales0.services import worker_service
+
+    message = worker_service.cancel_run(db, run_id, actor_user_id=member.id if member else None)
+    if not is_htmx(request):
+        return redirect("/runs")
+    run = runs_service.get_run(db, run_id).run
+    panel = render_html(request, "runs/_panel.html", _panel_ctx(db, run if run.status in ACTIVE_STATUSES else None, last_run=run))
+    return HTMLResponse(panel + _history_html(request, db, oob=True), headers={"HX-Trigger": "session-changed", "X-Message": message})
+
+
 @router.get("/runs/{run_id}/progress", response_class=HTMLResponse)
 def run_progress(request: Request, run_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
+    _reap_if_hosted(db)
     run = runs_service.get_run(db, run_id).run
     ctx = _panel_ctx(db, run)
     # The history table refreshes out-of-band on every poll so the active row's counters

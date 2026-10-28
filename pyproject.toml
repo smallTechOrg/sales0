@@ -25,6 +25,9 @@ dependencies = [
     "psycopg[binary]>=3.2",
 ]
 
+[project.scripts]
+sales0 = "sales0.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.2",
@@ -53,4 +56,6 @@ markers = [
     "e2e: live server subprocess + headless Chromium + real Haiku",
     "eval: ground-truth triage eval against the real sheets (network + real Haiku); excluded from the default run",
     "chrome: needs the installed Google Chrome (real headless Chrome; Phase 1.1)",
+    "unmigrated: the test needs a database that was never migrated (matters when SALES0_TEST_POSTGRES_URL clones a migrated template)",
+    "sqlite_only: asserts SQLite internals (PRAGMA, EXPLAIN QUERY PLAN, file dumps); skipped when SALES0_TEST_POSTGRES_URL is set",
 ]

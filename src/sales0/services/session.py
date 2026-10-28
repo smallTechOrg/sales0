@@ -18,7 +18,7 @@ from sales0.db.models import LinkedInAccount
 from sales0.jobs.runner import get_runner
 from sales0.logging import get_logger
 from sales0.services import linkedin_accounts as accounts
-from sales0.services._common import clip
+from sales0.services._common import clip, require_local_browser
 from sales0.services.views import SessionStatusView
 
 log = get_logger("sales0.services.session")
@@ -44,9 +44,30 @@ def _path(url: str | None) -> str:
     return parts.path or url
 
 
+HOSTED_FIX = "run `sales0 worker --connect` on the laptop"
+
+
+def hosted_wording(message: str) -> str:
+    """Hosted mode: LinkedIn is connected on the laptop worker, not from this page."""
+    return (
+        message.replace("press Connect LinkedIn and resolve it in the sales0 Chrome window", f"{HOSTED_FIX} and resolve it in the Chrome window")
+        .replace("press Connect LinkedIn and solve it in the sales0 Chrome window", f"{HOSTED_FIX} and solve it in the Chrome window")
+        .replace("press Connect LinkedIn to log in again", f"{HOSTED_FIX} to log in again")
+        .replace("then Re-check", "then start the worker again")
+        .replace("press Connect LinkedIn in Setup", HOSTED_FIX)
+    )
+
+
+def not_logged_in_message() -> str:
+    return hosted_wording(NOT_LOGGED_IN_MESSAGE) if get_settings().is_hosted else NOT_LOGGED_IN_MESSAGE
+
+
 def safety_message(kind: str, url: str | None) -> str:
     template = _SAFETY_TEMPLATES.get(kind, "LinkedIn stopped the session ({kind}) at {path}")
-    return clip(template.format(path=_path(url), kind=kind), 300) or ""
+    message = template.format(path=_path(url), kind=kind)
+    if get_settings().is_hosted:
+        message = hosted_wording(message)
+    return clip(message, 300) or ""
 
 
 def get_session_row(db: Session, account_id: int | None = None) -> LinkedInAccount:
@@ -88,6 +109,8 @@ def browser_info() -> tuple[str, str | None, str | None]:
 
     Called through the module attribute so tests can stub ``resolve_browser``.
     """
+    if get_settings().is_hosted:  # no browser in the hosted image; the laptop worker owns it
+        return "Laptop worker", None, None
     from sales0.scraper import browser as browser_mod
     from sales0.scraper.errors import BrowserUnavailable
 
@@ -137,6 +160,7 @@ def session_status(db: Session, account_id: int | None = None) -> SessionStatusV
 def start_connect(db: Session, account_id: int | None = None) -> SessionStatusView:
     from sales0.jobs import connect_job
 
+    require_local_browser("Connect LinkedIn")
     row = get_session_row(db, account_id)
     if row.disabled:
         raise DomainError("account_disabled", "That LinkedIn account is disabled - enable it first.", 409)
@@ -176,6 +200,7 @@ def assert_recheck_allowed(db: Session, account_id: int | None = None) -> None:
 def start_check(db: Session, account_id: int | None = None) -> SessionStatusView:
     from sales0.jobs import check_job
 
+    require_local_browser("Re-check")
     row = get_session_row(db, account_id)
     if row.disabled:
         raise DomainError("account_disabled", "That LinkedIn account is disabled - enable it first.", 409)
@@ -189,6 +214,7 @@ __all__ = [
     "assert_recheck_allowed",
     "CHROME_MISSING_LABEL",
     "NOT_LOGGED_IN_MESSAGE",
+    "not_logged_in_message",
     "browser_channel",
     "browser_info",
     "get_session_row",

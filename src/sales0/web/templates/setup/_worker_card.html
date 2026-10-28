@@ -1,0 +1,35 @@
+{# Hosted: the laptop worker card. Needs: worker (WorkerStatusView), session (SessionStatusView), public_url. Polls every 15s. #}
+<section id="worker-card" class="card" aria-labelledby="worker-title" hx-get="/setup/worker" hx-trigger="every 15s" hx-swap="outerHTML">
+  <div class="card__header">
+    <h2 id="worker-title">Laptop worker</h2>
+    {% if worker.online %}<span class="badge badge--genuine">Online</span>{% else %}<span class="badge badge--discard">Offline</span>{% endif %}
+  </div>
+  <div class="card__body" aria-live="polite">
+    <p>LinkedIn is searched from a laptop, with its own logged-in Chrome. Cookies and the Chrome profile never leave that machine; the worker only uploads the posts it reads, and this app does the de-duplication and AI triage.</p>
+    <dl class="kv">
+      <dt>Worker</dt><dd>{% if worker.name %}{{ worker.name }}{% if worker.host and worker.host != worker.name %} ({{ worker.host }}){% endif %}{% else %}never seen{% endif %}</dd>
+      <dt>Version</dt><dd>{{ worker.version or "-" }}</dd>
+      <dt>Last heartbeat</dt><dd>{{ worker.last_seen_at | ago if worker.last_seen_at else "never" }}</dd>
+      <dt>Queued runs</dt><dd>{{ worker.queued_runs }}</dd>
+      <dt>LinkedIn account</dt><dd>{{ session.status | replace("_", " ") }}{% if session.last_checked_at %} · last used {{ session.last_checked_at | ago }}{% endif %}</dd>
+      <dt>Last successful run</dt><dd>{{ session.last_successful_run_at | ago }}</dd>
+    </dl>
+    {% if session.status == "needs_attention" %}
+      <p class="outcome outcome--error" role="alert"><strong>{{ session.last_error or "LinkedIn showed a security or login page." }}</strong></p>
+      {% if session.cooldown_until %}<p>The next run is allowed after {{ cooldown_clock(session.cooldown_until) }}.</p>{% endif %}
+    {% elif session.last_error %}
+      <p class="outcome outcome--warn">{{ session.last_error }}</p>
+    {% endif %}
+    {% if not worker.online %}
+      <p class="outcome outcome--warn" id="worker-offline-hint">{{ worker.offline_hint }}</p>
+    {% endif %}
+    <details {% if not worker.online %}open{% endif %}>
+      <summary>How to start the worker</summary>
+      <ol>
+        <li>On the laptop, in the sales0 checkout: <code>SALES0_WORKER_SERVER_URL={{ public_url or "https://&lt;this app's URL&gt;" }}</code> and <code>SALES0_WORKER_TOKEN=&lt;the sales0-worker-token secret&gt;</code> in <code>.env</code>.</li>
+        <li>Log in to LinkedIn once: <code>uv run sales0 worker --connect</code> (a Chrome window opens; finish 2FA).</li>
+        <li>Start it: <code>uv run sales0 worker</code> and leave it running. <strong>Queue a run</strong> on the Runs page.</li>
+      </ol>
+    </details>
+  </div>
+</section>

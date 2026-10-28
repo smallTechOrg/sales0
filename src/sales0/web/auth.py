@@ -31,7 +31,7 @@ log = get_logger("sales0.auth")
 
 COOKIE = "sales0_session"
 SESSION_PURPOSE = "session"
-OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/", "/set-password/")  # plus "/__fixtures/" in fixture mode
+OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/", "/set-password/", "/api/worker/")  # plus "/__fixtures/" in fixture mode
 FIXTURE_PREFIX = "/__fixtures/"
 DEFAULT_NEXT = "/inbox"
 THROTTLE_WINDOW_S = 60

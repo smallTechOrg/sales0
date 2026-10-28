@@ -251,7 +251,7 @@ def _upgrade_postgres() -> None:
             f"fk_{table}_actor_user_id_team_members", table, "team_members", ["actor_user_id"], ["id"], ondelete="SET NULL"
         )
     # legacy members were inserted with explicit ids: move the serial past them
-    bind.execute(sa.text("SELECT setval(pg_get_serial_sequence('team_members', 'id'), COALESCE((SELECT MAX(id) FROM team_members), 1))"))
+    bind.execute(sa.text("SELECT setval(pg_get_serial_sequence('team_members', 'id'), COALESCE((SELECT MAX(id) FROM team_members), 0) + 1, false)"))
     if "users" in _tables():
         op.drop_table("users")
 

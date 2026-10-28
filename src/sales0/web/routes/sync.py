@@ -157,7 +157,7 @@ def sync_run(request: Request) -> Response:
         raise DomainError("sync_unavailable", "The CRM sheet repository is not installed.", 409)
     if not job.runner(get_scheduler().ctx).trigger_now():
         raise DomainError("sync_running", "A sync is already running.", 409)
-    return _respond(request, "Sync started.")
+    return _respond(request, "Sync finished - see the table below." if get_settings().is_hosted else "Sync started.")
 
 
 @router.post("/sync/run-anyway")
@@ -170,6 +170,8 @@ def sync_run_anyway(request: Request, confirm: str = Form(""), admin: TeamMember
         raise DomainError("sync_unavailable", "The CRM sheet repository is not installed.", 409)
     if not job.runner(get_scheduler().ctx).trigger_now(allow_mass_removal=True):
         raise DomainError("sync_running", "A sync is already running.", 409)
+    if get_settings().is_hosted:
+        return _respond(request, "Sync finished; the blocked removals were applied (the rows are only hidden, not deleted).")
     return _respond(request, "Sync started; the blocked removals will be applied (the rows are only hidden, not deleted).")
 
 

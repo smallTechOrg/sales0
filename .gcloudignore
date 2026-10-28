@@ -1,0 +1,17 @@
+# Files `gcloud run deploy --source .` must not upload to Cloud Build.
+.git
+.gitignore
+.venv
+.env
+.env.*
+!.env.example
+data
+tests
+spec
+docs
+deploy
+NOTES.md
+**/__pycache__
+*.db
+*.db-*
+.pytest_cache

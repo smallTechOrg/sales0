@@ -6,7 +6,7 @@
       <h1>Replies</h1>
       <p>Replies to the outreach you sent, checked automatically from each member's own Gmail (read-only: nothing is marked read, moved or sent).</p>
     </div>
-    <form method="post" action="/replies/check">
+    <form method="post" action="/replies/check" data-busy-submit data-busy-disable data-busy-text="Checking mailboxes...">
       <button class="btn btn--primary" type="submit" id="check-now">Check now</button>
     </form>
   </div>

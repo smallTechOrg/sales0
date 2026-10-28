@@ -11,6 +11,7 @@ before any classification (so a second poll makes no LLM calls and no duplicate 
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -202,9 +203,12 @@ def sent_candidates(db: Session, member_id: int, now: datetime, settings: Settin
     )  # fmt: skip
 
 
+BUDGET_MESSAGE = "time budget used - click Check now again for the rest"
+
+
 def poll_member(
     member_id: int, *, llm: LLMClient | None = None, now: datetime | None = None, settings: Settings | None = None,
-    force: bool = False,
+    force: bool = False, deadline: float | None = None,
 ) -> PollResult:
     """One poll cycle for one member. Never raises on Gmail/LLM trouble: it is recorded in
     ``reply_poll_state`` (with exponential backoff) and returned in the result."""
@@ -232,7 +236,13 @@ def poll_member(
         client = connections.client_for_member(member_id)
         connections.verify_client_identity(member_id, client)
         wanted = _threads_to_fetch(client, candidates, last_ok, settings)
-        for mid in cand_ids:
+        for position, mid in enumerate(cand_ids):
+            if deadline is not None and time.monotonic() > deadline:
+                # Hosted: the request has used its time budget. The unread threads count as deferred, so
+                # ``last_ok_at`` does not advance and the next click still covers them.
+                result.skipped_deferred += len(cand_ids) - position
+                result.error = BUDGET_MESSAGE
+                break
             with session_scope() as db:
                 msg = db.get(OutreachMessage, mid)
                 if msg is None or msg.gmail_thread_id not in wanted:
@@ -303,9 +313,16 @@ def _record_failure(member_id: int, stamp: datetime, result: PollResult, error: 
     log.warning("reply_poll_failed", member_id=member_id, failures=failures)
 
 
-def poll_all(*, llm: LLMClient | None = None, now: datetime | None = None, settings: Settings | None = None, force: bool = False) -> list[PollResult]:
-    """Poll every active member who has sent mail. One member's failure never stops the others."""
+def poll_all(
+    *, llm: LLMClient | None = None, now: datetime | None = None, settings: Settings | None = None, force: bool = False,
+    budget_s: float | None = None,
+) -> list[PollResult]:
+    """Poll every active member who has sent mail. One member's failure never stops the others.
+
+    ``budget_s`` (hosted, request-bound): stop starting work after that many seconds; members not reached come back
+    as ``skipped`` with ``BUDGET_MESSAGE`` and nothing is recorded for them, so the next call picks them up."""
     settings = settings or get_settings()
+    deadline = time.monotonic() + budget_s if budget_s else None
     ensure_default_subscribers()
     with session_scope() as db:
         ids = list(
@@ -316,8 +333,11 @@ def poll_all(*, llm: LLMClient | None = None, now: datetime | None = None, setti
         )  # fmt: skip
     results = []
     for mid in sorted(ids):
+        if deadline is not None and time.monotonic() > deadline:
+            results.append(PollResult(mid, status="skipped", error=BUDGET_MESSAGE))
+            continue
         try:
-            results.append(poll_member(mid, llm=llm, now=now, settings=settings, force=force))
+            results.append(poll_member(mid, llm=llm, now=now, settings=settings, force=force, deadline=deadline))
         except Exception:  # noqa: BLE001 - never let one member kill the cycle
             log.exception("reply_poll_member_crashed", member_id=mid)
     return results

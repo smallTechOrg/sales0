@@ -76,7 +76,9 @@ class WorkerClient:
                 failure = f"{type(exc).__name__}"
             else:
                 if response.status_code < 400:
-                    return model.model_validate(response.json())
+                    body = response.json()
+                    # the app's envelope is {"ok": true, "data": {...}}; accept a bare object too
+                    return model.model_validate(body["data"] if isinstance(body, dict) and "data" in body else body)
                 if response.status_code not in RETRY_STATUSES:
                     raise self._error(response)
                 failure = f"HTTP {response.status_code}"

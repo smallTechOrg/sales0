@@ -151,6 +151,7 @@ def test_http_request_log_has_field_names_but_not_values(db_url: str, capfd: pyt
     assert {"timestamp", "level", "logger", "latency_ms", "htmx", "output_summary"} <= set(line)
 
 
+@pytest.mark.unmigrated
 def test_app_refuses_to_start_when_db_is_not_at_head() -> None:
     # No db_url fixture: the temp database exists but was never migrated.
     with pytest.raises(DatabaseNotAtHead, match="uv run alembic upgrade head"):
@@ -219,6 +220,7 @@ def test_documented_run_command_boots_and_serves_health(db_url: str, tmp_path: P
     assert key is not None and key.get_secret_value() not in output
 
 
+@pytest.mark.unmigrated
 def test_run_command_refuses_unmigrated_db_and_public_host(tmp_path: Path) -> None:
     unmigrated = subprocess.run(
         [sys.executable, "-m", "sales0"], cwd=REPO_ROOT, env=_server_env(tmp_path), capture_output=True, text=True, timeout=60

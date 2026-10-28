@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from tests.support.dbdump import raw_db_dump
 from sales0.clock import utcnow
 from sales0.config import get_settings
 from sales0.db.engine import session_scope
@@ -49,8 +49,7 @@ def test_full_flow_stores_an_encrypted_connection(client: TestClient, google: Fa
     assert exchange["code"] == "auth-code-1" and exchange["redirect_uri"] == q["redirect_uri"]
     assert oauth.code_challenge(exchange["code_verifier"]) == q["code_challenge"]
     assert _status() == ["connected"]
-    path = get_settings().resolved_database_url.removeprefix("sqlite:///")
-    assert REFRESH.encode() not in b"".join(line.encode() for line in sqlite3.connect(path).iterdump())
+    assert REFRESH.encode() not in raw_db_dump(get_settings().resolved_database_url)
     # the flash is one-shot
     assert "Gmail connected as" not in client.get("/team").text
 

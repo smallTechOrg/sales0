@@ -19,7 +19,7 @@ from sales0.services import session as session_service
 from sales0.services.views import OfferingInput, OfferingView, SessionStatusView
 from sales0.web.acting import get_acting_member_optional, require_admin
 from sales0.web.context import PathId
-from sales0.web.context import is_htmx, redirect, render_html, render_page, toast_html
+from sales0.web.context import hosted_worker, is_htmx, redirect, render_html, render_page, toast_html
 from sales0.web.envelope import ok
 
 router = APIRouter()
@@ -158,6 +158,8 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         "setup/page.html",
         {
             "session": session,
+            "worker": hosted_worker(db),
+            "public_url": get_settings().public_base_url,
             **_accounts_ctx(db),
             **_keywords_ctx(db),
             "caps": _safety_caps(session),
@@ -312,6 +314,15 @@ def check_linkedin(request: Request, db: Session = Depends(get_db)) -> Response:
     if not is_htmx(request):
         return redirect("/setup")
     return _linkedin_card(request, session, changed=True)
+
+
+@router.get("/setup/worker", response_class=HTMLResponse)
+def worker_card(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Hosted: the laptop-worker card (polled so 'online' / 'last seen' stay current)."""
+    session = session_service.session_status(db)
+    return HTMLResponse(
+        render_html(request, "setup/_worker_card.html", {"worker": hosted_worker(db), "session": session, "public_url": get_settings().public_base_url})
+    )
 
 
 @router.get("/setup/linkedin/status", response_class=HTMLResponse)

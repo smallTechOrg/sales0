@@ -4,14 +4,18 @@
   <div class="page__header">
     <div>
       <h1>Setup</h1>
-      <p>Connect LinkedIn once, choose the phrases to search for, and keep the offerings catalogue the AI matches against.</p>
+      <p>{% if worker %}Check the laptop worker, choose{% else %}Connect LinkedIn once, choose{% endif %} the phrases to search for, and keep the offerings catalogue the AI matches against.</p>
     </div>
   </div>
 {% endblock %}
 {% block content %}
   <div class="stack">
+    {% if worker %}
+      {% include "setup/_worker_card.html" %}
+    {% else %}
     {% include "setup/_linkedin_card.html" %}
     {% include "setup/_linkedin_accounts.html" %}
+    {% endif %}
 
     <div class="grid-2">
       <section class="card" aria-labelledby="keywords-title">

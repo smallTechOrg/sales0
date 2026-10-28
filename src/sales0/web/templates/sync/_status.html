@@ -21,7 +21,7 @@
       {% if panel.next_run_in_min is not none %}<p id="sync-next" class="muted">Next sync in ~{{ panel.next_run_in_min }} min.</p>{% endif %}
       {% if panel.last_error %}<p id="sync-error" class="flash flash--error" role="alert">{{ panel.last_error }}</p>{% endif %}
       <div class="actions">
-        <form method="post" action="/sync/run" hx-post="/sync/run" hx-target="#sync-status" hx-swap="outerHTML" class="inline-form">
+        <form method="post" action="/sync/run" hx-post="/sync/run" hx-target="#sync-status" hx-swap="outerHTML" hx-disabled-elt="find button" class="inline-form">
           <button id="sync-now" class="btn btn--primary" type="submit" {% if panel.running or not panel.available %}disabled{% endif %}>Sync now</button>
         </form>
         <form method="post" action="/sync/dry-run" hx-post="/sync/dry-run" hx-target="#sync-status" hx-swap="outerHTML" hx-disabled-elt="find button" class="inline-form">

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
 
 import httpx
 import pytest
 from sqlalchemy import select
 
+from tests.support.dbdump import raw_db_dump
 from sales0.config import get_settings, reset_settings
 from sales0.db.engine import session_scope
 from sales0.db.models import GmailConnection
@@ -70,8 +70,7 @@ def test_token_is_encrypted_at_rest_and_roundtrips() -> None:
     with session_scope() as db:
         view = connections.store_token(db, mid, _token())
     assert view.status == "connected" and view.email == "ann@team.example"
-    path = get_settings().resolved_database_url.removeprefix("sqlite:///")
-    raw = b"".join(line.encode() for line in sqlite3.connect(path).iterdump())
+    raw = raw_db_dump(get_settings().resolved_database_url)
     assert SECRET.encode() not in raw  # never in the DB in plaintext
     with session_scope() as db:
         row = db.execute(select(GmailConnection)).scalar_one()

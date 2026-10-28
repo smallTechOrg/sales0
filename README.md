@@ -717,6 +717,28 @@ LinkedIn is the fragile part of a hosted setup:
 - A streamed **remote-browser login** (log in through a browser window shown inside sales0) is *future
   work*, not built.
 
+## Hosted (Cloud Run + Cloud SQL, scraping on a laptop)
+
+Besides the single-machine setup above, sales0 can run as a shared team app on **Google Cloud Run** with its data in
+**PostgreSQL** (a database on an existing Cloud SQL instance), while LinkedIn is still searched from a **laptop** with its own
+logged-in Chrome. Set `SALES0_MODE=hosted` (the container image does). Full runbook: [docs/deploy.md](docs/deploy.md).
+
+| | Local mode (default) | Hosted mode |
+|---|---|---|
+| Database | SQLite file | PostgreSQL (`SALES0_DB_*` parts or `SALES0_DATABASE_URL`) |
+| Scheduler / reply-poll threads | on (opt-in jobs) | **never started**; every job is a manual **Run now** that works inside the request (the page waits) |
+| LinkedIn discovery | in-process Chrome job | **Queue a run**; `sales0 worker` on the laptop claims it, scrapes, uploads raw posts; the hosted app dedupes, triages with Haiku and keeps the counters |
+| LinkedIn cookies / Chrome profile | on the server's disk | never leave the laptop |
+| Login | optional (open mode on loopback) | **required**; the app refuses to boot in open mode |
+| Instances | one process per data dir | Cloud Run min 0 / max 1, request timeout 15 min |
+
+The worker talks to `/api/worker/*` with a bearer token (`SALES0_WORKER_TOKEN`). It survives hosted downtime (retry with
+backoff; a restarted worker resumes its run). Hosted mode has **no** Connect/Re-check buttons, cookie paste or prospect-watch
+runs: those need a browser and stay on the laptop (`sales0 worker --connect`). A manual action that could outlive a request
+(reply check) stops after `SALES0_HOSTED_ACTION_BUDGET_S` seconds and says "more remaining, click again".
+
+Deploy: `deploy/deploy.sh` prints the `gcloud` commands (dry run); `deploy/deploy.sh --apply` runs them.
+
 ## Roadmap and what is not supported
 
 Not supported today (do not rely on these):

@@ -42,6 +42,7 @@ def test_cli_dry_run_and_tab_and_memory(db_url: str, capsys) -> None:  # type: i
     assert "competitors=" in capsys.readouterr().out
 
 
+@pytest.mark.unmigrated
 def test_cli_unmigrated_database_exits_3(capsys) -> None:  # type: ignore[no-untyped-def]
     src = StaticSource(fx.all_tabs_csv())
     assert sync_sheets(Settings(_env_file=None), dry_run=False, tab=None, source=src) == 3

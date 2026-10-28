@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from sales0.db.engine import get_db
 from sales0.services import session as session_service
-from sales0.web.context import banner_text, render_fragment, render_page, status_light_view
+from sales0.web.context import banner_text, hosted_worker, render_fragment, render_page, status_light_view
 
 router = APIRouter()
 
@@ -52,12 +52,13 @@ for _path, _stub in STUBS.items():
 @router.get("/_shell/status-light", response_class=HTMLResponse)
 def status_light(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     session = session_service.session_status(db)
-    return render_fragment(request, "_shell/status_light.html", {"session": session, "light": status_light_view(session)})
+    light = status_light_view(session, hosted_worker(db))
+    return render_fragment(request, "_shell/status_light.html", {"session": session, "light": light})
 
 
 @router.get("/_shell/banner", response_class=HTMLResponse)
 def banner(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    text = banner_text(session_service.session_status(db))
+    text = banner_text(session_service.session_status(db), hosted_worker(db))
     if not text:
         return HTMLResponse("")
     return render_fragment(request, "_shell/banner.html", {"banner": text})

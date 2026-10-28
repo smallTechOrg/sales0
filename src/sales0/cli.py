@@ -370,6 +370,32 @@ def _env_docs(check: str | None, write: str | None) -> int:
     return 0
 
 
+def _worker(connect: bool) -> int:
+    """``sales0 worker``: poll the hosted app for queued runs; ``--connect``: log in to LinkedIn on this laptop."""
+    from pydantic import ValidationError
+
+    from sales0.config import get_settings
+
+    try:
+        settings = get_settings()
+    except ValidationError as exc:
+        print(f"sales0 worker: invalid configuration: {exc.error_count()} error(s) - see .env.example", file=sys.stderr)
+        return 2
+    from sales0.logging import configure_logging
+
+    configure_logging(settings, stream=sys.stderr)
+    if connect:
+        from sales0.scraper.connect import connect_interactive
+
+        print("A Chrome window opens on LinkedIn: log in and finish 2FA. It closes by itself afterwards.")
+        result = connect_interactive(settings, lambda _elapsed: None, lambda: False)
+        print("LinkedIn connected on this laptop." if result.connected else f"Not connected: {result.detail or result.reason}")
+        return 0 if result.connected else 1
+    from sales0.worker.runner import run_worker
+
+    return run_worker(settings)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -401,11 +427,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "eval-triage",
         help="Run the real triage over the team's real Google Sheets (fetched at runtime) and print precision/recall",
     )
+    wk = sub.add_parser("worker", help="Hosted mode: run the laptop worker that scrapes LinkedIn for the hosted app")
+    wk.add_argument("--connect", action="store_true", help="log in to LinkedIn in this laptop's sales0 Chrome profile, then exit")
     ed = sub.add_parser("env-docs", help="Print the Markdown table of every SALES0_* setting (or check/rewrite a README block)")
     mode = ed.add_mutually_exclusive_group()
     mode.add_argument("--check", metavar="FILE", default=None, help="exit 1 if FILE's env-docs block is out of date")
     mode.add_argument("--write", metavar="FILE", default=None, help="rewrite FILE's block between the env-docs markers")
     args = parser.parse_args(argv)
+    if args.command == "worker":
+        return _worker(args.connect)
     if args.command == "env-docs":
         return _env_docs(args.check, args.write)
     if args.command == "sync-sheets":

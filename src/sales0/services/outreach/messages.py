@@ -302,7 +302,7 @@ def send(db: Session, msg_id: int, member: TeamMember, *, now: datetime | None =
         raise DomainError("not_approved", "Only an approved message can be sent - approve it first.", 409)
     prior = msg.state
     client, profile = _preflight(db, msg, member, now)
-    claimed = _claim(db, msg, "(state = 'approved') OR (state = 'failed' AND send_outcome_unknown = 0 AND content_sha256 IS NOT NULL)", now)
+    claimed = _claim(db, msg, "(state = 'approved') OR (state = 'failed' AND send_outcome_unknown = FALSE AND content_sha256 IS NOT NULL)", now)
     if not claimed:
         return _load(db, msg_id)  # someone else claimed it first: report the current state
     add_event(db, msg.id, "sending", member.id, f"as {profile}", now, acted_by_id=acted_by_of(member))
@@ -333,7 +333,7 @@ def retry_send(
     client, profile = _preflight(db, msg, member, now)
     old_draft = msg.gmail_draft_id
     claimed = _claim(
-        db, msg, "state = 'failed' AND send_outcome_unknown = 1 AND content_sha256 IS NOT NULL", now,
+        db, msg, "state = 'failed' AND send_outcome_unknown = TRUE AND content_sha256 IS NOT NULL", now,
         retry_decided_by=member.email[:80],
     )  # fmt: skip
     if not claimed:

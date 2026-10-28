@@ -491,6 +491,9 @@ def paste_cookie(
     in the Chrome profile).
     """
     settings = settings or get_settings()
+    from sales0.services._common import require_local_browser
+
+    require_local_browser("Pasting a LinkedIn cookie")  # cookies never leave the laptop
     value = clean_cookie(cookie)
     _require_secret_key(settings)
     if account_id is None:

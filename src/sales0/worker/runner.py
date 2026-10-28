@@ -12,7 +12,6 @@ to continue). Every upload carries a per-keyword ``seq`` so a retry after a lost
 from __future__ import annotations
 
 import contextlib
-import dataclasses
 import random
 import socket
 import threading
@@ -39,19 +38,24 @@ def default_searcher_factory(settings: Settings, page_load_budget: int) -> Any:
     return LinkedInSearcher(settings, account=None, page_load_budget=page_load_budget)
 
 
+def _cap(value: str | None, limit: int) -> str | None:
+    return value[:limit] if value else value
+
+
 def post_payload(post: Any) -> p.PostPayload:
-    """A ``ScrapedPost`` (or any object with the same attributes) as its wire form."""
+    """A ``ScrapedPost`` (or any object with the same attributes) as its wire form. Over-long values are clipped,
+    never rejected: one odd post must not fail the whole upload (triage reads only the first few thousand chars)."""
     return p.PostPayload(
-        source_ref=post.source_ref,
-        url=post.url or "",
-        author_name=post.author_name,
-        author_profile_url=post.author_profile_url,
-        author_headline=post.author_headline,
-        posted_relative=post.posted_relative,
+        source_ref=post.source_ref[:300],
+        url=_cap(post.url, 2000) or "",
+        author_name=_cap(post.author_name, 300),
+        author_profile_url=_cap(post.author_profile_url, 2000),
+        author_headline=_cap(post.author_headline, 600),
+        posted_relative=_cap(post.posted_relative, 100),
         posted_date=post.posted_date,
-        text=post.text or "",
+        text=_cap(post.text, 60_000) or "",
         link_kind=getattr(post, "link_kind", "post"),
-        search_url=getattr(post, "search_url", None),
+        search_url=_cap(getattr(post, "search_url", None), 2000),
         truncated=bool(getattr(post, "truncated", False)),
     )
 
@@ -131,6 +135,7 @@ class Worker:
         self.sleep = sleep
         self.rng = rng or random.Random()
         self.stop = stop or threading.Event()
+        self._base_loads = 0
         self.info = p.WorkerInfo(
             name=(settings.worker_name or socket.gethostname() or "worker")[:80],
             version=__version__,
@@ -177,6 +182,7 @@ class Worker:
         log.info("worker_run_claimed", run_id=run.run_id, keywords=len(run.keywords), resumed=run.resumed)
         outcome: p.CompleteRequest | None = None
         searcher: Any = None
+        self._base_loads = run.page_loads_so_far  # a resumed run: the earlier browser's page loads still count
         with _Heartbeat(self.client, run.run_id, settings.worker_heartbeat_s) as beat:
             beat.set(step="Opening LinkedIn and checking the session")
             try:
@@ -193,11 +199,17 @@ class Worker:
             except ServerUnavailable:
                 log.error("worker_run_abandoned", run_id=run.run_id, reason="hosted app unreachable")
                 return  # the hosted side marks the run lost after SALES0_WORKER_STALE_S; the next claim resumes it
+            except WorkerApiError as exc:
+                if exc.code in ("run_not_running", "not_found"):
+                    log.warning("worker_run_ended_by_server", run_id=run.run_id, code=exc.code)
+                    return  # an admin cancelled it / the server reaped it: nothing left to report
+                log.exception("worker_run_crashed", run_id=run.run_id)
+                outcome = p.CompleteRequest(outcome="crashed", error=f"Worker error ({exc.code})")
             except Exception as exc:  # noqa: BLE001 - never leave the run hanging
                 log.exception("worker_run_crashed", run_id=run.run_id)
                 outcome = p.CompleteRequest(outcome="crashed", error=f"Worker error ({type(exc).__name__})")
-        loads = getattr(searcher, "page_loads", None)
-        if isinstance(loads, int) and not isinstance(loads, bool) and outcome.page_loads is None:
+        loads = _loads(searcher, self._base_loads)
+        if loads is not None and outcome.page_loads is None:
             outcome = outcome.model_copy(update={"page_loads": loads})
         try:
             done = self.client.complete(run.run_id, outcome)
@@ -219,9 +231,9 @@ class Worker:
                     beat.set(step=f"Pausing {round(seconds)}s before next keyword")
                     self.sleep(seconds)
                 beat.set(step=f"Searching '{kw.text}' ({index}/{len(todo)})", keyword=kw.text,
-                         page_loads=_loads(searcher))
+                         page_loads=_loads(searcher, self._base_loads))
                 ack = self._one_keyword(run.run_id, kw, searcher, caps, beat)
-                beat.set(page_loads=_loads(searcher))
+                beat.set(page_loads=_loads(searcher, self._base_loads))
                 if ack.caps is not None:
                     caps = ack.caps
                 if not ack.continue_run:
@@ -237,12 +249,13 @@ class Worker:
     def _one_keyword(self, run_id: int, kw: p.PlannedKeyword, searcher: Any, caps: p.RunCaps, beat: _Heartbeat) -> p.KeywordAck:
         max_posts = max(1, min(caps.max_posts_per_keyword, caps.posts_left_today))
         seq = 0
+        started = time.monotonic()
         try:
             result = searcher.scan(kw.text, max_posts)
         except AccountSafetyStop:
             raise
         except ScrapeError as exc:
-            meta = p.KeywordResultMeta(scan_error=f"Page error: {exc}"[:300], page_loads_total=_loads(searcher))
+            meta = p.KeywordResultMeta(scan_error=f"Page error: {exc}"[:300], page_loads_total=_loads(searcher, self._base_loads))
             return self.client.upload_posts(run_id, kw.row_id, p.UploadPostsRequest(seq=1, final=True, result=meta))
         payloads = [post_payload(post) for post in result.posts]
         beat.set(step=f"Uploading {len(payloads)} posts for '{kw.text}'")
@@ -271,11 +284,13 @@ class Worker:
                     p.UploadLinksRequest(links=dict(captured.links), attempts=int(getattr(captured, "attempts", 0) or 0)),
                 )
             if safety is not None:
-                self._final(run_id, kw, result, searcher, seq + 1)  # everything scanned so far is kept
+                self._final(run_id, kw, result, searcher, seq + 1, started)  # everything scanned so far is kept
                 raise safety
-        return self._final(run_id, kw, result, searcher, seq + 1)
+        return self._final(run_id, kw, result, searcher, seq + 1, started)
 
-    def _final(self, run_id: int, kw: p.PlannedKeyword, result: Any, searcher: Any, seq: int) -> p.KeywordAck:
+    def _final(
+        self, run_id: int, kw: p.PlannedKeyword, result: Any, searcher: Any, seq: int, started: float
+    ) -> p.KeywordAck:
         meta = p.KeywordResultMeta(
             scrolls=int(getattr(result, "scrolls", 0) or 0),
             parse_errors=int(getattr(result, "parse_errors", 0) or 0),
@@ -288,14 +303,15 @@ class Worker:
             expanded=int(getattr(result, "expanded", 0) or 0),
             stop_reason=str(getattr(result, "stop_reason", None) or "cap"),
             page_loads=int(getattr(result, "page_loads", 0) or 0),
-            page_loads_total=_loads(searcher),
+            page_loads_total=_loads(searcher, self._base_loads),
+            duration_ms=int((time.monotonic() - started) * 1000),
         )
         return self.client.upload_posts(run_id, kw.row_id, p.UploadPostsRequest(seq=seq, final=True, result=meta))
 
 
-def _loads(searcher: Any) -> int | None:
+def _loads(searcher: Any, base: int = 0) -> int | None:
     value = getattr(searcher, "page_loads", None)
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
+    return base + value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def run_worker(settings: Settings) -> int:

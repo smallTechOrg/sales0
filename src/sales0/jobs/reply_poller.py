@@ -36,7 +36,8 @@ class ReplyPoller:
         if not self._cycle_lock.acquire(blocking=False):
             return None
         try:
-            return replies.poll_all(llm=self._llm, settings=self._settings, force=force)
+            budget = self._settings.hosted_action_budget_s if self._settings.is_hosted else None
+            return replies.poll_all(llm=self._llm, settings=self._settings, force=force, budget_s=budget)
         except Exception:  # noqa: BLE001 - the loop must survive anything
             log.exception("reply_cycle_crashed")
             return []

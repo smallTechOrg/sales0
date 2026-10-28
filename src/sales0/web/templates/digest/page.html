@@ -6,7 +6,7 @@
       <h1>Daily digest</h1>
       <p>What happened in the last 24 hours: new enquiries, outreach, discovery health and AI cost. Sending nothing; the Gmail button only creates a draft to yourself.</p>
     </div>
-    <form method="post" action="/digest/build">
+    <form method="post" action="/digest/build" data-busy-submit data-busy-disable data-busy-text="Building (about a minute)...">
       <button class="btn btn--primary" type="submit" id="build-digest">{{ "Rebuild now" if digest else "Build now" }}</button>
     </form>
   </div>

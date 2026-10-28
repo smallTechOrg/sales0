@@ -4,14 +4,15 @@
   <div class="page__header">
     <div>
       <h1>Schedule</h1>
-      <p>Background jobs that run inside this app. Times are {{ timezone }}. Jobs only run while sales0 is running; a missed run is never repeated in a burst (see each job's note).</p>
+      {% if hosted %}<p>Nothing on this hosted app runs on a timer (Cloud Run only has CPU while a request is open). Press <strong>Run now</strong> for the job you want; the page waits while it works.</p>
+      {% else %}<p>Background jobs that run inside this app. Times are {{ timezone }}. Jobs only run while sales0 is running; a missed run is never repeated in a burst (see each job's note).</p>{% endif %}
     </div>
   </div>
 {% endblock %}
 {% block content %}
 <div class="stack">
   {% if flash %}<div class="flash flash--{{ flash.kind }}" id="schedule-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>{% endif %}
-  {% if not thread_running %}
+  {% if not thread_running and not hosted %}
     <div class="flash flash--error" id="scheduler-off" role="status">The background scheduler is not running (SALES0_SCHEDULER_ENABLED=false), so nothing fires on its own. Run now still works.</div>
   {% endif %}
   <section class="card" aria-labelledby="jobs-title">
@@ -32,11 +33,13 @@
               {% else %}<span class="muted">Never run</span>{% endif %}
             </td>
             <td>
+              {% if not hosted %}
               <form method="post" action="/schedule/{{ j.name }}/enable" class="inline-form">
                 <input type="hidden" name="enabled" value="{{ '0' if j.enabled else '1' }}">
                 <button class="btn" type="submit">{{ "Disable" if j.enabled else "Enable" }}</button>
               </form>
-              <form method="post" action="/schedule/{{ j.name }}/run" class="inline-form">
+              {% endif %}
+              <form method="post" action="/schedule/{{ j.name }}/run" class="inline-form" data-busy-submit data-busy-disable data-busy-text="Working...">
                 <button class="btn btn--primary" type="submit">Run now</button>
               </form>
             </td>

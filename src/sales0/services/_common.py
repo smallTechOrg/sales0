@@ -12,6 +12,19 @@ from sales0.errors import DomainError
 NOT_FOUND_MESSAGE = "That item no longer exists — refresh the page."
 
 
+def require_local_browser(action: str) -> None:
+    """Hosted mode has no browser: LinkedIn work is done by the laptop worker. Refuse anything that would open one."""
+    from sales0.config import get_settings
+
+    if get_settings().is_hosted:
+        raise DomainError(
+            "hosted_mode",
+            f"{action} is not available on the hosted app - LinkedIn runs on the laptop worker. "
+            "Start `sales0 worker` there (and `sales0 worker --connect` to log in to LinkedIn).",
+            409,
+        )
+
+
 def not_found() -> DomainError:
     return DomainError("not_found", NOT_FOUND_MESSAGE, 404)
 

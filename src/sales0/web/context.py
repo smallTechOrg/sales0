@@ -111,15 +111,35 @@ def due_count(db: Session) -> int:
         return 0
 
 
-def banner_text(session: SessionStatusView) -> str | None:
+def hosted_worker(db: Session) -> Any:
+    """The laptop worker's status in hosted mode, else None (every header/banner helper then behaves as before)."""
+    if not get_settings().is_hosted:
+        return None
+    from sales0.services import worker_service
+
+    return worker_service.worker_status(db)
+
+
+def banner_text(session: SessionStatusView, worker: Any = None) -> str | None:
+    if worker is not None and session.status != "needs_attention":
+        if worker.queued_runs and not worker.online:
+            n = worker.queued_runs
+            return f"{worker.offline_hint} {n} run{'s are' if n != 1 else ' is'} waiting for it."
+        return None
     if session.status != "needs_attention":
         return None
     reason = (session.last_error or "the last LinkedIn check found a problem").rstrip(". ")
     return f"LinkedIn needs attention — {reason}. Runs are paused to protect your account."
 
 
-def status_light_view(session: SessionStatusView) -> dict[str, Any]:
-    """Modifier class + one-line label for the header light."""
+def status_light_view(session: SessionStatusView, worker: Any = None) -> dict[str, Any]:
+    """Modifier class + one-line label for the header light. Hosted: the light shows the laptop worker."""
+    if worker is not None:
+        if worker.online:
+            return {"modifier": "connected", "label": f"Worker online · v{worker.version or '?'}", "busy": False}
+        if session.status == "needs_attention":
+            return {"modifier": "needs-attention", "label": "LinkedIn needs attention", "busy": False}
+        return {"modifier": "not-connected", "label": "Worker offline", "busy": False}
     if session.status == "busy":
         label = {"connect": "Connecting…", "check": "Checking…", "run": "Run in progress"}.get(
             session.busy_action or "", "Working…"
@@ -149,7 +169,10 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
     real = login_member or acting_member  # the real user's rights decide admin pages, not the acted-as member
     is_admin = bool(real is not None and real.role == "admin")
     due = due_count(db)
+    worker = hosted_worker(db)
     return {
+        "hosted": worker is not None,
+        "worker": worker,
         "login_member": login_member,
         "is_admin": is_admin,
         "open_mode": not bool(getattr(request.state, "auth_enabled", False)),
@@ -161,10 +184,10 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
         "cost": costs_service.cost_summary(db),
         "active_run": runs_service.active_run(db),
         "nav": nav_items(request.url.path, due, admin=is_admin),
-        "banner": banner_text(session),
+        "banner": banner_text(session, worker),
         "spend_cap": costs_report.spend_cap_status(db),
         "mode": get_settings().linkedin_mode,
-        "light": status_light_view(session),
+        "light": status_light_view(session, worker),
         "replies": replies_service.poller_health(db),
         "replies_unread": replies_service.unhandled_human_count(db, acting_member) if acting_member else 0,
     }

@@ -39,6 +39,9 @@ class JobRunner:
 
     # ------------------------------------------------------------------ contract
     def submit(self, name: JobName, fn: Callable[[], None]) -> None:
+        from sales0.services._common import require_local_browser
+
+        require_local_browser("A browser job")  # backstop: hosted mode never starts one
         with self._lock:
             if self._name is not None:
                 raise job_busy_error(self._name)

@@ -239,19 +239,45 @@ class _Run:
             return
 
         self.note_page_loads(searcher, result)
-        self.link_attempts = 0
-        self.card_link_kind = {}
         row.scrolls = int(getattr(result, "scrolls", 0) or 0)
         total_posts = len(result.posts)
         self.step(f"Checking {total_posts} posts for '{row.keyword_text}' ({index}/{total})")
-        # The keyword may have been deleted on Setup while it was being searched: the hit
-        # then keeps only its text snapshot (keyword_id NULL) instead of failing the FK.
         keyword_id = self._live_keyword_id(row)
+        self.begin_keyword()
+        link_ids, refs, keyword_id = self.ingest_batch(row, result.posts, keyword_id)
+
+        if self.fatal_llm is None and link_ids:
+            try:
+                self.capture_links(searcher, row, link_ids, refs, index, total)
+            except AccountSafetyStop:
+                # Everything scanned and triaged so far stays; the yield is still recorded.
+                keywords_service.record_yield(self.db, keyword_id, row.posts_seen, row.posts_relevant)
+                row.duration_ms = int((time.monotonic() - started) * 1000)
+                self.db.commit()
+                raise
+
+        self.finish_keyword(row, result, keyword_id, started)
+
+    # ------------------------------------------------------------------ ingest / finish (shared with the worker API)
+    def begin_keyword(self) -> None:
+        """Per-keyword scratch state (permalink attempts, the cards' link kinds)."""
+        self.link_attempts = 0
+        self.card_link_kind = {}
+
+    def ingest_batch(
+        self, row: ScrapeRunKeyword, posts: Any, keyword_id: int | None, *, triage: bool = True
+    ) -> tuple[set[int], dict[int, str], int | None]:
+        """Register a batch of scraped posts (dedupe), count them, triage the unseen ones.
+
+        Returns ``(seen_post ids that want a permalink, seen_post id -> source_ref, keyword_id)``. The keyword may
+        have been deleted on Setup while it was being searched: the hit then keeps only its text snapshot
+        (keyword_id NULL) instead of failing the FK. ``triage=False`` (hosted: a fatal AI error already stopped the
+        run) registers the posts but leaves them ``pending`` for a later "Retry triage"."""
         to_triage: list[int] = []  # seen_post ids needing a verdict (new, or pending from a stopped run)
         refs: dict[int, str] = {}  # seen_post id -> source_ref (for permalink capture)
         link_ids: set[int] = set()  # seen_post ids that want a permalink
         since_commit = 0
-        for post in result.posts:
+        for post in posts:
             try:
                 sighting, keyword_id = self._register(post, row, keyword_id)
             except Exception as exc:  # noqa: BLE001 — a malformed post must not lose the others
@@ -282,18 +308,12 @@ class _Run:
                 since_commit = 0
         self.db.commit()
 
-        self.triage_batch(row, to_triage, keyword_id, link_ids)
+        if triage:
+            self.triage_batch(row, to_triage, keyword_id, link_ids)
+        return link_ids, refs, keyword_id
 
-        if self.fatal_llm is None and link_ids:
-            try:
-                self.capture_links(searcher, row, link_ids, refs, index, total)
-            except AccountSafetyStop:
-                # Everything scanned and triaged so far stays; the yield is still recorded.
-                keywords_service.record_yield(self.db, keyword_id, row.posts_seen, row.posts_relevant)
-                row.duration_ms = int((time.monotonic() - started) * 1000)
-                self.db.commit()
-                raise
-
+    def finish_keyword(self, row: ScrapeRunKeyword, result: Any, keyword_id: int | None, started: float) -> None:
+        """Status, message, yield and counters of a keyword whose posts are all in."""
         if result.parse_errors:
             row.errors += int(result.parse_errors)
             self.run.errors_count += int(result.parse_errors)
@@ -705,6 +725,29 @@ def _execute(
         open_error = clip(f"Could not open LinkedIn: {exc}", 500)
         log.error("scrape_open_failed", error=str(exc)[:200])
 
+    finalise_run(
+        db, state, rows, account_id, settings,
+        abort_kind=abort_kind, abort_url=abort_url, session_missing=session_missing, open_error=open_error,
+        cap_hit=cap_hit, cap_kind=cap_kind,
+    )
+
+
+def finalise_run(
+    db: Session,
+    state: _Run,
+    rows: list[ScrapeRunKeyword],
+    account_id: int | None,
+    settings: Settings,
+    *,
+    abort_kind: str | None = None,
+    abort_url: str | None = None,
+    session_missing: bool = False,
+    open_error: str | None = None,
+    cap_hit: bool = False,
+    cap_kind: str = "post",
+) -> None:
+    """Close a run: status, message, skipped keywords, account state. Shared with the hosted worker API
+    (``services.worker_service.complete``), which reports the same outcomes the local job observes itself."""
     run = state.run
     now = utcnow()
     if abort_kind is not None:
@@ -728,7 +771,7 @@ def _execute(
         state.set_status("aborted", note=abort_kind)
         run.current_step = clip(f"Run stopped: {SAFETY_LABELS.get(abort_kind, abort_kind)} — {summary_text(run)}", 200)
     elif session_missing:
-        message = session_service.NOT_LOGGED_IN_MESSAGE
+        message = session_service.not_logged_in_message()
         session_service.mark_not_connected(db, message, account_id=account_id)
         state.skip_remaining(rows, NOT_LOGGED_IN_SKIP)
         run = state.run
@@ -774,6 +817,8 @@ def _execute(
     db.flush()
     runs_service.sync_account_state(db, account_id, now)  # per-account counters + cool-down snapshot
     db.commit()
+
+
 
 
 __all__ = ["execute", "relevance_pct", "select_keywords", "summary_text"]

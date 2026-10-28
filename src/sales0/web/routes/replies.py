@@ -152,7 +152,10 @@ def check_now(request: Request, member: TeamMember = Depends(get_acting_member))
             return "A check is already running - try again in a moment."
         threads = sum(r.threads_checked for r in results)
         new = sum(r.new_replies for r in results)
-        return f"Checked {threads} conversation{'s' if threads != 1 else ''}, {new} new repl{'y' if new == 1 else 'ies'}."
+        message = f"Checked {threads} conversation{'s' if threads != 1 else ''}, {new} new repl{'y' if new == 1 else 'ies'}."
+        if any(r.error == replies_service.BUDGET_MESSAGE for r in results):
+            message += " More conversations remain - click Check now again."
+        return message
 
     return _guard(request, "/replies", act)
 

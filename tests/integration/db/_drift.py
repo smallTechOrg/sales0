@@ -49,6 +49,13 @@ def drift(engine: sa.Engine) -> list[Any]:
 
 
 def assert_inline_fks_cascade(engine: sa.Engine) -> None:
+    if engine.dialect.name != "sqlite":  # PostgreSQL reflects ON DELETE directly; the inline-FK blind spot is SQLite's
+        insp = sa.inspect(engine)
+        for table, column in INLINE_FKS:
+            mine = [fk for fk in insp.get_foreign_keys(table) if fk["constrained_columns"] == [column]]
+            assert len(mine) == 1, (table, column)
+            assert (mine[0].get("options") or {}).get("ondelete") == "SET NULL", (table, column, mine[0])
+        return
     with engine.connect() as conn:
         for table, column in INLINE_FKS:
             rows = (

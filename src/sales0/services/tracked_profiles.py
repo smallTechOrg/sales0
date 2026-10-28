@@ -229,7 +229,9 @@ def start_watch_run(
     (the one browser slot, same as discovery)."""
     from sales0.jobs import watch_job
     from sales0.services import linkedin_accounts
+    from sales0.services._common import require_local_browser
 
+    require_local_browser("A prospect-watch run")  # watch runs have no worker protocol yet
     now = utcnow()
     account_id = linkedin_accounts.default_account_id(db) if linkedin_account_id is None else linkedin_account_id
     error, _ = watch_eligibility(db, now, account_id)

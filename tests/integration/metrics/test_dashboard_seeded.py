@@ -175,6 +175,7 @@ def test_performance_and_bounded_query_count(seeded: dict[str, int]) -> None:
     assert len(statements) < 80, len(statements)  # constant in the data size: no per-row queries
 
 
+@pytest.mark.sqlite_only
 def test_query_plans_use_the_new_indexes(seeded: dict[str, int]) -> None:
     from sqlalchemy import text
 

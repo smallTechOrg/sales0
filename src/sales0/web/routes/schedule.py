@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from sales0.config import get_settings
 from sales0.db.engine import get_db
 from sales0.errors import DomainError
 from sales0.jobs.scheduler import get_scheduler
@@ -33,7 +34,7 @@ def schedule_page(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
     response = render_page(
         request, db, "schedule/page.html",
         {"jobs": scheduler.snapshot(), "flash": flash, "thread_running": scheduler.running,
-         "timezone": scheduler.settings.timezone},
+         "timezone": scheduler.settings.timezone, "hosted": get_settings().is_hosted},
     )
     if flash:
         clear_flash(response)
@@ -51,6 +52,8 @@ def set_enabled(name: str, enabled: str = Form("1")) -> RedirectResponse:
 @router.post("/schedule/{name}/run", dependencies=[Depends(require_admin)])
 def run_now(name: str) -> RedirectResponse:
     _known(name)
+    if get_settings().is_hosted and name == "profile_watch":
+        raise DomainError("hosted_mode", "Prospect watch drives a LinkedIn browser and is not available on the hosted app.", 409)
     result = get_scheduler().run_now(name)
     kind = "ok" if result.status == "ok" else "error"
     return _redirect(f"{name.replace('_', ' ').capitalize()}: {result.status}. {result.detail}".strip(), kind)

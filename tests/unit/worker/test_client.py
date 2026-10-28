@@ -8,7 +8,7 @@ import pytest
 from sales0.worker import protocol as p
 from sales0.worker.client import ServerUnavailable, WorkerApiError, WorkerAuthError, WorkerClient
 
-CLAIM_EMPTY = {"run": None, "reason": "nothing queued", "poll_s": 15.0, "protocol": 1}
+CLAIM_EMPTY = {"ok": True, "data": {"run": None, "reason": "nothing queued", "poll_s": 15.0, "protocol": 1}}
 
 
 class FakeTime:

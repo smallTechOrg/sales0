@@ -1,7 +1,7 @@
 {# Run panel. Needs: run (RunView|None), last_run (RunView|None — fresh-load outcome only, no data-run-id), active (bool), outcome, drift_alert (str|None), eligibility (Eligibility|None), caps. #}
 {% set outcome_run = run or last_run %}
 <section id="run-panel" class="card" aria-labelledby="run-panel-title" aria-live="polite"
-  {% if active %}data-run-id="{{ run.id }}" data-status="{{ run.status }}" hx-get="/runs/{{ run.id }}/progress" hx-trigger="every 1s" hx-swap="outerHTML"{% elif run %}data-run-id="{{ run.id }}" data-status="{{ run.status }}"{% endif %}>
+  {% if active %}data-run-id="{{ run.id }}" data-status="{{ run.status }}" hx-get="/runs/{{ run.id }}/progress" hx-trigger="every {{ 3 if hosted else 1 }}s" hx-swap="outerHTML"{% elif run %}data-run-id="{{ run.id }}" data-status="{{ run.status }}"{% endif %}>
   <div class="card__header">
     <h2 id="run-panel-title">{% if active %}Run in progress{% else %}Run now{% endif %}</h2>
     {% if outcome_run %}<a class="btn btn--ghost btn--sm" href="/runs/{{ outcome_run.id }}">Run #{{ outcome_run.id }} details</a>{% endif %}
@@ -10,7 +10,7 @@
     {% if active %}
       <div class="stack stack--tight">
         <label class="field__label" for="run-progress">
-          {% if run.status == "queued" %}Starting…{% else %}<span class="run-keyword-index">Keyword {{ [run.keywords_done + 1, run.keywords_planned] | min }}/{{ run.keywords_planned }}</span>{% if run.current_keyword %} · {{ run.current_keyword }}{% endif %}{% endif %}
+          {% if run.status == "queued" %}{{ "Waiting for the laptop worker…" if hosted else "Starting…" }}{% else %}<span class="run-keyword-index">Keyword {{ [run.keywords_done + 1, run.keywords_planned] | min }}/{{ run.keywords_planned }}</span>{% if run.current_keyword %} · {{ run.current_keyword }}{% endif %}{% endif %}
         </label>
         <progress id="run-progress" class="progress" max="{{ [run.keywords_planned, 1] | max }}" value="{{ run.keywords_done }}">
           {{ run.keywords_done }}/{{ run.keywords_planned }}
@@ -19,6 +19,12 @@
       </div>
       {% include "runs/_summary.html" %}
       <p class="counters"><span>Elapsed <strong class="mono">{{ duration_text(elapsed_ms(run.started_at)) }}</strong></span></p>
+      {% if hosted %}
+        {% if worker and not worker.online %}<p class="outcome outcome--warn" id="worker-offline-hint">{{ worker.offline_hint }}</p>{% endif %}
+        <form method="post" action="/runs/{{ run.id }}/cancel" hx-post="/runs/{{ run.id }}/cancel" hx-target="#run-panel">
+          <button id="stop-run" class="btn btn--sm" type="submit" hx-disabled-elt="this">{{ "Cancel queued run" if run.status == "queued" else "Stop run" }}</button>
+        </form>
+      {% endif %}
       <p class="muted">You can close this tab — progress is kept. Runs in the background — no browser window. The pauses between keywords are deliberate — they keep the search human-paced to protect your account.</p>
     {% else %}
       {% if outcome %}
@@ -37,13 +43,18 @@
       <div class="row">
         <form method="post" action="/runs" hx-post="/runs" hx-target="#run-panel">
           <button id="run-now" class="btn btn--primary" type="submit" hx-disabled-elt="this"
-                  {% if not eligibility.can_run %}disabled aria-describedby="run-now-reason"{% endif %}>Run now</button>
+                  {% if not eligibility.can_run %}disabled aria-describedby="run-now-reason"{% endif %}>{{ "Queue a run" if hosted else "Run now" }}</button>
         </form>
         {% if not eligibility.can_run and eligibility.reason %}
           <span id="run-now-reason" class="field__error" data-reason-code="{{ eligibility.reason_code or '' }}">{{ eligibility.reason }}</span>
         {% endif %}
       </div>
+      {% if hosted %}
+        <p class="muted">Queue a run and the laptop worker (<code>sales0 worker</code>) picks it up, searches LinkedIn with its own Chrome and uploads the posts here for AI triage. You can close this tab; progress is kept.</p>
+        {% if worker and not worker.online %}<p class="outcome outcome--warn" id="worker-offline-hint">{{ worker.offline_hint }}</p>{% endif %}
+      {% else %}
       <p class="muted">Run now starts a long background run — you can close this tab; progress is kept.</p>
+      {% endif %}
       <p class="muted">Today: {{ eligibility.runs_today }}/{{ eligibility.runs_cap }} runs · {{ eligibility.posts_today }}/{{ eligibility.posts_cap }} posts scanned · max {{ caps.max_keywords }} keywords × {{ caps.max_posts }} posts per run</p>
     {% endif %}
   </div>

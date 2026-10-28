@@ -38,6 +38,15 @@ def main() -> int:
     from sales0.db.migrate_check import DatabaseNotAtHead, assert_at_head
 
     settings.data_path.mkdir(parents=True, exist_ok=True)
+    if settings.auto_migrate:  # hosted: create the database if needed and upgrade it before serving
+        from sales0.db.bootstrap import bootstrap
+
+        try:
+            bootstrap(settings.resolved_database_url)
+        except Exception as exc:  # noqa: BLE001 - say what failed, never print the URL (it holds the password)
+            log.error("startup_refused", reason=f"database bootstrap failed ({type(exc).__name__})")
+            print(f"sales0: database bootstrap failed ({type(exc).__name__}: {str(exc)[:200]})", file=sys.stderr)
+            return 1
     try:
         revision = assert_at_head(get_engine())
     except DatabaseNotAtHead as exc:
@@ -53,6 +62,7 @@ def main() -> int:
         "server_starting",
         url=f"{settings.base_url}/",
         db_revision=revision,
+        mode=settings.mode,
         linkedin_mode=settings.linkedin_mode,
         model=settings.llm_model,
         api_key_present=settings.api_key_present,

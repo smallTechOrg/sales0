@@ -225,15 +225,15 @@ def _pg_template_name() -> str:
     return name
 
 
-def _pg_create_test_db(tag: str) -> str:
+def _pg_create_test_db(tag: str, *, blank: bool = False) -> str:
     from sqlalchemy import text
 
-    template = _pg_template_name()
+    template = None if blank else _pg_template_name()
     name = f"sales0_t_{os.getpid()}_{tag}"[:60]
     admin = _pg_admin_engine()
     with admin.connect() as conn:
         conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        conn.execute(text(f'CREATE DATABASE "{name}" TEMPLATE "{template}"'))
+        conn.execute(text(f'CREATE DATABASE "{name}"' + (f' TEMPLATE "{template}"' if template else "")))
     admin.dispose()
     return name
 
@@ -285,6 +285,11 @@ def pytest_collection_modifyitems(
     # Every other implementation (pytest's own fixture-based reordering, plugins, the e2e
     # conftest's marker hook) runs inside this wrapper; the final order is fixed after it.
     result = yield
+    if os.environ.get(_PG_ENV):
+        skip_pg = pytest.mark.skip(reason="SQLite-specific; the PostgreSQL run covers the same behaviour elsewhere")
+        for item in items:
+            if item.get_closest_marker("sqlite_only"):
+                item.add_marker(skip_pg)
     # pytest-playwright's ``page`` starts a session-scoped sync Playwright (an asyncio loop
     # on the main thread). Once it is up, every later in-process ``sync_playwright()`` (the
     # integration scraper/jobs tests) fails with "Sync API inside the asyncio loop". pytest's
@@ -305,13 +310,16 @@ def dead_test_port() -> int:
 
 @pytest.fixture(autouse=True)
 def _isolated_runtime(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> Iterator[None]:
     data_dir = tmp_path / "data"
     monkeypatch.setenv("SALES0_DATA_DIR", str(data_dir))
     pg_db: str | None = None
     if os.environ.get(_PG_ENV):
-        pg_db = _pg_create_test_db(f"{abs(hash(tmp_path)) % 10**9}")
+        # ``@pytest.mark.unmigrated``: the test wants a database that was never migrated (a blank one, not a template copy)
+        pg_db = _pg_create_test_db(
+            f"{abs(hash(tmp_path)) % 10**9}", blank=request.node.get_closest_marker("unmigrated") is not None
+        )
         test_url = _pg_url_for(pg_db)
     else:
         test_url = (

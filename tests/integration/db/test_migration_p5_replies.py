@@ -50,7 +50,7 @@ def _seed(url: str) -> tuple[int, int]:
 def _reply_sql(member_id: int, message_id: int, *, gmail_id: str = "g1", kind: str = "human", intent: str | None = "other") -> tuple[str, dict[str, object]]:
     return (
         "INSERT INTO outreach_replies (message_id, member_id, gmail_message_id, gmail_thread_id, from_addr, received_at, snippet, kind, intent, classified_by, handled, created_at) "
-        "VALUES (:msg, :mem, :gid, 't', 'p@acme.example', :n, '', :kind, :intent, 'llm', 0, :n)",
+        "VALUES (:msg, :mem, :gid, 't', 'p@acme.example', :n, '', :kind, :intent, 'llm', FALSE, :n)",
         {"msg": message_id, "mem": member_id, "gid": gmail_id, "kind": kind, "intent": intent, "n": NOW},
     )
 

@@ -208,15 +208,19 @@ def _account(db: Session, account_id: int | None) -> int:
     return linkedin_accounts.default_account_id(db) if account_id is None else account_id
 
 
-def _day_counts(db: Session, now: datetime, account_id: int | None = None) -> tuple[int, int]:
-    """(runs, posts seen) started today (local day) by ONE LinkedIn account."""
+def _day_counts(
+    db: Session, now: datetime, account_id: int | None = None, exclude_run_id: int | None = None
+) -> tuple[int, int]:
+    """(runs, posts seen) started today (local day) by ONE LinkedIn account. ``exclude_run_id``: a queued run being
+    claimed must not count against its own daily allowance."""
     start, end = local_day_bounds_utc(get_settings().tz, now)
     in_day = (ScrapeRun.started_at >= start, ScrapeRun.started_at < end)
     mine = linkedin_accounts.account_runs_clause(db, _account(db, account_id))
     # Prospect-watch runs use the SAME daily post cap (their scanned posts count) but are not
     # discovery runs, so they never use up the daily run allowance.
+    others = (ScrapeRun.id != exclude_run_id,) if exclude_run_id is not None else ()
     runs_today = db.scalar(
-        select(func.count(ScrapeRun.id)).where(*in_day, mine, ScrapeRun.id.not_in(select(WatchRun.run_id)))
+        select(func.count(ScrapeRun.id)).where(*in_day, mine, *others, ScrapeRun.id.not_in(select(WatchRun.run_id)))
     )
     posts_today = db.scalar(select(func.coalesce(func.sum(ScrapeRun.posts_seen), 0)).where(*in_day, mine))
     return int(runs_today or 0), int(posts_today or 0)
@@ -325,24 +329,32 @@ def cooldown_reason(until: datetime, now: datetime | None = None) -> str:
 
 
 def _check(
-    db: Session, now: datetime, account_id: int | None = None, *, watch: bool = False
+    db: Session, now: datetime, account_id: int | None = None, *, watch: bool = False, ignore_run_id: int | None = None
 ) -> tuple[DomainError | None, int, int]:
     """The first reason a run cannot start (api.md order), plus today's counts (all for ONE account).
 
     ``watch=True`` (prospect-watch run): same overlap / session / cool-down / post-cap rules, but it
-    needs no keywords and does not consume the daily run allowance."""
+    needs no keywords and does not consume the daily run allowance.
+
+    Hosted mode: there is no local browser, so the LinkedIn connection state and the job runner are not
+    consulted (the laptop worker owns the browser and reports what it finds); the caps and the cool-down still
+    apply, both when a run is queued and again when a worker claims it (``ignore_run_id`` = the queued run itself)."""
     settings = get_settings()
+    hosted = settings.is_hosted
     account_id = _account(db, account_id)
-    runs_today, posts_today = _day_counts(db, now, account_id)
+    runs_today, posts_today = _day_counts(db, now, account_id, ignore_run_id)
     error: DomainError | None = None
     session = linkedin_accounts.get_account(db, account_id)
-    busy = get_runner().busy()
-    has_active = db.scalar(select(ScrapeRun.id).where(ScrapeRun.status.in_(ACTIVE_STATUSES)).limit(1)) is not None
+    busy = None if hosted else get_runner().busy()
+    active_q = select(ScrapeRun.id).where(ScrapeRun.status.in_(ACTIVE_STATUSES))
+    if ignore_run_id is not None:
+        active_q = active_q.where(ScrapeRun.id != ignore_run_id)
+    has_active = db.scalar(active_q.limit(1)) is not None
     if has_active or busy == "run":
         error = DomainError("run_in_progress", "A run is already in progress.", 409)
     elif session.disabled:
         error = DomainError("account_disabled", f"LinkedIn account '{session.label}' is disabled - enable it in Setup.", 409)
-    elif session.status == "needs_attention":
+    elif not hosted and session.status == "needs_attention":
         detail = (session.last_error or "resolve the LinkedIn warning").rstrip(". ")
         error = DomainError(
             "needs_attention",
@@ -352,7 +364,7 @@ def _check(
         )
     elif (cooldown := safety_cooldown_until(db, now, account_id)) is not None:
         error = DomainError("safety_cooldown", cooldown_reason(cooldown, now), 429)
-    elif session.status != "connected":
+    elif not hosted and session.status != "connected":
         error = DomainError("not_connected", "Connect LinkedIn first (Setup → Connect LinkedIn).", 409)
     elif busy is not None:
         error = job_busy_error(busy)
@@ -423,12 +435,15 @@ def start_run(db: Session, actor_user_id: int | None = None, linkedin_account_id
     if error is not None:
         raise error
     settings = get_settings()
+    hosted = settings.is_hosted
     run = ScrapeRun(
         trigger="manual",
         mode=settings.linkedin_mode,
         status="queued",
         started_at=now,
-        current_step="Queued — starting the browser",
+        current_step=(
+            "Queued — waiting for the laptop worker (`sales0 worker`)" if hosted else "Queued — starting the browser"
+        ),
         actor_user_id=actor_user_id,
         linkedin_account_id=account_id,
     )
@@ -437,6 +452,8 @@ def start_run(db: Session, actor_user_id: int | None = None, linkedin_account_id
     record_history(db, "scrape_run", run.id, "status", None, "queued", actor_user_id=actor_user_id, now=now)
     db.commit()
     run_id = run.id
+    if hosted:
+        return run_view(run)  # a laptop worker claims it (services.worker_service.claim); nothing runs in this process
     try:
         get_runner().submit("run", lambda: discovery_job.execute(run_id))
     except DomainError:
@@ -539,7 +556,12 @@ def recover_interrupted_runs(db: Session) -> int:
 
 
 def recover_interrupted_runs_on_startup() -> int:
-    """Startup hook (web/app.py lifespan): own session, committed, logged."""
+    """Startup hook (web/app.py lifespan): own session, committed, logged.
+
+    Hosted: a restart (scale to zero, a new revision) interrupts nothing, because no run lives in this process; a
+    queued run waits for the worker and a claimed one is judged by its heartbeat (``worker_service.reap_stale``)."""
+    if get_settings().is_hosted:
+        return 0
     with session_scope() as db:
         count = recover_interrupted_runs(db)
     if count:

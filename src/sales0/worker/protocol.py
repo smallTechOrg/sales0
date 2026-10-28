@@ -121,6 +121,7 @@ class KeywordResultMeta(_Strict):
     page_loads: int = Field(default=0, ge=0)  # this scan's own page loads
     page_loads_total: int | None = Field(default=None, ge=0)  # the browser session's cumulative count
     scan_error: str | None = Field(default=None, max_length=300)  # a ScrapeError: the keyword ends 'error'
+    duration_ms: int | None = Field(default=None, ge=0)  # the worker's scan + upload time for this keyword
 
 
 class UploadPostsRequest(_Strict):

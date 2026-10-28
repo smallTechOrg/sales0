@@ -72,5 +72,11 @@ def build_runner(settings: Settings, **overrides) -> SheetSyncRunner:  # type: i
         "interval_min": settings.sheet_sync_minutes,
         "state": SqlStateStore(get_sessionmaker()),
     }
+    if settings.is_hosted:
+        # Cloud Run only has CPU during a request: run the sync ON the request thread (the page waits for it)
+        # instead of handing it to a background thread that would be frozen the moment the response is sent.
+        from sales0.services.sheetsync.runner import InlineExecutor
+
+        kwargs["executor"] = InlineExecutor()
     kwargs.update(overrides)
     return SheetSyncRunner(**kwargs)
