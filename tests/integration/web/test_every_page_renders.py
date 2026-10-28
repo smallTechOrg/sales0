@@ -55,7 +55,7 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/competitors", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 
@@ -363,6 +363,7 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
         assert banner.strip() == "", where("/_shell/banner")
     card = _get(client, "/setup/linkedin/status")
     _assert_contains(card, ['id="linkedin-card"', 'id="browser-note"'], where("/setup/linkedin/status"))
+    assert client.get("/setup/worker").status_code == 404  # hosted-only fragment
     accounts = _get(client, "/setup/linkedin/accounts")
     _assert_contains(accounts, ['id="linkedin-accounts"', 'id="paste-cookie"'], where("/setup/linkedin/accounts"))
     progress = _get(client, f"/runs/{state.progress_run_id or state.run_id}/progress")

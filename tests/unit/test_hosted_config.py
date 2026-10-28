@@ -79,7 +79,8 @@ def test_db_parts_build_the_url_and_escape_the_password() -> None:
     assert "p@ss" not in repr(s)  # SecretStr
 
 
-def test_local_defaults_are_unchanged() -> None:
+def test_local_defaults_are_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SALES0_DATABASE_URL", raising=False)
     s = Settings(_env_file=None, anthropic_api_key=KEY)
     assert s.mode == "local" and s.worker_token is None and not s.auto_migrate
     assert s.resolved_database_url.startswith("sqlite:///") and s.is_sqlite

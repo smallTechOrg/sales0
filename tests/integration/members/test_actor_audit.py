@@ -40,6 +40,7 @@ EXEMPT_PREFIX = {
     "/login": "authentication itself",
     "/logout": "authentication itself",
     "/set-password/": "authenticated by the one-time token",
+    "/api/worker/": "bearer-token API of the laptop worker (SALES0_WORKER_TOKEN); not a member action",
     "/inbox/{enquiry_id}/retry": "re-runs AI triage on an enquiry; no decision",
     "/digest/build": "builds a derived digest",
     "/suggestions/generate": "AI suggestion batch; decisions (accept/dismiss) are attributed",

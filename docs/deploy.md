@@ -229,6 +229,12 @@ only, no personal data).
   `SALES0_TRUSTED_PROXIES` lists that peer, all users share one throttle bucket (5 failures lock logins for 60 s for
   everyone). After the first deploy read the peer address from a request log and set `SALES0_TRUSTED_PROXIES` to
   exactly that range; do not set `0.0.0.0/0` (it would let clients spoof their IP).
+* **Public invoker.** The service is deployed with `--allow-unauthenticated` (the app has its own login and the worker has
+  its own bearer token; Cloud Run IAM cannot sit in front of both a browser and a script without extra tooling). If an
+  organisation policy forbids `allUsers` as invoker the deploy step fails with a clear error; the alternatives (IAP, or an
+  ID-token header in the worker) are not built.
+* **Worker token brute force.** `/api/worker/*` has no rate limit; the token is 36 random bytes, which is not guessable.
+  Rotate it by adding a secret version and redeploying; update the laptop's `.env`.
 * **Shared db-f1-micro.** Every service on the instance shares its small connection and memory budget. sales0 uses a
   pool of 2 (+2 overflow) per process and at most one process.
 * **One worker, one LinkedIn account.** LinkedIn's terms and detection risk are unchanged (README, "LinkedIn on a

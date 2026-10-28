@@ -108,6 +108,7 @@ def p5_db(tmp_path):  # type: ignore[no-untyped-def]
 
 
 # ---------------------------------------------------------------- fresh DB
+@pytest.mark.sqlite_only
 def test_fresh_upgrade_reaches_the_single_head_and_matches_the_models(db_url: str) -> None:
     engine = build_engine(db_url)
     try:

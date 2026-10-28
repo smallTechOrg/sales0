@@ -322,6 +322,12 @@ def run_worker(settings: Settings) -> int:
     if settings.worker_token is None:
         print("sales0 worker: set SALES0_WORKER_TOKEN (the same token the hosted app was deployed with).")
         return 2
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(settings.worker_server_url)
+    if parts.scheme != "https" and (parts.hostname or "") not in ("127.0.0.1", "localhost", "::1"):
+        print("sales0 worker: SALES0_WORKER_SERVER_URL must be https:// (the bearer token would travel in clear text).")
+        return 2
     client = WorkerClient(settings.worker_server_url, settings.worker_token_value or "")
     worker = Worker(settings, client)
     print(f"sales0 worker '{worker.info.name}' polling {settings.worker_server_url} every {settings.worker_poll_s:g}s. Ctrl-C to stop.")

@@ -319,9 +319,12 @@ def check_linkedin(request: Request, db: Session = Depends(get_db)) -> Response:
 @router.get("/setup/worker", response_class=HTMLResponse)
 def worker_card(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     """Hosted: the laptop-worker card (polled so 'online' / 'last seen' stay current)."""
+    worker = hosted_worker(db)
+    if worker is None:
+        raise DomainError("not_found", "That item no longer exists - refresh the page.", 404)
     session = session_service.session_status(db)
     return HTMLResponse(
-        render_html(request, "setup/_worker_card.html", {"worker": hosted_worker(db), "session": session, "public_url": get_settings().public_base_url})
+        render_html(request, "setup/_worker_card.html", {"worker": worker, "session": session, "public_url": get_settings().public_base_url})
     )
 
 
