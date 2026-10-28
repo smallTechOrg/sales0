@@ -369,12 +369,31 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_LLM_MAX_RETRIES` | int | `3` | Retries on transient LLM errors. |
 | `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` | float | `0.1` | Input price (USD per 1M tokens) used for the spend estimate. |
 | `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK` | float | `0.5` | Output price (USD per 1M tokens) used for the spend estimate. |
+| `SALES0_MODE` | local \| hosted | `local` | `local` (default): today's single-machine app. `hosted`: Cloud Run + PostgreSQL; no scheduler/poller threads, no local-browser runs (a laptop `sales0 worker` scrapes), manual actions run inside the request. Refuses to boot without PostgreSQL, a secret key, an https public base URL, a worker token and a login (see docs/deploy.md). |
+| `SALES0_WORKER_TOKEN` | secret | (secret) | Bearer token shared by the hosted app and the laptop worker (>= 32 chars; `openssl rand -base64 36`). Required in hosted mode and for `sales0 worker`; compared in constant time. |
+| `SALES0_AUTO_MIGRATE` | bool | `False` | Create the database if it is missing and run `alembic upgrade head` at boot, under a PostgreSQL advisory lock. For the single hosted instance; leave off locally. |
+| `SALES0_HOSTED_ACTION_BUDGET_S` | int | `240` | Hosted: a manual action stops starting new work after this many seconds and shows 'more remaining, click again' (the Cloud Run request timeout is 900 s). |
+| `SALES0_WORKER_STALE_S` | int | `180` | A run claimed by a worker that has sent no heartbeat for this many seconds is marked lost and can be re-queued. |
+| `SALES0_WORKER_SERVER_URL` | str | unset | `sales0 worker` only: the hosted app's base URL (e.g. `https://sales0-xxxx.a.run.app`). |
+| `SALES0_WORKER_POLL_S` | float | `15.0` | `sales0 worker` only: seconds between polls while idle. |
+| `SALES0_WORKER_HEARTBEAT_S` | float | `30.0` | `sales0 worker` only: seconds between heartbeats while a run is in progress. |
+| `SALES0_WORKER_UPLOAD_BATCH` | int | `25` | `sales0 worker` only: raw posts per upload request. |
+| `SALES0_WORKER_NAME` | str | unset | `sales0 worker` only: label shown on the hosted Setup page (default: this machine's host name). |
 | `SALES0_HOST` | str | `127.0.0.1` | Bind address. A non-loopback host refuses to start without `SALES0_APP_PASSWORD` (or an existing user account). |
 | `SALES0_PORT` | int | `8765` | Bind port. |
 | `SALES0_DATA_DIR` | str | `data` | Runtime directory: SQLite DB, Chrome profile, secret key, uploads. Put it on a persistent volume when hosted. |
 | `SALES0_ALLOW_MULTI_PROCESS` | bool | `False` | Skip the one-process-per-data-directory lock (`<data_dir>/.sales0.lock`). Unsupported: a second process aborts the first one's live runs and doubles the LinkedIn page loads. Leave off. |
-| `SALES0_DATABASE_URL` | str | `sqlite:///data/sales0.db` | SQLAlchemy URL. SQLite only today; relative file paths resolve against the repo root. Postgres is not supported yet. |
+| `SALES0_DATABASE_URL` | str | `sqlite:///data/sales0.db` | SQLAlchemy URL. SQLite (default; relative file paths resolve against the repo root) or PostgreSQL (`postgresql+psycopg://user:pass@host/db`; `postgresql://` and `postgres://` are accepted). |
 | `SALES0_TEST_DATABASE_URL` | str | unset | Test-suite only: database URL used by tests instead of a temp file. |
+| `SALES0_DB_HOST` | str | unset | Hosted: PostgreSQL host (the Cloud SQL private IP). When set, the URL is built from the `SALES0_DB_*` parts and `SALES0_DATABASE_URL` is ignored. |
+| `SALES0_DB_PORT` | int | `5432` | PostgreSQL port for the `SALES0_DB_*` parts. |
+| `SALES0_DB_NAME` | str | `sales0` | PostgreSQL database name for the `SALES0_DB_*` parts. |
+| `SALES0_DB_USER` | str | `sales0_app` | PostgreSQL role for the `SALES0_DB_*` parts. |
+| `SALES0_DB_PASSWORD` | secret | (secret) | PostgreSQL password (from Secret Manager); never URL-escaped by hand. |
+| `SALES0_DB_SSLMODE` | str | `prefer` | libpq sslmode for the `SALES0_DB_*` parts (`prefer`, `require`). |
+| `SALES0_DB_POOL_SIZE` | int | `2` | PostgreSQL connection pool size (keep small on the shared db-f1-micro instance). |
+| `SALES0_DB_MAX_OVERFLOW` | int | `2` | Extra PostgreSQL connections allowed above the pool size under load. |
+| `SALES0_DB_POOL_RECYCLE_S` | int | `300` | Recycle PostgreSQL connections older than this many seconds. |
 | `SALES0_GOOGLE_CLIENT_SECRET_PATH` | str | `data/google_client_secret.json` | Google OAuth client JSON (Desktop `installed` or Web `web` type) used for Gmail. |
 | `SALES0_GOOGLE_TOKEN_PATH` | str | `data/google_token.json` | Token file written by the `google-auth` CLI command (single-user fallback; team members' tokens live encrypted in the DB). |
 | `SALES0_SECRET_KEY` | secret | (secret) | Encrypts Gmail tokens and LinkedIn sessions at rest and signs cookies (>= 16 chars or a Fernet key). Unset: generated once into `<data_dir>/secret.key`. Set it explicitly on a server and back it up: losing it makes stored tokens unreadable. |

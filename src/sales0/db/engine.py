@@ -1,4 +1,4 @@
-"""Engine + session seams. SQLite gets WAL, foreign keys and a busy timeout on every connect."""
+"""Engine + session seams. SQLite gets WAL, foreign keys and a busy timeout on every connect; PostgreSQL a small pool."""
 
 from __future__ import annotations
 
@@ -38,7 +38,13 @@ def build_engine(url: str) -> Engine:
         if parsed.database and parsed.database != ":memory:":
             Path(parsed.database).parent.mkdir(parents=True, exist_ok=True)
     else:
+        settings = get_settings()
         kwargs["pool_pre_ping"] = True
+        kwargs["pool_size"] = settings.db_pool_size  # small: shared db-f1-micro instance
+        kwargs["max_overflow"] = settings.db_max_overflow
+        kwargs["pool_recycle"] = settings.db_pool_recycle_s
+        if parsed.get_backend_name() == "postgresql":
+            kwargs["connect_args"] = {"connect_timeout": 10}
     engine = create_engine(url, **kwargs)
     if parsed.get_backend_name() == "sqlite":
         event.listen(engine, "connect", _sqlite_pragmas)

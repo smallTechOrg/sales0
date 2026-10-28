@@ -57,6 +57,9 @@ def test_the_default_test_port_has_no_listener() -> None:
 
 def test_database_is_a_temp_file_never_the_dev_db(tmp_path: Path) -> None:
     url = get_settings().resolved_database_url
+    if os.environ.get("SALES0_TEST_POSTGRES_URL"):  # PG run: a throwaway per-test database, never the dev DB
+        assert url.startswith("postgresql+psycopg://") and "/sales0_t_" in url
+        return
     assert url.startswith("sqlite:///")
     db_path = Path(url.removeprefix("sqlite:///"))
     assert db_path != DEV_DB and "data/sales0.db" not in url

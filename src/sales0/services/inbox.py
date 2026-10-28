@@ -278,7 +278,9 @@ def decide(
     begin_write(db)
     rows = {
         e.id: e
-        for e in db.scalars(select(Enquiry).where(Enquiry.id.in_(ids)).execution_options(populate_existing=True)).all()
+        for e in db.scalars(
+            select(Enquiry).where(Enquiry.id.in_(ids)).order_by(Enquiry.id).with_for_update(of=Enquiry).execution_options(populate_existing=True)
+        ).all()
     }
     if len(rows) != len(ids):
         raise not_found()

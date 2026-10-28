@@ -21,6 +21,7 @@ ENV_FILE: Path = REPO_ROOT / ".env"
 
 LinkedInMode = Literal["live", "fixture"]
 CookieSecure = Literal["auto", "true", "false"]
+AppMode = Literal["local", "hosted"]
 LogFormat = Literal["json", "console"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 DateFilter = Literal["past-24h", "past-week", "past-month"]
@@ -29,6 +30,7 @@ ScrapeSort = Literal["latest", "relevance"]
 DATE_FILTER_VALUES: tuple[str, ...] = ("past-24h", "past-week", "past-month")
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+MIN_WORKER_TOKEN_CHARS = 32
 MIN_SECRET_KEY_CHARS = 16  # a Fernet key is 44 chars, so "16+ chars or a Fernet key" is just this floor
 
 
@@ -62,6 +64,29 @@ class Settings(BaseSettings):
     llm_price_input_usd_per_mtok: float = Field(0.10, ge=0)
     llm_price_output_usd_per_mtok: float = Field(0.50, ge=0)
 
+    # --- Deployment mode ---
+    # local  = today's single-machine app (scheduler thread, local Chrome runs, SQLite by default).
+    # hosted = Cloud Run + PostgreSQL: no scheduler / poller thread, no local-browser runs (a laptop
+    #          `sales0 worker` scrapes), every manual action does its work inside the request.
+    mode: AppMode = "local"
+    # Bearer token the laptop worker presents to /api/worker/*. >= 32 chars (openssl rand -base64 36).
+    worker_token: SecretStr | None = None
+    # Run pending Alembic migrations (and create the database if it is missing) at boot, under a PostgreSQL
+    # advisory lock. Meant for the hosted single instance; locally you run `alembic upgrade head` yourself.
+    auto_migrate: bool = False
+    # Hosted: a manual action stops starting new work after this many seconds and says "more remaining, click
+    # again" (Cloud Run only gives CPU during the request; the request timeout is 900 s).
+    hosted_action_budget_s: int = Field(240, ge=10, le=840)
+    # Worker API: a run claimed by a worker that has not sent a heartbeat for this long is considered lost.
+    worker_stale_s: int = Field(180, ge=30)
+
+    # --- Laptop worker (`sales0 worker`) ---
+    worker_server_url: str | None = None  # https://<cloud-run-url>; the worker polls <url>/api/worker/*
+    worker_poll_s: float = Field(15.0, gt=0)  # idle poll interval
+    worker_heartbeat_s: float = Field(30.0, gt=0)
+    worker_upload_batch: int = Field(25, ge=1, le=200)  # raw posts per upload request
+    worker_name: str | None = None  # label shown in the hosted UI (default: this machine's host name)
+
     # --- Server ---
     host: str = "127.0.0.1"
     port: int = Field(8765, ge=1, le=65535)
@@ -72,6 +97,18 @@ class Settings(BaseSettings):
     allow_multi_process: bool = False
     database_url: str = "sqlite:///data/sales0.db"
     test_database_url: str | None = None
+    # Hosted alternative to SALES0_DATABASE_URL: the parts of a PostgreSQL URL (the password comes from Secret
+    # Manager as a plain env var, so it never needs URL-escaping). Used when SALES0_DB_HOST is set.
+    db_host: str | None = None
+    db_port: int = Field(5432, ge=1, le=65535)
+    db_name: str = "sales0"
+    db_user: str = "sales0_app"
+    db_password: SecretStr | None = None
+    db_sslmode: str = "prefer"  # Cloud SQL (ENCRYPTED_ONLY) accepts prefer/require
+    # Small pools: the shared Cloud SQL instance is a db-f1-micro (~25 connections for every service).
+    db_pool_size: int = Field(2, ge=1, le=20)
+    db_max_overflow: int = Field(2, ge=0, le=20)
+    db_pool_recycle_s: int = Field(300, ge=30)
 
     # --- Google / Gmail (Phase 3D) ---
     google_client_secret_path: str = "data/google_client_secret.json"
@@ -336,7 +373,28 @@ class Settings(BaseSettings):
     def _strip_sheet(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
-    @field_validator("data_dir", "database_url", "test_database_url", "log_file", mode="before")
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _mode_lower(cls, value: Any) -> Any:
+        value = _clean_enum_value(value)
+        return value.lower() if isinstance(value, str) else value
+
+    @field_validator("worker_token", mode="before")
+    @classmethod
+    def _worker_token_strong(cls, value: Any) -> Any:
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(raw, str):
+            return value
+        raw = raw.strip()
+        if not raw:
+            return None
+        if len(raw) < MIN_WORKER_TOKEN_CHARS:
+            raise ValueError(
+                f"SALES0_WORKER_TOKEN must be at least {MIN_WORKER_TOKEN_CHARS} characters; generate one with: openssl rand -base64 36"
+            )
+        return raw
+
+    @field_validator("data_dir", "database_url", "test_database_url", "log_file", "db_host", "worker_server_url", "worker_name", mode="before")
     @classmethod
     def _strip_whitespace(cls, value: Any) -> Any:
         # No comment stripping here: URLs and paths may legitimately contain '#'.
@@ -376,6 +434,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S must be <= SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S"
             )
+        if self.mode == "hosted":
+            # No in-process timers on Cloud Run (CPU exists only during a request): everything is a manual action.
+            object.__setattr__(self, "scheduler_enabled", False)
+            object.__setattr__(self, "reply_poll_minutes", 0)
+            object.__setattr__(self, "sheet_sync_minutes", 0)
         legacy = self.scrape_date_filter_legacy
         if legacy and "scrape_date_filters" not in self.model_fields_set:
             legacy = _clean_enum_value(legacy).lower()
@@ -439,12 +502,39 @@ class Settings(BaseSettings):
     def resolved_database_url(self) -> str:
         """The DB URL with relative SQLite file paths anchored at the repo root."""
         url = self.database_url
+        if self.db_host:
+            from sqlalchemy.engine import URL
+
+            return URL.create(
+                "postgresql+psycopg",
+                username=self.db_user,
+                password=self.db_password.get_secret_value() if self.db_password else None,
+                host=self.db_host,
+                port=self.db_port,
+                database=self.db_name,
+                query={"sslmode": self.db_sslmode},
+            ).render_as_string(hide_password=False)
+        for old in ("postgres://", "postgresql://"):  # bare scheme -> the psycopg 3 driver we ship
+            if url.startswith(old):
+                return "postgresql+psycopg://" + url[len(old) :]
         prefix = "sqlite:///"
         if url.startswith(prefix) and not url.startswith("sqlite:////"):
             rest = url[len(prefix) :]
             if rest and rest != ":memory:" and not rest.startswith(":"):
                 return f"{prefix}{(REPO_ROOT / rest).as_posix()}"
         return url
+
+    @property
+    def is_hosted(self) -> bool:
+        return self.mode == "hosted"
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.resolved_database_url.startswith("sqlite")
+
+    @property
+    def worker_token_value(self) -> str | None:
+        return self.worker_token.get_secret_value() if self.worker_token else None
 
     @property
     def is_loopback_host(self) -> bool:
@@ -523,12 +613,33 @@ def _accounts_have_passwords(settings: Settings) -> bool:
         return False
 
 
+def _check_hosted(settings: Settings) -> None:
+    """SALES0_MODE=hosted refuses to boot half-configured: open mode, SQLite, missing secrets."""
+    problems: list[str] = []
+    if settings.is_sqlite:
+        problems.append("SALES0_DATABASE_URL (or SALES0_DB_HOST) must point at PostgreSQL, not SQLite")
+    if settings.secret_key is None:
+        problems.append("SALES0_SECRET_KEY is required (there is no persistent data dir to generate one into)")
+    if not (settings.public_base_url or "").lower().startswith("https://"):
+        problems.append("SALES0_PUBLIC_BASE_URL must be the https Cloud Run URL (Gmail OAuth redirect URI, secure cookies)")
+    if settings.worker_token is None:
+        problems.append("SALES0_WORKER_TOKEN is required (the laptop worker authenticates with it)")
+    if not settings.app_password_set and not _accounts_have_passwords(settings):
+        problems.append("hosted mode never runs in open mode: set SALES0_APP_PASSWORD (first admin's initial password)")
+    if settings.linkedin_mode != "live":
+        problems.append("SALES0_LINKEDIN_MODE=fixture is not allowed in hosted mode")
+    if problems:
+        raise StartupError("Refusing to boot SALES0_MODE=hosted: " + "; ".join(problems))
+
+
 def check_startup(settings: Settings) -> None:
     """Fail loudly on configuration that must never reach a running server."""
     if not settings.api_key_present:
         raise StartupError(
             "SALES0_ANTHROPIC_API_KEY is missing — add it to .env in the repo root (see .env.example)."
         )
+    if settings.is_hosted:
+        _check_hosted(settings)
     if settings.linkedin_mode == "fixture" and not settings.is_loopback_host:
         raise StartupError(
             "Refusing SALES0_LINKEDIN_MODE=fixture on a non-loopback SALES0_HOST: it serves a fake LinkedIn "
