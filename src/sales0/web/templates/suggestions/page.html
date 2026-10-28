@@ -6,7 +6,7 @@
       <h1>Suggestions</h1>
       <p>The AI looks at which keywords find real enquiries and proposes changes. Nothing changes until you accept it.</p>
     </div>
-    <form method="post" action="/suggestions/generate" onsubmit="var b=this.querySelector('button');if(b.dataset.busy){return false;}b.dataset.busy='1';b.textContent='Thinking...';">
+    <form method="post" action="/suggestions/generate" data-busy-submit data-busy-text="Thinking...">
       <button class="btn btn--primary" id="generate-btn" type="submit">Find suggestions</button>
     </form>
   </div>

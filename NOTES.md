@@ -249,7 +249,6 @@ Migrations: p8_liaccts_b2e5f7a9 -> p9_reply_feat_c1e7a3b5 -> p9_activity_d4a8c2e
 - Assumed: #8 downgrades now preserve children; 0003 downgrade still intentionally drops seen_posts/linkedin_profiles data. Backup procedure = `sqlite3 .backup` (no backup code in src).
 - Assumed: #19 activity_id = digits of first activity|ugcPost|share id; same id = same post. #18 documented (README + docstring).
 - Harness friction: e2e test_phase2_journey dup-group merge timed out once under 3-way concurrent load (passes alone).
-=======
 ## fixscrape: scraper audit fixes (19 findings + AUDIT_DATA #11/#12), migration p9_scrapesafe_d3f8a1c6
 Assumed:
 - #1 SDUI permalink capture finds a post by component key only; the index fallback needs aria-label AND the first 30 chars of post text to match; raws of earlier passes carry no card_index. #9 trigger needs aria-label /control menu|more actions/. #15 bare "More" no longer matches see-more.
@@ -268,4 +267,10 @@ Assumed:
 - #17 cache_control ephemeral on the system block (retry without it on a cache_control 400); cache read/write priced at 0.1x/1.25x and folded into cost_usd_micros (no columns, so llm_calls.input_tokens is the uncached part only). Real Haiku: second call read the cache (2001 tokens); observed minimum cacheable prefix ~720-760 tokens; triage system prompt (~3.5k tokens) caches.
 - #19 README: robots/ToS, third-party personal data, single-process lock, defaults table.
 - Harness friction: profile_watch called LinkedInSearcher._scan_pass with the old signature after slice A changed it (found by e2e, fixed).
->>>>>>> feature/sales0-fixscrape
+## Security fixes (feature/sales0-fixsec, from AUDIT_SECURITY)
+- Assumed: Referrer-Policy is `same-origin` (not `no-referrer`): no-referrer makes browsers send `Origin: null` on form POSTs and the CSRF check rejects them.
+- Assumed: outreach "X as Y" audit stored as ` | by_member_id=<admin>` suffix in event detail (no migration); approved_by stays the owner Y.
+- Assumed: tracked/run, digest/build, suggestions/generate, metrics/targets, template preview left member-accessible.
+- Assumed: TestClient Host `testserver` allowed only with SALES0_ALLOW_TESTSERVER_HOST=true (set in tests/conftest.py).
+- Assumed: CSP keeps style-src-attr 'unsafe-inline' (4 style= attrs); script-src 'self' only. htmx 2.0.11 vendored: no known advisory, not verifiable offline. See docs/security.md.
+- Friction: e2e test_drift_and_cooldown flaked once under 3 concurrent suites, passed on rerun.

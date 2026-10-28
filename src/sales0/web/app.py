@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sales0 import __version__
 from sales0.config import Settings, get_settings
 from sales0.datalock import DataDirLock
-from sales0.db.engine import get_engine, session_scope
+from sales0.db.engine import get_engine, harden_storage, session_scope
 from sales0.db.migrate_check import assert_at_head
 from sales0.jobs.reply_poller import get_poller
 from sales0.logging import configure_logging, get_logger
@@ -26,7 +26,7 @@ from sales0.services.team import accounts
 from sales0.services.team.members import seed_admin
 from sales0.web import auth as web_auth
 from sales0.web.envelope import install_exception_handlers
-from sales0.web.middleware import CsrfOriginMiddleware, RequestContextMiddleware
+from sales0.web.middleware import CsrfOriginMiddleware, HardeningMiddleware, RequestContextMiddleware
 from sales0.web.routes import (
     contacts,
     costs,
@@ -69,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         configure_logging(settings)
         settings.data_path.mkdir(parents=True, exist_ok=True)
         revision = assert_at_head(get_engine())
+        harden_storage(settings)
         recover_interrupted_runs_on_startup()  # Phase 1.4: queued/running runs -> aborted (restart)
         with session_scope() as db:
             seed_suggested_once(db)  # Phase 1.4: the 60 suggested keywords, once
@@ -116,7 +117,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="sales0", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(CsrfOriginMiddleware)  # innermost
     web_auth.install(app, settings)  # Phase 2 (S3): AuthMiddleware + login router; between CSRF and request-context
-    app.add_middleware(RequestContextMiddleware)  # outermost
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(HardeningMiddleware)  # outermost: body-size cap + security headers on every response
     install_exception_handlers(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

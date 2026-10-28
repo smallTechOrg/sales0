@@ -28,7 +28,7 @@ from sales0.services._common import clip, now_or
 from sales0.services.costs_report import ensure_within_spend_cap
 from sales0.services import suppressions
 from sales0.services.outreach import decks, templates
-from sales0.services.outreach._shared import add_event, join_addrs, split_addrs
+from sales0.services.outreach._shared import acted_by_of, add_event, join_addrs, split_addrs
 from sales0.services.team.connections import connection_status
 
 log = get_logger("sales0.outreach.drafting")
@@ -276,7 +276,7 @@ def generate_draft(
     )  # fmt: skip
     db.add(msg)
     db.flush()
-    add_event(db, msg.id, "drafted", member.id, f"template={msg.template_id} deck={msg.deck_id} words={word_count(body)}", stamp)
+    add_event(db, msg.id, "drafted", member.id, f"template={msg.template_id} deck={msg.deck_id} words={word_count(body)}", stamp, acted_by_id=acted_by_of(member))
     db.flush()
     log.info("draft_generated", message_id=msg.id, member_id=member.id, words=word_count(body), flagged=bool(flagged))
     return msg

@@ -44,6 +44,7 @@ def make_client(
             monkeypatch.setenv(key, value)
         if public_base_url:
             monkeypatch.setenv("SALES0_PUBLIC_BASE_URL", public_base_url)
+            monkeypatch.setenv("SALES0_COOKIE_SECURE", "false")  # the https public URL would mark cookies Secure; this client speaks http
         reset_settings()
         c = TestClient(create_app(), base_url=base_url)
         c.__enter__()

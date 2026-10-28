@@ -13,7 +13,12 @@ TABLES = ("weekly", "secondary", "funnel", "keywords", "groups", "cost")
 
 def _safe(v: object) -> str:
     s = "" if v is None else str(v)
-    return "'" + s if s[:1] in ("=", "+", "@") or (s[:1] == "-" and not _is_number(s)) else s
+    if s[:1] in ("\t", "\r", "\n"):
+        return "'" + s
+    t = s.lstrip(" \t\r\n\x0b\x0c")
+    if t[:1] in ("=", "+", "@") or (t[:1] == "-" and not _is_number(t)):
+        return "'" + s
+    return s
 
 
 def _is_number(s: str) -> bool:

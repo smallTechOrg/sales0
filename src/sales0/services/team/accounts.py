@@ -27,6 +27,7 @@ log = get_logger("sales0.team.accounts")
 
 ROTATE_AFTER = timedelta(minutes=15)  # the cookie id is reissued when older than this
 ROTATION_GRACE = timedelta(seconds=60)  # the previous id still works briefly (parallel htmx requests)
+SESSION_ABSOLUTE_MAX = timedelta(days=90)  # sliding renewal never extends a session past this age
 OPEN_MODE_MESSAGE = "Open mode - anyone who can reach this app can use it. Add a password on the Users page."
 
 
@@ -114,7 +115,7 @@ def create_session(
     """A new session; returns (raw cookie id, expires_at)."""
     stamp = now_or(now)
     sid = secrets.token_urlsafe(32)
-    expires = stamp + lifetime(settings, remember)
+    expires = stamp + min(lifetime(settings, remember), SESSION_ABSOLUTE_MAX)
     db.add(
         MemberSession(
             member_id=member.id, sid_hash=hash_token(sid), remember=remember,
@@ -144,6 +145,11 @@ def resolve_session(
     )
     if row is None or ensure_utc(row.expires_at) <= stamp:
         return None
+    hard_stop = ensure_utc(row.created_at) + SESSION_ABSOLUTE_MAX
+    if stamp >= hard_stop:  # absolute lifetime reached, however recently it was used
+        db.delete(row)
+        db.flush()
+        return None
     member = db.get(TeamMember, row.member_id)
     if member is None or not member.active or member.must_reset or member.password_hash is None:
         return None
@@ -152,7 +158,7 @@ def resolve_session(
         new_sid = secrets.token_urlsafe(32)
         row.prev_sid_hash, row.prev_expires_at = row.sid_hash, stamp + ROTATION_GRACE
         row.sid_hash, row.rotated_at = hash_token(new_sid), stamp
-        row.expires_at = stamp + lifetime(settings, row.remember)
+        row.expires_at = min(stamp + lifetime(settings, row.remember), hard_stop)
         if ip:
             row.last_ip = ip[:64]
         db.flush()

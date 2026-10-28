@@ -18,7 +18,7 @@ from sales0.db.models import TeamMember
 from sales0.errors import DomainError
 from sales0.services.crm import clients as clients_service
 from sales0.services.crm import registries as registries_service
-from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
 from sales0.web.context import PathId
 from sales0.web.context import actor_of, crm_done, crm_guard, opt_int, opt_str, render_page
 from sales0.web.envelope import ok as envelope_ok
@@ -98,7 +98,7 @@ def competitor_page(request: Request, competitor_id: PathId, db: Session = Depen
 
 
 # ---------------------------------------------------------------------- competitors
-@router.post("/competitors/competitor", response_model=None)
+@router.post("/competitors/competitor", response_model=None, dependencies=[Depends(require_admin)])
 def create_competitor(
     request: Request,
     name: str = Form(""),
@@ -125,7 +125,7 @@ def create_competitor(
     return crm_guard(request, BACK, run, db)
 
 
-@router.post("/competitors/competitor/{competitor_id}", response_model=None)
+@router.post("/competitors/competitor/{competitor_id}", response_model=None, dependencies=[Depends(require_admin)])
 def update_competitor(
     request: Request,
     competitor_id: PathId,
@@ -159,7 +159,7 @@ def update_competitor(
     return crm_guard(request, BACK, run, db)
 
 
-@router.post("/competitors/competitor/{competitor_id}/delete", response_model=None)
+@router.post("/competitors/competitor/{competitor_id}/delete", response_model=None, dependencies=[Depends(require_admin)])
 def delete_competitor(
     request: Request,
     competitor_id: PathId,
@@ -175,7 +175,7 @@ def delete_competitor(
     return crm_guard(request, BACK, run, db)
 
 
-@router.post("/competitors/competitor/{competitor_id}/link", response_model=None)
+@router.post("/competitors/competitor/{competitor_id}/link", response_model=None, dependencies=[Depends(require_admin)])
 def link_competitor(
     request: Request,
     competitor_id: PathId,
@@ -201,7 +201,7 @@ def link_competitor(
 
 
 # ---------------------------------------------------------------------- groups
-@router.post("/competitors/group", response_model=None)
+@router.post("/competitors/group", response_model=None, dependencies=[Depends(require_admin)])
 def create_group(
     request: Request,
     name: str = Form(""),
@@ -227,7 +227,7 @@ def create_group(
     return crm_guard(request, BACK, run, db)
 
 
-@router.post("/competitors/group/{group_id}", response_model=None)
+@router.post("/competitors/group/{group_id}", response_model=None, dependencies=[Depends(require_admin)])
 def update_group(
     request: Request,
     group_id: PathId,
@@ -266,7 +266,7 @@ def update_group(
     return crm_guard(request, BACK, run, db)
 
 
-@router.post("/competitors/group/{group_id}/delete", response_model=None)
+@router.post("/competitors/group/{group_id}/delete", response_model=None, dependencies=[Depends(require_admin)])
 def delete_group(
     request: Request,
     group_id: PathId,

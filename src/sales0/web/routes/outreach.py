@@ -34,10 +34,11 @@ from sales0.services import replies as replies_service
 from sales0.services import suppressions as suppressions_service
 from sales0.services.outreach import decks as decks_service
 from sales0.services.outreach import drafting, messages, templates
+from sales0.services.outreach._shared import split_acted_by
 from sales0.services.outreach import research as research_service
 from sales0.services.team import connections as connections_service
 from sales0.services.team import members as members_service
-from sales0.web.acting import clear_flash, get_acting_member, pop_flash, set_flash
+from sales0.web.acting import clear_flash, get_acting_member, pop_flash, require_admin, set_flash
 from sales0.web.context import PathId
 from sales0.web.context import cost_badge_oob, is_htmx, render_html, render_page, toast_html
 from sales0.web.envelope import wants_json
@@ -392,6 +393,18 @@ def generate(
 
 
 # ---------------------------------------------------------------------- message
+def _timeline(db: Session, msg: OutreachMessage, names: dict[int, str]) -> list[tuple[Any, str, str | None, str | None]]:
+    """(event, label, who, detail); an admin acting as the owner shows as "Admin as Member"."""
+    out: list[tuple[Any, str, str | None, str | None]] = []
+    for e in messages.list_events(db, msg.id):
+        detail, by = split_acted_by(e.detail)
+        who = names.get(e.member_id or 0)
+        if by is not None:
+            who = f"{names.get(by, '?')} as {who or '?'}"
+        out.append((e, EVENT_LABELS.get(e.kind, e.kind), who, detail))
+    return out
+
+
 def _message_ctx(db: Session, msg: OutreachMessage, member: TeamMember) -> dict[str, Any]:
     names = _member_names(db)
     owner = msg.member_id == member.id
@@ -410,7 +423,7 @@ def _message_ctx(db: Session, msg: OutreachMessage, member: TeamMember) -> dict[
     return {
         "msg": msg, "owner_name": names.get(msg.member_id, "?"), "is_owner": owner,
         "state_label": STATE_LABELS.get(msg.state, msg.state),
-        "events": [(e, EVENT_LABELS.get(e.kind, e.kind), names.get(e.member_id or 0)) for e in messages.list_events(db, msg.id)],
+        "events": _timeline(db, msg, names),
         "brief": ({
             "what_they_do": brief.get("what_they_do"), "hooks": brief.get("personalisation_hooks") or [],
             "needs": brief.get("ai_training_needs") or [], "sources": _safe_links(brief.get("sources") or []),
@@ -562,6 +575,7 @@ def save_template(
     offering_id: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
+    _admin: TeamMember = Depends(require_admin),
 ) -> Response:
     tid = _opt_int(template_id)
 
@@ -577,7 +591,8 @@ def save_template(
 
 @router.post("/outreach/templates/{template_id}/delete", response_model=None)
 def delete_template(
-    request: Request, template_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, template_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member),
+    _admin: TeamMember = Depends(require_admin)
 ) -> Response:
     def act() -> str:
         name = templates.get_template(db, template_id).name
@@ -632,6 +647,7 @@ def upload_deck(
     offering_id: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
+    _admin: TeamMember = Depends(require_admin),
 ) -> Response:
     def act() -> str:
         limit = get_settings().deck_max_bytes
@@ -651,6 +667,7 @@ def set_deck_offering(
     offering_id: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
+    _admin: TeamMember = Depends(require_admin),
 ) -> Response:
     def act() -> str:
         row = decks_service.set_deck_offering(db, deck_id, _opt_int(offering_id))
@@ -661,7 +678,8 @@ def set_deck_offering(
 
 @router.post("/outreach/decks/{deck_id}/delete", response_model=None)
 def delete_deck(
-    request: Request, deck_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, deck_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member),
+    _admin: TeamMember = Depends(require_admin)
 ) -> Response:
     def act() -> str:
         name = decks_service.get_deck(db, deck_id).name
@@ -677,7 +695,11 @@ def deck_file(deck_id: PathId, db: Session = Depends(get_db), member: TeamMember
     data = decks_service.read_deck_bytes(deck)
     return Response(
         data, media_type=decks_service.PDF_MIME,
-        headers={"Content-Disposition": f'inline; filename="{deck.filename}"', "X-Content-Type-Options": "nosniff"},
+        headers={
+            "Content-Disposition": f'attachment; filename="{deck.filename}"',
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+        },
     )  # fmt: skip
 
 

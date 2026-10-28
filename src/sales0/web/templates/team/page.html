@@ -48,7 +48,7 @@
                   <span class="muted">{{ m.name }} connects their own Gmail (switch to them in the header).</span>
                 {% endif %}
                 {% if c.status in ("connected", "needs_reauth", "scope_insufficient") and acting_member and (acting_member.id == m.id or acting_member.role == "admin") %}
-                  <form method="post" action="/team/gmail/disconnect" data-q="Disconnect Gmail for {{ m.name }}? They will need to connect again before sending." onsubmit="return confirm(this.dataset.q)">
+                  <form method="post" action="/team/gmail/disconnect" data-q="Disconnect Gmail for {{ m.name }}? They will need to connect again before sending." data-confirm-submit>
                     <input type="hidden" name="member_id" value="{{ m.id }}">
                     <button class="btn btn--danger btn--sm" type="submit">Disconnect</button>
                   </form>

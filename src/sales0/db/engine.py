@@ -90,3 +90,24 @@ def get_db() -> Iterator[Session]:
     """FastAPI dependency: one session per request, committed on success."""
     with session_scope() as session:
         yield session
+
+
+def harden_storage(settings: Any | None = None) -> None:
+    """Best effort: data dir 0700; SQLite db / -wal / -shm and secret.key 0600. Never raises (e.g. a mounted volume)."""
+    import os
+
+    settings = settings or get_settings()
+    targets: list[tuple[Path, int]] = [(settings.data_path, 0o700), (settings.data_path / "secret.key", 0o600)]
+    try:
+        parsed = make_url(settings.resolved_database_url)
+    except Exception:  # noqa: BLE001
+        parsed = None
+    if parsed is not None and parsed.get_backend_name() == "sqlite" and parsed.database and parsed.database != ":memory:":
+        db = Path(parsed.database)
+        targets += [(db, 0o600), (db.with_name(db.name + "-wal"), 0o600), (db.with_name(db.name + "-shm"), 0o600)]
+    for path, mode in targets:
+        try:
+            if path.exists():
+                os.chmod(path, mode)
+        except OSError:
+            pass

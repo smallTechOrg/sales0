@@ -12,20 +12,25 @@ Guarantees (strict by default):
 Test seam: ``allow_private_hosts`` lists exact hostnames (e.g. ``"127.0.0.1"``) that are
 exempt from the IP block. It is empty by default and must be set explicitly.
 
-Known limit: the address checked is resolved separately from the one httpx connects to
-(DNS-rebinding window); acceptable for a human-triggered, low-volume research tool.
+DNS-rebinding defence: each hop resolves the host ONCE, validates every address, then PINS
+those validated addresses for the connection (a custom httpcore network backend ignores the
+OS resolver and connects to the pinned IP, while Host header, SNI and certificate verification
+still use the original hostname). After connecting, the peer address is re-checked against the
+same rules and the connection is aborted if it is non-public. Allow-listed hosts skip both.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
+import threading
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
+import httpcore
 import httpx
 
 USER_AGENT = "sales0-research/1.0 (+company research; honours robots.txt)"
@@ -83,6 +88,50 @@ def is_blocked_ip(value: str) -> bool:
     )
 
 
+class PinnedBackend(httpcore.NetworkBackend):
+    """httpcore network backend that connects only to pre-validated IPs (never re-resolves).
+
+    ``pins`` maps hostname -> validated addresses; a host without a pin (allow-listed test hosts)
+    is connected normally. The connected peer address is re-checked and refused if non-public."""
+
+    def __init__(self, inner: httpcore.NetworkBackend | None = None) -> None:
+        self._inner = inner or httpcore.SyncBackend()
+        self.pins: dict[str, list[str]] = {}
+        self._lock = threading.Lock()
+
+    def pin(self, host: str, addresses: list[str]) -> None:
+        with self._lock:
+            self.pins[host.lower()] = list(addresses)
+
+    def unpin(self, host: str) -> None:
+        with self._lock:
+            self.pins.pop(host.lower(), None)
+
+    def connect_tcp(  # type: ignore[no-untyped-def,override]
+        self, host, port, timeout=None, local_address=None, socket_options=None
+    ):
+        with self._lock:
+            addrs = self.pins.get(host.lower().rstrip("."))
+        if addrs is None:
+            return self._inner.connect_tcp(host, port, timeout, local_address, socket_options)
+        last: Exception | None = None
+        for addr in addrs:
+            if is_blocked_ip(addr):
+                last = httpcore.ConnectError("blocked: non-public address")
+                continue
+            try:
+                stream = self._inner.connect_tcp(addr, port, timeout, local_address, socket_options)
+            except httpcore.ConnectError as exc:
+                last = exc
+                continue
+            peer = stream.get_extra_info("server_addr")
+            if peer is not None and is_blocked_ip(str(peer[0])):
+                stream.close()
+                raise httpcore.ConnectError("blocked: peer address is non-public")
+            return stream
+        raise last or httpcore.ConnectError("no address to connect to")
+
+
 class SafeFetcher:
     def __init__(
         self,
@@ -95,6 +144,7 @@ class SafeFetcher:
         max_redirects: int = 3,
         respect_robots: bool = True,
         transport: httpx.BaseTransport | None = None,
+        network_backend: httpcore.NetworkBackend | None = None,
     ) -> None:
         self._resolver: Resolver = resolver or default_resolver
         self._allow_private = frozenset(h.lower() for h in allow_private_hosts)
@@ -103,6 +153,11 @@ class SafeFetcher:
         self.timeout_s = timeout_s
         self.max_redirects = max_redirects
         self.respect_robots = respect_robots
+        self._backend: PinnedBackend | None = None
+        if transport is None:
+            self._backend = PinnedBackend(network_backend)
+            transport = httpx.HTTPTransport()
+            transport._pool._network_backend = self._backend  # type: ignore[attr-defined]
         self._client = httpx.Client(
             transport=transport,
             follow_redirects=False,
@@ -121,6 +176,11 @@ class SafeFetcher:
     # ------------------------------------------------------------------ safety checks
     def check_url(self, url: str) -> tuple[str, str]:
         """Validate scheme + host + resolved addresses. Returns (host, origin) or raises FetchError."""
+        host, origin, _ = self._check(url)
+        return host, origin
+
+    def _check(self, url: str) -> tuple[str, str, list[str] | None]:
+        """Like check_url, plus the validated addresses to pin (None for allow-listed hosts)."""
         try:
             parts = urlsplit(url)
             port = parts.port
@@ -133,6 +193,7 @@ class SafeFetcher:
             raise FetchError("URL has no host")
         if parts.username or parts.password:
             raise FetchError("credentials in URL not allowed")
+        addresses: list[str] | None = None
         if host not in self._allow_private:
             addresses = [host] if _is_ip_literal(host) else list(self._resolver(host))
             if not addresses:
@@ -140,7 +201,7 @@ class SafeFetcher:
             if any(is_blocked_ip(a) for a in addresses):
                 raise FetchError(f"blocked: {host} resolves to a non-public address")
         origin = f"{parts.scheme}://{host}" + (f":{port}" if port else "")
-        return host, origin
+        return host, origin, addresses
 
     # ------------------------------------------------------------------ robots
     def _robots_for(
@@ -201,7 +262,12 @@ class SafeFetcher:
         for hop in range(self.max_redirects + 1):
             if host_ok is not None and not host_ok(current):
                 raise FetchError("blocked: URL is outside the company's own site")
-            _, origin = self.check_url(current)
+            host, origin, pinned = self._check(current)
+            if self._backend is not None:
+                if pinned is not None:
+                    self._backend.pin(host, pinned)
+                else:
+                    self._backend.unpin(host)
             if (
                 robots
                 and self.respect_robots

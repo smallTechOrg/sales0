@@ -20,6 +20,7 @@ from sales0.db.models import TeamMember
 from sales0.errors import DomainError
 from sales0.services.team import acting as acting_service
 from sales0.services.team import crypto
+from sales0.web import cookies
 
 
 def _resolution(request: Request, db: Session) -> acting_service.Resolution:
@@ -72,21 +73,17 @@ def acted_by_id(member: TeamMember | None) -> int | None:
 
 
 def set_acting_cookie(response: Response, member_id: int) -> None:
-    response.set_cookie(
+    cookies.set_cookie(
+        response,
         acting_service.COOKIE_NAME,
         acting_service.cookie_value(member_id),
         max_age=acting_service.COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        path="/",
     )
 
 
 def set_flash(response: Response, message: str, kind: str = "ok") -> None:
     payload = base64.urlsafe_b64encode(json.dumps({"k": kind, "m": message[:300]}).encode()).decode().rstrip("=")
-    response.set_cookie(
-        acting_service.FLASH_COOKIE, crypto.sign(payload, "flash"), max_age=120, httponly=True, samesite="lax", path="/"
-    )
+    cookies.set_cookie(response, acting_service.FLASH_COOKIE, crypto.sign(payload, "flash"), max_age=120)
 
 
 def pop_flash(request: Request) -> dict[str, str] | None:
@@ -102,4 +99,4 @@ def pop_flash(request: Request) -> dict[str, str] | None:
 
 
 def clear_flash(response: Response) -> None:
-    response.delete_cookie(acting_service.FLASH_COOKIE, path="/")
+    cookies.delete_cookie(response, acting_service.FLASH_COOKIE)

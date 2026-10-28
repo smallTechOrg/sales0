@@ -24,7 +24,8 @@ from sales0.config import Settings
 from sales0.db.engine import session_scope
 from sales0.logging import get_logger
 from sales0.services.team import accounts, crypto
-from sales0.web.envelope import err, is_htmx, wants_json
+from sales0.web import cookies
+from sales0.web.envelope import err, error_response, is_htmx, wants_json
 
 log = get_logger("sales0.auth")
 
@@ -46,19 +47,11 @@ def now() -> datetime:
 # ---------------------------------------------------------------------- session cookie
 def set_session_cookie(response: Response, settings: Settings, sid: str, expires_at: datetime, now_: datetime | None = None) -> None:
     max_age = max(1, int((expires_at - (now_ or now())).total_seconds()))
-    response.set_cookie(
-        COOKIE,
-        crypto.sign(sid, SESSION_PURPOSE, settings),
-        max_age=max_age,
-        path="/",
-        httponly=True,
-        samesite="lax",
-        secure=settings.session_cookie_secure,
-    )
+    cookies.set_cookie(response, COOKIE, crypto.sign(sid, SESSION_PURPOSE, settings), settings=settings, max_age=max_age)
 
 
 def clear_session(response: Response, settings: Settings) -> None:
-    response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax", secure=settings.session_cookie_secure)
+    cookies.delete_cookie(response, COOKIE, settings=settings, httponly=True, samesite="lax")
 
 
 def cookie_sid(request: Request, settings: Settings) -> str | None:
@@ -214,6 +207,28 @@ def is_open_path(path: str, settings: Settings) -> bool:
     return False
 
 
+HOST_MESSAGE = (
+    "This host name is not allowed. Open sales0 on its own address (http://127.0.0.1:PORT), or list the name in "
+    "SALES0_ALLOWED_HOSTS."
+)
+
+
+def request_hostname(request: Request) -> str:
+    """The Host header's name without port (IPv6 brackets removed), lower-cased; '' when missing/unparseable."""
+    raw = request.headers.get("host", "").strip()
+    try:
+        return (urlsplit(f"//{raw}").hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def host_allowed(request: Request, settings: Settings, *, auth_enabled: bool) -> bool:
+    """DNS-rebinding guard, for every method. Open mode (no login): loopback and SALES0_HOST only. With logins:
+    also the SALES0_PUBLIC_BASE_URL host and SALES0_ALLOWED_HOSTS."""
+    names = settings.allowed_host_names if auth_enabled else settings.open_mode_host_names
+    return request_hostname(request) in names
+
+
 def unauthenticated_response(request: Request) -> Response:
     if is_htmx(request):
         return Response(status_code=401, headers={"HX-Redirect": "/login", "Cache-Control": "no-store"})
@@ -239,7 +254,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.login_member_id = None
         request.state.login_session_id = None
         path = request.url.path
-        if path.startswith("/static/") or path == "/api/health":
+        if path.startswith("/static/"):
             request.state.auth_enabled = True
             return await call_next(request)
         rotated: tuple[str, datetime] | None = None
@@ -260,6 +275,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Fall back to the bootstrap variable alone; with it set nobody can be logged in, so the gate holds.
             log.warning("auth_state_unavailable", exc_info=True)
         request.state.auth_enabled = enabled
+        if not host_allowed(request, settings, auth_enabled=enabled):
+            log.warning("host_rejected", method=request.method, host=request.headers.get("host", "")[:100])
+            return error_response(request, "host_not_allowed", HOST_MESSAGE, 400)
         if not enabled:
             return await call_next(request)
         if request.state.login_member_id is None and not is_open_path(path, settings):

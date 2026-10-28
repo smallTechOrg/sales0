@@ -136,7 +136,7 @@ def test_other_members_cannot_act_and_non_admins_cannot_read(web: TestClient, te
     act_as(web, team.bob)
     for action in ("send", "approve", "reject"):
         resp = web.post(f"/outreach/messages/{msg_id}/{action}", headers=JSON)
-        assert resp.status_code == 403 and resp.json()["error"]["code"] == "not_owner", action
+        assert resp.status_code == 404 and resp.json()["error"]["code"] == "not_found", action  # not enumerable
     assert web.get(f"/outreach/messages/{msg_id}").status_code == 404
     assert f'id="message-{msg_id}"' not in web.get("/outreach?scope=all").text  # scope=all is admin-only
     act_as(web, team.admin)

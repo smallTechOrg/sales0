@@ -23,7 +23,7 @@ from sales0.services import inbox as inbox_service
 from sales0.services import importer
 from sales0.services.importer import ImportBatchView
 from sales0.services.importer.csv_import import MAX_BYTES
-from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
 from sales0.web.context import PathId
 from sales0.web.context import actor_of, crm_done, crm_guard, opt_str, render_page
 from sales0.web.envelope import ok as envelope_ok
@@ -105,7 +105,7 @@ def batch_page(request: Request, batch_id: PathId, db: Session = Depends(get_db)
     return _page(request, db, "importer/batch.html", {"b": view, "kind_labels": KIND_LABELS})
 
 
-@router.post("/import/csv", response_model=None)
+@router.post("/import/csv", response_model=None, dependencies=[Depends(require_admin)])
 def import_csv_route(
     request: Request,
     kind: str = Form(""),
@@ -129,7 +129,7 @@ def import_csv_route(
     return crm_guard(request, "/import", run, db)
 
 
-@router.post("/import/paste", response_model=None)
+@router.post("/import/paste", response_model=None, dependencies=[Depends(require_admin)])
 def import_paste(
     request: Request,
     text: str = Form(""),

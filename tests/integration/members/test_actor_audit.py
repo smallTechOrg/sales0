@@ -35,21 +35,16 @@ from tests.integration.web.conftest import make_enquiry, make_seen_post, triaged
 ACTOR_DEPS = {acting.get_acting_member, acting.get_acting_member_optional, acting.require_admin, acting.get_login_member_optional}
 
 # route -> why it carries no per-member attribution
+# (setup/*, schedule/*, sync/* and run control are admin-only now: require_admin counts as the actor dependency)
 EXEMPT_PREFIX = {
     "/login": "authentication itself",
     "/logout": "authentication itself",
     "/set-password/": "authenticated by the one-time token",
-    "/setup/offerings": "shared catalogue configuration; no actor column",
-    "/setup/linkedin/": "shared LinkedIn account/session administration (own audit via session history)",
-    "/setup/keywords/suggested": "bulk seeding of the built-in suggested list",
-    "/setup/keywords/{keyword_id}/delete": "removal; the row is gone, nothing to attribute",
     "/inbox/{enquiry_id}/retry": "re-runs AI triage on an enquiry; no decision",
-    "/schedule/": "enables/runs a system job; jobs record their own run rows",
     "/digest/build": "builds a derived digest",
     "/suggestions/generate": "AI suggestion batch; decisions (accept/dismiss) are attributed",
     "/metrics/targets": "per-source target override stored in app_meta (shared setting, no actor column)",
     "/tracked/{profile_id}/pause": "pauses/resumes the watch of one profile (state on the profile row, no actor column)",
-    "/sync/": "sheet sync control; the sync run is its own actor ('sheet-sync')",
 }
 
 
@@ -97,17 +92,20 @@ def _member(admin: TestClient, make_client: Callable[[], TestClient]) -> tuple[T
 
 def test_keywords_runs_and_enquiry_edits_carry_the_member(admin: TestClient, make_client: Callable[[], TestClient]) -> None:
     member, mid = _member(admin, make_client)
-    assert member.post("/setup/keywords", data={"text": "audit keyword"}).status_code == 303
+    # keywords are admin-only: the admin acts as the member, so the credit still lands on the member
+    assert admin.post("/team/acting", data={"member_id": mid, "next": "/setup"}).status_code == 303
+    assert member.post("/setup/keywords", data={"text": "nope"}).status_code == 403
+    assert admin.post("/setup/keywords", data={"text": "audit keyword"}).status_code == 303
     with session_scope() as db:
         kw = db.scalar(select(Keyword).where(Keyword.text == "audit keyword"))
         assert kw.actor_user_id == mid
         kid = kw.id
         kw.actor_user_id = None
-    member.post(f"/setup/keywords/{kid}/toggle", data={"active": "false"})
+    admin.post(f"/setup/keywords/{kid}/toggle", data={"active": "false"})
     with session_scope() as db:
         assert db.get(Keyword, kid).actor_user_id == mid
         db.get(Keyword, kid).actor_user_id = None
-    member.post(f"/setup/keywords/{kid}/edit", data={"text": "audit keyword two"})
+    admin.post(f"/setup/keywords/{kid}/edit", data={"text": "audit keyword two"})
     with session_scope() as db:
         assert db.get(Keyword, kid).actor_user_id == mid
 
@@ -142,7 +140,9 @@ def test_pipeline_contacts_and_registries_carry_the_member(admin: TestClient, ma
     member.post(f"/pipeline/prospects/{pid}/stage", data={"stage": "contacted"})
     member.post(f"/pipeline/prospects/{pid}/note", data={"body": "called them"})
     member.post("/contacts", data={"full_name": "Ravi Contact", "email": "ravi@acme.example"})
-    member.post("/competitors/competitor", data={"name": "RivalCo"})
+    assert member.post("/competitors/competitor", data={"name": "RivalCo"}).status_code == 403  # admin-only
+    assert admin.post("/team/acting", data={"member_id": mid, "next": "/competitors"}).status_code == 303
+    admin.post("/competitors/competitor", data={"name": "RivalCo"})  # admin acting as the member: credit = member
     with session_scope() as db:
         events = db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == pid)).all()
         by_kind = {t.kind: t for t in events}

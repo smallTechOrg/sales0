@@ -14,12 +14,12 @@
     </div>
     <form method="get" action="/metrics" class="inline-form" id="metrics-controls">
       <label>Weeks
-        <select name="weeks" id="weeks-select" onchange="this.form.submit()">
+        <select name="weeks" id="weeks-select" data-autosubmit>
           {% for n in week_choices %}<option value="{{ n }}"{% if n == weeks_n %} selected{% endif %}>Last {{ n }}</option>{% endfor %}
         </select>
       </label>
       <label>Sheet vs app
-        <select name="mode" id="mode-select" onchange="this.form.submit()">
+        <select name="mode" id="mode-select" data-autosubmit>
           {% for k, v in modes.items() %}<option value="{{ k }}"{% if k == mode %} selected{% endif %}>{{ v }}</option>{% endfor %}
         </select>
       </label>

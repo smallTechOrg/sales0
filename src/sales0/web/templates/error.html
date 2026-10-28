@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}{% if status == 404 %}Not found{% else %}Something went wrong{% endif %}{% endblock %}
+{% block title %}{% if status == 404 %}Not found{% elif status == 403 %}Admins only{% else %}Something went wrong{% endif %}{% endblock %}
 {% block content %}
   <section class="stub-page card" aria-labelledby="error-title">
     <div class="card__body">
       <span class="badge badge--discard">{% if status %}Error {{ status }}{% else %}Error{% endif %}</span>
-      <h1 id="error-title">{% if status == 404 %}We couldn't find that{% else %}Something needs attention{% endif %}</h1>
+      <h1 id="error-title">{% if status == 404 %}We couldn't find that{% elif status == 403 %}Only an admin can do that{% else %}Something needs attention{% endif %}</h1>
       <p role="alert">{{ message }}</p>
       <a class="btn btn--primary" href="{{ back_href or '/inbox' }}">Back to sales0</a>
     </div>

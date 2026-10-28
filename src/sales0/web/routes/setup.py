@@ -17,7 +17,7 @@ from sales0.services import linkedin_accounts as accounts_service
 from sales0.services import offerings as offerings_service
 from sales0.services import session as session_service
 from sales0.services.views import OfferingInput, OfferingView, SessionStatusView
-from sales0.web.acting import get_acting_member_optional
+from sales0.web.acting import get_acting_member_optional, require_admin
 from sales0.web.context import PathId
 from sales0.web.context import is_htmx, redirect, render_html, render_page, toast_html
 from sales0.web.envelope import ok
@@ -167,7 +167,7 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------- keywords
-@router.post("/setup/keywords", response_model=None)
+@router.post("/setup/keywords", response_model=None, dependencies=[Depends(require_admin)])
 def add_keyword(
     request: Request, text: str = Form(""), db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -178,7 +178,7 @@ def add_keyword(
     return _html(_keyword_list_html(request, db), toast_html(f"Added keyword '{keyword.text}'."))
 
 
-@router.post("/setup/keywords/{keyword_id}/delete", response_model=None)
+@router.post("/setup/keywords/{keyword_id}/delete", response_model=None, dependencies=[Depends(require_admin)])
 def remove_keyword(request: Request, keyword_id: PathId, db: Session = Depends(get_db)) -> Response:
     keywords_service.remove_keyword(db, keyword_id)
     if not is_htmx(request):
@@ -186,7 +186,7 @@ def remove_keyword(request: Request, keyword_id: PathId, db: Session = Depends(g
     return _html(_keyword_list_html(request, db), toast_html("Keyword removed. Its run history is kept."))
 
 
-@router.post("/setup/keywords/{keyword_id}/toggle", response_model=None)
+@router.post("/setup/keywords/{keyword_id}/toggle", response_model=None, dependencies=[Depends(require_admin)])
 def toggle_keyword(
     request: Request, keyword_id: PathId, active: str = Form("true"), db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -199,7 +199,7 @@ def toggle_keyword(
     return _html(_keyword_row_html(request, db, keyword))
 
 
-@router.post("/setup/keywords/suggested", response_model=None)
+@router.post("/setup/keywords/suggested", response_model=None, dependencies=[Depends(require_admin)])
 def add_suggested_keywords(request: Request, db: Session = Depends(get_db)) -> Response:
     result = keywords_service.seed_suggested(db)
     if not is_htmx(request):
@@ -209,7 +209,7 @@ def add_suggested_keywords(request: Request, db: Session = Depends(get_db)) -> R
     )
 
 
-@router.post("/setup/keywords/{keyword_id}/edit", response_model=None)
+@router.post("/setup/keywords/{keyword_id}/edit", response_model=None, dependencies=[Depends(require_admin)])
 def edit_keyword(
     request: Request,
     keyword_id: PathId,
@@ -233,7 +233,7 @@ def edit_keyword(
 
 
 # ---------------------------------------------------------------------- offerings
-@router.post("/setup/offerings", response_model=None)
+@router.post("/setup/offerings", response_model=None, dependencies=[Depends(require_admin)])
 def create_offering(
     request: Request,
     name: str = Form(""),
@@ -259,7 +259,7 @@ def edit_offering(request: Request, offering_id: PathId, db: Session = Depends(g
     )
 
 
-@router.post("/setup/offerings/{offering_id}", response_model=None)
+@router.post("/setup/offerings/{offering_id}", response_model=None, dependencies=[Depends(require_admin)])
 def update_offering(
     request: Request,
     offering_id: PathId,
@@ -274,7 +274,7 @@ def update_offering(
     return _html(_offering_list_html(request, db), toast_html(f"Saved '{offering.name}'."))
 
 
-@router.post("/setup/offerings/{offering_id}/delete", response_model=None)
+@router.post("/setup/offerings/{offering_id}/delete", response_model=None, dependencies=[Depends(require_admin)])
 def delete_offering(request: Request, offering_id: PathId, db: Session = Depends(get_db)) -> Response:
     offering = _find_offering(db, offering_id)
     result = offerings_service.delete_offering(db, offering_id)
@@ -290,7 +290,7 @@ def delete_offering(request: Request, offering_id: PathId, db: Session = Depends
 
 
 # ---------------------------------------------------------------------- LinkedIn
-@router.post("/setup/linkedin/connect", response_model=None)
+@router.post("/setup/linkedin/connect", response_model=None, dependencies=[Depends(require_admin)])
 def connect_linkedin(request: Request, db: Session = Depends(get_db)) -> Response:
     session = session_service.start_connect(db)
     if not is_htmx(request):
@@ -298,7 +298,7 @@ def connect_linkedin(request: Request, db: Session = Depends(get_db)) -> Respons
     return _linkedin_card(request, session, changed=True)
 
 
-@router.post("/setup/linkedin/connect/cancel", response_model=None)
+@router.post("/setup/linkedin/connect/cancel", response_model=None, dependencies=[Depends(require_admin)])
 def cancel_connect(request: Request, db: Session = Depends(get_db)) -> Response:
     get_runner().cancel_connect()
     if not is_htmx(request):
@@ -306,7 +306,7 @@ def cancel_connect(request: Request, db: Session = Depends(get_db)) -> Response:
     return _linkedin_card(request, session_service.session_status(db), changed=True)
 
 
-@router.post("/setup/linkedin/check", response_model=None)
+@router.post("/setup/linkedin/check", response_model=None, dependencies=[Depends(require_admin)])
 def check_linkedin(request: Request, db: Session = Depends(get_db)) -> Response:
     session = session_service.start_check(db)
     if not is_htmx(request):
@@ -332,14 +332,19 @@ def linkedin_accounts_list(request: Request, db: Session = Depends(get_db)) -> H
     return _accounts_card(request, db, changed=False)
 
 
-@router.post("/setup/linkedin/accounts", response_model=None)
-def add_linkedin_account(request: Request, label: str = Form(""), db: Session = Depends(get_db)) -> Response:
-    account = accounts_service.add_account(db, label)
+@router.post("/setup/linkedin/accounts", response_model=None, dependencies=[Depends(require_admin)])
+def add_linkedin_account(
+    request: Request,
+    label: str = Form(""),
+    db: Session = Depends(get_db),
+    admin: TeamMember | None = Depends(require_admin),
+) -> Response:
+    account = accounts_service.add_account(db, label, owner_member_id=admin.id if admin else None)
     how = "press Connect to open its Chrome window" if account.backend == "folder" else "paste its li_at cookie below"
     return _accounts_response(request, db, f"Added '{account.label}' - {how}.")
 
 
-@router.post("/setup/linkedin/accounts/{account_id}/rename", response_model=None)
+@router.post("/setup/linkedin/accounts/{account_id}/rename", response_model=None, dependencies=[Depends(require_admin)])
 def rename_linkedin_account(
     request: Request, account_id: PathId, label: str = Form(""), db: Session = Depends(get_db)
 ) -> Response:
@@ -347,41 +352,42 @@ def rename_linkedin_account(
     return _accounts_response(request, db, f"Renamed to '{account.label}'.")
 
 
-@router.post("/setup/linkedin/accounts/{account_id}/disable", response_model=None)
+@router.post("/setup/linkedin/accounts/{account_id}/disable", response_model=None, dependencies=[Depends(require_admin)])
 def disable_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
     account = accounts_service.disable_account(db, account_id)
     return _accounts_response(request, db, f"'{account.label}' is disabled - no runs or checks use it.")
 
 
-@router.post("/setup/linkedin/accounts/{account_id}/enable", response_model=None)
+@router.post("/setup/linkedin/accounts/{account_id}/enable", response_model=None, dependencies=[Depends(require_admin)])
 def enable_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
     account = accounts_service.enable_account(db, account_id)
     return _accounts_response(request, db, f"'{account.label}' is enabled.")
 
 
-@router.post("/setup/linkedin/accounts/{account_id}/connect", response_model=None)
+@router.post("/setup/linkedin/accounts/{account_id}/connect", response_model=None, dependencies=[Depends(require_admin)])
 def connect_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
     session_service.start_connect(db, account_id)
     return _accounts_response(request, db, "A Chrome window is opening - log in to LinkedIn there.")
 
 
-@router.post("/setup/linkedin/accounts/{account_id}/check", response_model=None)
+@router.post("/setup/linkedin/accounts/{account_id}/check", response_model=None, dependencies=[Depends(require_admin)])
 def check_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
     session_service.start_check(db, account_id)
     return _accounts_response(request, db, "Checking the session in the background...")
 
 
-@router.post("/setup/linkedin/cookie", response_model=None)
+@router.post("/setup/linkedin/cookie", response_model=None, dependencies=[Depends(require_admin)])
 def paste_linkedin_cookie(
     request: Request,
     cookie: str = Form(""),
     label: str = Form(""),
     account_id: str = Form(""),
     db: Session = Depends(get_db),
+    admin: TeamMember | None = Depends(require_admin),
 ) -> Response:
     """Store a pasted li_at (encrypted) on a db-backend account, then validate it with one feed load."""
     target = int(account_id) if account_id.strip().isdigit() else None
-    account = accounts_service.paste_cookie(db, cookie, label=label or None, account_id=target)
+    account = accounts_service.paste_cookie(db, cookie, label=label or None, account_id=target, owner_member_id=admin.id if admin else None)
     db.commit()  # the check job reads the row from its own session
     try:
         session_service.start_check(db, account.id)

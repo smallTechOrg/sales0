@@ -63,7 +63,7 @@
                 <td>{{ t.subject or "-" }}</td>
                 <td>
                   <a class="btn btn--sm" href="/outreach/templates?edit={{ t.id }}">Edit</a>
-                  <form method="post" action="/outreach/templates/{{ t.id }}/delete" data-q="Delete template '{{ t.name }}'? Messages already written from it are not affected." onsubmit="return confirm(this.dataset.q)">
+                  <form method="post" action="/outreach/templates/{{ t.id }}/delete" data-q="Delete template '{{ t.name }}'? Messages already written from it are not affected." data-confirm-submit>
                     <button class="btn btn--danger btn--sm" type="submit">Delete</button>
                   </form>
                 </td>
