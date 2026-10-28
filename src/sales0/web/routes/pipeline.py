@@ -37,6 +37,7 @@ from sales0.services.crm import prospects as prospects_service
 from sales0.services.crm import timeline as timeline_service
 from sales0.services.crm.stages import LEAD_STAGES, PROSPECT_STAGES, STAGE_LABELS
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.web.context import PathId
 from sales0.web.context import (
     actor_of,
     crm_done,
@@ -202,7 +203,7 @@ def api_summary(db: Session = Depends(get_db)) -> Response:
 
 
 @router.get("/api/prospects/{prospect_id}")
-def api_prospect(prospect_id: int, db: Session = Depends(get_db)) -> Response:
+def api_prospect(prospect_id: PathId, db: Session = Depends(get_db)) -> Response:
     return _json(prospects_service.get_prospect(db, prospect_id))
 
 
@@ -217,7 +218,7 @@ def _board_refresh(request: Request, db: Session, next_url: str, message: str) -
 # ---------------------------------------------------------------------- prospect detail
 
 
-def _prospect_parts(db: Session, prospect_id: int) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
+def _prospect_parts(db: Session, prospect_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     p = prospects_service.get_prospect(db, prospect_id)
     base = f"/pipeline/prospects/{p.id}"
     no_fu = any(f.kind == "no_follow_up" for f in p.flags)
@@ -233,7 +234,7 @@ def _prospect_parts(db: Session, prospect_id: int) -> tuple[Any, list[tuple[str,
 
 
 @router.get("/pipeline/prospects/{prospect_id}", response_class=HTMLResponse)
-def prospect_page(request: Request, prospect_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def prospect_page(request: Request, prospect_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     p = prospects_service.get_prospect(db, prospect_id)
     return _page(
         request, db, "pipeline/prospect.html",
@@ -242,7 +243,7 @@ def prospect_page(request: Request, prospect_id: int, db: Session = Depends(get_
 
 
 def _prospect_action(
-    request: Request, db: Session, prospect_id: int, action: Callable[[], str], *, next_url: str | None = None
+    request: Request, db: Session, prospect_id: PathId, action: Callable[[], str], *, next_url: str | None = None
 ) -> Response:
     """Run a prospect mutation; ``action`` returns the success message."""
     back = next_url or f"/pipeline/prospects/{prospect_id}"
@@ -290,7 +291,7 @@ def create_prospect(
 @router.post("/pipeline/prospects/{prospect_id}/stage", response_model=None)
 def prospect_stage(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     stage: str = Form(""),
     note: str = Form(""),
     next: str = Form(""),  # noqa: A002 - form field name
@@ -307,7 +308,7 @@ def prospect_stage(
 @router.post("/pipeline/prospects/{prospect_id}/response", response_model=None)
 def prospect_response(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     note: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -322,7 +323,7 @@ def prospect_response(
 @router.post("/pipeline/prospects/{prospect_id}/convert", response_model=None)
 def prospect_convert(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     stage: str = Form("meeting_scheduled"),
     meeting_at: str = Form(""),
     db: Session = Depends(get_db),
@@ -345,7 +346,7 @@ def prospect_convert(
 @router.post("/pipeline/prospects/{prospect_id}/close", response_model=None)
 def prospect_close(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     reason: str = Form("no_response"),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -360,7 +361,7 @@ def prospect_close(
 @router.post("/pipeline/prospects/{prospect_id}/reopen", response_model=None)
 def prospect_reopen(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -374,7 +375,7 @@ def prospect_reopen(
 @router.post("/pipeline/prospects/{prospect_id}/tracked", response_model=None)
 def prospect_tracked(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     tracked: str = Form("true"),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -391,7 +392,7 @@ def prospect_tracked(
 @router.post("/pipeline/prospects/{prospect_id}/flag", response_model=None)
 def prospect_flag(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     kind: str = Form("no_follow_up"),
     on: str = Form("true"),
     db: Session = Depends(get_db),
@@ -417,7 +418,7 @@ def prospect_flag(
 @router.post("/pipeline/prospects/{prospect_id}/edit", response_model=None)
 def prospect_edit(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     name: str = Form(""),
     company: str = Form(""),
     notes: str = Form(""),
@@ -446,7 +447,7 @@ def _note(db: Session, subject_type: str, subject_id: int, body: str, member: Te
 @router.post("/pipeline/prospects/{prospect_id}/note", response_model=None)
 def prospect_note(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     body: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -461,7 +462,7 @@ def prospect_note(
 @router.post("/pipeline/prospects/{prospect_id}/followup", response_model=None)
 def prospect_followup(
     request: Request,
-    prospect_id: int,
+    prospect_id: PathId,
     due_on: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
@@ -496,7 +497,7 @@ def _followup_response(request: Request, db: Session, fu: Any, message: str, nex
 @router.post("/pipeline/followups/{follow_up_id}/done", response_model=None)
 def followup_done(
     request: Request,
-    follow_up_id: int,
+    follow_up_id: PathId,
     note: str = Form(""),
     next: str = Form(""),  # noqa: A002
     db: Session = Depends(get_db),
@@ -514,7 +515,7 @@ def followup_done(
 @router.post("/pipeline/followups/{follow_up_id}/snooze", response_model=None)
 def followup_snooze(
     request: Request,
-    follow_up_id: int,
+    follow_up_id: PathId,
     due_on: str = Form(""),
     next: str = Form(""),  # noqa: A002
     db: Session = Depends(get_db),
@@ -531,7 +532,7 @@ def followup_snooze(
 
 
 # ---------------------------------------------------------------------- lead detail
-def _lead_parts(db: Session, lead_id: int) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
+def _lead_parts(db: Session, lead_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     lead = leads_service.get_lead(db, lead_id)
     base = f"/pipeline/leads/{lead.id}"
     meeting_local = ""
@@ -546,12 +547,12 @@ def _lead_parts(db: Session, lead_id: int) -> tuple[Any, list[tuple[str, dict[st
 
 
 @router.get("/pipeline/leads/{lead_id}", response_class=HTMLResponse)
-def lead_page(request: Request, lead_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def lead_page(request: Request, lead_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     lead, parts = _lead_parts(db, lead_id)
     return _page(request, db, "pipeline/lead.html", {"l": lead, **parts[0][1]})
 
 
-def _lead_action(request: Request, db: Session, lead_id: int, action: Callable[[], str], *, next_url: str | None = None) -> Response:
+def _lead_action(request: Request, db: Session, lead_id: PathId, action: Callable[[], str], *, next_url: str | None = None) -> Response:
     back = next_url or f"/pipeline/leads/{lead_id}"
 
     def run() -> Response:
@@ -570,7 +571,7 @@ def _lead_action(request: Request, db: Session, lead_id: int, action: Callable[[
 @router.post("/pipeline/leads/{lead_id}/stage", response_model=None)
 def lead_stage(
     request: Request,
-    lead_id: int,
+    lead_id: PathId,
     stage: str = Form(""),
     proposal_sent_on: str = Form(""),
     meeting_at: str = Form(""),
@@ -594,7 +595,7 @@ def lead_stage(
 @router.post("/pipeline/leads/{lead_id}/note", response_model=None)
 def lead_note(
     request: Request,
-    lead_id: int,
+    lead_id: PathId,
     body: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -609,7 +610,7 @@ def lead_note(
 @router.post("/pipeline/leads/{lead_id}/followup", response_model=None)
 def lead_followup(
     request: Request,
-    lead_id: int,
+    lead_id: PathId,
     due_on: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
@@ -624,7 +625,7 @@ def lead_followup(
 
 
 # ---------------------------------------------------------------------- clients
-def _client_parts(db: Session, client_id: int) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
+def _client_parts(db: Session, client_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     client = clients_service.get_client(db, client_id)
     parts = [
         ("pipeline/_client_header.html", {"c": client, "client_statuses": CLIENT_STATUSES}),
@@ -634,12 +635,12 @@ def _client_parts(db: Session, client_id: int) -> tuple[Any, list[tuple[str, dic
 
 
 @router.get("/pipeline/clients/{client_id}", response_class=HTMLResponse)
-def client_page(request: Request, client_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def client_page(request: Request, client_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     client, parts = _client_parts(db, client_id)
     return _page(request, db, "pipeline/client.html", {"c": client, "client_statuses": CLIENT_STATUSES})
 
 
-def _client_action(request: Request, db: Session, client_id: int, action: Callable[[], str]) -> Response:
+def _client_action(request: Request, db: Session, client_id: PathId, action: Callable[[], str]) -> Response:
     back = f"/pipeline/clients/{client_id}"
 
     def run() -> Response:
@@ -680,7 +681,7 @@ def create_client(
 @router.post("/pipeline/clients/{client_id}", response_model=None)
 def update_client(
     request: Request,
-    client_id: int,
+    client_id: PathId,
     name: str = Form(""),
     notes: str = Form(""),
     status: str = Form(""),
@@ -701,7 +702,7 @@ def update_client(
 @router.post("/pipeline/clients/{client_id}/note", response_model=None)
 def client_note(
     request: Request,
-    client_id: int,
+    client_id: PathId,
     body: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),

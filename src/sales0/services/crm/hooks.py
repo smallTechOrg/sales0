@@ -82,6 +82,9 @@ def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
         msg.prospect_id = p.id
     if msg.company_id is None and p.company_id:
         msg.company_id = p.company_id
+    prior_emails = int(db.scalar(
+        select(func.count(TimelineEvent.id)).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "email_sent")
+    ) or 0)
     already = any(
         (t.data or {}).get("message_id") == msg.id
         for t in db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "email_sent"))
@@ -105,9 +108,17 @@ def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
         e.date_email_sent = local_today(get_settings().tz, ev.sent_at)
     db.flush()
     if p.status != "open":
+        # closed / converted: the email is still a real contact - record it, change no status, schedule nothing
+        prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, schedule=False, now=ev.sent_at)
         return
     if p.stage == "new":
         prospects.mark_contacted(db, p.id, when=ev.sent_at, actor=actor, channel="email", now=ev.sent_at)
+    elif prior_emails == 0:
+        # contacted by hand (LinkedIn/call/sheet) before: the first app email is not a follow-up by itself
+        prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, now=ev.sent_at)
+        any_auto = db.scalar(select(FollowUp.id).where(FollowUp.prospect_id == p.id, FollowUp.auto.is_(True)).limit(1))
+        if any_auto is None:
+            followups.schedule_for_contact(db, p.id, p.contacted_at or ev.sent_at, now=ev.sent_at)
     else:
         earliest = db.scalar(
             select(FollowUp).where(FollowUp.prospect_id == p.id, FollowUp.done_at.is_(None), FollowUp.cancelled_at.is_(None), FollowUp.kind != "custom")
@@ -147,10 +158,33 @@ def _on_reply_received(db: Session, ev: events.ReplyReceived) -> None:
                        detail={"reason": "unsubscribe", "reply_id": ev.reply_id}, actor=SYSTEM, now=stamp)
         return
     if ev.intent in ("interested", "question", "not_now"):
+        _open_lead_for_reply(db, p, ev, stamp)
+
+
+def _open_lead_for_reply(db: Session, p: Prospect, ev: events.ReplyReceived, stamp: Any) -> None:
+    """A human reply after contact opens a lead (reopening a closed prospect); never a silent skip."""
+    db.refresh(p)
+    if db.scalar(select(Lead.id).where(Lead.prospect_id == p.id, Lead.closed_at.is_(None))) is not None:
+        return
+    if p.contacted_at is None:
+        timeline.add_event(
+            db, subject_type="prospect", subject_id=p.id, kind="note", actor=SYSTEM, occurred_at=stamp,
+            body="Reply recorded but no lead opened: the prospect has no recorded contact.",
+            data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent},
+        )
+        return
+    if p.status == "closed":
+        was = p.closed_reason
+        prospects.reopen(db, p.id, actor=SYSTEM, now=stamp)
+        timeline.add_event(
+            db, subject_type="prospect", subject_id=p.id, kind="note", actor=SYSTEM, occurred_at=stamp,
+            body=f"Reopened automatically: a {ev.intent.replace('_', ' ')} reply arrived after the prospect was closed"
+            + (f" ({was.replace('_', ' ')})." if was else "."),
+            data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent, "was_closed_reason": was},
+        )
         db.refresh(p)
-        has_open_lead = db.scalar(select(Lead.id).where(Lead.prospect_id == p.id, Lead.closed_at.is_(None))) is not None
-        if p.contacted_at is not None and not has_open_lead and p.status in ("open", "converted"):
-            leads.convert(db, p.id, stage="meeting_scheduled", opened_by="reply", actor=SYSTEM, note=ev.intent, now=stamp)
+    if p.status in ("open", "converted"):
+        leads.convert(db, p.id, stage="meeting_scheduled", opened_by="reply", actor=SYSTEM, note=ev.intent, now=stamp)
 
 
 on_enquiry_decided = _guarded(_on_enquiry_decided)

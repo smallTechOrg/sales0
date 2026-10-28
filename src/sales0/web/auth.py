@@ -154,6 +154,10 @@ class LoginThrottle:
 
 
 def client_ip(request: Request) -> str:
+    """The raw TCP peer. X-Forwarded-For is deliberately NOT trusted (spoofable), which only holds
+    because uvicorn runs with ``proxy_headers=False`` (see ``UVICORN_OPTIONS`` in ``web/app.py``).
+    Behind a reverse proxy every client therefore shares the proxy's address (one shared throttle
+    bucket); that is the safe default for a small team. Do not enable proxy_headers casually."""
     return request.client.host if request.client else "unknown"
 
 

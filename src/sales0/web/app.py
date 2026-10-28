@@ -49,6 +49,11 @@ log = get_logger("sales0.app")
 FIXTURE_PREFIX = "/__fixtures/linkedin"
 
 
+# Launch options shared by __main__ and the tests' live servers. proxy_headers=False: uvicorn would otherwise
+# rewrite request.client from a spoofable X-Forwarded-For, defeating the per-IP login throttle.
+UVICORN_OPTIONS: dict[str, bool] = {"proxy_headers": False}
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 

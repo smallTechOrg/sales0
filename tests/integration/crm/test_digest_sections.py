@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from sales0.config import reset_settings
 from sales0.db.engine import get_sessionmaker
-from sales0.db.models import Company, Digest, FollowUp, Lead, Prospect, TimelineEvent
+from sales0.db.models import Company, Digest, Enquiry, FollowUp, Lead, Prospect, TimelineEvent
 from sales0.services import digest as dg
 from sales0.services.crm import digest_sections, followups
 from tests.integration.digest.conftest import NOW, hours_ago
@@ -180,6 +180,21 @@ def test_stale_boundary_closed_leads_and_leads_without_events(db: Session) -> No
     sec = section(db, "stale_leads")
     assert texts(sec) == ["Old Co - Meeting scheduled, quiet for 20 days", "Edge Co - Proposal sent, quiet for 14 days"]
     assert sec.stats == {"stale": 2, "open_leads": 3}
+
+
+def test_sheet_removed_rows_are_not_stale_leads(db: Session) -> None:
+    gone_person = prospect(db, "Gone Person", "Gone Co", status="converted", sheet_removed_at=NOW - timedelta(days=1))
+    gone_enq = prospect(db, "Gone Enq", "Enq Co", status="converted")
+    live_enq = prospect(db, "Live Enq", "Live Co", status="converted")
+    for p in (gone_person, gone_enq, live_enq):
+        lead(db, p, stage="proposal_sent")
+        event(db, p, NOW - timedelta(days=30))
+    db.add(Enquiry(raw_text="x", content_hash="h-gone", source="linkedin_post", prospect_id=gone_enq.id, sheet_removed_at=NOW))
+    db.add(Enquiry(raw_text="y", content_hash="h-live", source="linkedin_post", prospect_id=live_enq.id))
+    db.commit()
+    sec = section(db, "stale_leads")
+    assert texts(sec) == ["Live Co - Proposal sent, quiet for 30 days"]
+    assert sec.stats == {"stale": 1, "open_leads": 1}
 
 
 def test_the_threshold_comes_from_settings(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:

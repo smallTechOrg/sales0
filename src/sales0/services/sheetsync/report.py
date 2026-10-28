@@ -26,6 +26,7 @@ class TabReport:
     warnings: list[RowIssue] = field(default_factory=list)
     fetch_error: str | None = None  # stable code; set => nothing was removed
     removal_blocked: str | None = None
+    unknown_statuses: int = 0  # rows whose non-blank Status matched nothing (mapped to New; not an error)
 
     @property
     def changes(self) -> int:
@@ -47,6 +48,8 @@ class TabReport:
         )
         if self.fetch_error:
             s += f" FETCH-ERROR={self.fetch_error}"
+        if self.unknown_statuses:
+            s += f" unknown-statuses={self.unknown_statuses}"
         if self.removal_blocked:
             s += f" REMOVAL-BLOCKED={self.removal_blocked}"
         return s

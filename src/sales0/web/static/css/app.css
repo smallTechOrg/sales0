@@ -654,3 +654,8 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .import-summary strong { font-size: var(--font-size-xl); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .import-summary span { color: var(--color-muted); font-size: var(--font-size-sm); }
 .card__footer--form { flex-wrap: nowrap; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+
+/* Log out sits on the dark header: light text, visible hover/focus (the ghost button's primary-on-dark was low contrast). */
+.site-header .logout-form .btn { color: var(--color-header-text); border-color: rgba(255, 255, 255, 0.35); background: transparent; }
+.site-header .logout-form .btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; border-color: rgba(255, 255, 255, 0.6); }
+.site-header .logout-form .btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }

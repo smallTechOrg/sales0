@@ -43,7 +43,7 @@ def test_rule3_no_response_depends_on_contact_evidence() -> None:
     assert (o.prospect_status, o.closed_reason, o.lead_stage) == ("closed", "no_response", None)
 
 
-@pytest.mark.parametrize("status", ["Meeting Scheduled", "in discussion", "Hot", "warm", "Negotiation", "replied"])
+@pytest.mark.parametrize("status", ["Meeting Scheduled", "meeting", "call scheduled", "interested", "replied", "Responded"])
 def test_rule4_meeting(status: str) -> None:
     assert map_enquiry_status(status).lead_stage == "meeting_scheduled"
 
@@ -94,3 +94,51 @@ def test_person_statuses() -> None:
     for blank in (None, "", "something else"):
         o = map_person_status(blank)
         assert (o.prospect_stage, o.prospect_status) == ("new", "open")
+
+
+# ---- binding rule: a Lead exists only after contact AND a response (no substring matching)
+@pytest.mark.parametrize(
+    "status", ["No proposal yet", "Proposal to be sent", "Not interested in a proposal", "proposal pending", "Awaiting proposal"]
+)
+def test_proposal_words_in_negated_phrases_make_no_lead(status: str) -> None:
+    o = map_enquiry_status(status)
+    assert o.lead_stage is None and o.prospect_status == "open" and o.prospect_stage == "new"
+
+
+@pytest.mark.parametrize("status", ["Proposal Sent", "proposal submitted", "Quotation sent", "Proposal-Sent!"])
+def test_explicit_proposal_phrases_open_a_proposal_lead(status: str) -> None:
+    assert map_enquiry_status(status).lead_stage == "proposal_sent"
+
+
+@pytest.mark.parametrize("status", ["Hot", "warm", "In progress", "ongoing", "in discussion", "Negotiation"])
+def test_temperature_words_do_not_create_a_meeting_lead(status: str) -> None:
+    o = map_enquiry_status(status)
+    assert o.lead_stage is None and o.prospect_stage == "new"
+
+
+def test_proposal_date_implies_a_response_even_with_a_neutral_or_negated_status() -> None:
+    assert map_enquiry_status("New", date_proposal_sent=D).lead_stage == "proposal_sent"
+    assert map_enquiry_status("No proposal yet", date_proposal_sent=D).lead_stage == "proposal_sent"
+    assert map_enquiry_status("Closed", date_proposal_sent=D).lead_stage == "lost"
+
+
+@pytest.mark.parametrize(
+    "status", ["Message not sent", "To be sent", "Consent pending", "Not yet sent", "unsent", "Email not sent", "Not sent"]
+)
+def test_negated_sent_phrases_are_not_contacted(status: str) -> None:
+    for o in (map_person_status(status), map_enquiry_status(status)):
+        assert not o.contacted and o.prospect_stage == "new" and o.lead_stage is None
+        assert not o.unknown  # understood, just not an action
+
+
+def test_exact_contacted_phrases_still_work() -> None:
+    for status in ("Message sent", "message  SENT", "Connection request sent", "Sent", "Email Sent."):
+        assert map_person_status(status).contacted
+        assert map_enquiry_status(status).contacted
+
+
+def test_unknown_statuses_map_to_new_and_are_flagged() -> None:
+    for fn in (map_person_status, map_enquiry_status):
+        o = fn("Bananas")
+        assert o.unknown and o.prospect_stage == "new" and o.lead_stage is None
+        assert not fn("").unknown and not fn("New").unknown

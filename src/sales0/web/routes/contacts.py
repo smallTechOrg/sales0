@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from sales0.db.engine import get_db
@@ -19,6 +19,7 @@ from sales0.errors import DomainError
 from sales0.services.crm import companies as companies_service
 from sales0.services.crm import contacts as contacts_service
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.web.context import PathId
 from sales0.web.context import (
     actor_of,
     crm_done,
@@ -87,8 +88,10 @@ def duplicates_page(request: Request, db: Session = Depends(get_db)) -> HTMLResp
 
 
 @router.get("/contacts/{contact_id}", response_class=HTMLResponse)
-def contact_page(request: Request, contact_id: int, db: Session = Depends(get_db)) -> Response:
+def contact_page(request: Request, contact_id: PathId, db: Session = Depends(get_db)) -> Response:
     contact = contacts_service.get_contact(db, contact_id)
+    if contact.id != contact_id and not wants_json(request):  # merged away: send the old link to the survivor
+        return RedirectResponse(f"/contacts/{contact.id}", status_code=303)
     if wants_json(request):
         return envelope_ok(_dump(contact))
     return _page(
@@ -98,7 +101,7 @@ def contact_page(request: Request, contact_id: int, db: Session = Depends(get_db
 
 
 @router.get("/companies/{company_id}", response_class=HTMLResponse)
-def company_page(request: Request, company_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def company_page(request: Request, company_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     return _page(request, db, "contacts/company.html", {"co": companies_service.get_company(db, company_id)})
 
 
@@ -153,7 +156,7 @@ def merge_contacts(
 @router.post("/contacts/{contact_id}", response_model=None)
 def update_contact(
     request: Request,
-    contact_id: int,
+    contact_id: PathId,
     full_name: str = Form(""),
     title: str = Form(""),
     notes: str = Form(""),
@@ -178,7 +181,7 @@ def update_contact(
 @router.post("/contacts/{contact_id}/tags", response_model=None)
 def add_tag(
     request: Request,
-    contact_id: int,
+    contact_id: PathId,
     name: str = Form(""),
     category: str = Form("custom"),
     db: Session = Depends(get_db),
@@ -198,8 +201,8 @@ def add_tag(
 @router.post("/contacts/{contact_id}/tags/{tag_id}/delete", response_model=None)
 def remove_tag(
     request: Request,
-    contact_id: int,
-    tag_id: int,
+    contact_id: PathId,
+    tag_id: PathId,
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:

@@ -22,7 +22,7 @@
               <span>{% for t in c.tags %}<span class="tag">{{ t.name }}</span> {% endfor %}</span>
               {% for other in g.contacts if other.id != c.id %}
                 <form class="merge-form"{% if ns.first %} id="merge-form"{% set ns.first = false %}{% endif %} method="post" action="/contacts/merge" hx-post="/contacts/merge" hx-swap="none"
-                      hx-confirm="Merge {{ other.full_name or other.email or 'the other contact' }} into {{ c.full_name or c.email or 'this contact' }}? This cannot be undone.">
+                      hx-confirm="Merge {{ other.full_name or other.email or 'the other contact' }} (#{{ other.id }}{% if other.email %}, {{ other.email }}{% endif %}) into {{ c.full_name or c.email or 'this contact' }} (#{{ c.id }}{% if c.email %}, {{ c.email }}{% endif %})? This cannot be undone.">
                   <input type="hidden" name="keep_id" value="{{ c.id }}">
                   <input type="hidden" name="drop_id" value="{{ other.id }}">
                   <button class="btn btn--sm" type="submit">Merge {{ other.full_name or other.email or "other" }} into this one</button>

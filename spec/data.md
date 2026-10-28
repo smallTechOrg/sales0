@@ -463,8 +463,8 @@ The sheet gives no year: `week_no` is stored as is. Phase 4 assigns the ISO year
 6. The five competitors are seeded. NO follow-up reminders, NO flags (flags are recomputed once at first startup: `app_meta.crm_flags_backfilled_v1`).
 Row counts of every pre-existing table are asserted unchanged after the upgrade (migration test), and `PRAGMA foreign_key_check` returns no rows.
 
-### Sheet status → CRM stage mapping (binding; implemented in `services/sheetsync/mapping.py`)
-The raw text stays in `sheet_status`. The mapped stage is applied **only when `stage_source != 'app'`** (a human's move always wins; the sync then just refreshes `sheet_status` and writes a `sheet_status` timeline event). The sync creates NO reminders. Matching is on `casefold()` of the trimmed cell; rules are evaluated top to bottom, first match wins. "contact evidence" = `date_email_sent` or `date_proposal_sent` present.
+### Sheet status → CRM stage mapping (binding; implemented in `services/sheetsync/mapping.py` + `status_map.py`)
+**Binding rule: a Lead exists only after contact AND a response.** The raw text stays in `sheet_status`. The mapped stage is applied **only when `stage_source != 'app'`** (a human's move always wins; the sync then refreshes `sheet_status` and writes a `sheet_status` timeline event only when the status would actually have changed something, once per distinct value). The sync creates NO reminders. Matching is **exact-phrase on a normalised cell** (casefolded, punctuation stripped, tokenised, whitespace collapsed) against the whitelists below; there is NO substring matching. A **negation guard** applies first: a cell containing any of `no`, `not`, `yet`, `to`, `be`, `pending`, `awaiting`, `unsent`, `without`, `never`, `soon`, `will`, `need`, `needs`, `draft`, `planned` (as a token) never matches a contacted / proposal / meeting phrase (`Message not sent`, `To be sent`, `Consent pending`, `Not yet sent`, `unsent`, `No proposal yet`, `Proposal to be sent`, `Not interested in a proposal` all fall through). Rules are evaluated top to bottom, first match wins. "contact evidence" = `date_email_sent` or `date_proposal_sent` present. **Unknown statuses** (non-blank, matching nothing) map to rule 9 (`new`), are logged once per distinct value as a `sheet_status` timeline event, and are counted per tab as `unknown_statuses` in the sync report (not an error).
 
 **Active Enquiries rows** (record `SheetEnquiry`) always create/adopt an accepted enquiry (`origin='sheet'` if new, `review_status='accepted'`, `stage='prospect_new'`) and a prospect, then:
 | # | Sheet Status (or date) | Prospect | Lead |
@@ -472,23 +472,25 @@ The raw text stays in `sheet_status`. The mapped stage is applied **only when `s
 | 1 | `won`, `closed won`, `converted`, `client`, `confirmed`, `project done`, `completed`, `delivered` | `converted` (stage kept at its last observed value, else `contacted`) | `won` → active **client** (`source='sheet'`) |
 | 2 | `lost`, `closed lost`, `rejected`, `declined`, `not interested`, `dropped` and contact evidence | `converted` | `lost` |
 | 2b | `closed` / `close` AND `date_proposal_sent` present | `converted` | `lost` |
-| 3 | `no response`, `no reply`, `not responding`, `ghosted` | contact evidence: `converted`, else `closed` (`closed_reason='no_response'`) | contact evidence: `no_response`; else none |
-| 4 | `meeting scheduled`, `meeting`, `call scheduled`, `demo scheduled`, `in discussion`, `discussion`, `negotiation`, `interested`, `responded`, `replied`, `in progress`, `ongoing`, `hot`, `warm` | `converted` | `meeting_scheduled` |
-| 5 | contains `proposal`, OR `date_proposal_sent` present (any status not matched above) | `converted` | `proposal_sent` (`proposal_sent_on` = the date) |
+| 3 | `no response`, `no reply`, `not responding`, `ghosted` | contact evidence: `converted`, else `closed` (`closed_reason='no_response'`) | contact evidence: `no_response` lead whose prospect gets **no** `responded_at`; else none |
+| 4 | `meeting scheduled`, `meeting`, `call scheduled`, `interested`, `replied`, `responded` (ONLY these) | `converted` | `meeting_scheduled` |
+| 5 | `proposal sent`, `sent proposal`, `proposal submitted`, `proposal shared`, `quotation sent`, `quote sent`, OR `date_proposal_sent` present (a proposal date implies a response; any status not matched above) | `converted` | `proposal_sent` (`proposal_sent_on` = the date) |
 | 6 | `follow up 1` / `followup 1` / `fu1` / `first follow up` | `follow_up_1` | none |
 | 6b | `follow up 2` / `followup 2` / `fu2` / `second follow up` | `follow_up_2` | none |
 | 6c | `final follow up` / `last follow up` | `final_follow_up` | none |
-| 7 | `contacted`, `message sent`, `email sent`, `mail sent`, `connection request sent`, `sent`, OR `date_email_sent` present | `contacted` (`contacted_at` = `date_email_sent` else first sync, `contacted_estimated`) | none |
+| 7 | `contacted`, `message sent`, `email sent`, `mail sent`, `emailed`, `messaged`, `connection request sent`, `sent`, OR `date_email_sent` present | `contacted` (`contacted_at` = `date_email_sent` else first sync, `contacted_estimated`) | none |
 | 8 | `closed`, `close`, `inactive`, `hold`, `on hold`, `parked`, `cancelled`, `na` | `closed`, `closed_reason = "sheet: <raw>"` | none |
-| 9 | blank, `new`, `open`, `pending`, `to do`, anything else | `new` | none |
-A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_sent` or `date_added` or the first sync, `responded_at` = `opened_at` (the sheet moving a row to those states IS the evidence of contact and response; the app-level guard applies only to app-driven conversion), and for closed outcomes `closed_at` = `date_proposal_sent` or the first sync. A later sheet edit that changes the mapped outcome while `stage_source='sheet'` updates the lead stage in place (timeline `lead_stage`, actor `sheet-sync`). **Unknown statuses are logged once per distinct value as a `sheet_status` timeline event and map to rule 9; they never abort a row.**
+| 9 | blank, `new`, `open`, `pending`, `to do`, temperature words (`hot`, `warm`, `in progress`, `ongoing` - they do NOT create a lead), negated phrases (above), anything else | `new` | none |
+A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_sent` or `date_added` or the first sync, `responded_at` = `opened_at` and `contacted_estimated` set (rules 1-5 except rule 3 `no_response`, which sets no `responded_at`: the sheet moving a row to those states IS the evidence of contact and response, and a proposal date implies a response; the app-level guard applies only to app-driven conversion), and for closed outcomes `closed_at` = `date_proposal_sent` or the first sync. A later sheet edit that changes the mapped outcome while `stage_source='sheet'` updates the lead stage in place (timeline `lead_stage`, actor `sheet-sync`). **Unknown statuses never abort a row.**
 
-**Outreach / Prospects / Working Sheet rows** (`SheetOutreachPerson`, `SheetProspect`) create/adopt a prospect (`kind='outreach_person'`, `source='sheet'`):
+**Outreach / Prospects / Working Sheet rows** (`SheetOutreachPerson`, `SheetProspect`) create/adopt a prospect (`kind='outreach_person'`, `source='sheet'`); same normalisation and negation guard:
 | Sheet Status | Prospect |
 |---|---|
-| `Message sent`, `Connection request sent` (case-insensitive, any `sent`) | `contacted` (`contacted_estimated`) |
+| `Message sent`, `Connection request sent`, `Contacted`, `Email sent`, `Mail sent`, `Sent` (exact phrase) | `contacted` (`contacted_estimated`) |
 | `Closed` | `closed`, `closed_reason='sheet: Closed'` |
-| blank / anything else | `new` |
+| blank, `new`, `open`, `pending`, `to do`, `replied`, `responded`, negated phrases (`Message not sent`, `To be sent`, `Consent pending`, `Not yet sent`, `unsent`), anything else | `new` (anything not listed and not a negated `sent` phrase is counted as unknown) |
+
+**Mass-removal and header guards** (`spec/capabilities/sheet-sync.md`): a tab is refused (`removal_blocked` + an error entry) when its fetched text has a header but zero usable data rows while live rows exist, or when more than 50% of >= 3 live rows vanish; a header that does not look like the tab's kind (e.g. Google served the first tab for a wrong gid) is an unusable tab (`header-mismatch`) and is never ingested.
 **Discarded Enquiries rows** (`SheetDiscarded`): an `enquiries` row with `review_status='discarded'`, `discard_reason` = Notes (else the Status text), `origin='sheet'`, `triage_status='done'`, `ai_*` NULL; Status `No Response` / `Rejected` is kept in `sheet_status` (not mapped to a prospect). **No `triage_decisions` row is written** (the sheet's discard labels are not AI-relevance labels; the Phase 1.5 calibration found them ambiguous). If an Active row and a Discarded row resolve to the same enquiry, the Active row wins (accepted); the Discarded reason is only stored in `discard_reason`.
 
 ### Sheet record → CRM column mapping (every `SheetRecord` field; "SO" = sheet-owned, written by the sync)

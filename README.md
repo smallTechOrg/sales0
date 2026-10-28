@@ -8,70 +8,13 @@ extracted contact details), and puts **only the relevant ones** in a **Review in
 person accepts, discards or overrides each card. Every decision is stored and fed back into
 later triage calls as examples (the learning loop). No spreadsheet is involved.
 
-**Status: Phase 1.4 (thorough, idempotent discovery: a 60-phrase buyer-intent keyword
-library, deep scrolling, every post and author remembered once, relevant-only inbox, a
-"Skipped by AI" tab with Rescue, long resumable background runs).** Inbox, Runs and
-Setup are real. Pipeline, Contacts,
-Competitors & Groups, Import (Phase 2), Outreach (Phase 3), Metrics (Phase 4) and WhatsApp
-(Phase 5) are labelled stub pages that say "Coming in Phase N". That is expected, not a
-bug. The full plan is in `spec/roadmap.md`.
-
-## Prerequisites
-
-- macOS or Linux
-- Python 3.12 (pinned in `.python-version`; asdf works)
-- [uv](https://docs.astral.sh/uv/) (creates the project-local `.venv`; every command below goes through `uv run`)
-- An Anthropic API key. Only the configured Haiku model is used (`claude-haiku-5-5`, priced
-  at $0.10 per million input tokens and $0.50 per million output tokens; a triage call is
-  typically a fraction of a cent).
-- **Google Chrome** (recommended), installed normally (`/Applications/Google Chrome.app` on
-  macOS, `/opt/google/chrome/chrome` on Linux). sales0 logs in to LinkedIn through it. Without
-  Chrome, sales0 falls back to Playwright's built-in Chromium (see below).
-
-## Setup
-
-```bash
-# working directory: /Users/sai/Workspace/Code/sales0
-cp .env.example .env                   # then edit .env (see below); .env is gitignored, never commit it
-uv sync                                # creates .venv, installs app + dev dependencies from uv.lock
-uv run playwright install chromium     # the built-in fallback browser, also used by the tests
-uv run alembic upgrade head            # creates/migrates data/sales0.db
-uv run alembic current                 # prints: 0003_phase1_4_seen_posts (head)
-uv run python -m sales0.cli check-llm  # one real Haiku call; prints: LLM OK model=claude-haiku-5-5 ...
-uv run python -m sales0.cli check-browser   # prints: browser OK channel=chrome version=156.…
-```
-
-`check-browser` starts the browser sales0 will use **invisibly** (headless), on a throwaway
-profile, on a blank page only. It never opens LinkedIn and never touches your sales0 login.
-It prints one line, for example `browser OK channel=chrome version=156.0.8078.48`, and exits
-0. If Google Chrome is missing it reports the built-in browser instead
-(`browser OK channel=chromium version=… (Google Chrome not found — using the built-in browser)`).
-If no browser can start, it prints a `browser ERROR …` line with the reason and exits 1.
-
-### `.env`
-
-All settings use the `SALES0_` prefix. `.env.example` lists every variable with comments and
-defaults. The ones you normally set:
-
-| Variable | Needed | What it is |
-|---|---|---|
-| `SALES0_ANTHROPIC_API_KEY` | required | Your Anthropic API key. Startup fails if it is missing. |
-| `SALES0_ANTHROPIC_WORKSPACE_ID` | optional | The Anthropic workspace id (`wrkspc_...`). It is needed only if your key is an org-level key that is **not** workspace-scoped. Anthropic then rejects calls with "must include anthropic-workspace-id header", and sales0 tells you to set this. Leave it blank for a workspace-scoped key. |
-| `SALES0_LINKEDIN_MODE` | optional | `live` (default) uses real LinkedIn. `fixture` uses the built-in fake LinkedIn for offline demos and tests. |
-| `SALES0_LINKEDIN_BROWSER_CHANNEL` | optional | `auto` (default): your installed Google Chrome, else the built-in Chromium. `chrome`: Google Chrome only (an error if it is not installed). `chromium`: the built-in Chromium only. |
-| `SALES0_SAFETY_COOLDOWN_MIN` / `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN` | optional | Minutes Run now stays paused after a safety stop (see below). Defaults 60 and 15; 0 turns it off. |
-| `SALES0_HOST` / `SALES0_PORT` | optional | Bind address, default `127.0.0.1:8765`. Sales0 refuses to bind a non-loopback host. |
-| `SALES0_LOG_FILE` | optional | Also write the JSON logs to this file, e.g. `data/logs/sales0.jsonl`. |
-| `SALES0_SCRAPE_*` | optional | The LinkedIn caps, depth and pacing (see "Thorough discovery" and "LinkedIn safety" below). |
-| `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` / `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` | optional | Keywords per run (default 40) and posts read per keyword (default 80). Lower the first (e.g. 10) for a ~30-minute run. |
-| `SALES0_SCRAPE_MAX_POSTS_PER_DAY` / `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | optional | Posts scanned per day (2000) and runs per day (4). |
-| `SALES0_SCRAPE_SORT` / `SALES0_SCRAPE_DATE_FILTERS` | optional | `latest` (default) or `relevance`; the date filters searched in order, default `past-week,past-month` (the second pass runs only if the cap was not reached). |
-| `SALES0_SCRAPE_MAX_SCROLLS` / `SALES0_SCRAPE_NO_GROWTH_SCROLLS` / `SALES0_SCRAPE_EXPAND_MAX_PER_KEYWORD` | optional | Scrolling depth per page (20), how many scrolls in a row without new posts end a pass (2), and how many truncated posts per keyword are expanded (40). |
-| `SALES0_TRIAGE_CONCURRENCY` | optional | AI triage calls in flight at once (default 4, 1-8). |
-| `SALES0_SEEN_RAW_RETENTION_DAYS` | optional | How long the full text of a skipped post is kept so it can be rescued (default 14). |
-| `SALES0_SEED_SUGGESTED_KEYWORDS` | optional | `true` (default): the 60 suggested keywords are added once on first start. `false`: use the **Add suggested keywords** button instead. |
-| `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | optional | At most this many "Copy link to post" menu clicks per keyword (default 15). `0` skips them: runs are faster and every new card links to the author profile (see "Post links" below). |
-| `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` / `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK` | optional | The prices used for the cost display, USD per million tokens. Defaults `0.10` / `0.50` (`claude-haiku-5-5`, prompts up to 100K tokens). |
+**Status: Phase 2 (CRM memory) on top of Phase 1.4 discovery.** Accepted enquiries become
+prospects in a **Pipeline** (Prospects, Leads, Clients), with Contacts, Competitors & Groups,
+Import, a per-record timeline, a "Due today" follow-up list, a read-only **Google Sheet sync**
+and an optional shared-password login (see [Phase 2: CRM, sheet sync and login](#phase-2-crm-sheet-sync-and-login)).
+Outreach email and reply tracking are real too; Metrics and WhatsApp are still labelled stub
+pages that say "Coming in Phase N". That is expected, not a bug. The full plan is in
+`spec/roadmap.md`.
 
 `SALES0_LINKEDIN_HEADLESS` no longer exists (Connect always shows a window, checks and runs
 never do). A leftover line in an old `.env` is ignored.
@@ -254,13 +197,75 @@ several keywords expect the 20–60 s pauses between them. Fixture mode keeps it
 profile (`data/linkedin-profile-fixture-chrome/`, or `…-chromium/` with the built-in browser),
 never your real sales0 login.
 
+## Phase 2: CRM, sheet sync and login
+
+```bash
+# working directory: /Users/sai/Workspace/Code/sales0
+uv run alembic upgrade head          # once after pulling: adds the CRM tables (one head: p6_crm_5b2e7d14)
+uv run python -m sales0              # the same run command as always
+```
+
+**What you get.** Accept an enquiry in the Inbox and it appears in **Pipeline** as a
+*Prospect · New* (one prospect per LinkedIn profile: accepting a second enquiry from the same
+person adds to the same prospect). Press **Draft email** on it, approve and send as before:
+the prospect becomes **Contacted** and reminders are created at +3 / +7 / +14 days (the
+*Due today* panel at the top of Pipeline lists what is due). When the person replies
+"interested" (or you press **Response received**) it converts to a **Lead** (*Meeting
+scheduled → Proposal sent → Won / Lost / No response*); **Won** creates a **Client**. Every
+step is on the record's timeline, and you can add notes. **Contacts** is one shared address
+book (search, tags, merge duplicates); **Competitors & Groups** are flagged when an enquiry
+mentions a competitor; **Import** takes a single pasted post (triaged by Haiku like any
+scraped post) or a CSV of data that is not in your Sheets.
+
+**Shared login (`SALES0_APP_PASSWORD`).** Set it in `.env` and restart:
+
+```bash
+SALES0_APP_PASSWORD=choose-a-long-shared-password
+```
+
+Every page then redirects to `/login` (`/api/health` and `/static` stay open); the cookie lasts
+`SALES0_SESSION_DAYS` (default 14), five wrong passwords a minute from one address locks the
+login for a minute, and **Log out** is in the header. Unset or empty = no login, which is only
+accepted on a loopback `SALES0_HOST`: sales0 refuses to start on a public host without a password.
+
+**Google Sheet sync (read-only).** The team's two Sheets are synced into the CRM one way:
+the Sheet is the source of truth for the fields it holds, and everything added in sales0
+(notes, stages you move, tags, follow-ups, timeline) is kept. **sales0 never writes to Google.**
+Settings (all optional, in `.env.example`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SALES0_SHEET_SYNC_MINUTES` | `30` | Interval of the automatic sync (`0` turns it off). It is opt-in on the Schedule/Sync page. |
+| `SALES0_SHEET_CLIENT_SOURCING_ID` / `SALES0_SHEET_METRICS_ID` | the team's two Sheets | Which Sheets to read. They must be readable by "anyone with the link". |
+| `SALES0_SHEET_TABS_JSON` | built-in tab list | Replace the tab list (name, kind, gid). |
+| `SALES0_SHEET_FETCH_TIMEOUT_S` / `_RETRIES` / `_MAX_BYTES` | `20` / `3` / `20000000` | Fetch limits. |
+
+Open **Sync** in the navigation: it shows the last sync (status, time, per-tab counts of rows /
+added / updated / unchanged / removed / errors, counts only, never cell content) and has
+**Sync now**, a dry-run preview and the switch for the automatic interval. Rows that disappear
+from a Sheet are only hidden in the CRM, never deleted. The same engine runs from the shell:
+
+```bash
+uv run python -m sales0.cli sync-sheets --dry-run --memory   # per-tab counts, nothing stored, no database needed
+uv run python -m sales0.cli sync-sheets                      # sync into the database (must be migrated)
+uv run python -m sales0.cli sync-sheets --tab "Competitors"  # one tab only
+uv run python -m sales0.cli crm-counts                       # one line of row counts per CRM table (counts only)
+```
+
+Run `sync-sheets` twice: the second run reports 0 added / updated / removed.
+
+**Upgrading an existing database.** `uv run alembic upgrade head` keeps every row. Accepted
+enquiries are turned into prospects (one per LinkedIn author) with a timeline, so the
+Pipeline is not empty after the upgrade. Back up `data/sales0.db` (with its `-wal`/`-shm`)
+first if you want a way back: `uv run alembic downgrade -1` also works.
+
 ## Tests
 
 ```bash
 # working directory: /Users/sai/Workspace/Code/sales0
 uv run pytest tests/unit -q          # pure unit tests: no network, no browser
 uv run pytest tests/integration -q   # real SQLite files, real headless Chromium + headless Google Chrome, real Haiku (the pipeline tests use a fake-LLM oracle; ~10-15 min)
-uv run pytest tests/e2e -q           # live server on port 8766 + headless Chromium + real Haiku
+uv run pytest tests/e2e -q           # live servers on ports 8766 / 8792 (Phase 2 journey) + headless Chromium + real Haiku
 uv run pytest tests -q               # everything
 ```
 
@@ -290,6 +295,19 @@ uv run pytest tests -q               # everything
   safety stops, the layout-drift alert, the older LinkedIn layout still parsing, and the
   rate-limit cool-down surviving a Re-check and a restart. Port 8766 must be free; a full E2E
   run takes about 10 minutes.
+
+- `tests/e2e/test_phase2_journey.py` (port **8792**, or the next free port) walks the whole CRM:
+  login (redirect, wrong password, right password) -> accept two enquiries from one author in
+  the Inbox (one prospect) -> note -> Draft email (research and drafting with real Haiku) ->
+  approve and send through a `FakeGmailClient` (Contacted, three reminders) -> a follow-up due
+  today -> a fake human reply classified by real Haiku -> Lead -> Proposal sent -> Won ->
+  Client; then Sync now with a synthetic static sheet (second run: 0 changes), Contacts
+  (search, tag, merge), Competitors & Groups and Import (paste + CSV). Nothing is sent to Gmail
+  and Google Sheets are never contacted.
+- `tests/integration/db/test_migration_realistic.py` upgrades synthetic populated databases
+  (200+ enquiries, outreach messages with events and replies) and, when a copy of a real
+  database exists at `$SALES0_REALDB_COPY`, that copy too, asserting no row is lost and
+  `PRAGMA foreign_key_check` is clean. It never opens a real database in place.
 
 ## Layout
 

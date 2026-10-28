@@ -22,6 +22,7 @@ from sales0.jobs.reply_poller import get_poller
 from sales0.services import replies as replies_service
 from sales0.services import suppressions as suppressions_service
 from sales0.web.acting import clear_flash, get_acting_member, pop_flash, set_flash
+from sales0.web.context import PathId
 from sales0.web.context import is_htmx, render_fragment, render_page
 from sales0.web.envelope import wants_json
 
@@ -104,7 +105,7 @@ def replies_page(
 @router.post("/replies/{reply_id}/handled", response_model=None)
 def set_reply_handled(
     request: Request,
-    reply_id: int,
+    reply_id: PathId,
     handled: str = Form("1"),
     back: str = Form("/replies"),
     db: Session = Depends(get_db),
@@ -194,7 +195,7 @@ def add_suppression(
 
 @router.post("/replies/suppressions/{suppression_id}/delete", response_model=None)
 def remove_suppression(
-    request: Request, suppression_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, suppression_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
 ) -> Response:
     def act() -> str:
         if member.role != "admin":

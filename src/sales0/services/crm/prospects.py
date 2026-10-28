@@ -129,7 +129,7 @@ def _require_open(p: Prospect) -> None:
 # ---------------------------------------------------------------------------- stage engine
 def _set_stage(
     db: Session, p: Prospect, stage: str, *, actor: Actor, now: datetime | None, note: str | None = None,
-    when: datetime | None = None, extra: dict | None = None,
+    when: datetime | None = None, extra: dict | None = None, schedule: bool = True,
 ) -> bool:
     """Move ``p`` to ``stage`` (any direction). Returns False when nothing changed."""
     stamp = now_or(now)
@@ -152,7 +152,7 @@ def _set_stage(
             data={"from": prev, "to": stage, **({"note": note.strip()} if note and note.strip() else {}), **(extra or {})},
             actor=actor, occurred_at=stamp,
         )
-    if first_contact:
+    if first_contact and schedule:
         followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp)  # type: ignore[arg-type]
     if stage != "new":
         followups.complete_up_to(db, p.id, stage, actor=actor, now=stamp)
@@ -196,6 +196,47 @@ def mark_contacted(
                            data={"channel": channel, "contacted_at": p.contacted_at.isoformat()}, actor=actor, occurred_at=stamp)
         followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp)
     return _view(db, p)
+
+
+def record_email_contact(
+    db: Session, prospect_id: int, *, when: datetime, actor: Actor, schedule: bool = True, now: datetime | None = None,
+) -> bool:
+    """A real email went out to ``prospect_id`` whatever its status (closed / converted included).
+
+    Records ``contacted_at`` (a real date replaces an estimated one) and moves a ``new`` stage to ``contacted``;
+    the status never changes. Reminders are scheduled only when ``schedule`` and the prospect is open.
+    Returns True when anything was recorded.
+    """
+    p = _get(db, prospect_id)
+    stamp = now_or(now)
+    if p.contacted_at is not None and not p.contacted_estimated and p.stage != "new":
+        return False
+    if p.status == "open":
+        if p.stage == "new":
+            return _set_stage(db, p, "contacted", actor=actor, now=stamp, when=when, extra={"channel": "email"}, schedule=schedule)
+        p.contacted_at, p.contacted_estimated, p.updated_at = when, False, stamp
+        db.flush()
+        timeline.add_event(db, subject_type="prospect", subject_id=p.id, kind="stage_change", body="Contact date recorded",
+                           data={"channel": "email", "contacted_at": when.isoformat()}, actor=actor, occurred_at=stamp)
+        if schedule:
+            followups.schedule_for_contact(db, p.id, when, now=stamp)
+        return True
+    if p.contacted_at is None or p.contacted_estimated:
+        p.contacted_at, p.contacted_estimated = when, False
+    prev = p.stage
+    if prev == "new":
+        p.stage, p.stage_source = "contacted", "app"
+    p.updated_at = stamp
+    db.flush()
+    timeline.add_event(
+        db, subject_type="prospect", subject_id=p.id, kind="stage_change",
+        body=f"Email sent while the prospect is {p.status}: contact date recorded"
+        + (f", stage {stage_label(prev)} -> {stage_label(p.stage)}" if prev != p.stage else "") + "; status unchanged, no reminders scheduled.",
+        data={"channel": "email", "contacted_at": p.contacted_at.isoformat(), "status": p.status,
+              **({"from": prev, "to": p.stage} if prev != p.stage else {})},
+        actor=actor, occurred_at=stamp,
+    )
+    return True
 
 
 def record_response(
@@ -332,7 +373,7 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
     if e is None:
         raise not_found()
     stamp = now_or(now)
-    comp = companies.get_or_create_row(db, e.company, now=stamp)
+    comp = companies.get_or_create_row(db, e.company, now=stamp, actor=actor)
     if e.company_id is None and comp is not None:
         e.company_id = comp.id
     # --- already linked: heal missing pieces, reopen a discarded-closed prospect, change nothing else
@@ -601,6 +642,6 @@ def local_today(now: datetime | None = None) -> date:
 
 __all__ = [
     "SYSTEM", "advance_to", "close", "create_manual", "ensure_for_enquiry", "get_prospect", "linked_enquiry_view",
-    "list_prospects", "mark_contacted", "move_stage", "record_response", "reopen", "resolve_for_message", "set_tracked",
+    "list_prospects", "mark_contacted", "move_stage", "record_email_contact", "record_response", "reopen", "resolve_for_message", "set_tracked",
     "update", "views_for",
 ]

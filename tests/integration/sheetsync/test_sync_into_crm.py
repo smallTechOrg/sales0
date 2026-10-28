@@ -59,8 +59,8 @@ def test_every_timeline_event_is_by_the_sync_and_holds_no_cell_values(sync) -> N
     sync()
     with session_scope() as db:
         events = db.scalars(select(TimelineEvent)).all()
-        # contact_linked is written by crm.prospects.ensure_for_enquiry (S1) with actor "system"
-        assert events and all(e.actor == "sheet-sync" for e in events if e.kind != "contact_linked")
+        # contact_linked / company 'created' are written by crm.prospects.ensure_for_enquiry (S1) with actor "system"
+        assert events and all(e.actor == "sheet-sync" for e in events if e.kind != "contact_linked" and e.subject_type != "company")
         text = " ".join((e.body or "") for e in events if e.kind.startswith("sheet_")).lower()
         for secret in ("acme", "@", "linkedin.com", "asha test", "pat example", "98765"):
             assert secret not in text, secret
@@ -137,28 +137,29 @@ def test_a_cleared_cell_clears_the_column(sync) -> None:  # type: ignore[no-unty
 def test_removed_rows_are_soft_marked_then_restored(sync) -> None:  # type: ignore[no-untyped-def]
     sync()
     keep = fx.competitors_csv().splitlines()
-    shorter = "\n".join(keep[:2]) + "\n"  # header + Rival One only
+    shorter = "\n".join(keep[:3]) + "\n"  # header + two of the three rivals (1 of 3 vanishes: under the guard)
     report = sync({**fx.all_tabs_csv(), "Competitors": shorter})
-    assert report.tabs["Competitors"].removed == 2
+    assert report.tabs["Competitors"].removed == 1
     with session_scope() as db:
         gone = db.scalars(select(Competitor).where(Competitor.sheet_removed_at.is_not(None))).all()
-        assert len(gone) == 2
+        assert len(gone) == 1
         assert db.scalar(select(func.count()).select_from(Competitor)) >= 3  # never hard-deleted
         kinds = db.scalars(select(TimelineEvent.kind).where(TimelineEvent.subject_type == "competitor")).all()
-        assert kinds.count("sheet_removed") == 2
+        assert kinds.count("sheet_removed") == 1
     back = sync()
-    assert back.tabs["Competitors"].added == 2  # the two rows are back
+    assert back.tabs["Competitors"].added == 1  # the row is back
     assert_invariant(back)
     with session_scope() as db:
         assert db.scalar(select(func.count()).select_from(Competitor).where(Competitor.sheet_removed_at.is_not(None))) == 0
         kinds = db.scalars(select(TimelineEvent.kind).where(TimelineEvent.subject_type == "competitor")).all()
-        assert kinds.count("sheet_restored") == 2
+        assert kinds.count("sheet_restored") == 1
 
 
 def test_a_person_in_two_tabs_survives_removal_from_one(sync) -> None:  # type: ignore[no-untyped-def]
     sync()
-    only_header = fx.to_csv([fx.PERSON_HEADER])
-    sync({**fx.all_tabs_csv(), "Prospects": only_header})  # tiny tab: 2 rows < guard minimum, so removal runs
+    pat_row = ["Pat Example", "https://linkedin.com/in/pat-example-123", "Pat Co", "", "", "https://example.test/post", "", "also prospect"]
+    pat_only = fx.to_csv([fx.PERSON_HEADER, pat_row])
+    sync({**fx.all_tabs_csv(), "Prospects": pat_only})  # 1 of 2 rows vanishes: not over half, so removal runs
     with session_scope() as db:
         pat = db.scalar(select(Prospect).where(Prospect.sheet_status == "Message sent"))
         assert pat.sheet_removed_at is None  # still fed by Outreach

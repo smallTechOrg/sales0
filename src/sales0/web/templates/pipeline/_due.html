@@ -8,7 +8,7 @@
     {% endif %}
     {% for title, rows, over in (("Overdue", due.overdue, true), ("Due today", due.due_today, false)) %}
       {% if rows %}
-        <div class="due-group" id="due-{{ 'overdue' if over else 'today' }}">
+        <div class="due-group" id="due-group-{{ 'overdue' if over else 'today' }}">
           <h3>{{ title }} ({{ rows|length }})</h3>
           {% for f in rows %}
             {% set href = ("/pipeline/prospects/%d" % f.prospect_id) if f.prospect_id else ("/pipeline/leads/%d" % f.lead_id) %}

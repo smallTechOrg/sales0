@@ -24,6 +24,7 @@ from sales0.services import importer
 from sales0.services.importer import ImportBatchView
 from sales0.services.importer.csv_import import MAX_BYTES
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.web.context import PathId
 from sales0.web.context import actor_of, crm_done, crm_guard, opt_str, render_page
 from sales0.web.envelope import ok as envelope_ok
 from sales0.web.envelope import wants_json
@@ -43,6 +44,7 @@ KINDS: tuple[tuple[str, str], ...] = (
 )
 KIND_LABELS = {**dict(KINDS), "paste": "Pasted post"}
 RECENT_BATCHES = 15
+MAX_PASTE_CHARS = 20_000
 
 
 def get_llm() -> LLMClient:
@@ -96,7 +98,7 @@ def import_page(request: Request, pasted: str = "", outcome: str = "", db: Sessi
 
 
 @router.get("/import/batches/{batch_id}", response_class=HTMLResponse)
-def batch_page(request: Request, batch_id: int, db: Session = Depends(get_db)) -> Response:
+def batch_page(request: Request, batch_id: PathId, db: Session = Depends(get_db)) -> Response:
     view = batch_view(importer.get_batch(db, batch_id))  # not_found 404 for an unknown id
     if wants_json(request):
         return envelope_ok(_json_safe(view))
@@ -139,6 +141,13 @@ def import_paste(
     llm: LLMClient = Depends(get_llm),
 ) -> Response:
     def run() -> Response:
+        if len(text) > MAX_PASTE_CHARS:
+            raise DomainError(
+                "import_too_large", f"That post is too long (max {MAX_PASTE_CHARS:,} characters) - paste the relevant part.", 413
+            )
+        for label, value, limit in (("Link", link, 2000), ("Author", author, 300), ("Author profile link", author_profile_url, 2000)):
+            if len(value.strip()) > limit:
+                raise DomainError("import_invalid", f"{label} is too long (max {limit} characters).", 400)
         try:
             result = importer.paste_post(
                 db, llm, text=text.strip(), link=opt_str(link), author=opt_str(author),

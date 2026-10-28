@@ -119,6 +119,19 @@ def _normalised_csv(text: str) -> tuple[str, list[list[str]]]:
     return out.getvalue(), rows
 
 
+def read_upload(fp: Any) -> bytes:
+    """Read an uploaded file object, never holding more than ``MAX_BYTES + 1`` bytes (the +1 trips the size check)."""
+    chunks: list[bytes] = []
+    size = 0
+    while size <= MAX_BYTES:
+        chunk = fp.read(min(1024 * 1024, MAX_BYTES + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    return b"".join(chunks)
+
+
 def _check_input(filename: str, kind: str, data: bytes) -> None:
     if kind not in KINDS or not isinstance(data, bytes | bytearray) or not data.strip():
         raise DomainError("import_invalid", INVALID_MESSAGE, 400)
@@ -177,6 +190,8 @@ def _import_sheet_kind(
         issues.append(ImportIssueView(e.row, e.code, "error"))
     warns = [ImportIssueView(w.row, w.code, "warning") for w in parsed.warnings]
     touched = False
+    landed: dict[tuple[str, int], int] = {}  # (target type, id) -> first row that wrote it
+    collapsed = 0
     for pr in parsed.rows:
         rec = pr.record
         try:
@@ -186,6 +201,13 @@ def _import_sheet_kind(
                 else:
                     res = mapping.apply_record(db, rec, origin="import", source=None, actor=IMPORT, now=now)
                     outcome = _ACTION_TO_OUTCOME.get(res.action, "merged")
+                    target = (res.target_type, res.target_id)
+                    if res.target_id and target in landed and landed[target] != pr.row_number:
+                        # Different rows with the same content hash resolve to ONE record: say so.
+                        collapsed += 1
+                        issues.append(ImportIssueView(pr.row_number, f"duplicate-of-row:{landed[target]}", "warning"))
+                    elif res.target_id:
+                        landed[target] = pr.row_number
                     if outcome != "unchanged" and res.target_type == "enquiry":
                         touched = True
         except Exception as exc:  # noqa: BLE001 - one bad row never stops the import
@@ -194,6 +216,8 @@ def _import_sheet_kind(
             continue
         tally.add(outcome)
     issues.extend(warns)
+    if collapsed:
+        issues.append(ImportIssueView(0, f"rows-collapsed:{collapsed}", "warning"))
     return touched
 
 
@@ -445,4 +469,4 @@ def preview_csv(db: Session, *, filename: str, kind: str, data: bytes, actor: Ac
     return import_csv(db, filename=filename, kind=kind, data=data, actor=actor, now=now, dry_run=True)
 
 
-__all__ = ["KINDS", "MAX_BYTES", "MAX_ROWS", "SHEET_KINDS", "decode", "import_csv", "preview_csv", "sniff_delimiter"]
+__all__ = ["KINDS", "MAX_BYTES", "MAX_ROWS", "SHEET_KINDS", "decode", "import_csv", "preview_csv", "read_upload", "sniff_delimiter"]

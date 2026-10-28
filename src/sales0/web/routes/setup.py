@@ -15,6 +15,7 @@ from sales0.services import keywords as keywords_service
 from sales0.services import offerings as offerings_service
 from sales0.services import session as session_service
 from sales0.services.views import OfferingInput, OfferingView, SessionStatusView
+from sales0.web.context import PathId
 from sales0.web.context import is_htmx, redirect, render_html, render_page, toast_html
 from sales0.web.envelope import ok
 
@@ -60,7 +61,7 @@ def _offerings_ctx(db: Session) -> dict:
     }
 
 
-def _find_offering(db: Session, offering_id: int) -> OfferingView:
+def _find_offering(db: Session, offering_id: PathId) -> OfferingView:
     for offering in offerings_service.list_offerings(db, include_inactive=True):
         if offering.id == offering_id:
             return offering
@@ -152,7 +153,7 @@ def add_keyword(request: Request, text: str = Form(""), db: Session = Depends(ge
 
 
 @router.post("/setup/keywords/{keyword_id}/delete", response_model=None)
-def remove_keyword(request: Request, keyword_id: int, db: Session = Depends(get_db)) -> Response:
+def remove_keyword(request: Request, keyword_id: PathId, db: Session = Depends(get_db)) -> Response:
     keywords_service.remove_keyword(db, keyword_id)
     if not is_htmx(request):
         return redirect("/setup")
@@ -160,7 +161,7 @@ def remove_keyword(request: Request, keyword_id: int, db: Session = Depends(get_
 
 
 @router.post("/setup/keywords/{keyword_id}/toggle", response_model=None)
-def toggle_keyword(request: Request, keyword_id: int, active: str = Form("true"), db: Session = Depends(get_db)) -> Response:
+def toggle_keyword(request: Request, keyword_id: PathId, active: str = Form("true"), db: Session = Depends(get_db)) -> Response:
     keyword = keywords_service.set_keyword_active(db, keyword_id, active.strip().lower() in {"true", "1", "on", "yes"})
     if not is_htmx(request):
         return redirect("/setup")
@@ -180,7 +181,7 @@ def add_suggested_keywords(request: Request, db: Session = Depends(get_db)) -> R
 @router.post("/setup/keywords/{keyword_id}/edit", response_model=None)
 def edit_keyword(
     request: Request,
-    keyword_id: int,
+    keyword_id: PathId,
     text: str = Form(""),
     group_name: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -213,7 +214,7 @@ def create_offering(
 
 
 @router.get("/setup/offerings/{offering_id}/edit", response_class=HTMLResponse)
-def edit_offering(request: Request, offering_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def edit_offering(request: Request, offering_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     offering = _find_offering(db, offering_id)
     return _html(
         render_html(
@@ -227,7 +228,7 @@ def edit_offering(request: Request, offering_id: int, db: Session = Depends(get_
 @router.post("/setup/offerings/{offering_id}", response_model=None)
 def update_offering(
     request: Request,
-    offering_id: int,
+    offering_id: PathId,
     name: str = Form(""),
     group_name: str = Form(""),
     description: str = Form(""),
@@ -240,7 +241,7 @@ def update_offering(
 
 
 @router.post("/setup/offerings/{offering_id}/delete", response_model=None)
-def delete_offering(request: Request, offering_id: int, db: Session = Depends(get_db)) -> Response:
+def delete_offering(request: Request, offering_id: PathId, db: Session = Depends(get_db)) -> Response:
     offering = _find_offering(db, offering_id)
     result = offerings_service.delete_offering(db, offering_id)
     if result == "deactivated":

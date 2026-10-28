@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from sales0.db.models import Company, Contact, Enquiry, Prospect
 from sales0.services._common import now_or, not_found
-from sales0.services.crm import _keys
+from sales0.services.crm import _keys, timeline
+from sales0.services.crm.actor import SYSTEM, Actor
 from sales0.services.crm._common import invalid, page_params
 from sales0.services.crm.views import CompanyDetail, CompanyPage, CompanyView
 
@@ -19,7 +20,8 @@ def _view(c: Company) -> CompanyView:
 
 
 def get_or_create_row(
-    db: Session, name: str | None, *, website: str | None = None, city: str | None = None, now: datetime | None = None
+    db: Session, name: str | None, *, website: str | None = None, city: str | None = None, now: datetime | None = None,
+    actor: Actor = SYSTEM,
 ) -> Company | None:
     """The ORM row for ``name`` (created if new); None for a blank name. Fills empty website/city."""
     clean = _keys.collapse(name)[:200]
@@ -35,6 +37,8 @@ def get_or_create_row(
                       created_at=now_or(now), updated_at=now_or(now))
         db.add(row)
         db.flush()
+        timeline.add_event(db, subject_type="company", subject_id=row.id, kind="created", body=f"Company added: {clean}.",
+                           data={"name": clean}, actor=actor, occurred_at=now_or(now))
         return row
     changed = False
     if web and not row.website:

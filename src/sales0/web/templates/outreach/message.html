@@ -136,7 +136,7 @@
               <p>{{ brief.what_they_do or "unknown" }}</p>
               <p><strong>Hooks used</strong></p>
               {% if brief.hooks %}<ul id="message-hooks">{% for h in brief.hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% else %}<p class="muted">none</p>{% endif %}
-              {% if brief.sources %}<p><strong>Sources</strong></p><ul>{% for s in brief.sources %}<li><a href="{{ s }}" target="_blank" rel="noopener noreferrer">{{ s }}</a></li>{% endfor %}</ul>{% endif %}
+              {% if brief.sources %}<p><strong>Sources</strong></p><ul>{% for s in brief.sources %}<li>{% if s.startswith(("http://", "https://")) %}<a href="{{ s }}" target="_blank" rel="noopener noreferrer">{{ s }}</a>{% else %}{{ s }}{% endif %}</li>{% endfor %}</ul>{% endif %}
             {% else %}
               <p class="muted">No research was done for this message.</p>
             {% endif %}

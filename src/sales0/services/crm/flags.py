@@ -232,7 +232,14 @@ def recompute_competitor_mentions(db: Session, *, now: datetime | None = None) -
 
 def recompute_all(db: Session, *, now: datetime | None = None) -> dict[str, int]:
     stamp = now_or(now)
-    for pid in list(db.scalars(select(Prospect.id))):
+    # only prospects that can possibly qualify (a recent non-discarded enquiry) or hold a flag need a recount
+    since = stamp - timedelta(days=get_settings().repeat_poster_days)
+    recent = (Enquiry.review_status != "discarded", Enquiry.sheet_removed_at.is_(None), Enquiry.date_added >= since)
+    by_link = select(Enquiry.prospect_id).where(Enquiry.prospect_id.is_not(None), *recent)
+    by_profile = select(Prospect.id).where(Prospect.linkedin_profile_id.in_(select(Enquiry.author_profile_id).where(Enquiry.author_profile_id.is_not(None), *recent)))
+    flagged = select(Flag.entity_id).where(Flag.entity_type == "prospect", Flag.kind == "repeat_poster", Flag.cleared_at.is_(None))
+    cand = set(db.scalars(by_link)) | set(db.scalars(by_profile)) | set(db.scalars(flagged))
+    for pid in sorted(cand):
         recompute_repeat_poster(db, pid, now=stamp)
     recompute_competitor_mentions(db, now=stamp)
     counts = dict(

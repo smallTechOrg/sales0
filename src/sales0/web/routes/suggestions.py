@@ -27,6 +27,7 @@ from sales0.web.acting import (
     pop_flash,
     set_flash,
 )
+from sales0.web.context import PathId
 from sales0.web.context import is_htmx, render_page
 from sales0.web.envelope import wants_json
 
@@ -110,7 +111,7 @@ def generate(
 
 @router.post("/suggestions/{suggestion_id}/accept")
 def accept(
-    suggestion_id: int, request: Request, db: Session = Depends(get_db),
+    suggestion_id: PathId, request: Request, db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:  # fmt: skip
     def action() -> str:
@@ -128,7 +129,7 @@ def accept(
 
 @router.post("/suggestions/{suggestion_id}/dismiss")
 def dismiss(
-    suggestion_id: int, request: Request, db: Session = Depends(get_db),
+    suggestion_id: PathId, request: Request, db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:  # fmt: skip
     def action() -> str:

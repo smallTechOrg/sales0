@@ -19,6 +19,7 @@ from sales0.errors import DomainError
 from sales0.services.crm import clients as clients_service
 from sales0.services.crm import registries as registries_service
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.web.context import PathId
 from sales0.web.context import actor_of, crm_done, crm_guard, opt_int, opt_str, render_page
 from sales0.web.envelope import ok as envelope_ok
 from sales0.web.envelope import wants_json
@@ -31,6 +32,34 @@ BACK = "/competitors"
 
 def _dump(data: Any) -> Any:
     return data.model_dump(mode="json") if hasattr(data, "model_dump") else data
+
+
+LIMITS = {"name": 200, "website": 500, "link": 500, "contact": 200, "email": 254, "client_names": 2000, "details": 2000, "notes": 5000}
+MAX_APPROX_CLIENTS = 10_000_000
+
+
+def _check_lengths(code: str, **values: str | None) -> None:
+    for field, value in values.items():
+        limit = LIMITS[field]
+        if value is not None and len(value.strip()) > limit:
+            raise DomainError(code, f"{field.replace('_', ' ').capitalize()} is too long (max {limit} characters).", 400)
+
+
+def _clients_count(raw: str) -> int | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        count = int(text)
+    except ValueError:
+        count = -1
+    if not 0 <= count <= MAX_APPROX_CLIENTS:
+        raise DomainError("competitor_invalid", "Approx. clients must be a whole number of 0 or more.", 400)
+    return count
+
+
+def _check_competitor(name: str, website: str, client_names: str, contact: str, email: str, notes: str) -> None:
+    _check_lengths("competitor_invalid", name=name, website=website, client_names=client_names, contact=contact, email=email, notes=notes)
 
 
 def _flag(values: list[str], default: bool = True) -> bool:
@@ -59,7 +88,7 @@ def registries_page(request: Request, q: str = "", db: Session = Depends(get_db)
 
 
 @router.get("/competitors/competitor/{competitor_id}", response_class=HTMLResponse)
-def competitor_page(request: Request, competitor_id: int, db: Session = Depends(get_db)) -> Response:
+def competitor_page(request: Request, competitor_id: PathId, db: Session = Depends(get_db)) -> Response:
     competitor = registries_service.get_competitor(db, competitor_id)
     if wants_json(request):
         return envelope_ok(_dump(competitor))
@@ -83,8 +112,9 @@ def create_competitor(
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def run() -> Response:
+        _check_competitor(name, website, client_names, contact, email, notes)
         view = registries_service.create_competitor(
-            db, name=name.strip(), website=opt_str(website), approx_clients=opt_int(approx_clients, "client count"),
+            db, name=name.strip(), website=opt_str(website), approx_clients=_clients_count(approx_clients),
             client_names=opt_str(client_names), contact=opt_str(contact), email=opt_str(email), notes=opt_str(notes),
             actor=actor_of(member),
         )  # fmt: skip
@@ -98,7 +128,7 @@ def create_competitor(
 @router.post("/competitors/competitor/{competitor_id}", response_model=None)
 def update_competitor(
     request: Request,
-    competitor_id: int,
+    competitor_id: PathId,
     name: str = Form(""),
     website: str = Form(""),
     approx_clients: str = Form(""),
@@ -112,12 +142,13 @@ def update_competitor(
 ) -> Response:
     def run() -> Response:
         current = registries_service.get_competitor(db, competitor_id)
+        _check_competitor(name, website, client_names, contact, email, notes)
         fields: dict[str, Any] = {"notes": opt_str(notes), "active": _flag(active, current.active)}
         if not current.sheet_synced:  # the sheet owns the rest of a sheet-fed row
             if not name.strip():
                 raise DomainError("competitor_invalid", "A competitor needs a name.", 400)
             fields.update(
-                name=name.strip(), website=opt_str(website), approx_clients=opt_int(approx_clients, "client count"),
+                name=name.strip(), website=opt_str(website), approx_clients=_clients_count(approx_clients),
                 client_names=opt_str(client_names), contact=opt_str(contact), email=opt_str(email),
             )  # fmt: skip
         view = registries_service.update_competitor(db, competitor_id, actor=actor_of(member), **fields)
@@ -131,7 +162,7 @@ def update_competitor(
 @router.post("/competitors/competitor/{competitor_id}/delete", response_model=None)
 def delete_competitor(
     request: Request,
-    competitor_id: int,
+    competitor_id: PathId,
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -147,7 +178,7 @@ def delete_competitor(
 @router.post("/competitors/competitor/{competitor_id}/link", response_model=None)
 def link_competitor(
     request: Request,
-    competitor_id: int,
+    competitor_id: PathId,
     entity_type: str = Form(""),
     entity_id: str = Form(""),
     db: Session = Depends(get_db),
@@ -184,6 +215,7 @@ def create_group(
     def run() -> Response:
         if not name.strip():
             raise DomainError("group_invalid", "A group needs a name.", 400)
+        _check_lengths("group_invalid", name=name, link=link, details=details, notes=notes)
         view = registries_service.create_group(
             db, name=name.strip(), platform=(platform or "whatsapp").strip().lower(), link=opt_str(link),
             details=opt_str(details), notes=opt_str(notes), actor=actor_of(member),
@@ -198,7 +230,7 @@ def create_group(
 @router.post("/competitors/group/{group_id}", response_model=None)
 def update_group(
     request: Request,
-    group_id: int,
+    group_id: PathId,
     name: str = Form(""),
     platform: str = Form(""),
     link: str | None = Form(None),
@@ -212,6 +244,7 @@ def update_group(
         current = next((g for g in registries_service.list_groups(db) if g.id == group_id), None)
         if current is None:
             raise DomainError("not_found", "That group no longer exists - refresh the page.", 404)
+        _check_lengths("group_invalid", name=name, link=link, details=details, notes=notes)
         fields: dict[str, Any] = {"active": _flag(active, current.active)}
         if notes is not None:
             fields["notes"] = opt_str(notes)
@@ -236,7 +269,7 @@ def update_group(
 @router.post("/competitors/group/{group_id}/delete", response_model=None)
 def delete_group(
     request: Request,
-    group_id: int,
+    group_id: PathId,
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:

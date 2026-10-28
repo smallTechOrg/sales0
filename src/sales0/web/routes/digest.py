@@ -20,6 +20,7 @@ from sales0.errors import DomainError
 from sales0.services import digest as digest_service
 from sales0.services.team import connections as connections_service
 from sales0.web.acting import clear_flash, get_acting_member, pop_flash, set_flash
+from sales0.web.context import PathId
 from sales0.web.context import is_htmx, render_page
 from sales0.web.envelope import wants_json
 
@@ -68,7 +69,7 @@ def digest_latest(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
 
 
 @router.get("/digest/{digest_id}", response_class=HTMLResponse)
-def digest_detail(digest_id: int, request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+def digest_detail(digest_id: PathId, request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     return _page(request, db, _ctx(db, digest_service.get_digest(db, digest_id)))
 
 
@@ -84,7 +85,7 @@ def digest_build(request: Request, db: Session = Depends(get_db)) -> Response:
 
 @router.post("/digest/{digest_id}/gmail-draft")
 def digest_gmail_draft(
-    digest_id: int,
+    digest_id: PathId,
     request: Request,
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),

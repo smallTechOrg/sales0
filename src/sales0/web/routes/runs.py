@@ -12,6 +12,7 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db
 from sales0.services import runs as runs_service
 from sales0.services.views import RunView
+from sales0.web.context import PathId
 from sales0.web.context import cooldown_clock, cost_badge_oob, is_htmx, redirect, render_html, render_page
 from sales0.web.envelope import ok
 
@@ -137,7 +138,7 @@ def run_now(request: Request, db: Session = Depends(get_db)) -> Response:
 
 
 @router.get("/runs/{run_id}/progress", response_class=HTMLResponse)
-def run_progress(request: Request, run_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def run_progress(request: Request, run_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     run = runs_service.get_run(db, run_id).run
     ctx = _panel_ctx(db, run)
     # The history table refreshes out-of-band on every poll so the active row's counters
@@ -150,7 +151,7 @@ def run_progress(request: Request, run_id: int, db: Session = Depends(get_db)) -
 
 
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
-def run_detail(request: Request, run_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+def run_detail(request: Request, run_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     detail = runs_service.get_run(db, run_id)
     active = detail.run.status in ACTIVE_STATUSES
     # The cool-down line belongs to the latest run only (the stop that started it).
@@ -172,7 +173,7 @@ def run_detail(request: Request, run_id: int, db: Session = Depends(get_db)) -> 
 
 
 @router.get("/api/runs/{run_id}")
-def api_run(run_id: int, db: Session = Depends(get_db)) -> JSONResponse:
+def api_run(run_id: PathId, db: Session = Depends(get_db)) -> JSONResponse:
     return ok(runs_service.get_run(db, run_id).model_dump(mode="json"))
 
 

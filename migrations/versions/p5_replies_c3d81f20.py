@@ -7,7 +7,8 @@ Create Date: 2026-10-28
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 
 import sqlalchemy as sa
 from alembic import op
@@ -34,8 +35,34 @@ def _ts(name: str, *, nullable: bool = True) -> sa.Column:
     return sa.Column(name, sa.DateTime(timezone=True), nullable=nullable)
 
 
+@contextmanager
+def _children_safe() -> Iterator[None]:
+    """Rebuild ``outreach_messages`` without cascading into ``outreach_events`` (ON DELETE CASCADE).
+
+    SQLite's batch rebuild drops the old table; under ``foreign_keys=ON`` that implicit DELETE cascades to the
+    child rows. ``PRAGMA foreign_keys`` is a no-op inside a transaction, hence the autocommit block (the same
+    recipe as p6). Row counts are verified afterwards so a regression fails loudly instead of losing data.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        yield
+        return
+    before = bind.execute(sa.text("SELECT COUNT(*) FROM outreach_events")).scalar_one()
+    with op.get_context().autocommit_block():
+        op.execute("PRAGMA foreign_keys=OFF")
+        try:
+            yield
+            bad = bind.execute(sa.text("PRAGMA foreign_key_check(outreach_messages)")).fetchall()
+            if bad:
+                raise RuntimeError(f"foreign_key_check found {len(bad)} violation(s) after rebuilding outreach_messages")
+        finally:
+            op.execute("PRAGMA foreign_keys=ON")
+    if bind.execute(sa.text("SELECT COUNT(*) FROM outreach_events")).scalar_one() != before:
+        raise RuntimeError("outreach_messages rebuild changed the outreach_events row count")
+
+
 def upgrade() -> None:
-    with op.batch_alter_table("outreach_messages") as batch:
+    with _children_safe(), op.batch_alter_table("outreach_messages") as batch:
         batch.add_column(sa.Column("reply_status", sa.String(12), nullable=False, server_default="none"))
         batch.add_column(_ts("last_reply_at"))
         batch.add_column(sa.Column("follow_up_of_id", sa.Integer(), nullable=True))
@@ -96,7 +123,7 @@ def downgrade() -> None:
     op.drop_table("suppressions")
     op.drop_index("ix_outreach_replies_handled_received_at", table_name="outreach_replies")
     op.drop_table("outreach_replies")
-    with op.batch_alter_table("outreach_messages") as batch:
+    with _children_safe(), op.batch_alter_table("outreach_messages") as batch:
         batch.drop_index("ix_outreach_messages_follow_up_of_id")
         batch.drop_constraint("fk_outreach_messages_follow_up_of_id_outreach_messages", type_="foreignkey")
         batch.drop_column("follow_up_of_id")

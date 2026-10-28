@@ -12,6 +12,13 @@ are plain ``ALTER TABLE ... ADD COLUMN`` (no rebuild on upgrade).
 The helpers marked FROZEN are copies of ``services/crm/_keys.py``; ``tests/unit/crm/test_keys.py``
 asserts they equal the app versions. Never import app code here.
 
+BACK UP BEFORE UPGRADING. SQLite cannot roll back DDL, so this migration is NOT atomic: a failure in the
+middle of the backfill leaves the new tables/columns in place while ``alembic_version`` still names p5.
+Copy the database file (and its ``-wal`` / ``-shm``) before ``alembic upgrade head``; to undo a bad run, put
+the copy back. ``upgrade()`` is retry-safe: tables/columns/foreign keys that already exist are skipped and
+rows left by a half-finished backfill are cleared first (they belong to this revision only, so nothing of
+the user's is lost), so simply running ``alembic upgrade head`` again after fixing the cause is sufficient.
+
 Revision ID: p6_crm_5b2e7d14
 Revises: p5_replies_c3d81f20
 Create Date: 2026-10-28
@@ -137,8 +144,15 @@ def _actor_columns() -> list[sa.Column]:
     ]
 
 
+def _create_table(name: str, *args: object, **kw: object) -> None:
+    """``op.create_table`` that skips a table left over from an interrupted earlier run."""
+    if name in sa.inspect(op.get_bind()).get_table_names():
+        return
+    op.create_table(name, *args, **kw)
+
+
 def _create_tables() -> None:
-    op.create_table(
+    _create_table(
         "companies",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(200), nullable=False),
@@ -150,7 +164,7 @@ def _create_tables() -> None:
         sa.Column("notes", sa.Text(), nullable=True),
         *_created_updated(),
     )
-    op.create_table(
+    _create_table(
         "contacts",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("full_name", sa.String(200), nullable=True, index=True),
@@ -168,14 +182,14 @@ def _create_tables() -> None:
         *_created_updated(),
         _in("origin", CONTACT_ORIGINS, "origin"),
     )
-    op.create_table(
+    _create_table(
         "contact_emails",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("contact_id", sa.Integer(), _fk("contacts.id", "CASCADE"), nullable=False, index=True),
         sa.Column("email", sa.String(254), nullable=False, unique=True),
         sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
-    op.create_table(
+    _create_table(
         "contact_phones",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("contact_id", sa.Integer(), _fk("contacts.id", "CASCADE"), nullable=False, index=True),
@@ -183,7 +197,7 @@ def _create_tables() -> None:
         sa.Column("digits", sa.String(20), nullable=False, index=True),
         sa.UniqueConstraint("contact_id", "digits", name="uq_contact_phones_contact_id_digits"),
     )
-    op.create_table(
+    _create_table(
         "tags",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(40), nullable=False),
@@ -192,12 +206,12 @@ def _create_tables() -> None:
         _ts("created_at", nullable=False),
         _in("category", TAG_CATEGORIES, "category"),
     )
-    op.create_table(
+    _create_table(
         "contact_tags",
         sa.Column("contact_id", sa.Integer(), _fk("contacts.id", "CASCADE"), primary_key=True),
         sa.Column("tag_id", sa.Integer(), _fk("tags.id", "CASCADE"), primary_key=True, index=True),
     )
-    op.create_table(
+    _create_table(
         "contact_links",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("contact_id", sa.Integer(), _fk("contacts.id", "CASCADE"), nullable=False),
@@ -209,7 +223,7 @@ def _create_tables() -> None:
         sa.Index("ix_contact_links_entity", "entity_type", "entity_id"),
         _in("entity_type", LINK_ENTITY_TYPES, "entity_type"),
     )
-    op.create_table(
+    _create_table(
         "prospects",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("kind", sa.String(20), nullable=False, server_default="company_enquiry"),
@@ -242,7 +256,7 @@ def _create_tables() -> None:
         _in("status", PROSPECT_STATUSES, "status"),
         _in("source", PROSPECT_SOURCES, "source"),
     )
-    op.create_table(
+    _create_table(
         "leads",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("prospect_id", sa.Integer(), _fk("prospects.id", "CASCADE"), nullable=False, index=True),
@@ -267,7 +281,7 @@ def _create_tables() -> None:
         _in("stage_source", STAGE_SOURCES, "stage_source"),
         _in("opened_by", LEAD_OPENED_BY, "opened_by"),
     )
-    op.create_table(
+    _create_table(
         "clients",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(200), nullable=False),
@@ -284,7 +298,7 @@ def _create_tables() -> None:
         _in("status", CLIENT_STATUSES, "status"),
         _in("source", CLIENT_SOURCES, "source"),
     )
-    op.create_table(
+    _create_table(
         "follow_ups",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("prospect_id", sa.Integer(), _fk("prospects.id", "CASCADE"), nullable=True, index=True),
@@ -305,7 +319,7 @@ def _create_tables() -> None:
             name="one_owner",
         ),
     )
-    op.create_table(
+    _create_table(
         "flags",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("entity_type", sa.String(10), nullable=False),
@@ -325,7 +339,7 @@ def _create_tables() -> None:
         _in("kind", FLAG_KINDS, "kind"),
         _in("source", FLAG_SOURCES, "source"),
     )
-    op.create_table(
+    _create_table(
         "timeline_events",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("subject_type", sa.String(12), nullable=False),
@@ -349,7 +363,7 @@ def _create_tables() -> None:
         _in("subject_type", TIMELINE_SUBJECTS, "subject_type"),
         _in("kind", TIMELINE_KINDS, "kind"),
     )
-    op.create_table(
+    _create_table(
         "competitors",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(200), nullable=False),
@@ -367,7 +381,7 @@ def _create_tables() -> None:
         *_sheet_columns(),
         *_created_updated(),
     )
-    op.create_table(
+    _create_table(
         "competitor_mentions",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("competitor_id", sa.Integer(), _fk("competitors.id", "CASCADE"), nullable=False),
@@ -381,7 +395,7 @@ def _create_tables() -> None:
         _in("entity_type", MENTION_ENTITY_TYPES, "entity_type"),
         _in("source", MENTION_SOURCES, "source"),
     )
-    op.create_table(
+    _create_table(
         "channel_groups",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(200), nullable=False),
@@ -398,7 +412,7 @@ def _create_tables() -> None:
         sa.Index("ix_channel_groups_platform_name", "platform", "name_key"),
         _in("keep_level", KEEP_LEVELS, "keep_level", nullable=True),
     )
-    op.create_table(
+    _create_table(
         "import_batches",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("filename", sa.String(255), nullable=False),
@@ -414,7 +428,7 @@ def _create_tables() -> None:
         _ts("created_at", nullable=False),
         _in("kind", IMPORT_KINDS, "kind"),
     )
-    op.create_table(
+    _create_table(
         "sheet_sources",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("entity", sa.String(12), nullable=False),
@@ -435,7 +449,7 @@ def _create_tables() -> None:
         _in("entity", SHEET_ENTITIES, "entity"),
         _in("target_type", SHEET_TARGET_TYPES, "target_type"),
     )
-    op.create_table(
+    _create_table(
         "sheet_metrics",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("metric_set", sa.String(10), nullable=False),
@@ -449,7 +463,7 @@ def _create_tables() -> None:
         _ts("updated_at", nullable=False),
         _in("metric_set", METRIC_SETS, "metric_set"),
     )
-    op.create_table(
+    _create_table(
         "sheet_metric_weeks",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("metric_id", sa.Integer(), _fk("sheet_metrics.id", "CASCADE"), nullable=False, index=True),
@@ -464,14 +478,25 @@ def _create_tables() -> None:
 
 # ---- enquiries: plain ADD COLUMN (no rebuild) --------------------------------------------
 def _add_enquiry_columns() -> None:
+    insp = sa.inspect(op.get_bind())
+    have = {c["name"] for c in insp.get_columns("enquiries")}
+    have_ix = {i["name"] for i in insp.get_indexes("enquiries")}
+
+    def add(column: sa.Column) -> None:
+        if column.name not in have:
+            op.add_column("enquiries", column)
+
     for col, target in (("prospect_id", "prospects"), ("company_id", "companies"), ("contact_id", "contacts")):
-        op.execute(f"ALTER TABLE enquiries ADD COLUMN {col} INTEGER REFERENCES {target}(id) ON DELETE SET NULL")
-        op.create_index(f"ix_enquiries_{col}", "enquiries", [col])
-    op.execute("ALTER TABLE enquiries ADD COLUMN origin VARCHAR(10) NOT NULL DEFAULT 'discovery'")
-    op.add_column("enquiries", sa.Column("sheet_status", sa.String(200), nullable=True))
-    op.add_column("enquiries", sa.Column("sheet_notes", sa.Text(), nullable=True))
-    op.add_column("enquiries", _ts("sheet_removed_at"))
-    op.add_column("enquiries", sa.Column("sheet_fields", sa.JSON(), nullable=True))
+        if col not in have:
+            op.execute(f"ALTER TABLE enquiries ADD COLUMN {col} INTEGER REFERENCES {target}(id) ON DELETE SET NULL")
+        if f"ix_enquiries_{col}" not in have_ix:
+            op.create_index(f"ix_enquiries_{col}", "enquiries", [col])
+    if "origin" not in have:
+        op.execute("ALTER TABLE enquiries ADD COLUMN origin VARCHAR(10) NOT NULL DEFAULT 'discovery'")
+    add(sa.Column("sheet_status", sa.String(200), nullable=True))
+    add(sa.Column("sheet_notes", sa.Text(), nullable=True))
+    add(_ts("sheet_removed_at"))
+    add(sa.Column("sheet_fields", sa.JSON(), nullable=True))
 
 
 # ---- FK rebuilds ---------------------------------------------------------------------------
@@ -490,9 +515,16 @@ def _self_fk() -> sa.Column:
     )
 
 
+def _has_fks(table: str, columns: Sequence[str]) -> bool:
+    have = {c for fk in sa.inspect(op.get_bind()).get_foreign_keys(table) for c in fk["constrained_columns"]}
+    return set(columns) <= have
+
+
 def _rebuild_outreach_messages(*, add: bool) -> None:
     """Four-step recipe: OFF -> rebuild -> foreign_key_check -> ON (in ``finally``)."""
     bind = op.get_bind()
+    if add and _has_fks("outreach_messages", [c for c, _t, _n in OUTREACH_FKS]):
+        return  # an interrupted earlier run already rebuilt it
     if bind.dialect.name != "sqlite":
         for col, target, name in OUTREACH_FKS:
             if add:
@@ -521,6 +553,8 @@ def _rebuild_outreach_messages(*, add: bool) -> None:
 
 
 def _company_brief_fks(*, add: bool) -> None:
+    if add and _has_fks("company_briefs", ["prospect_id", "enquiry_id"]):
+        return
     with op.batch_alter_table("company_briefs") as batch:
         for col, target in (("prospect_id", "prospects"), ("enquiry_id", "enquiries")):
             name = f"fk_company_briefs_{col}_{target}"
@@ -690,8 +724,37 @@ def _backfill(bind: sa.Connection) -> None:
     ))
 
 
+# Tables this revision creates and fills, children first (the order a partial backfill is cleared in).
+_BACKFILLED = (
+    "timeline_events", "follow_ups", "flags", "sheet_metric_weeks", "sheet_metrics", "sheet_sources", "import_batches",
+    "channel_groups", "competitor_mentions", "competitors", "clients", "leads", "contact_tags", "contact_links",
+    "contact_phones", "contact_emails", "tags", "prospects", "contacts", "companies",
+)
+
+
+def _clear_partial_backfill(bind: sa.Connection) -> None:
+    """A retry after an interrupted run: drop what the half-finished backfill wrote (tables are ours alone)."""
+    insp = sa.inspect(bind)
+    have = set(insp.get_table_names())
+    if "prospects" in have:
+        bind.execute(sa.text("UPDATE enquiries SET prospect_id = NULL, company_id = NULL, contact_id = NULL"))
+        bind.execute(sa.text("UPDATE outreach_messages SET prospect_id = NULL, company_id = NULL"))
+        bind.execute(sa.text("UPDATE company_briefs SET prospect_id = NULL"))
+    for table in _BACKFILLED:
+        if table in have:
+            bind.execute(sa.text(f"DELETE FROM {table}"))
+
+
+def _drop_batch_leftovers() -> None:
+    """``_alembic_tmp_*`` tables abandoned by a batch rebuild that was interrupted."""
+    for name in sa.inspect(op.get_bind()).get_table_names():
+        if name.startswith("_alembic_tmp_"):
+            op.execute(f'DROP TABLE "{name}"')
+
+
 def upgrade() -> None:
     bind = op.get_bind()
+    _drop_batch_leftovers()
     _create_tables()
     _add_enquiry_columns()
     # The Phase 3 ids pointed at tables that did not exist: they are not trustworthy references.
@@ -701,6 +764,7 @@ def upgrade() -> None:
     op.execute("UPDATE company_briefs SET enquiry_id = NULL WHERE enquiry_id IS NOT NULL AND enquiry_id NOT IN (SELECT id FROM enquiries)")
     _rebuild_outreach_messages(add=True)
     _company_brief_fks(add=True)
+    _clear_partial_backfill(bind)
     _backfill(bind)
 
 

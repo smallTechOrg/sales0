@@ -145,6 +145,7 @@ class SqlSheetRepository:
                     )
                     if row is None:
                         continue
+                    row_number = row.row_number
                     target_type, target_id = row.target_type, row.target_id
                     db.execute(delete(SheetSourceRow).where(SheetSourceRow.id == row.id))
                     db.flush()
@@ -159,6 +160,8 @@ class SqlSheetRepository:
                 except Exception as exc:  # noqa: BLE001
                     db.rollback()
                     log.warning("sheet_remove_failed", error_type=type(exc).__name__, entity=entity)
+                    with self._lock:
+                        self._errors.append(RowIssue(locals().get("row_number", 0), f"remove-failed:{type(exc).__name__}"))
         return count
 
     @staticmethod

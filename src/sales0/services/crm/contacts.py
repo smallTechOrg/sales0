@@ -65,8 +65,40 @@ def _view(db: Session, row: Contact) -> ContactView:
     return views_for(db, [row])[0]
 
 
+def _merge_events(db: Session) -> list[TimelineEvent]:
+    return list(db.scalars(select(TimelineEvent).where(TimelineEvent.subject_type == "contact", TimelineEvent.kind == "contact_merged").order_by(TimelineEvent.id)))
+
+
+def resolve_id(db: Session, contact_id: int) -> int | None:
+    """``contact_id`` itself, or - when that contact was merged away - the contact it was merged into (None if neither)."""
+    seen: set[int] = set()
+    current = contact_id
+    while db.get(Contact, current) is None:
+        if current in seen:
+            return None
+        seen.add(current)
+        nxt = next((ev.subject_id for ev in _merge_events(db) if (ev.data or {}).get("dropped_id") == current), None)
+        if nxt is None:
+            return None
+        current = nxt
+    return current
+
+
+def _merged_into_slug(db: Session, slug: str) -> Contact | None:
+    """The surviving contact of a merge that absorbed a contact whose LinkedIn slug was ``slug``."""
+    for ev in reversed(_merge_events(db)):
+        if slug in ((ev.data or {}).get("dropped_slugs") or []):
+            row = db.get(Contact, ev.subject_id)
+            if row is not None:
+                return row
+    return None
+
+
 def _get(db: Session, contact_id: int) -> Contact:
     row = db.get(Contact, contact_id)
+    if row is None:
+        target = resolve_id(db, contact_id)
+        row = db.get(Contact, target) if target is not None else None
     if row is None:
         raise not_found()
     return row
@@ -92,6 +124,9 @@ def _find_match(db: Session, *, emails: list[str], slug: str | None, digits: str
         row = db.scalar(select(Contact).where(Contact.linkedin_slug == slug))
         if row is not None:
             return row
+        row = _merged_into_slug(db, slug)
+        if row is not None:
+            return row
     if digits and len(digits) >= 7 and name:
         cids = list(db.scalars(select(ContactPhone.contact_id).where(ContactPhone.digits == digits).limit(20)))
         for cid in cids:
@@ -109,13 +144,15 @@ def _add_email(db: Session, row: Contact, email: str, *, primary: bool) -> bool:
     return True
 
 
-def _add_phone(db: Session, row: Contact, phone: str) -> None:
+def _add_phone(db: Session, row: Contact, phone: str) -> bool:
     digits = _keys.phone_digits(phone)
     if len(digits) < 6:
-        return
+        return False
     if db.scalar(select(ContactPhone.id).where(ContactPhone.contact_id == row.id, ContactPhone.digits == digits)) is None:
         db.add(ContactPhone(contact_id=row.id, phone=phone[:40], digits=digits))
         db.flush()
+        return True
+    return False
 
 
 def upsert_row(
@@ -142,6 +179,7 @@ def upsert_row(
     emails = _keys.all_emails(email)
     row = _find_match(db, emails=emails, slug=slug, digits=_keys.phone_digits(tel), name=name)
     created = row is None
+    enriched: list[str] = []
     if row is None:
         row = Contact(
             full_name=name, email=mail, phone=tel, linkedin_slug=slug, title=clip(title, 200),
@@ -152,29 +190,42 @@ def upsert_row(
         db.add(row)
         db.flush()
     else:
+        enriched: list[str] = []
         if name and not row.full_name:
             row.full_name = name
+            enriched.append("name")
         if mail and not row.email:
             row.email = mail
+            enriched.append("email")
         if tel and not row.phone:
             row.phone = tel
+            enriched.append("phone")
         if slug and not row.linkedin_slug and db.scalar(select(Contact.id).where(Contact.linkedin_slug == slug)) is None:
             row.linkedin_slug = slug
             row.linkedin_url = clip(linkedin_url, 500)
+            enriched.append("linkedin")
         if title and not row.title:
             row.title = clip(title, 200)
+            enriched.append("title")
         if company_id and not row.company_id:
             row.company_id = company_id
+            enriched.append("company")
         row.updated_at = stamp
     for i, addr in enumerate(emails):
-        _add_email(db, row, addr, primary=(row.email == addr))
-    if tel:
-        _add_phone(db, row, tel)
+        if _add_email(db, row, addr, primary=(row.email == addr)) and not created:
+            enriched.append("extra email")
+    if tel and _add_phone(db, row, tel) and not created and "phone" not in enriched:
+        enriched.append("extra phone")
     _rebuild_search_text(db, row)
     if created:
         timeline.add_event(
             db, subject_type="contact", subject_id=row.id, kind="created",
             body=f"Contact added ({origin}).", data={"origin": origin}, actor=actor, occurred_at=stamp,
+        )
+    elif enriched:
+        timeline.add_event(
+            db, subject_type="contact", subject_id=row.id, kind="note", body="Details added: " + ", ".join(enriched),
+            data={**_AUTO_NOTE, "fields": enriched, "origin": origin}, actor=actor, occurred_at=stamp,
         )
     return row, created
 
@@ -420,6 +471,9 @@ def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: 
     if keep_id == drop_id:
         raise invalid("merge_self", "Choose two different contacts to merge.")
     keep, drop = _get(db, keep_id), _get(db, drop_id)
+    if keep.id == drop.id:
+        raise invalid("merge_self", "Choose two different contacts to merge.")
+    keep_id, drop_id = keep.id, drop.id
     stamp = now_or(now)
     # emails (globally unique addresses): just re-own them
     keep_has_primary = bool(db.scalar(select(ContactEmail.id).where(ContactEmail.contact_id == keep.id, ContactEmail.is_primary.is_(True))))
@@ -451,12 +505,21 @@ def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: 
     db.flush()
     for model in (Prospect, Enquiry, TimelineEvent):
         db.execute(update(model).where(model.contact_id == drop.id).values(contact_id=keep.id))
+    # earlier merges into the dropped contact now point at the survivor; its own events move too
+    db.execute(update(TimelineEvent).where(TimelineEvent.subject_type == "contact", TimelineEvent.subject_id == drop.id).values(subject_id=keep.id))
+
     # fill keep's empty columns from drop
     slug, slug_url = drop.linkedin_slug, drop.linkedin_url
     drop.linkedin_slug = None
     db.flush()
-    if slug and not keep.linkedin_slug:
+    kept_slug = bool(slug and not keep.linkedin_slug)
+    if kept_slug:
         keep.linkedin_slug, keep.linkedin_url = slug, slug_url
+    elif slug and slug != keep.linkedin_slug:
+        # keep has its own profile: the other one must not be lost - show it in the notes (and alias it below)
+        line = f"Also on LinkedIn: {slug_url or slug}"
+        if line not in (keep.notes or ""):
+            keep.notes = (keep.notes + "\n\n" + line) if keep.notes else line
     for attr in ("full_name", "email", "phone", "title", "company_id"):
         if not getattr(keep, attr) and getattr(drop, attr):
             setattr(keep, attr, getattr(drop, attr))
@@ -472,12 +535,14 @@ def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: 
     timeline.add_event(
         db, subject_type="contact", subject_id=keep.id, kind="contact_merged",
         body=f"Merged duplicate contact {dropped_name or '#' + str(drop_id)} into this one.",
-        data={"dropped_id": drop_id, "dropped_name": dropped_name}, actor=actor, occurred_at=stamp,
+        data={"dropped_id": drop_id, "dropped_name": dropped_name, "dropped_slugs": [slug] if slug else [],
+              "dropped_linkedin_url": slug_url, "kept_dropped_slug": kept_slug},
+        actor=actor, occurred_at=stamp,
     )
     return _view(db, keep)
 
 
 __all__ = [
-    "add_tag", "find_duplicates", "get_contact", "link", "list_contacts", "list_tags", "merge", "remove_tag",
+    "add_tag", "find_duplicates", "resolve_id", "get_contact", "link", "list_contacts", "list_tags", "merge", "remove_tag",
     "update_contact", "upsert", "upsert_row", "views_for",
 ]

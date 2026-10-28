@@ -47,7 +47,7 @@ def main() -> int:
 
     import uvicorn
 
-    from sales0.web.app import create_app
+    from sales0.web.app import UVICORN_OPTIONS, create_app
 
     log.info(
         "server_starting",
@@ -64,6 +64,7 @@ def main() -> int:
         workers=1,
         log_config=None,
         access_log=False,
+        **UVICORN_OPTIONS,
     )
     return 0
 

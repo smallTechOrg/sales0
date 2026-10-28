@@ -19,6 +19,7 @@ from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
 from sales0.web.acting import get_acting_member_optional
+from sales0.web.context import PathId
 from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
 
 router = APIRouter()
@@ -221,7 +222,7 @@ def decide(
 
 # ---------------------------------------------------------------------- Skipped by AI (Phase 1.4)
 def _skipped_action(
-    request: Request, db: Session, action: str, seen_post_id: int, q: str, state: str, page: str
+    request: Request, db: Session, action: str, seen_post_id: PathId, q: str, state: str, page: str
 ) -> Response:
     toast = ""
     try:
@@ -247,7 +248,7 @@ def _skipped_action(
 @router.post("/inbox/skipped/{seen_post_id}/rescue", response_model=None)
 def skipped_rescue(
     request: Request,
-    seen_post_id: int,
+    seen_post_id: PathId,
     q: str = Form(""),
     state: str = Form("discard"),
     page: str = Form("1"),
@@ -259,7 +260,7 @@ def skipped_rescue(
 @router.post("/inbox/skipped/{seen_post_id}/override", response_model=None)
 def skipped_override(
     request: Request,
-    seen_post_id: int,
+    seen_post_id: PathId,
     q: str = Form(""),
     state: str = Form("discard"),
     page: str = Form("1"),
@@ -271,7 +272,7 @@ def skipped_override(
 @router.post("/inbox/skipped/{seen_post_id}/retry", response_model=None)
 def skipped_retry(
     request: Request,
-    seen_post_id: int,
+    seen_post_id: PathId,
     q: str = Form(""),
     state: str = Form("failed"),
     page: str = Form("1"),
@@ -283,7 +284,7 @@ def skipped_retry(
 @router.post("/inbox/{enquiry_id}/fields", response_model=None)
 def update_fields(
     request: Request,
-    enquiry_id: int,
+    enquiry_id: PathId,
     priority: str | None = Form(None),
     offering_id: str | None = Form(None),
     tab: str = Form("review"),
@@ -316,7 +317,7 @@ def update_fields(
 @router.post("/inbox/{enquiry_id}/retry", response_model=None)
 def retry(
     request: Request,
-    enquiry_id: int,
+    enquiry_id: PathId,
     tab: str = Form("review"),
     q: str = Form(""),
     page: str = Form("1"),

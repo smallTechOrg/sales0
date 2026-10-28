@@ -68,6 +68,15 @@ def _set_proposal_date(db: Session, ld: Lead, p: Prospect, when: date) -> None:
         e.date_proposal_sent = when
 
 
+def _retrack(db: Session, p: Prospect) -> bool:
+    """An active lead means the profile is tracked again (it was un-tracked by Lost / No response / closing)."""
+    if not p.linkedin_profile_id:
+        return False
+    from sales0.services.crm import prospects
+
+    return bool(prospects._set_profile_tracked(db, p, True))  # noqa: SLF001
+
+
 def convert(
     db: Session, prospect_id: int, *, stage: str = "meeting_scheduled", meeting_at: datetime | None = None,
     opened_by: str = "manual", actor: Actor = TEAM, note: str | None = None, now: datetime | None = None,
@@ -100,12 +109,14 @@ def convert(
     if stage == "proposal_sent":
         _set_proposal_date(db, ld, p, today_local(stamp))
     followups.cancel_open(db, prospect_id=p.id, reason="lead_created", actor=actor, now=stamp)
+    retracked = _retrack(db, p)
     if p.contact_id:
         contacts.link(db, p.contact_id, "lead", ld.id, "buyer")
     timeline.add_event(
         db, subject_type="lead", subject_id=ld.id, kind="lead_created",
         body=f"Lead created ({stage_label(stage)})" + (f" - {note.strip()}" if note and note.strip() else ""),
-        data={"stage": stage, "opened_by": opened_by, **({"note": note.strip()} if note and note.strip() else {})},
+        data={"stage": stage, "opened_by": opened_by, **({"note": note.strip()} if note and note.strip() else {}),
+              **({"tracked": True} if retracked else {})},
         actor=actor, occurred_at=stamp,
     )
     return views_for(db, [ld], now=stamp)[0]
@@ -160,6 +171,8 @@ def move_stage(
 
         if prospects._set_profile_tracked(db, p, False):  # noqa: SLF001
             extra["tracked"] = False
+    if stage not in TERMINAL_LEAD_STAGES and prev in ("lost", "no_response") and _retrack(db, p):
+        extra["tracked"] = True
     if stage in TERMINAL_LEAD_STAGES:
         followups.cancel_open(db, lead_id=ld.id, reason=f"lead_{stage}", actor=actor, now=stamp)
     if stage == "won":

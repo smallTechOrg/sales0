@@ -157,13 +157,15 @@ def test_a_message_that_resolves_to_no_prospect_is_ignored(db, installed) -> Non
     assert db.scalar(select(func.count(Prospect.id))) == 0
 
 
-def test_send_to_a_closed_prospect_is_logged_but_does_not_move_it(db, installed) -> None:
+def test_send_to_a_closed_prospect_records_the_contact_but_keeps_it_closed(db, installed) -> None:
     m = h.member(db)
     v, e = _accepted(db)
     prospects.close(db, v.id, "duplicate")
     _sent(db, m, e)
     p = prospects.get_prospect(db, v.id)
-    assert p.stage == "new" and p.status == "closed" and "email_sent" in [t.kind for t in p.timeline]
+    assert p.status == "closed" and p.contacted_at is not None and p.stage == "contacted"
+    assert "email_sent" in [t.kind for t in p.timeline]
+    assert not [f for f in p.follow_ups if not f.done]  # a closed prospect gets no reminders
 
 
 # ---------------------------------------------------------------- reply received

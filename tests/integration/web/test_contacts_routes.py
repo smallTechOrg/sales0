@@ -151,7 +151,9 @@ def test_duplicates_and_merge_flow(web: TestClient) -> None:
     assert merged.status_code == 204 and merged.headers["hx-redirect"] == "/contacts/duplicates"
     after = web.get("/contacts/duplicates").text
     assert "No duplicate contacts found." in after and "Merged into" in after
-    assert web.get(f"/contacts/{b}").status_code == 404
+    old = web.get(f"/contacts/{b}", follow_redirects=False)  # a merged-away link lands on the survivor
+    assert old.status_code == 303 and old.headers["location"] == f"/contacts/{a}"
+    assert web.get("/contacts/987654").status_code == 404
     assert "contact merged" in web.get(f"/contacts/{a}").text.lower() or "merged" in web.get(f"/contacts/{a}").text.lower()
 
 

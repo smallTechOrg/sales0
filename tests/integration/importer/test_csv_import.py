@@ -291,3 +291,63 @@ def test_state_survives_a_new_session(db: Session) -> None:
         assert counts(last) == (120, 120, 0, 0, 0)
         again = importer.import_csv(other, filename="e.csv", kind="enquiries", data=fixture_bytes("enquiries_120.csv"), actor=TEAM)
         assert counts(again) == (120, 0, 0, 120, 0)
+
+
+# ---- QA regressions (synthetic) ---------------------------------------------------------------
+def _csv(rows: list[list[str]]) -> bytes:
+    from tests.unit.sheetsync import fixtures as fx
+
+    return fx.to_csv([fx.ACTIVE_HEADER, *rows]).encode()
+
+
+def _arow(n: int, **kw: str) -> list[str]:
+    from tests.unit.sheetsync import fixtures as fx
+
+    return fx.active_row(
+        summary=f"Imp{n} - t - c", email=f"i{n}@x.example", link=f"https://www.linkedin.com/posts/a-activity-72000000000000{n:05d}-aa",
+        company=f"Co{n}", full=f"unique enquiry text {n}", **kw,
+    )
+
+
+def test_reimporting_an_unchanged_csv_adds_no_timeline_events(db: Session) -> None:
+    data = _csv([_arow(1, status="Email Sent"), _arow(2, status="Replied"), _arow(3, status="Bananas"), _arow(4, status="Won")])
+    run(db, "enquiries", data)
+    before = count(db, TimelineEvent)
+    again = run(db, "enquiries", data)
+    assert again.rows_unchanged == 4 and again.rows_new == 0
+    assert count(db, TimelineEvent) == before
+
+
+def test_rows_collapsed_by_content_hash_are_noted_in_the_batch(db: Session) -> None:
+    same = "identical full enquiry text"
+    from tests.unit.sheetsync import fixtures as fx
+
+    def r(n: int) -> list[str]:
+        return fx.active_row(summary=f"Dup{n}", email=f"d{n}@x.example", full=same,
+                             link=f"https://www.linkedin.com/posts/a-activity-73000000000000{n:05d}-aa")
+
+    view = run(db, "enquiries", _csv([r(1), r(2), _arow(9)]))
+    codes = [i.code for i in view.errors]
+    assert "duplicate-of-row:2" in codes and "rows-collapsed:1" in codes
+    assert view.rows_total == view.rows_new + view.rows_merged + view.rows_unchanged + view.rows_error
+    assert count(db, Enquiry) == 2
+
+
+def test_read_upload_is_bounded() -> None:
+    import io
+
+    class Counting(io.BytesIO):
+        total = 0
+
+        def read(self, n: int = -1) -> bytes:
+            out = super().read(n)
+            Counting.total += len(out)
+            return out
+
+    big = Counting(b"x" * (csv_import.MAX_BYTES * 3))
+    data = importer.read_upload(big)
+    assert len(data) == csv_import.MAX_BYTES + 1 and Counting.total == csv_import.MAX_BYTES + 1
+    with pytest.raises(DomainError) as exc:
+        importer.import_csv(None, filename="b.csv", kind="enquiries", data=data, actor=IMPORT)  # type: ignore[arg-type]
+    assert exc.value.code == "import_too_large"
+    assert importer.read_upload(io.BytesIO(b"a,b\n1,2\n")) == b"a,b\n1,2\n"

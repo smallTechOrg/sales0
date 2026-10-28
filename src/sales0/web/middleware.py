@@ -31,6 +31,23 @@ async def _input_summary(request: Request) -> dict[str, list[str]]:
     return summary
 
 
+UPLOAD_PATHS = {"/import/csv": 5 * 1024 * 1024 + 64 * 1024}  # 5 MB (the service limit) + multipart overhead
+
+
+def _too_large(request: Request) -> Response | None:
+    """Refuse an oversized upload from its Content-Length before the multipart body is parsed/spooled."""
+    limit = UPLOAD_PATHS.get(request.url.path)
+    if limit is None or request.method != "POST":
+        return None
+    try:
+        length = int(request.headers.get("content-length", "0"))
+    except ValueError:
+        return error_response(request, "bad_request", "That request is not valid.", 400)
+    if length > limit:
+        return error_response(request, "import_too_large", "That file is over 5 MB - split it and import the parts.", 413)
+    return None
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         incoming = request.headers.get("x-request-id", "")
@@ -41,7 +58,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         try:
             input_summary = await _input_summary(request)
             try:
-                response = await call_next(request)
+                response = _too_large(request) or await call_next(request)
             except Exception as exc:  # noqa: BLE001 — logged with exc_info, generic message to the user
                 response = unhandled_response(request, exc)
             response.headers["X-Request-ID"] = request_id

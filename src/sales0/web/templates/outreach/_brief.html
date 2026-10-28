@@ -16,6 +16,6 @@
   <p><strong>Personalisation hooks</strong></p>
   {% if brief.hooks %}<ul id="brief-hooks">{% for h in brief.hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% else %}<p class="muted">No hooks found.</p>{% endif %}
   <p><strong>Sources</strong></p>
-  {% if brief.sources %}<ul id="brief-sources">{% for s in brief.sources %}<li><a href="{{ s }}" target="_blank" rel="noopener noreferrer">{{ s }}</a></li>{% endfor %}</ul>{% else %}<p class="muted">No pages were read.</p>{% endif %}
+  {% if brief.sources %}<ul id="brief-sources">{% for s in brief.sources %}<li>{% if s.startswith(("http://", "https://")) %}<a href="{{ s }}" target="_blank" rel="noopener noreferrer">{{ s }}</a>{% else %}{{ s }}{% endif %}</li>{% endfor %}</ul>{% else %}<p class="muted">No pages were read.</p>{% endif %}
   <p class="muted">Research cost {{ brief.cost_usd_micros|usd }}. "Generate draft" will use this brief.</p>
 </div>

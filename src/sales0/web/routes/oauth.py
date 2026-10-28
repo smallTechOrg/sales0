@@ -30,6 +30,7 @@ from sales0.web.acting import (
     set_acting_cookie,
     set_flash,
 )
+from sales0.web.context import PathId
 from sales0.web.context import render_page
 
 log = get_logger("sales0.team.web")
@@ -104,7 +105,7 @@ def add_member(
 
 @router.post("/team/members/{member_id}/active")
 def set_member_active(
-    member_id: int,
+    member_id: PathId,
     active: str = Form(...),
     db: Session = Depends(get_db),
     acting: TeamMember = Depends(get_acting_member),

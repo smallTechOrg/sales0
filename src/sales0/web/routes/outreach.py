@@ -38,6 +38,7 @@ from sales0.services.outreach import research as research_service
 from sales0.services.team import connections as connections_service
 from sales0.services.team import members as members_service
 from sales0.web.acting import clear_flash, get_acting_member, pop_flash, set_flash
+from sales0.web.context import PathId
 from sales0.web.context import cost_badge_oob, is_htmx, render_html, render_page, toast_html
 from sales0.web.envelope import wants_json
 
@@ -87,9 +88,12 @@ def _opt_int(value: str | int | None) -> int | None:
     if value in (None, "", "none"):
         return None
     try:
-        return int(value)  # type: ignore[arg-type]
+        number = int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         raise DomainError("bad_request", "That selection is not valid - refresh the page.", 400) from None
+    if not 0 <= number <= 2**31 - 1:
+        raise DomainError("bad_request", "That selection is not valid - refresh the page.", 400)
+    return number
 
 
 def _flash_redirect(path: str, message: str, kind: str = "ok") -> RedirectResponse:
@@ -256,14 +260,17 @@ def _prefill(db: Session, enquiry_id: int | None, prospect_id: int | None = None
     enquiry = db.get(Enquiry, enquiry_id)
     if enquiry is None:
         raise DomainError("not_found", "That enquiry no longer exists - open Compose without it.", 404)
-    out.update(
-        enquiry_id=enquiry.id,
-        contact_name=enquiry.contact_person or enquiry.author_name or "",
-        email=enquiry.email or "",
-        company=enquiry.company or "",
-        requirement=(enquiry.requirement_summary or (enquiry.raw_text or "")[:500]).strip(),
-        offering_id=enquiry.offering_id,
-    )
+    # Prospect-derived values win; the enquiry only fills what is still blank (never overwrites with empties).
+    from_enq = {
+        "contact_name": enquiry.contact_person or enquiry.author_name or "",
+        "email": enquiry.email or "",
+        "company": enquiry.company or "",
+        "requirement": (enquiry.requirement_summary or (enquiry.raw_text or "")[:500]).strip(),
+    }
+    out.update(enquiry_id=enquiry.id, offering_id=enquiry.offering_id)
+    for key, value in from_enq.items():
+        if not out.get(key):
+            out[key] = value
     return out
 
 
@@ -431,20 +438,20 @@ def _message_ctx(db: Session, msg: OutreachMessage, member: TeamMember) -> dict[
 
 @router.get("/outreach/messages/{msg_id}", response_class=HTMLResponse)
 def message_page(
-    request: Request, msg_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, msg_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
 ) -> HTMLResponse:
     msg = messages.get_message(db, msg_id, member)
     return _page(request, db, "outreach/message.html", _message_ctx(db, msg, member))
 
 
-def _msg_url(msg_id: int) -> str:
+def _msg_url(msg_id: PathId) -> str:
     return f"/outreach/messages/{msg_id}"
 
 
 @router.post("/outreach/messages/{msg_id}/edit", response_model=None)
 def edit_message(
     request: Request,
-    msg_id: int,
+    msg_id: PathId,
     to: str = Form(""),
     cc: str = Form(""),
     subject: str = Form(""),
@@ -467,7 +474,7 @@ def edit_message(
 
 @router.post("/outreach/messages/{msg_id}/approve", response_model=None)
 def approve_message(
-    request: Request, msg_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, msg_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
 ) -> Response:
     def act() -> str:
         msg = messages.approve(db, msg_id, member)
@@ -479,7 +486,7 @@ def approve_message(
 @router.post("/outreach/messages/{msg_id}/reject", response_model=None)
 def reject_message(
     request: Request,
-    msg_id: int,
+    msg_id: PathId,
     reason: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
@@ -493,7 +500,7 @@ def reject_message(
 
 @router.post("/outreach/messages/{msg_id}/send", response_model=None)
 def send_message(
-    request: Request, msg_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, msg_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
 ) -> Response:
     def act() -> str:
         before = messages.get_message(db, msg_id).state
@@ -514,7 +521,7 @@ def send_message(
 @router.post("/outreach/messages/{msg_id}/retry", response_model=None)
 def retry_message(
     request: Request,
-    msg_id: int,
+    msg_id: PathId,
     confirm_not_sent: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
@@ -570,7 +577,7 @@ def save_template(
 
 @router.post("/outreach/templates/{template_id}/delete", response_model=None)
 def delete_template(
-    request: Request, template_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, template_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
 ) -> Response:
     def act() -> str:
         name = templates.get_template(db, template_id).name
@@ -640,7 +647,7 @@ def upload_deck(
 @router.post("/outreach/decks/{deck_id}/offering", response_model=None)
 def set_deck_offering(
     request: Request,
-    deck_id: int,
+    deck_id: PathId,
     offering_id: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
@@ -654,7 +661,7 @@ def set_deck_offering(
 
 @router.post("/outreach/decks/{deck_id}/delete", response_model=None)
 def delete_deck(
-    request: Request, deck_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+    request: Request, deck_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
 ) -> Response:
     def act() -> str:
         name = decks_service.get_deck(db, deck_id).name
@@ -665,7 +672,7 @@ def delete_deck(
 
 
 @router.get("/outreach/decks/{deck_id}/file")
-def deck_file(deck_id: int, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)) -> Response:
+def deck_file(deck_id: PathId, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)) -> Response:
     deck = decks_service.get_deck(db, deck_id)
     data = decks_service.read_deck_bytes(deck)
     return Response(

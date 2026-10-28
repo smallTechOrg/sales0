@@ -10,13 +10,35 @@ from sales0.clock import utcnow
 from sales0.services.sheetsync.fetch import SheetFetchError, TabSource
 from sales0.services.sheetsync.parsers import RowIssue, parse_tab
 from sales0.services.sheetsync.report import SyncReport, TabReport
+from sales0.services.sheetsync.records import SheetDiscarded, SheetEnquiry, SheetOutreachPerson, SheetProspect
+from sales0.services.sheetsync.status_map import map_enquiry_status, map_person_status
 from sales0.services.sheetsync.repository import RecordId, SheetRepository, SheetSource
 from sales0.services.sheetsync.tabs import TabSpec
 
 # Refuse to soft-remove more than this share of a tab's live rows in one run (a half-loaded
-# or wiped sheet must not wipe the CRM). Only applies once a tab has >= MIN rows.
+# or wiped sheet must not wipe the CRM). Applies once a tab has >= MIN live rows; a tab that
+# yields no usable data rows at all is blocked whatever its size.
 MAX_REMOVAL_FRACTION = 0.5
-REMOVAL_GUARD_MIN_ROWS = 10
+REMOVAL_GUARD_MIN_ROWS = 3
+
+
+def _count_unknown(rows: list) -> int:  # type: ignore[type-arg]
+    n = 0
+    for r in rows:
+        rec = r.record
+        status = getattr(rec, "sheet_status", None)
+        if not (status or "").strip():
+            continue
+        if isinstance(rec, SheetEnquiry):
+            if isinstance(rec, SheetDiscarded):
+                continue  # discarded rows are never mapped to a prospect
+            out = map_enquiry_status(status, date_email_sent=rec.date_email_sent, date_proposal_sent=rec.date_proposal_sent)
+        elif isinstance(rec, SheetOutreachPerson | SheetProspect):
+            out = map_person_status(status)
+        else:
+            continue
+        n += out.unknown
+    return n
 
 
 class SyncEngine:
@@ -78,6 +100,7 @@ class SyncEngine:
         parsed = parse_tab(text, tab, today=self._today())
         tr.rows, tr.blank_rows = parsed.data_rows, parsed.blank_rows
         tr.parsed = len(parsed.rows)
+        tr.unknown_statuses = _count_unknown(parsed.rows)
         tr.errors, tr.warnings = parsed.errors, parsed.warnings
         if parsed.fatal:
             tr.fetch_error = parsed.fatal  # unusable tab: report, and never remove from it
@@ -113,11 +136,17 @@ class SyncEngine:
                     setattr(tr, kind, getattr(tr, kind) - 1)
                     tr.errors.extend(failed)
 
-        gone = self._repo.list_keys_for_tab(tab.sheet_id, tab.gid) - present
+        stored = self._repo.list_keys_for_tab(tab.sheet_id, tab.gid)
+        gone = stored - present
         if gone:
-            live = len(present) + len(gone)
-            if not self._allow_mass and live >= REMOVAL_GUARD_MIN_ROWS and len(gone) > MAX_REMOVAL_FRACTION * live:
+            live = len(stored)
+            empty = not present  # header but no usable data rows while live rows exist
+            if not self._allow_mass and (empty or (live >= REMOVAL_GUARD_MIN_ROWS and len(gone) > MAX_REMOVAL_FRACTION * live)):
                 tr.removal_blocked = f"{len(gone)}-of-{live}"
+                tr.errors.append(RowIssue(0, "removal-blocked", f"{len(gone)} of {live} rows would be removed"))
+            elif dry_run:
+                tr.removed = len(gone)
             else:
-                tr.removed = len(gone) if dry_run else self._repo.mark_removed(tab.sheet_id, tab.gid, gone)
+                tr.removed = self._repo.mark_removed(tab.sheet_id, tab.gid, gone)
+                tr.errors.extend(self._drain(self._repo))
         return tr

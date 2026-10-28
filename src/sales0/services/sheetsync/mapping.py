@@ -620,7 +620,8 @@ def _apply_outcome(
     scopes = {"prospect_id": prospect.id, "company_id": prospect.company_id, "enquiry_id": enquiry.id if enquiry else None}
     changed: list[str] = []
     if not _sheet_may_move(prospect):
-        _log_unmoved_status(ctx, prospect, sheet_status, outcome, scopes)
+        if _would_change(db, prospect, outcome):
+            _log_unmoved_status(ctx, prospect, sheet_status, outcome, scopes)
         return changed
 
     def stage_change(frm: str, to: str, note: str | None = None) -> None:
@@ -656,6 +657,20 @@ def _apply_outcome(
     db.flush()
     _log_unmoved_status(ctx, prospect, sheet_status, outcome, scopes, moved=True)
     return changed
+
+
+def _would_change(db: Session, prospect: Prospect, outcome: StatusOutcome) -> bool:
+    """Would applying ``outcome`` alter the prospect / lead? (An unchanged re-import must stay silent.)"""
+    if outcome.unknown:
+        return True
+    if outcome.prospect_stage is not None and prospect.stage != outcome.prospect_stage:
+        return True
+    if outcome.lead_stage is not None:
+        lead = db.scalar(select(Lead).where(Lead.prospect_id == prospect.id).order_by(Lead.closed_at.is_(None).desc(), Lead.id.desc()).limit(1))
+        return lead is None or lead.stage != outcome.lead_stage
+    if outcome.prospect_status == "closed":
+        return prospect.status != "closed"
+    return False
 
 
 def _log_unmoved_status(ctx: Ctx, prospect: Prospect, sheet_status: str | None, outcome: StatusOutcome, scopes: dict[str, Any], *, moved: bool = False) -> None:
@@ -717,8 +732,8 @@ def _apply_lead(ctx: Ctx, prospect: Prospect, outcome: StatusOutcome, enquiry: E
         prospect.stage = "contacted"
     if prospect.contacted_at is None:
         prospect.contacted_at, prospect.contacted_estimated = lead.opened_at, True
-    if prospect.responded_at is None:
-        prospect.responded_at = lead.opened_at
+    if prospect.responded_at is None and target != "no_response":
+        prospect.responded_at = lead.opened_at  # a no-response lead is contact without a response
     if target == "won":
         client = db.scalar(select(Client).where(Client.lead_id == lead.id))
         if client is None:
@@ -815,7 +830,7 @@ def _apply_person(ctx: Ctx, rec: _Person, previous: dict[str, Any] | None) -> Ap
     if ctx.is_sheet:
         prospect.sheet_fields = new_o
     # shared person row
-    if prospect.contact_id is None or restored or created:
+    if prospect.contact_id is None:
         contact = contact_for(ctx, name=new_o.get("name"), linkedin_url=new_o.get("linkedin_url"), company_id=company.id if company else None)
         if contact is not None and prospect.contact_id != contact.id and prospect.contact_id is None:
             prospect.contact_id = contact.id

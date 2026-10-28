@@ -15,9 +15,21 @@ from datetime import date
 _WS = re.compile(r"\s+")
 
 
+_TOKEN = re.compile(r"[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
+
+
 def norm_status(value: str | None) -> str:
     """``casefold()`` of the trimmed cell with inner whitespace collapsed."""
     return _WS.sub(" ", (value or "").strip()).casefold()
+
+
+def phrase(value: str | None) -> str:
+    """Tokenised, punctuation-free form used for exact-phrase matching ("Follow-up 1!" -> "follow up 1")."""
+    return " ".join(_TOKEN.findall(norm_status(value).replace("-", " ").replace("_", " ")))
+
+
+def negated(value: str | None) -> bool:
+    return bool(set(phrase(value).split()) & NEGATORS)
 
 
 @dataclass(frozen=True)
@@ -37,30 +49,37 @@ class StatusOutcome:
     unknown: bool = False  # a non-blank status that matched nothing (logged once per value)
 
 
+NEGATORS = frozenset({"no", "not", "yet", "to", "be", "pending", "awaiting", "unsent", "without", "never", "soon", "will", "need", "needs", "draft", "planned"})  # noqa: E501
 WON = frozenset({"won", "closed won", "converted", "client", "confirmed", "project done", "completed", "delivered"})
 LOST = frozenset({"lost", "closed lost", "rejected", "declined", "not interested", "dropped"})
 NO_RESPONSE = frozenset({"no response", "no reply", "not responding", "ghosted"})
-MEETING = frozenset({
-    "meeting scheduled", "meeting", "call scheduled", "demo scheduled", "in discussion", "discussion", "negotiation",
-    "interested", "responded", "replied", "in progress", "ongoing", "hot", "warm",
-})
-FOLLOW_1 = frozenset({"follow up 1", "followup 1", "fu1", "first follow up", "follow-up 1"})
-FOLLOW_2 = frozenset({"follow up 2", "followup 2", "fu2", "second follow up", "follow-up 2"})
-FOLLOW_FINAL = frozenset({"final follow up", "last follow up", "final follow-up", "last follow-up"})
-CONTACTED = frozenset({"contacted", "message sent", "email sent", "mail sent", "connection request sent", "sent"})
+MEETING = frozenset({"meeting scheduled", "meeting", "call scheduled", "interested", "replied", "responded"})
+PROPOSAL = frozenset({"proposal sent", "sent proposal", "proposal submitted", "proposal shared", "quotation sent", "quote sent"})
+FOLLOW_1 = frozenset({"follow up 1", "followup 1", "fu1", "first follow up"})
+FOLLOW_2 = frozenset({"follow up 2", "followup 2", "fu2", "second follow up"})
+FOLLOW_FINAL = frozenset({"final follow up", "last follow up"})
+CONTACTED = frozenset({"contacted", "message sent", "email sent", "mail sent", "emailed", "messaged", "connection request sent", "sent"})
 CLOSED = frozenset({"closed", "close", "inactive", "hold", "on hold", "parked", "cancelled", "na"})
 NEUTRAL = frozenset({"", "new", "open", "pending", "to do"})
+# Known, deliberately non-actionable: never create a lead or mark contact (temperature words).
+TEMPERATURE = frozenset({"hot", "warm", "in progress", "ongoing"})
 CLOSE_WORDS = frozenset({"closed", "close"})
 
 LEAD_OUTCOME_STAGES = frozenset({"won", "lost", "no_response"})
 
 
+def _known_negative(p: str) -> bool:
+    """A negated phrase about sending / proposals / meetings: understood, maps to New, not "unknown"."""
+    return negated(p) and bool(set(p.split()) & {"sent", "unsent", "proposal", "send", "meeting", "response", "reply", "consent"})
+
+
 def map_enquiry_status(
     sheet_status: str | None, *, date_email_sent: date | None = None, date_proposal_sent: date | None = None
 ) -> StatusOutcome:
-    s = norm_status(sheet_status)
+    s = phrase(sheet_status)
     raw = (sheet_status or "").strip()
     evidence = date_email_sent is not None or date_proposal_sent is not None
+    neg = negated(s)
     if s in WON:
         return StatusOutcome(None, "converted", lead_stage="won", rule="1")
     if s in LOST and evidence:
@@ -71,9 +90,9 @@ def map_enquiry_status(
         if evidence:
             return StatusOutcome(None, "converted", lead_stage="no_response", rule="3")
         return StatusOutcome(None, "closed", closed_reason="no_response", rule="3")
-    if s in MEETING:
+    if s in MEETING and not neg:
         return StatusOutcome(None, "converted", lead_stage="meeting_scheduled", rule="4")
-    if "proposal" in s or date_proposal_sent is not None:
+    if (s in PROPOSAL and not neg) or date_proposal_sent is not None:
         return StatusOutcome(None, "converted", lead_stage="proposal_sent", rule="5")
     if s in FOLLOW_1:
         return StatusOutcome("follow_up_1", "open", rule="6")
@@ -83,18 +102,19 @@ def map_enquiry_status(
         return StatusOutcome("final_follow_up", "open", rule="6c")
     # Deviation (documented in NOTES): an explicit "closed"-family word beats the date-only
     # inference of rule 7, so a Closed row that once had an e-mail is a closed prospect.
-    if s in CONTACTED or (date_email_sent is not None and s not in CLOSED):
+    if (s in CONTACTED and not neg) or (date_email_sent is not None and s not in CLOSED):
         return StatusOutcome("contacted", "open", contacted=True, rule="7")
     if s in CLOSED:
         return StatusOutcome(None, "closed", closed_reason=f"sheet: {raw}"[:60], rule="8")
-    return StatusOutcome("new", "open", rule="9", unknown=s not in NEUTRAL)
+    return StatusOutcome("new", "open", rule="9", unknown=s not in NEUTRAL and s not in TEMPERATURE and not _known_negative(s))
 
 
 def map_person_status(sheet_status: str | None) -> StatusOutcome:
-    s = norm_status(sheet_status)
+    s = phrase(sheet_status)
     raw = (sheet_status or "").strip()
     if s == "closed":
         return StatusOutcome(None, "closed", closed_reason=f"sheet: {raw}"[:60], rule="person-closed")
-    if "sent" in s:
+    if s in CONTACTED and not negated(s):
         return StatusOutcome("contacted", "open", contacted=True, rule="person-contacted")
-    return StatusOutcome("new", "open", rule="person-new")
+    known = s in NEUTRAL or s in TEMPERATURE or s in MEETING or _known_negative(s)
+    return StatusOutcome("new", "open", rule="person-new", unknown=not known)

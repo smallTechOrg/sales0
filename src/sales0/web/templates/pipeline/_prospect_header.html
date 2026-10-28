@@ -15,7 +15,7 @@
       {% if p.contacted_at %}contacted {{ p.contacted_at|ago }}{% if p.contacted_estimated %} (date estimated){% endif %}{% else %}not contacted yet{% endif %}
       {% if p.responded_at %} · replied {{ p.responded_at|ago }}{% endif %}
       {% if p.next_follow_up_on %} · next follow-up <span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% endif %}
-      {% if p.linkedin_url %} · <a href="{{ p.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn profile</a>{% endif %}
+      {% if p.linkedin_url and p.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ p.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn profile</a>{% endif %}
     </div>
     <div class="row">{{ source_chips(p) }}
       {% if p.sheet_status %}<span class="chip chip--sheet" id="sheet-status" title="Status in the Google Sheet (read-only)">Sheet status: {{ p.sheet_status }}</span>{% endif %}

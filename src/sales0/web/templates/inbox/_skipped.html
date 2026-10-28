@@ -22,8 +22,8 @@
             <span>{{ post.author_name or "Unknown author" }}{% if post.author_headline %} · {{ post.author_headline }}{% endif %}</span>
             {% if post.keyword_text %}<span class="chip">{{ post.keyword_text }}</span>{% endif %}
             <span aria-hidden="true">·</span><span>seen {{ post.times_seen }}× · last {{ post.last_seen_at | ago }}</span>
-            {% if post.post_url %}<a class="enquiry__link" href="{{ post.post_url }}" target="_blank" rel="noopener" data-link-kind="{{ post.link_kind or 'post' }}">View post ↗</a>
-            {% elif post.profile_url %}<a class="enquiry__link" href="{{ post.profile_url }}" target="_blank" rel="noopener" data-link-kind="profile">Author profile ↗</a>{% endif %}
+            {% if post.post_url and post.post_url.startswith(("http://", "https://")) %}<a class="enquiry__link" href="{{ post.post_url }}" target="_blank" rel="noopener" data-link-kind="{{ post.link_kind or 'post' }}">View post ↗</a>
+            {% elif post.profile_url and post.profile_url.startswith(("http://", "https://")) %}<a class="enquiry__link" href="{{ post.profile_url }}" target="_blank" rel="noopener" data-link-kind="profile">Author profile ↗</a>{% endif %}
             {% if not post.can_rescue %}<span class="badge">text purged</span>{% endif %}
           </p>
           <div class="skipped__actions">

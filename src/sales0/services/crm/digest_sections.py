@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from sales0.clock import local_today
 from sales0.config import get_settings
-from sales0.db.models import Company, Lead, Prospect, TimelineEvent
+from sales0.db.models import Company, Enquiry, Lead, Prospect, TimelineEvent
 from sales0.services import digest
 from sales0.services.crm import followups
 from sales0.services.crm.stages import STAGE_LABELS
@@ -71,12 +71,18 @@ def _stale_leads(db: Session, w: Window) -> SectionResult:
         .group_by(TimelineEvent.prospect_id)
         .subquery()
     )
+    # A prospect fed only by enquiries that left the sheet is hidden, so it is not "stale" either.
+    live_enquiry = (
+        select(Enquiry.id).where(Enquiry.prospect_id == Prospect.id, Enquiry.sheet_removed_at.is_(None)).exists()
+    )
+    any_enquiry = select(Enquiry.id).where(Enquiry.prospect_id == Prospect.id).exists()
+    gone_with_sheet = any_enquiry & ~live_enquiry
     rows = db.execute(
         select(Lead, Prospect.name, Company.name, last_event.c.last_at)
         .join(Prospect, Prospect.id == Lead.prospect_id)
         .outerjoin(Company, Company.id == Lead.company_id)
         .outerjoin(last_event, last_event.c.pid == Lead.prospect_id)
-        .where(Lead.closed_at.is_(None), Lead.opened_at <= w.end)
+        .where(Lead.closed_at.is_(None), Lead.opened_at <= w.end, Prospect.sheet_removed_at.is_(None), ~gone_with_sheet)
         .order_by(Lead.id)
     ).all()
     stale: list[tuple[datetime, Lead, str]] = []

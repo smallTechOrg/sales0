@@ -9,9 +9,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
+from fastapi import Path as PathParam
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from markupsafe import Markup
@@ -411,19 +412,27 @@ def opt_str(value: str | None) -> str | None:
     return text or None
 
 
+MAX_ID = 2**31 - 1
+#: A database id in a URL path: bounded so a huge number is a clean 422, never an OverflowError/500.
+PathId = Annotated[int, PathParam(ge=1, le=MAX_ID)]
+
+
 def opt_int(value: str | None, label: str = "number") -> int | None:
     text = (value or "").strip()
     if not text:
         return None
     try:
-        return int(text)
+        number = int(text)
     except ValueError:
         raise DomainError("bad_request", f"That {label} is not valid.", 400) from None
+    if not 0 <= number <= MAX_ID:
+        raise DomainError("bad_request", f"That {label} is not valid.", 400)
+    return number
 
 
 def page_number(value: str | int | None) -> int:
     try:
-        return max(1, int(value or 1))
+        return min(max(1, int(value or 1)), 100_000)
     except (TypeError, ValueError):
         return 1
 

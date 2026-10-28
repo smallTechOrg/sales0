@@ -40,7 +40,7 @@ def test_company_timeline_unions_prospects_enquiries_and_phase1_history(db) -> N
     assert v1.company_id == v2.company_id
     items = timeline.list_timeline(db, company_id=v1.company_id)
     kinds = [i.kind for i in items]
-    assert kinds.count("created") == 2 and kinds.count("enquiry_linked") == 2 and "stage_change" in kinds
+    assert kinds.count("created") == 3 and kinds.count("enquiry_linked") == 2 and "stage_change" in kinds
     assert [i.occurred_at for i in items] == sorted((i.occurred_at for i in items), reverse=True)  # newest first
     hist = next(i for i in items if i.data and i.data.get("source") == "status_history")
     assert hist.id < 0 and hist.actor == "team" and "pending_review" in (hist.body or "")

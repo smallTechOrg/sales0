@@ -154,6 +154,27 @@ def _build_colmap(header: list[str], kind: str) -> tuple[dict[str, int], int]:
     return colmap, dups
 
 
+# Header sanity: columns a tab of this kind must have, and columns that prove Google served a
+# different kind of tab (a wrong gid yields the first tab). Fields are the ALIASES field names.
+MUST_HAVE = {
+    "enquiries": ("requirement_summary",), "discarded": ("requirement_summary",),
+    "outreach": ("name",), "prospects": ("name",), "working": ("name",),
+    "competitors": ("website",), "groups": ("platform",),
+}  # fmt: skip
+FOREIGN = {
+    "outreach": ("date_email_sent", "date_proposal_sent", "requirement_summary"),
+    "prospects": ("date_email_sent", "date_proposal_sent", "requirement_summary"),
+    "working": ("date_email_sent", "date_proposal_sent", "requirement_summary"),
+    "competitors": ("platform", "requirement_summary"),
+}  # fmt: skip
+
+
+def header_matches_kind(colmap: dict[str, int], kind: str) -> bool:
+    if any(f not in colmap for f in MUST_HAVE.get(kind, ())):
+        return False
+    return not any(f in colmap for f in FOREIGN.get(kind, ()))
+
+
 def _find_header(rows: list[list[str]], kind: str) -> tuple[int, dict[str, int], int] | None:
     need = MIN_MATCH[kind]
     for i, row in enumerate(rows[:HEADER_SCAN_ROWS]):
@@ -189,6 +210,9 @@ def _parse_table(text: str, tab: TabSpec, today: date, build: Builder) -> TabPar
         out.fatal = "header-not-found"
         return out
     hdr_idx, colmap, dups = found
+    if not header_matches_kind(colmap, tab.kind):
+        out.fatal = "header-mismatch"
+        return out
     out.header_row = hdr_idx + 1
     if dups:
         out.warnings.append(RowIssue(hdr_idx + 1, "duplicate-header", f"{dups} repeated column header(s) ignored"))

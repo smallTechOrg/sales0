@@ -155,7 +155,8 @@ def test_same_person_in_outreach_and_prospects_is_one_entity_with_two_sources() 
     pat = repo.get_by_key(*rid)
     assert pat.sheet_removed_at is None and set(pat.sources) == {(fx.SID, "12")}
     # ...and removing him from Outreach too finally soft-removes him
-    src.texts["Outreach"] = fx.to_csv([fx.PERSON_HEADER, ["Sam Sample", "", "Sam Inc", "", "Connection request sent", "", "", ""]])
+    src.texts["Outreach"] = fx.to_csv([fx.PERSON_HEADER, ["Sam Sample", "", "Sam Inc", "", "Connection request sent", "", "", ""],
+                                              ["Lee Link", "https://lnkd.in/p/abc", "Lee LLC", "", "Closed", "", "", "x"]])
     engine.run()
     assert repo.get_by_key(*rid).sheet_removed_at == NOW
 

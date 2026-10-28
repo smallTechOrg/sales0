@@ -164,16 +164,21 @@ def complete(db: Session, follow_up_id: int, *, actor: Actor = TEAM, note: str |
 
 def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, now: datetime | None = None) -> int:
     """Mark the open auto reminders whose stage is not after ``stage`` done (stage moved forward by hand)."""
-    from sales0.services.crm.stages import stage_rank
+    from sales0.services.crm.stages import stage_label, stage_rank
 
     stamp = now_or(now)
     n = 0
+    done: list[FollowUp] = []
     for f in db.scalars(select(FollowUp).where(FollowUp.prospect_id == prospect_id, FollowUp.kind != "custom", *_OPEN)):
         if stage_rank(f.kind) <= stage_rank(stage):
             f.done_at, f.done_actor, f.updated_at = stamp, actor.label[:80], stamp
             n += 1
+            done.append(f)
     if n:
         db.flush()
+        for f in done:
+            _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done (stage moved to {stage_label(stage)})", actor, stamp,
+                   data={"auto": True, "stage": stage})
         refresh_next(db, prospect_id)
     return n
 
