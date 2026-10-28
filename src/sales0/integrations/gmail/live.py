@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
@@ -32,6 +33,36 @@ def build_real_client(settings: Settings) -> RealGmailClient:
 def _err(exc: GmailError) -> int:
     print(f"gmail ERROR type={exc.__class__.__name__} {exc}", file=sys.stderr)
     return 1
+
+
+def google_auth_for_member(settings: Settings, email: str, *, consent=run_consent_flow) -> int:  # type: ignore[no-untyped-def]
+    """Run the consent flow and store the token (encrypted) as ``email``'s team Gmail connection."""
+    import tempfile
+
+    from sales0.db.engine import session_scope
+    from sales0.errors import DomainError
+    from sales0.services.team import connections, members
+
+    wanted = members.normalise_email(email)
+    try:
+        with session_scope() as db:
+            members.seed_admin(db, settings)
+            member = members.get_member_by_email(db, wanted)
+            if member is None:
+                print(f"google-auth ERROR no team member {wanted}: add them on the Team page first", file=sys.stderr)
+                return 1
+            member_id = member.id
+        with tempfile.TemporaryDirectory(prefix="sales0-google-auth-") as tmp:
+            token = consent(settings.google_client_secret_file, Path(tmp) / "token.json")
+        with session_scope() as db:
+            view = connections.store_token(db, member_id, token, settings=settings)
+    except GmailError as exc:
+        return _err(exc)
+    except DomainError as exc:
+        print(f"google-auth ERROR {exc.message}", file=sys.stderr)
+        return 1
+    print(f"google-auth OK member={wanted} gmail={view.email} status={view.status} (stored encrypted in the database)")
+    return 0 if view.status == "connected" else 1
 
 
 def google_auth(settings: Settings, *, consent=run_consent_flow) -> int:  # type: ignore[no-untyped-def]
@@ -121,6 +152,8 @@ def run_command(args) -> int:  # type: ignore[no-untyped-def]
     if settings is None:
         return 1
     if args.command == "google-auth":
+        if getattr(args, "member", None):
+            return google_auth_for_member(settings, args.member)
         return google_auth(settings)
     try:
         client = build_real_client(settings)
@@ -134,4 +167,11 @@ def run_command(args) -> int:  # type: ignore[no-untyped-def]
     return gmail_send_test(client, yes_send=args.yes_send, to=args.to, allow_external=args.allow_external)
 
 
-__all__ = ["build_real_client", "gmail_check", "gmail_send_test", "google_auth", "run_command"]
+__all__ = [
+    "build_real_client",
+    "gmail_check",
+    "gmail_send_test",
+    "google_auth",
+    "google_auth_for_member",
+    "run_command",
+]

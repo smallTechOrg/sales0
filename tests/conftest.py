@@ -44,6 +44,8 @@ _RESET_SEAMS = [
     ("sales0.llm", "reset_llm_client"),
     ("sales0.jobs.runner", "reset_runner"),
     ("sales0.scraper.browser", "reset_browser_cache"),
+    ("sales0.services.team.connections", "reset_client_factory"),
+    ("sales0.services.team.oauth", "reset_state_store"),
 ]
 
 # Fast, deterministic pacing + caps for tests (architecture.md → Conventions → Tests).

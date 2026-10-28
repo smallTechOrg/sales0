@@ -1,0 +1,10 @@
+{# Needs: section. Outreach sub-navigation + flash. #}
+<nav class="tabs" aria-label="Outreach sections" id="outreach-subnav">
+  <a class="tabs__tab{% if section == 'outbox' %} tabs__tab--active{% endif %}" href="/outreach"{% if section == 'outbox' %} aria-current="page"{% endif %}>Outbox</a>
+  <a class="tabs__tab{% if section == 'compose' %} tabs__tab--active{% endif %}" href="/outreach/compose"{% if section == 'compose' %} aria-current="page"{% endif %}>Compose</a>
+  <a class="tabs__tab{% if section == 'templates' %} tabs__tab--active{% endif %}" href="/outreach/templates"{% if section == 'templates' %} aria-current="page"{% endif %}>Templates</a>
+  <a class="tabs__tab{% if section == 'decks' %} tabs__tab--active{% endif %}" href="/outreach/decks"{% if section == 'decks' %} aria-current="page"{% endif %}>Decks</a>
+</nav>
+{% if flash %}
+  <div class="flash flash--{{ flash.kind }}" id="outreach-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+{% endif %}

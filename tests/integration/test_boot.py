@@ -46,7 +46,7 @@ def _log_lines(text: str) -> list[dict]:
 
 def test_health_reports_the_head_revision_and_config_presence(client: TestClient) -> None:
     head = head_revision()
-    assert head == "0002_phase1_discovery"  # Phase 1 migration is the head
+    assert head == "p3_outreach_a7c41e9d"  # Phase 3 outreach migration is the head
     resp = client.get("/api/health")
     assert resp.status_code == 200
     body = resp.json()

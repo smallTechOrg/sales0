@@ -51,7 +51,7 @@ Decision = Literal["accept", "discard"]
 DECISIONS: tuple[str, ...] = ("accept", "discard")
 
 LlmFeature = Literal["ping", "triage"]
-LLM_FEATURES: tuple[str, ...] = ("ping", "triage")
+LLM_FEATURES: tuple[str, ...] = ("ping", "triage", "research", "drafting", "suggest")
 
 LlmCallStatus = Literal["ok", "error"]
 LLM_CALL_STATUSES: tuple[str, ...] = ("ok", "error")

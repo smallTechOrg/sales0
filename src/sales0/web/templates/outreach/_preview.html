@@ -1,0 +1,6 @@
+<div id="preview-body">
+  {% if unknown %}<p class="flash flash--error" role="alert">Unknown placeholder(s): {{ unknown|join(", ") }}. This template cannot be saved until they are removed.</p>{% endif %}
+  <p class="muted">Sample: {{ sample.first_name }} at {{ sample.company }}; signed by {{ sender }}.</p>
+  <p><strong>Subject:</strong> <span id="preview-subject">{{ subject or "(empty)" }}</span></p>
+  <pre class="mail-body" id="preview-text">{{ body or "(empty)" }}</pre>
+</div>

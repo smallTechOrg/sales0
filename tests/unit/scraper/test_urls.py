@@ -78,7 +78,7 @@ FIX = "http://127.0.0.1:43123/__fixtures/linkedin"
         ("https://lnkd.in/abc", LIVE, (None, None)),
         (f"{LIVE}/in/arjun-rao/", LIVE, (None, None)),
         (f"{LIVE}/search/results/content/?keywords=x", LIVE, (None, None)),
-        (f"http://127.0.0.1:9/__fixtures/linkedin/posts/x-activity-1-a", FIX, (None, None)),  # other port
+        ("http://127.0.0.1:9/__fixtures/linkedin/posts/x-activity-1-a", FIX, (None, None)),  # other port
         ("javascript:alert(1)", LIVE, (None, None)),
         ("Link copied to clipboard.", LIVE, (None, None)),
         ("", LIVE, (None, None)),

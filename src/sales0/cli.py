@@ -230,7 +230,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "check-browser",
         help="Launch the configured browser headless on a throwaway profile (about:blank only) and report it",
     )
-    sub.add_parser("google-auth", help="Sign in to Google (browser consent) and store the Gmail token")
+    auth = sub.add_parser("google-auth", help="Sign in to Google (browser consent) and store the Gmail token")
+    auth.add_argument(
+        "--member", metavar="EMAIL", default=None,
+        help="Store the token (encrypted, in the database) for this team member instead of the token file",
+    )
     sub.add_parser("gmail-check", help="Draft to yourself with a PDF, fetch it, delete it; never sends")
     send = sub.add_parser("gmail-send-test", help="Send ONE labelled test email to your own address")
     send.add_argument("--yes-send", action="store_true", help="Required: actually send the test email")

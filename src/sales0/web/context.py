@@ -20,6 +20,8 @@ from sales0.config import get_settings
 from sales0.services import costs as costs_service
 from sales0.services import runs as runs_service
 from sales0.services import session as session_service
+from sales0.services.team import acting as acting_service
+from sales0.services.team import members as members_service
 from sales0.services.views import SessionStatusView
 from sales0.web.envelope import is_htmx
 from sales0.web.templating import ago, get_templates
@@ -42,7 +44,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Contacts", "/contacts", 2),
     ("Competitors & Groups", "/competitors", 2),
     ("Import", "/import", 2),
-    ("Outreach", "/outreach", 3),
+    ("Outreach", "/outreach", None),
     ("Metrics", "/metrics", 4),
     ("WhatsApp", "/whatsapp", 5),
 )
@@ -91,7 +93,10 @@ def status_light_view(session: SessionStatusView) -> dict[str, Any]:
 
 def shell_context(request: Request, db: Session) -> dict[str, Any]:
     session = session_service.session_status(db)
+    acting_member = acting_service.resolve_acting_member(db, request.cookies.get(acting_service.COOKIE_NAME))
     return {
+        "acting_member": acting_member,
+        "team_members": members_service.list_members(db, include_inactive=False),
         "session": session,
         "cost": costs_service.cost_summary(db),
         "active_run": runs_service.active_run(db),
@@ -214,7 +219,8 @@ def render_page(
     status_code: int = 200,
     headers: dict[str, str] | None = None,
 ) -> HTMLResponse:
-    ctx: dict[str, Any] = {**HELPERS, "shell": shell_context(request, db)}
+    shell = shell_context(request, db)
+    ctx: dict[str, Any] = {**HELPERS, "shell": shell, "acting_member": shell["acting_member"]}
     ctx.update(context or {})
     return get_templates().TemplateResponse(request, template, ctx, status_code=status_code, headers=headers)
 

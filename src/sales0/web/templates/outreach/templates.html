@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Outreach templates{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Message templates</h1>
+  <p>A template is the skeleton of an email for an offering. The AI adapts it to each company; known variables are filled in first.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "outreach/_subnav.html" %}
+    <div class="grid-2">
+      <section class="card" aria-labelledby="editor-title">
+        <div class="card__header"><h2 id="editor-title">{{ "Edit template" if editing else "New template" }}</h2>
+          {% if editing %}<a href="/outreach/templates">New instead</a>{% endif %}</div>
+        <div class="card__body">
+          <form class="stack" id="template-form" method="post" action="/outreach/templates/save"
+                hx-post="/outreach/templates/preview" hx-trigger="input delay:400ms, change, load" hx-target="#template-preview" hx-swap="innerHTML" hx-sync="this:replace">
+            <input type="hidden" name="template_id" value="{{ editing.id if editing else '' }}">
+            <div class="field"><label class="field__label" for="t-name">Name</label>
+              <input class="input" id="t-name" name="name" maxlength="120" required value="{{ editing.name if editing else '' }}"></div>
+            <div class="field"><label class="field__label" for="t-offering">Offering</label>
+              <select class="input" id="t-offering" name="offering_id">
+                <option value="">Any offering (generic)</option>
+                {% for o in offerings %}<option value="{{ o.id }}"{% if editing and editing.offering_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+              </select></div>
+            <div class="field"><label class="field__label" for="t-subject">Subject</label>
+              <input class="input" id="t-subject" name="subject" maxlength="300" value="{{ editing.subject if editing else '' }}"></div>
+            <div class="field"><label class="field__label" for="t-body">Body</label>
+              <textarea class="input" id="t-body" name="body" rows="10" required>{{ editing.body if editing else '' }}</textarea></div>
+            <div class="row">
+              <button class="btn btn--primary" id="template-save" type="submit">Save template</button>
+            </div>
+          </form>
+          <details class="stack" open>
+            <summary>Variables you can use</summary>
+            <ul id="variable-help">
+              <li><code>{first_name}</code> - the contact's first name</li>
+              <li><code>{company}</code> - the company name</li>
+              <li><code>{requirement}</code> - their requirement (short)</li>
+              <li><code>{sender_name}</code> - the sending team member's name</li>
+              <li><code>{offering}</code> - the offering name</li>
+            </ul>
+            <p class="muted">Anything else in curly braces is rejected. A variable with no value is left visible so you notice it before approving.</p>
+          </details>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="preview-title">
+        <div class="card__header"><h2 id="preview-title">Live preview</h2><span class="muted">with sample values</span></div>
+        <div class="card__body" id="template-preview" aria-live="polite"><p class="muted">Start typing to see the preview.</p></div>
+      </section>
+    </div>
+
+    <section class="card" aria-labelledby="list-title">
+      <div class="card__header"><h2 id="list-title">All templates</h2><span class="muted">{{ templates|length }}</span></div>
+      <div class="card__body table-wrap">
+        {% if templates %}
+          <table class="table" id="template-table">
+            <thead><tr><th>Name</th><th>Offering</th><th>Subject</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for t in templates %}
+              <tr id="template-{{ t.id }}">
+                <td>{{ t.name }}</td>
+                <td>{{ offering_names.get(t.offering_id, "Any") if t.offering_id else "Any" }}</td>
+                <td>{{ t.subject or "-" }}</td>
+                <td>
+                  <a class="btn btn--sm" href="/outreach/templates?edit={{ t.id }}">Edit</a>
+                  <form method="post" action="/outreach/templates/{{ t.id }}/delete" data-q="Delete template '{{ t.name }}'? Messages already written from it are not affected." onsubmit="return confirm(this.dataset.q)">
+                    <button class="btn btn--danger btn--sm" type="submit">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="templates-empty"><p>No templates yet. Without one the AI writes from the requirement alone.</p></div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

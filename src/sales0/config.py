@@ -71,6 +71,27 @@ class Settings(BaseSettings):
     google_client_secret_path: str = "data/google_client_secret.json"
     google_token_path: str = "data/google_token.json"
 
+    # --- Team / outreach (Phase 3) ---
+    # Encrypts Gmail tokens at rest and signs the "acting as" cookie. Any string (>= 16 chars)
+    # or a Fernet key. Unset in dev: a key is generated once and kept at <data_dir>/secret.key.
+    secret_key: SecretStr | None = None
+    admin_email: str = "admin@smalltech.in"
+    admin_name: str = "Admin"
+    gmail_daily_send_cap: int = Field(40, ge=0)  # 0 = sending disabled
+    deck_max_bytes: int = Field(10 * 1024 * 1024, gt=0)  # max size of one uploaded deck PDF
+    # Only for a non-loopback deployment (e.g. https://sales.example.com); locally the OAuth
+    # redirect URI is built from the request's own loopback host and port.
+    public_base_url: str | None = None
+    # Google endpoints; overridable so tests (and proxies) can point the OAuth flow elsewhere.
+    google_auth_endpoint: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    google_token_endpoint: str = "https://oauth2.googleapis.com/token"
+    google_userinfo_endpoint: str = "https://openidconnect.googleapis.com/v1/userinfo"
+    google_revoke_endpoint: str = "https://oauth2.googleapis.com/revoke"
+
+    # TEST ONLY: comma-separated hosts (or 1/true = loopback) the research fetcher may reach even
+    # though they are private. Ignored unless linkedin_mode == "fixture" (see ``research_private_hosts``).
+    research_allow_private_hosts: str = ""
+
     # --- Time ---
     timezone: str = "Asia/Kolkata"
 
@@ -127,6 +148,16 @@ class Settings(BaseSettings):
     def _strip_plain(cls, value: Any) -> Any:
         return _clean_enum_value(value)
 
+    @field_validator("admin_email", mode="before")
+    @classmethod
+    def _lower_admin_email(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("admin_name", "public_base_url", mode="before")
+    @classmethod
+    def _strip_team_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("google_client_secret_path", "google_token_path", mode="before")
     @classmethod
     def _strip_google_paths(cls, value: Any) -> Any:
@@ -169,6 +200,16 @@ class Settings(BaseSettings):
         """Absolute runtime dir; relative values resolve against the repo root."""
         path = Path(self.data_dir).expanduser()
         return path if path.is_absolute() else REPO_ROOT / path
+
+    @property
+    def research_private_hosts(self) -> list[str]:
+        """Hosts the research fetcher may reach although private. Always [] outside fixture mode."""
+        raw = self.research_allow_private_hosts.strip()
+        if self.linkedin_mode != "fixture" or not raw:
+            return []
+        if raw.lower() in {"1", "true", "yes", "on"}:
+            return ["127.0.0.1", "localhost"]
+        return [h.strip().lower() for h in raw.split(",") if h.strip()]
 
     @property
     def google_client_secret_file(self) -> Path:
