@@ -539,3 +539,10 @@ A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_
 | schedules | 4 | kind `discovery_run`, cron-like times (≤3/day), enabled |
 | digests | 4 | for_date, body, suggestions JSON |
 | users (populated) | 5 | password_hash, role |
+
+### Phase 4 - manual_metrics (migration p7_metrics_9a4f61c3)
+| Table | Columns |
+|---|---|
+| `manual_metrics` | `id`; `iso_year`, `iso_week` int; `metric_key` `posts_published` \| `whatsapp_added`; `value` int >= 0; `updated_by` str(80) null; `updated_at`; unique (`iso_year`, `iso_week`, `metric_key`) |
+
+New indexes: `ix_seen_posts_first_seen_at`, `ix_timeline_events_kind_occurred`, `ix_outreach_messages_sent_at`. Target overrides live in `app_meta` (`metrics_target.<source>`).

@@ -16,7 +16,6 @@ from tests.integration.web.conftest import HX, add_llm_call, set_session
 
 # Phase 2 built Pipeline, Contacts, Competitors & Groups and Import for real; only these two remain stubs.
 STUBS = [
-    ("/metrics", "Metrics", 4),
     ("/whatsapp", "WhatsApp groups", 5),
 ]
 
@@ -41,7 +40,7 @@ def test_header_shows_not_connected_light_zero_cost_and_nav_in_order(client: Tes
     nav = html.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
     labels = re.findall(r'<a href="(/[a-z]+)"', nav)
     assert labels == ["/inbox", "/runs", "/setup", "/pipeline", "/contacts", "/competitors", "/import", "/sync", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/whatsapp"]
-    assert nav.count("badge--stub") == 2  # only Metrics (Phase 4) and WhatsApp (Phase 5) are stubs now
+    assert nav.count("badge--stub") == 1  # only WhatsApp (Phase 5) is a stub now; Metrics is real (Phase 4)
     assert 'href="/inbox" aria-current="page"' in nav
     assert 'id="alert-banner"' not in html
     assert 'id="toasts"' in html and 'aria-live="polite"' in html

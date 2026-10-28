@@ -1,6 +1,6 @@
 """Shell routes (slice E): ``/`` → ``/inbox``, header fragments, and the labelled
 "Coming in Phase N" stub pages for features that later phases build (Phase 2 built the
-Pipeline, Contacts, Competitors & Groups and Import pages; only Metrics and WhatsApp remain)."""
+Pipeline, Contacts, Competitors & Groups and Import pages; only WhatsApp remains)."""
 
 from __future__ import annotations
 
@@ -25,10 +25,6 @@ class StubPage:
 
 
 STUBS: dict[str, StubPage] = {
-    "/metrics": StubPage(
-        "Metrics", 4,
-        "The Weekly and Secondary metrics sheets, produced automatically per ISO week against your targets, plus the AI cost view.",
-    ),
     "/whatsapp": StubPage(
         "WhatsApp groups", 5,
         "Ingest requirement messages from the team's WhatsApp groups into the same review inbox.",

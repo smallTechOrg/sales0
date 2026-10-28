@@ -659,3 +659,15 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .site-header .logout-form .btn { color: var(--color-header-text); border-color: rgba(255, 255, 255, 0.35); background: transparent; }
 .site-header .logout-form .btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; border-color: rgba(255, 255, 255, 0.6); }
 .site-header .logout-form .btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ metrics dashboard (Phase 4): inline SVG charts */
+.chart { margin: 0; }
+.chart figcaption { font-weight: 600; font-size: var(--font-size-sm); margin-bottom: var(--space-2); }
+.chart__svg { width: 100%; max-width: 40rem; height: auto; display: block; }
+.chart__legend { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--font-size-sm); color: var(--color-muted); }
+.chart__key i { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
+.metric-src { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.metric-src--computed { color: #1d4ed8; }
+.metric-src--sheet { color: #92400e; }
+.metric-src--manual { color: #047857; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

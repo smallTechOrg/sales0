@@ -178,3 +178,10 @@ Where: `spec/roadmap.md` Phase 2 (slices S1-S6), `spec/architecture.md` "Phase 2
 - Assumed: p5_replies migration was fixed to run its outreach_messages batch rebuild with foreign_keys=OFF + child-count check (it cascade-deleted outreach_events on a populated DB); chain unchanged.
 - Live read-only gate (temp DB, counts only): Active 42 / Discarded 19 / Outreach 10 / Prospects 2 / Working Sheet 2 / Competitors 10 / Groups 7 / Weekly 6 / Secondary 19 rows, 0 parse errors; 2nd apply = 0 changes. Discarded rows land as discarded enquiries (with sheet sources), not seen_posts.
 - Harness friction: parallel generators in one tree worked because file ownership was disjoint; a step-0 wiring skeleton committed first removed all import-time conflicts. The full integration suite takes ~22 min.
+
+## Phase 4 metrics dashboard (branch feature/sales0-metrics)
+- Assumed: merge rule default is "greater of app and sheet" per cell (never a sum), with toggles app-first / sheet-first; every cell tagged computed/sheet/manual. Weeks before the app's first own activity are sheet-only.
+- Assumed: "old prospects lookup" = distinct pre-existing prospects with a `research` or `tracked_changed` timeline event that week (there is no `revisited` event kind). "Contacted" = first real contact date on a prospect (estimated dates from the sheet excluded). "Messages sent" = sent emails + non-email manual contact records.
+- Assumed: sheet weeks map to the nearest past ISO year (repeats step back a year each); targets: override (app_meta) > sheet > default; no separate settings table exists so overrides use `app_meta`.
+- Assumed: LinkedIn profile watch figure = `tracked_changed` timeline events (the watch branch is not in this tree); WhatsApp stays "not enabled"; groups have no yield (no scan data).
+- Harness friction: p6 migration test pinned head/-1; made it head-relative. No `Write`/`Edit` tool in the builder role, files were written via shell heredocs.

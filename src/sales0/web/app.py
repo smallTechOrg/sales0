@@ -17,6 +17,7 @@ from sales0.logging import configure_logging, get_logger
 from sales0.services import crm
 from sales0.services.crm import digest_sections as crm_digest_sections
 from sales0.services.keywords import seed_suggested_once
+from sales0.services.metrics import digest_section as metrics_digest_section
 from sales0.services.runs import recover_interrupted_runs_on_startup
 from sales0.services.sheetsync import sql_repository
 from sales0.services.team.members import seed_admin
@@ -30,6 +31,7 @@ from sales0.web.routes import (
     health,
     importer,
     inbox,
+    metrics,
     oauth,
     outreach,
     pipeline,
@@ -69,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         crm.install()  # Phase 2: CRM event hooks, SQL sheet repository, CRM digest sections
         sql_repository.install()
         crm_digest_sections.register()
+        metrics_digest_section.register()  # Phase 4: 'Weekly pulse' digest section
         with session_scope() as db:
             crm.startup_backfill(db)  # once per DB (app_meta crm_flags_backfilled_v1)
         log.info(
@@ -109,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(digest.router)
     app.include_router(suggestions.router)
     app.include_router(replies.router)
+    app.include_router(metrics.router)
     for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router):
         app.include_router(r)
 

@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Metrics{% endblock %}
+{% macro srcbadge(cell) -%}
+  <span class="badge metric-src metric-src--{{ cell.source }}" title="app: {{ cell.computed if cell.computed is not none else '-' }} · sheet: {{ cell.sheet if cell.sheet is not none else '-' }}{% if cell.manual is not none %} · manual: {{ cell.manual }}{% endif %}">{{ cell.source }}</span>
+{%- endmacro %}
+{% macro sortlink(label, key) -%}
+  <a href="/metrics?{{ q }}&amp;sort={{ key }}&amp;dir={{ 'asc' if sort == key and dir == 'desc' else 'desc' }}#keyword-yield" aria-label="Sort by {{ label }}">{{ label }}{% if sort == key %} {{ '▼' if dir == 'desc' else '▲' }}{% endif %}</a>
+{%- endmacro %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1 id="metrics-title">Metrics</h1>
+      <p>Your Weekly and Secondary sheets, computed per ISO week (Monday to Sunday, {{ d.tz.key }}) from the CRM, with the sheet's history as the baseline.</p>
+    </div>
+    <form method="get" action="/metrics" class="inline-form" id="metrics-controls">
+      <label>Weeks
+        <select name="weeks" id="weeks-select" onchange="this.form.submit()">
+          {% for n in week_choices %}<option value="{{ n }}"{% if n == weeks_n %} selected{% endif %}>Last {{ n }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Sheet vs app
+        <select name="mode" id="mode-select" onchange="this.form.submit()">
+          {% for k, v in modes.items() %}<option value="{{ k }}"{% if k == mode %} selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if week_param %}<input type="hidden" name="week" value="{{ week_param }}">{% endif %}
+      <noscript><button class="btn" type="submit">Apply</button></noscript>
+    </form>
+  </div>
+{% endblock %}
+{% block content %}
+<div class="stack">
+  {% if flash %}<div class="flash flash--{{ flash.kind }}" id="metrics-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>{% endif %}
+
+  {% if d.empty %}
+  <section class="card" id="metrics-empty" aria-label="No metrics yet">
+    <div class="card__body stack">
+      <p><strong>No data yet.</strong></p>
+      <p class="muted">Run a discovery scan, add enquiries or sync the Google Sheet and this page fills in. You can already enter the manual figures below.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card" aria-labelledby="weekly-title" id="weekly-card">
+    <div class="card__header">
+      <h2 id="weekly-title">Weekly</h2>
+      <a class="btn btn--small" href="/metrics/export/weekly.csv?{{ q }}" id="export-weekly">Export CSV</a>
+    </div>
+    <div class="card__body stack">
+      <p class="muted" id="merge-rule">How cells are chosen (never added together, so nothing is counted twice):
+        {% if mode == 'max' %}where both the app and the sheet have a figure for a week, the <strong>greater</strong> one is shown.
+        {% elif mode == 'computed' %}the <strong>app's</strong> figure is shown; the sheet only fills weeks the app has no data for.
+        {% else %}the <strong>sheet's</strong> figure is shown; the app only fills weeks the sheet is empty for.{% endif %}
+        Weeks before {{ d.app_start.key if d.app_start else 'the first app activity' }} come from the sheet only.
+        Posts published and WhatsApp adds are entered by hand (below); a manual entry beats the sheet.
+        Each cell's tag shows where it came from.</p>
+      {{ charts.weekly }}
+      <div class="table-wrap">
+        <table class="table" id="weekly-table">
+          <caption class="sr-only">Weekly figures per ISO week</caption>
+          <thead><tr><th scope="col">Key metric</th>{% for w in d.weeks %}<th scope="col" class="num" title="{{ w.range_label }}">{{ w.key }}</th>{% endfor %}<th scope="col" class="num">Total</th></tr></thead>
+          <tbody>
+          {% for r in d.weekly %}
+            <tr data-row="{{ r.key }}"><th scope="row">{{ r.label }}</th>
+              {% for c in r.cells %}<td class="num" data-week="{{ d.weeks[loop.index0].key }}" data-source="{{ c.source }}">{{ c.shown }}{% if c.value is not none %} {{ srcbadge(c) }}{% endif %}</td>{% endfor %}
+              <td class="num"><strong>{{ "%g"|format(r.total) }}</strong></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <form method="post" action="/metrics/manual" class="inline-form" id="manual-form">
+        <input type="hidden" name="back" value="/metrics?{{ q }}">
+        <label>Figure
+          <select name="metric">{% for k, label, _ in manual_keys %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select>
+        </label>
+        <label>Week
+          <select name="week">{% for w in d.weeks|reverse %}<option value="{{ w.key }}">{{ w.key }} ({{ w.range_label }})</option>{% endfor %}</select>
+        </label>
+        <label>Count <input type="number" name="value" min="0" max="100000" step="1" placeholder="blank = clear" style="width:8rem"></label>
+        <button class="btn btn--primary" type="submit" id="manual-save">Save figure</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="secondary-title" id="secondary-card">
+    <div class="card__header">
+      <h2 id="secondary-title">Secondary: {{ d.selected.key }} <span class="muted">({{ d.selected.range_label }})</span></h2>
+      <a class="btn btn--small" href="/metrics/export/secondary.csv?{{ q }}" id="export-secondary">Export CSV</a>
+    </div>
+    <div class="card__body stack">
+      <div class="table-wrap">
+        <table class="table" id="secondary-table">
+          <caption class="sr-only">Per-source figures against weekly targets</caption>
+          <thead><tr><th scope="col">Source</th><th scope="col" class="num">This week</th><th scope="col" class="num">Target</th><th scope="col">Progress</th><th scope="col" class="num">Last week</th><th scope="col" class="num">Change</th><th scope="col">Set target</th></tr></thead>
+          <tbody>
+          {% for s in d.secondary %}
+            <tr data-source="{{ s.key }}">
+              <th scope="row">{{ s.label }}<br><span class="muted">{{ s.note }}</span></th>
+              {% if not s.enabled %}
+                <td colspan="5"><span class="badge badge--stub">not enabled</span> <span class="muted">WhatsApp scraping is not part of this build.</span></td><td></td>
+              {% else %}
+                <td class="num"><strong>{{ s.actual.shown }}</strong> {% if s.actual.value is not none %}{{ srcbadge(s.actual) }}{% endif %}</td>
+                <td class="num">{{ "%g"|format(s.target) if s.target is not none else "-" }}{% if s.target is not none %} <span class="muted">({{ s.target_origin }})</span>{% endif %}</td>
+                <td style="min-width:9rem">{% if s.pct is not none %}<progress class="progress" max="100" value="{{ [s.pct, 100]|min }}" aria-label="{{ s.label }} progress"></progress> <span class="num">{{ "%g"|format(s.pct) }}%</span>{% else %}<span class="muted">no target</span>{% endif %}</td>
+                <td class="num">{{ s.prev.shown if s.prev else "-" }}</td>
+                <td class="num" data-delta="{{ s.delta if s.delta is not none else '' }}">{% if s.delta is none %}-{% elif s.delta > 0 %}▲ +{{ "%g"|format(s.delta) }}{% elif s.delta < 0 %}▼ {{ "%g"|format(s.delta) }}{% else %}= 0{% endif %}</td>
+                <td>                  <form method="post" action="/metrics/targets" class="inline-form">
+                    <input type="hidden" name="source" value="{{ s.key }}"><input type="hidden" name="back" value="/metrics?{{ q }}">
+                    <input type="number" name="value" min="0" step="any" value="{{ '%g'|format(s.target) if s.target_origin == 'override' else '' }}" placeholder="{{ '%g'|format(s.target) if s.target is not none else 'none' }}" style="width:5rem" aria-label="Target for {{ s.label }}">
+                    <button class="btn btn--small" type="submit">Set</button>
+                  </form></td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Targets come from the sheet's Secondary tab; a value you set here overrides it (blank + Set removes the override). Sources without a sheet target start with none.
+        Pick another week: <a href="/metrics?weeks={{ weeks_n }}&amp;mode={{ mode }}">current</a>{% for w in d.weeks|reverse %}{% if loop.index <= 6 and w.key != d.selected.key %} · <a href="/metrics?weeks={{ weeks_n }}&amp;mode={{ mode }}&amp;week={{ w.key }}">{{ w.key }}</a>{% endif %}{% endfor %}</p>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="funnel-title" id="funnel-card">
+    <div class="card__header">
+      <h2 id="funnel-title">Funnel (last {{ weeks_n }} weeks)</h2>
+      <a class="btn btn--small" href="/metrics/export/funnel.csv?{{ q }}" id="export-funnel">Export CSV</a>
+    </div>
+    <div class="card__body stack">
+      {{ charts.funnel }}
+      <div class="table-wrap">
+        <table class="table" id="funnel-table">
+          <caption class="sr-only">Funnel stages with conversion</caption>
+          <thead><tr><th scope="col">Stage</th><th scope="col" class="num">Count</th><th scope="col" class="num">% of previous stage</th><th scope="col" class="num">% of scanned</th></tr></thead>
+          <tbody>{% for s in d.funnel.stages %}<tr data-stage="{{ s.key }}"><th scope="row">{{ s.label }}</th><td class="num">{{ s.count }}</td><td class="num">{{ ("%g"|format(s.pct_prev) ~ "%") if s.pct_prev is not none else "-" }}</td><td class="num">{{ ("%g"|format(s.pct_first) ~ "%") if s.pct_first is not none else "-" }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <p class="muted">Stages after "Relevant" follow the enquiries found in these weeks (a cohort), each counted once and implying the stages before it. "Scanned" counts every post the scraper looked at.</p>
+      {{ charts.trend }}
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="keywords-title" id="keyword-yield">
+    <div class="card__header">
+      <h2 id="keywords-title">Keyword yield</h2>
+      <a class="btn btn--small" href="/metrics/export/keywords.csv?{{ q }}" id="export-keywords">Export CSV</a>
+    </div>
+    <div class="card__body stack">
+      <div class="table-wrap">
+        <table class="table" id="keyword-table">
+          <caption class="sr-only">Keyword yield, sortable</caption>
+          <thead><tr><th scope="col">{{ sortlink("Keyword", "text") }}</th><th scope="col" class="num">{{ sortlink("Scanned", "scanned") }}</th><th scope="col" class="num">{{ sortlink("Relevant", "relevant") }}</th><th scope="col" class="num">{{ sortlink("Relevant %", "pct") }}</th><th scope="col" class="num">{{ sortlink("Prospects", "prospects") }}</th><th scope="col" class="num">{{ sortlink("AI cost", "cost") }}</th><th scope="col" class="num">{{ sortlink("Cost per relevant", "per_relevant") }}</th><th scope="col">Flag</th></tr></thead>
+          <tbody>
+          {% for k in keywords %}
+            <tr data-keyword="{{ k.text }}"><th scope="row">{{ k.text }}{% if not k.active %} <span class="muted">(paused)</span>{% endif %}</th>
+              <td class="num">{{ k.scanned }}</td><td class="num">{{ k.relevant }}</td><td class="num">{{ "%g"|format(k.relevant_pct) }}%</td><td class="num">{{ k.prospects }}</td>
+              <td class="num">{{ usd(k.cost_micros) }}</td><td class="num">{{ usd(k.cost_per_relevant_micros) }}</td>
+              <td>{% if k.prune %}<span class="badge badge--warn prune-flag">prune candidate</span>{% endif %}</td></tr>
+          {% else %}<tr><td colspan="8" class="muted">No keyword runs yet.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Prune candidate: an active keyword with at least {{ prune_min_scanned }} posts scanned over {{ prune_min_runs }}+ runs and no relevant enquiry. Pause or delete it on <a href="/setup">Setup</a>; <a href="/suggestions">Suggestions</a> also proposes this.</p>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="groups-title" id="group-yield">
+    <div class="card__header"><h2 id="groups-title">Group yield</h2><a class="btn btn--small" href="/metrics/export/groups.csv?{{ q }}" id="export-groups">Export CSV</a></div>
+    <div class="card__body table-wrap">
+      <table class="table" id="group-table">
+        <caption class="sr-only">Group yield</caption>
+        <thead><tr><th scope="col">Group</th><th scope="col">Platform</th><th scope="col" class="num">Scanned</th><th scope="col" class="num">Relevant</th><th scope="col">Note</th></tr></thead>
+        <tbody>{% for g in d.groups %}<tr><th scope="row">{{ g.name }}</th><td>{{ g.platform }}</td><td class="num">-</td><td class="num">-</td><td class="muted">{{ g.note }}</td></tr>
+        {% else %}<tr><td colspan="5" class="muted">No groups registered. WhatsApp ingestion is not enabled, so groups have no yield yet.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="cost-title" id="cost-card">
+    <div class="card__header"><h2 id="cost-title">Cost per relevant enquiry</h2><a class="btn btn--small" href="/metrics/export/cost.csv?{{ q }}" id="export-cost">Export CSV</a></div>
+    <div class="card__body stack">
+      <p id="cost-line">Last {{ weeks_n }} weeks: <strong>{{ usd(d.cost.total_micros) }}</strong> of AI spend for <strong>{{ d.cost.relevant }}</strong> relevant enquiries
+        = <strong>{{ usd(d.cost.per_relevant_micros) }}</strong> each. Full breakdown on <a href="/costs">AI costs</a>.</p>
+      {{ charts.cost }}
+      <div class="table-wrap">
+        <table class="table" id="cost-table">
+          <caption class="sr-only">AI cost per week</caption>
+          <thead><tr><th scope="col">Week</th>{% for w in d.weeks %}<th scope="col" class="num">{{ w.label }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            <tr><th scope="row">AI cost</th>{% for c in d.cost.weekly_micros %}<td class="num">{{ usd(c) }}</td>{% endfor %}</tr>
+            <tr><th scope="row">Per relevant</th>{% for c in d.cost.weekly_per_relevant %}<td class="num">{{ usd(c) }}</td>{% endfor %}</tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

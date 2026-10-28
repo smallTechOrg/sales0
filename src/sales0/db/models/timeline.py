@@ -17,6 +17,7 @@ class TimelineEvent(Base):
     __tablename__ = "timeline_events"
     __table_args__ = (
         Index("ix_timeline_events_prospect_occurred", "prospect_id", "occurred_at"),
+        Index("ix_timeline_events_kind_occurred", "kind", "occurred_at"),  # Phase 4 metrics
         Index("ix_timeline_events_company_occurred", "company_id", "occurred_at"),
         Index("ix_timeline_events_contact_occurred", "contact_id", "occurred_at"),
         Index("ix_timeline_events_enquiry_occurred", "enquiry_id", "occurred_at"),
