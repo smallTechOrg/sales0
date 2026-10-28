@@ -12,6 +12,7 @@ from sales0.db.models import CompanyBrief, Enquiry, TeamMember
 from sales0.llm import LLMClient
 from sales0.logging import get_logger
 from sales0.services._common import clip
+from sales0.services.costs_report import ensure_within_spend_cap
 from sales0.services.triage import active_offering_refs
 
 log = get_logger("sales0.outreach.research")
@@ -37,6 +38,7 @@ def research_company(
     ``research_error``. Cost is the sum of the agent's Anthropic calls. LLMAuthError /
     LLMModelNotFound propagate (the agent has already added an error ``llm_calls`` row).
     """
+    ensure_within_spend_cap(db)  # Phase 4: no LLM call over the monthly cap
     names = [o.name for o in active_offering_refs(db)]
     ref_enquiry = enquiry_id if enquiry_id is not None and db.get(Enquiry, enquiry_id) is not None else None
     kwargs = {"clock": clock} if clock is not None else {}

@@ -40,6 +40,12 @@
     </div>
   </header>
   <div class="banner-slot" id="banner-slot" hx-get="/_shell/banner" hx-trigger="session-changed from:body" hx-swap="innerHTML">{% if shell and shell.banner %}{% with banner=shell.banner %}{% include "_shell/banner.html" %}{% endwith %}{% endif %}</div>
+  {% if shell and shell.spend_cap and shell.spend_cap.message %}
+    <div class="banner banner--{{ 'alert' if shell.spend_cap.state == 'exceeded' else 'warn' }}" id="spend-cap-banner" role="{{ 'alert' if shell.spend_cap.state == 'exceeded' else 'status' }}">
+      <p class="banner__text"><strong>{{ shell.spend_cap.message }}</strong></p>
+      <a class="btn" href="/costs">Cost view</a>
+    </div>
+  {% endif %}
   <main id="main" class="page" tabindex="-1">
     {% block page_header %}{% endblock %}
     {% block content %}{% endblock %}

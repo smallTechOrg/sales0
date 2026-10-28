@@ -29,10 +29,9 @@ def _tables(url: str) -> set[str]:
 
 
 def test_upgrade_creates_every_outreach_table_and_is_head(db_url: str) -> None:
-    assert head_revision() == REVISION
     engine = build_engine(db_url)
     try:
-        assert current_revision(engine) == REVISION
+        assert current_revision(engine) == head_revision()  # later phases chain after outreach
         insp = inspect(engine)
         cols = {c["name"] for c in insp.get_columns("outreach_messages")}
         assert {"state", "content_sha256", "send_outcome_unknown", "gmail_thread_id", "brief_json"} <= cols

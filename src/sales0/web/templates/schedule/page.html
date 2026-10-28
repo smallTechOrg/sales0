@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Schedule{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Schedule</h1>
+      <p>Background jobs that run inside this app. Times are {{ timezone }}. Jobs only run while sales0 is running; a missed run is never repeated in a burst (see each job's note).</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+<div class="stack">
+  {% if flash %}<div class="flash flash--{{ flash.kind }}" id="schedule-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>{% endif %}
+  {% if not thread_running %}
+    <div class="flash flash--error" id="scheduler-off" role="status">The background scheduler is not running (SALES0_SCHEDULER_ENABLED=false), so nothing fires on its own. Run now still works.</div>
+  {% endif %}
+  <section class="card" aria-labelledby="jobs-title">
+    <div class="card__header"><h2 id="jobs-title">Jobs</h2></div>
+    <div class="card__body table-wrap">
+      <table class="table" id="jobs-table">
+        <thead><tr><th>Job</th><th>Schedule</th><th>Next run</th><th>Last result</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for j in jobs %}
+          <tr id="job-{{ j.name }}" data-enabled="{{ '1' if j.enabled else '0' }}">
+            <td><strong>{{ j.label }}</strong><br><span class="muted">{{ j.description }}</span>{% if j.note %}<br><span class="muted" id="note-{{ j.name }}">{{ j.note }}</span>{% endif %}</td>
+            <td>{{ j.schedule_text }}</td>
+            <td class="next-run">{% if not j.enabled %}<span class="badge">Disabled</span>{% elif j.next_run_at %}{{ j.next_run_at|localdt }}{% else %}-{% endif %}</td>
+            <td class="last-result">
+              {% if j.last_status %}<span class="badge badge--{{ 'ok' if j.last_status == 'ok' else 'warn' }}" data-status="{{ j.last_status }}">{{ j.last_status }}</span>
+                {{ j.last_finished_at|ago if j.last_finished_at else "" }}<br><span class="muted">{{ j.last_detail or "" }}</span>
+                {% if j.last_run_id %}<a href="/runs/{{ j.last_run_id }}">run #{{ j.last_run_id }}</a>{% endif %}
+              {% else %}<span class="muted">Never run</span>{% endif %}
+            </td>
+            <td>
+              <form method="post" action="/schedule/{{ j.name }}/enable" class="inline-form">
+                <input type="hidden" name="enabled" value="{{ '0' if j.enabled else '1' }}">
+                <button class="btn" type="submit">{{ "Disable" if j.enabled else "Enable" }}</button>
+              </form>
+              <form method="post" action="/schedule/{{ j.name }}/run" class="inline-form">
+                <button class="btn btn--primary" type="submit">Run now</button>
+              </form>
+            </td>
+          </tr>
+          {% if j.name == "discovery_run" and j.extra.slots %}
+          <tr><td colspan="5" class="muted">Plan for {{ j.extra.slots_day }}:
+            {% for s in j.extra.slots %}<span class="badge" data-slot-status="{{ s.status }}">{{ s.at[11:16] }} UTC - {{ s.status }}</span> {% endfor %}
+            {% if j.extra.missed %} · {{ j.extra.missed }} missed slot{{ "s" if j.extra.missed != 1 }} (not caught up){% endif %}</td></tr>
+          {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <p class="muted">Missed-run policy: after a restart a nightly slot still runs once if the window is open, otherwise it is recorded as missed; the digest and purge run once if today's run has not happened; earlier days are never back-filled.</p>
+</div>
+{% endblock %}

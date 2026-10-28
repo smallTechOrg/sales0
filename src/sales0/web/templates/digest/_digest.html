@@ -1,0 +1,57 @@
+{# Needs: digest (DigestView), text, item_text, item_href. All data is autoescaped. #}
+<section class="card" id="digest-view" aria-labelledby="digest-title">
+  <div class="card__header row row--between">
+    <h2 id="digest-title">Digest for {{ digest.digest_date.strftime("%A %d %B %Y") }}</h2>
+    <span class="muted">Built {{ digest.created_at|localdt }} ({{ "scheduled" if digest.trigger == "scheduled" else "manual" }})</span>
+  </div>
+  <div class="card__body stack">
+    {% for note in digest.notes %}<p class="muted" id="digest-note-{{ loop.index }}">{{ note }}</p>{% endfor %}
+
+    {% if digest.summary_text %}
+      <div id="digest-summary">
+        <h3>At a glance <span class="badge">AI summary</span></h3>
+        {% for line in digest.summary_text.splitlines() %}<p>{{ line }}</p>{% endfor %}
+      </div>
+    {% endif %}
+
+    {% for sec in digest.sections %}
+      <div class="digest-section" id="digest-section-{{ sec.key }}">
+        <h3>{{ sec.title }}</h3>
+        {% if sec.error %}<p class="text-danger" role="alert">This section failed to build: {{ sec.error }}</p>
+        {% elif sec.items %}
+          <ul>
+            {% for it in sec.items %}
+              {% set href = item_href(it) %}
+              <li>{% if href %}<a href="{{ href }}">{{ item_text(it) }}</a>{% else %}{{ item_text(it) }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="muted">{{ sec.empty_text }}</p>{% endif %}
+      </div>
+    {% endfor %}
+
+    <div class="row">
+      <button class="btn" type="button" id="copy-digest" hidden>Copy to clipboard</button>
+      <form method="post" action="/digest/{{ digest.id }}/gmail-draft">
+        <button class="btn" type="submit" id="gmail-draft">Create Gmail draft to myself</button>
+      </form>
+      {% if digest.gmail_draft_id %}
+        <span class="muted" id="draft-status">A draft was created for {{ acting_member.name if acting_member and acting_member.id == digest.gmail_draft_member_id else "a team member" }}; check Gmail Drafts.</span>
+      {% endif %}
+    </div>
+    <textarea id="digest-plain-text" readonly hidden aria-hidden="true">{{ text }}</textarea>
+  </div>
+</section>
+<script>
+  (function () {
+    var btn = document.getElementById("copy-digest");
+    var src = document.getElementById("digest-plain-text");
+    if (!btn || !src || !navigator.clipboard) { return; }
+    btn.hidden = false;
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(src.value).then(function () {
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = "Copy to clipboard"; }, 2000);
+      }, function () { btn.textContent = "Copy failed - select the text instead"; });
+    });
+  })();
+</script>

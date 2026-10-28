@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Costs{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>AI costs</h1>
+      <p>Every Anthropic call is logged with its tokens and cost. Totals use your local calendar day and month.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+<div class="stack">
+  <section class="card" aria-labelledby="cap-title" id="cap-card">
+    <div class="card__header"><h2 id="cap-title">Monthly spend cap</h2></div>
+    <div class="card__body">
+      {% if report.cap.enabled %}
+        <p id="cap-line"><strong>{{ usd_precise(report.cap.month_micros) }}</strong> of {{ usd_precise(report.cap.cap_micros) }} used ({{ "%.0f"|format(report.cap.pct) }}%)
+          - <span class="badge" id="cap-state" data-state="{{ report.cap.state }}">{{ {"ok": "Within cap", "warn": "Close to the cap", "exceeded": "Cap reached - AI paused"}[report.cap.state] }}</span></p>
+        <progress max="100" value="{{ [report.cap.pct, 100]|min }}" aria-label="Share of the monthly cap used"></progress>
+        <p class="muted">When the cap is reached every AI feature stops (triage, research, drafting, suggestions, digest summary). A run keeps what it saved but leaves new enquiries untriaged ("pending"); use Retry triage after raising the cap or next month.</p>
+      {% else %}
+        <p id="cap-line">No cap is set. Set <code>SALES0_MONTHLY_SPEND_CAP_USD</code> in <code>.env</code> (0 = off) and restart to get a warning at the warning threshold and a hard stop at 100%.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="totals-title">
+    <div class="card__header"><h2 id="totals-title">Totals</h2></div>
+    <div class="card__body table-wrap">
+      <table class="table" id="totals-table">
+        <thead><tr><th>Period</th><th class="num">Cost</th><th class="num">Calls</th></tr></thead>
+        <tbody>
+          <tr><td>Today</td><td class="num" id="today-cost">{{ usd_precise(report.today_micros) }}</td><td class="num">{{ report.today_calls }}</td></tr>
+          <tr><td>This month</td><td class="num" id="month-cost">{{ usd_precise(report.month_micros) }}</td><td class="num">{{ report.month_calls }}</td></tr>
+        </tbody>
+      </table>
+      <p class="muted" id="unit-costs">
+        Per triaged enquiry: <strong>{{ usd_precise(report.cost_per_enquiry_micros) if report.cost_per_enquiry_micros is not none else "-" }}</strong>
+        ({{ report.triaged_enquiries }} this month) ·
+        per outreach draft (drafting calls): <strong>{{ usd_precise(report.cost_per_draft_micros) if report.cost_per_draft_micros is not none else "-" }}</strong>
+        ({{ report.drafts }} this month) · failed calls this month: {{ report.errors_month }}
+      </p>
+    </div>
+  </section>
+
+  <div class="grid-2">
+    <section class="card" aria-labelledby="feat-title">
+      <div class="card__header"><h2 id="feat-title">This month by feature</h2></div>
+      <div class="card__body table-wrap">
+        <table class="table" id="feature-table">
+          <thead><tr><th>Feature</th><th class="num">Cost</th><th class="num">Calls</th><th class="num">Tokens in / out</th></tr></thead>
+          <tbody>
+          {% for b in report.by_feature %}
+            <tr data-feature="{{ b.key }}"><td>{{ b.key }}</td><td class="num">{{ usd_precise(b.cost_micros) }}</td><td class="num">{{ b.calls }}</td><td class="num">{{ b.input_tokens }} / {{ b.output_tokens }}</td></tr>
+          {% else %}<tr><td colspan="4" class="muted">No AI calls this month yet.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="model-title">
+      <div class="card__header"><h2 id="model-title">This month by model</h2></div>
+      <div class="card__body table-wrap">
+        <table class="table" id="model-table">
+          <thead><tr><th>Model</th><th class="num">Cost</th><th class="num">Calls</th></tr></thead>
+          <tbody>
+          {% for b in report.by_model %}
+            <tr data-model="{{ b.key }}"><td>{{ b.key }}</td><td class="num">{{ usd_precise(b.cost_micros) }}</td><td class="num">{{ b.calls }}</td></tr>
+          {% else %}<tr><td colspan="3" class="muted">No AI calls this month yet.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" aria-labelledby="monthly-title">
+    <div class="card__header"><h2 id="monthly-title">Monthly totals</h2></div>
+    <div class="card__body table-wrap">
+      <table class="table" id="monthly-table">
+        <thead><tr><th>Month</th><th class="num">Cost</th><th class="num">Calls</th></tr></thead>
+        <tbody>{% for b in report.monthly %}<tr data-month="{{ b.key }}"><td>{{ b.key }}</td><td class="num">{{ usd_precise(b.cost_micros) }}</td><td class="num">{{ b.calls }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="daily-title">
+    <div class="card__header"><h2 id="daily-title">Last 30 days</h2></div>
+    <div class="card__body table-wrap">
+      <table class="table" id="daily-table">
+        <thead><tr><th>Day</th><th class="num">Cost</th><th class="num">Calls</th><th aria-hidden="true"></th></tr></thead>
+        <tbody>{% for b in report.daily %}
+          <tr data-day="{{ b.key }}"><td>{{ b.key }}</td><td class="num">{{ usd_precise(b.cost_micros) }}</td><td class="num">{{ b.calls }}</td>
+          <td aria-hidden="true"><span style="display:inline-block;height:0.5rem;background:var(--color-primary);width:{{ (b.cost_micros * 100 // max_day) }}%"></span></td></tr>
+        {% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

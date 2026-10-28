@@ -18,7 +18,7 @@ from sales0.services.runs import recover_interrupted_runs_on_startup
 from sales0.services.team.members import seed_admin
 from sales0.web.envelope import install_exception_handlers
 from sales0.web.middleware import CsrfOriginMiddleware, RequestContextMiddleware
-from sales0.web.routes import health, inbox, oauth, outreach, runs, setup, stubs
+from sales0.web.routes import costs, digest, health, inbox, oauth, outreach, runs, schedule, setup, stubs, suggestions
 from sales0.web.templating import STATIC_DIR
 
 log = get_logger("sales0.app")
@@ -45,7 +45,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             model=settings.llm_model,
             api_key_present=settings.api_key_present,
         )
+        from sales0.jobs.scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        if settings.scheduler_enabled:
+            scheduler.start()  # persisted scheduled_jobs state; jobs are opt-in on /schedule
         yield
+        scheduler.stop()
         log.info("app_stopped")
 
     app = FastAPI(title="sales0", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -61,6 +67,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(inbox.router)
     app.include_router(oauth.router)
     app.include_router(outreach.router)
+    app.include_router(costs.router)
+    app.include_router(schedule.router)
+    app.include_router(digest.router)
+    app.include_router(suggestions.router)
 
     if settings.linkedin_mode == "fixture":
         from sales0.linkedin_fixture.routes import router as fixture_router
