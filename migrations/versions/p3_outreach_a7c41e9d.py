@@ -43,6 +43,10 @@ def _set_llm_features(values: tuple[str, ...]) -> None:
     # Phase 1.4 added seen_post_id via ALTER TABLE ... ADD COLUMN ... REFERENCES ... ON DELETE SET NULL;
     # SQLite reflection loses that inline ON DELETE, so restate it or the recreate would downgrade it
     # to NO ACTION. (No-op on a DB where the column already reflects correctly.)
+    if op.get_bind().dialect.name != "sqlite":
+        op.drop_constraint(op.f("ck_llm_calls_feature"), "llm_calls", type_="check")
+        op.create_check_constraint("feature", "llm_calls", _in("feature", values, "feature").sqltext)
+        return
     seen_post_fk = sa.Column(
         "seen_post_id", sa.Integer(), sa.ForeignKey("seen_posts.id", ondelete="SET NULL")
     )

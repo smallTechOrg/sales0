@@ -104,8 +104,11 @@ def _add_member_columns() -> None:
 
 
 # ---------------------------------------------------------------------------- users -> members
-def _legacy_members_and_remap() -> None:
-    """Create inactive team members for legacy ``users`` rows and remap ``actor_user_id`` to them."""
+def _legacy_members_and_remap(only: Sequence[str] | None = None) -> None:
+    """Create inactive team members for legacy ``users`` rows and remap ``actor_user_id`` to them.
+
+    ``only`` (PostgreSQL path) names the tables to remap; their old FK was dropped beforehand, so the
+    "still points at users" guard cannot be used."""
     bind = op.get_bind()
     if "users" not in _tables():
         return
@@ -136,7 +139,10 @@ def _legacy_members_and_remap() -> None:
         return
     # Remap via a temporary negative range so an old id equal to another user's new id cannot chain.
     for table in ACTOR_TABLES:
-        if "users" not in _fk_targets(table, "actor_user_id"):
+        if only is not None:
+            if table not in only:
+                continue
+        elif "users" not in _fk_targets(table, "actor_user_id"):
             continue  # already repointed on an earlier attempt
         for old, new in mapping.items():
             bind.execute(sa.text(f"UPDATE {table} SET actor_user_id = :n WHERE actor_user_id = :o"), {"n": -new, "o": old})
@@ -230,10 +236,33 @@ def _null_dangling(parent: str) -> None:
         )
 
 
+def _upgrade_postgres() -> None:
+    """PostgreSQL has transactional DDL and ALTER ... DROP CONSTRAINT: drop the old FKs, remap, add the new FKs."""
+    bind = op.get_bind()
+    pending = [t for t in ACTOR_TABLES if "users" in _fk_targets(t, "actor_user_id")]
+    for table in pending:
+        for fk in sa.inspect(bind).get_foreign_keys(table):
+            if fk["referred_table"] == "users" and fk["constrained_columns"] == ["actor_user_id"]:
+                op.drop_constraint(fk["name"], table, type_="foreignkey")
+    _legacy_members_and_remap(only=pending)
+    _null_dangling("team_members")
+    for table in pending:
+        op.create_foreign_key(
+            f"fk_{table}_actor_user_id_team_members", table, "team_members", ["actor_user_id"], ["id"], ondelete="SET NULL"
+        )
+    # legacy members were inserted with explicit ids: move the serial past them
+    bind.execute(sa.text("SELECT setval(pg_get_serial_sequence('team_members', 'id'), COALESCE((SELECT MAX(id) FROM team_members), 1))"))
+    if "users" in _tables():
+        op.drop_table("users")
+
+
 def upgrade() -> None:
     _drop_batch_leftovers()
     _add_member_columns()
     _create_tables()
+    if op.get_bind().dialect.name != "sqlite":
+        _upgrade_postgres()
+        return
     if "users" in _tables():
         with op.get_context().autocommit_block():
             op.execute("PRAGMA foreign_keys=OFF")  # the remap writes ids the old FK (-> users) would refuse

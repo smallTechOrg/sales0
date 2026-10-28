@@ -16,6 +16,9 @@
   ``integration``/``e2e`` test is collected and the key is absent, the session FAILS
   (the gate is BLOCKED, not skipped).
 * ``db_url`` returns a fresh SQLite file migrated to head with Alembic.
+* ``SALES0_TEST_POSTGRES_URL`` (e.g. ``postgresql+psycopg://postgres@127.0.0.1:55432/postgres``) runs the same suites on
+  PostgreSQL: one template database is migrated to head once per session and every test gets its own
+  ``CREATE DATABASE ... TEMPLATE`` copy (dropped afterwards), so tests stay as isolated as with a SQLite file.
 """
 
 from __future__ import annotations
@@ -186,6 +189,70 @@ def reset_singletons() -> None:
             reset()
 
 
+# ------------------------------------------------------------------ PostgreSQL per-test databases
+_PG_ENV = "SALES0_TEST_POSTGRES_URL"
+_pg_state: dict[str, object] = {}
+
+
+def _pg_admin_engine():
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
+
+    return create_engine(os.environ[_PG_ENV], isolation_level="AUTOCOMMIT", poolclass=NullPool)
+
+
+def _pg_url_for(dbname: str) -> str:
+    from sqlalchemy.engine import make_url
+
+    return make_url(os.environ[_PG_ENV]).set(database=dbname).render_as_string(hide_password=False)
+
+
+def _pg_template_name() -> str:
+    """Create (once per session) a database migrated to head; every test clones it."""
+    name = _pg_state.get("template")
+    if isinstance(name, str):
+        return name
+    from sqlalchemy import text
+
+    name = f"sales0_tpl_{os.getpid()}"
+    admin = _pg_admin_engine()
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        conn.execute(text(f'CREATE DATABASE "{name}"'))
+    admin.dispose()
+    command.upgrade(alembic_config(_pg_url_for(name)), "head")
+    _pg_state["template"] = name
+    return name
+
+
+def _pg_create_test_db(tag: str) -> str:
+    from sqlalchemy import text
+
+    template = _pg_template_name()
+    name = f"sales0_t_{os.getpid()}_{tag}"[:60]
+    admin = _pg_admin_engine()
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        conn.execute(text(f'CREATE DATABASE "{name}" TEMPLATE "{template}"'))
+    admin.dispose()
+    return name
+
+
+def _pg_drop_db(name: str) -> None:
+    from sqlalchemy import text
+
+    admin = _pg_admin_engine()
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    admin.dispose()
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    template = _pg_state.get("template")
+    if isinstance(template, str) and os.environ.get(_PG_ENV):
+        _pg_drop_db(template)
+
+
 def _needs_real_key(item: pytest.Item) -> bool:
     parts = Path(str(item.path)).parts
     return (
@@ -242,10 +309,15 @@ def _isolated_runtime(
 ) -> Iterator[None]:
     data_dir = tmp_path / "data"
     monkeypatch.setenv("SALES0_DATA_DIR", str(data_dir))
-    test_url = (
-        os.environ.get("SALES0_TEST_DATABASE_URL")
-        or f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    )
+    pg_db: str | None = None
+    if os.environ.get(_PG_ENV):
+        pg_db = _pg_create_test_db(f"{abs(hash(tmp_path)) % 10**9}")
+        test_url = _pg_url_for(pg_db)
+    else:
+        test_url = (
+            os.environ.get("SALES0_TEST_DATABASE_URL")
+            or f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+        )
     monkeypatch.setenv("SALES0_DATABASE_URL", test_url)
     for key, value in TEST_ENV.items():
         monkeypatch.setenv(key, value)
@@ -261,6 +333,8 @@ def _isolated_runtime(
     # ``browser.system_locale``) first, so the reset seams run against the real modules.
     monkeypatch.undo()
     reset_singletons()
+    if pg_db is not None:
+        _pg_drop_db(pg_db)
     # Catch-all for fixture setup/teardown connects (the test body is checked in
     # pytest_runtest_call).
     check_guard_violations()

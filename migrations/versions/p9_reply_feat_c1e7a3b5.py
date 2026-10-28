@@ -36,8 +36,8 @@ def _check_sql(values: tuple[str, ...]) -> str:
 def _set_features(values: tuple[str, ...]) -> None:
     bind = op.get_bind()
     if bind.dialect.name != "sqlite":
-        op.drop_constraint("ck_llm_calls_feature", "llm_calls", type_="check")
-        op.create_check_constraint("ck_llm_calls_feature", "llm_calls", _check_sql(values))
+        op.drop_constraint(op.f("ck_llm_calls_feature"), "llm_calls", type_="check")
+        op.create_check_constraint("feature", "llm_calls", sa.text(_check_sql(values)))
         return
     before = bind.execute(sa.text("SELECT COUNT(*) FROM llm_calls")).scalar_one()
     # seen_post_id was added by ALTER TABLE ADD COLUMN ... REFERENCES; reflection drops its ON DELETE, restate it.

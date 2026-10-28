@@ -104,8 +104,8 @@ def _check_sql(values: tuple[str, ...]) -> str:
 def _set_flag_kinds(values: tuple[str, ...]) -> None:
     bind = op.get_bind()
     if bind.dialect.name != "sqlite":
-        op.drop_constraint("ck_flags_kind", "flags", type_="check")
-        op.create_check_constraint("ck_flags_kind", "flags", _check_sql(values))
+        op.drop_constraint(op.f("ck_flags_kind"), "flags", type_="check")
+        op.create_check_constraint("kind", "flags", sa.text(_check_sql(values)))
         return
     before = bind.execute(sa.text("SELECT COUNT(*) FROM flags")).scalar_one()
     with op.get_context().autocommit_block():

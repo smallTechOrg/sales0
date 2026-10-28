@@ -114,7 +114,9 @@ def _backfill() -> None:
     bind = op.get_bind()
     accounts = sa.table("linkedin_accounts", sa.column("id", sa.Integer))
     account_id = bind.execute(sa.select(accounts.c.id).order_by(accounts.c.id).limit(1)).scalar()
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
+    if bind.dialect.name == "sqlite":
+        now = now.replace(tzinfo=None)  # SQLite stores no offset
     if account_id is None:
         old = {}
         insp = sa.inspect(bind)
@@ -125,15 +127,16 @@ def _backfill() -> None:
             )).mappings().first()
             old = dict(row) if row else {}
         status = old.get("status") if old.get("status") in ("not_connected", "connected", "needs_attention") else "not_connected"
-        res = bind.execute(
+        bind.execute(
             sa.text(
                 "INSERT INTO linkedin_accounts (label, status, disabled, backend, profile_dirname, last_checked_at, "
                 "last_connected_at, last_successful_run_at, last_ok_at, last_error, runs_today, posts_today, "
-                "created_at, updated_at) VALUES (:label, :status, 0, 'folder', :dirname, :checked, :connected, "
+                "created_at, updated_at) VALUES (:label, :status, :disabled, 'folder', :dirname, :checked, :connected, "
                 ":run, :ok, :err, 0, 0, :now, :now)"
             ),
             {
                 "label": DEFAULT_LABEL,
+                "disabled": False,
                 "status": status,
                 "dirname": _profile_dirname(),
                 "checked": old.get("last_checked_at"),
@@ -144,9 +147,7 @@ def _backfill() -> None:
                 "now": now,
             },
         )
-        account_id = res.lastrowid
-        if account_id is None:  # non-SQLite dialects
-            account_id = bind.execute(sa.select(accounts.c.id).order_by(accounts.c.id).limit(1)).scalar()
+        account_id = bind.execute(sa.select(accounts.c.id).order_by(accounts.c.id).limit(1)).scalar()  # portable
     bind.execute(
         sa.text("UPDATE scrape_runs SET linkedin_account_id = :id WHERE linkedin_account_id IS NULL"),
         {"id": account_id},
