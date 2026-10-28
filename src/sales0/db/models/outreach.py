@@ -77,6 +77,11 @@ class OutreachMessage(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # Reply tracking: none | replied | auto_reply | bounced (set by the reply poller's subscriber).
+    reply_status: Mapped[str] = mapped_column(String(12), nullable=False, default="none", server_default="none")
+    last_reply_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # A follow-up draft points at the message it follows up; a reply stops pending follow-ups.
+    follow_up_of_id: Mapped[int | None] = mapped_column(ForeignKey("outreach_messages.id", ondelete="SET NULL"), index=True)
 
 
 class OutreachEvent(Base):

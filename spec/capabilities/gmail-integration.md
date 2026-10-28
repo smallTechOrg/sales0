@@ -14,7 +14,9 @@ Code: `src/sales0/integrations/gmail/`. Setup: `docs/gmail-setup.md`. No DB, no 
   "run google-auth again".
 - **Client** (`GmailClient` protocol; `RealGmailClient`, `FakeGmailClient`): `profile_email`,
   `create_draft(to, cc, subject, text_body, html_body, attachments)`, `get_draft`, `delete_draft`,
-  `send_draft(ApprovedMessage)`, `list_sent_since` (stub, `NotImplementedError`).
+  `send_draft(ApprovedMessage)`, `get_thread(thread_id)` and
+  `list_threads_with_new_messages(since, limit)` (read-only, `format=metadata`: headers + snippet,
+  no body; `gmail.modify` covers the read scope, `REQUIRED_FOR["read"]`).
 - **MIME** is built locally (`mime.py`): UTF-8 subjects, text+HTML alternative, attachments,
   25 MB limit with a clear error, plain `local@domain` addresses only, CR/LF/control characters
   rejected in addresses, subject and filenames.

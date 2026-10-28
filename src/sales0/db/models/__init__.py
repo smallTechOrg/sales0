@@ -17,6 +17,7 @@ from sales0.db.models.llm_calls import LlmCall
 from sales0.db.models.meta import AppMeta
 from sales0.db.models.offerings import Offering, OfferingGroup
 from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
+from sales0.db.models.replies import OutreachReply, ReplyPollState, Suppression
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
 from sales0.db.models.team import GmailConnection, TeamMember
 from sales0.db.models.sheet_sync import SheetSyncState
@@ -39,10 +40,13 @@ __all__ = [
     "OfferingGroup",
     "OutreachEvent",
     "OutreachMessage",
+    "OutreachReply",
+    "ReplyPollState",
     "ScrapeRun",
     "ScrapeRunKeyword",
     "SheetSyncState",
     "StatusHistory",
+    "Suppression",
     "TeamMember",
     "TriageDecision",
     "UTCDateTime",

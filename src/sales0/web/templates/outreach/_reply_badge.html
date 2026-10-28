@@ -1,0 +1,6 @@
+{# Needs: m (OutreachMessage), counts ({kind: n}). #}
+{% set n_human = counts.get("human", 0) %}{% set n_bounce = counts.get("bounce", 0) %}{% set n_auto = counts.get("auto_reply", 0) %}
+{% if m.reply_status == "replied" %}<a class="badge reply-badge reply-badge--replied" href="/replies?message={{ m.id }}&handled=all">Replied{% if n_human > 1 %} ({{ n_human }}){% endif %}</a>
+{% elif m.reply_status == "bounced" %}<a class="badge reply-badge reply-badge--bounced" href="/replies?message={{ m.id }}&handled=all">Bounced{% if n_bounce > 1 %} ({{ n_bounce }}){% endif %}</a>
+{% elif m.reply_status == "auto_reply" %}<a class="badge reply-badge reply-badge--auto" href="/replies?message={{ m.id }}&handled=all">Auto-reply{% if n_auto > 1 %} ({{ n_auto }}){% endif %}</a>
+{% else %}<span class="muted">-</span>{% endif %}

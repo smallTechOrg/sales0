@@ -29,16 +29,15 @@ def _tables(url: str) -> set[str]:
 
 
 def test_upgrade_creates_every_outreach_table_and_is_head(db_url: str) -> None:
-    assert head_revision() == REVISION
     engine = build_engine(db_url)
     try:
-        assert current_revision(engine) == REVISION
+        assert current_revision(engine) == head_revision()  # at head, whatever later migrations add
         insp = inspect(engine)
         cols = {c["name"] for c in insp.get_columns("outreach_messages")}
         assert {"state", "content_sha256", "send_outcome_unknown", "gmail_thread_id", "brief_json"} <= cols
         # CRM references are plain integers: no FK to tables that do not exist yet.
         fk_cols = {c for fk in insp.get_foreign_keys("outreach_messages") for c in fk["constrained_columns"]}
-        assert fk_cols == {"member_id", "approved_by_member_id"}
+        assert {"member_id", "approved_by_member_id"} <= fk_cols <= {"member_id", "approved_by_member_id", "follow_up_of_id"}
         assert [fk["referred_table"] for fk in insp.get_foreign_keys("gmail_connections")] == ["team_members"]
     finally:
         engine.dispose()

@@ -100,3 +100,13 @@ Assumed:
 - Migration chain is linear: `0001` -> `0002_phase1_discovery` -> `0003_sheet_sync_state` -> `p3_outreach_a7c41e9d` (head). Outreach's `down_revision` was re-pointed to `0003_sheet_sync_state`; the migration's docstring `Revises:` updated. Sheetsync adds nothing to `llm_calls`; the widened `ck_llm_calls_feature` CHECK still comes only from the outreach migration.
 - Head pinning: tests no longer hard-code the head. `tests/integration/test_boot.py` and `tests/integration/db/test_migration_0002.py` read it via `head_revision()` (script directory). Remaining hard-coded revision ids, to touch on the NEXT re-chain (Phase 1.4 migration inserted after 0002): `migrations/versions/0003_sheet_sync_state.py` (`down_revision` + docstring), `tests/unit/sheetsync/test_runner_cli_state.py` (upgrade to 0003 / downgrade to 0002), `tests/integration/db/test_migration_llm_features.py` and `test_migration_p3_outreach.py` (downgrade to `0003_sheet_sync_state`, `REVISION` constant in the latter).
 - Merge decisions: `.env.example`, `NOTES.md`, `cli.py` (google-auth/gmail-* and sync-sheets subcommands), `config.py` (both validator sets), `db/models/__init__.py` kept both sides. Removed two unused imports in the sheetsync unit test (ruff).
+
+## Reply tracking (branch feature/sales0-replies)
+- Assumed: poll interval 10 min (spec said 15), 0 = off; lookback 60 days; per-member 300 threads/cycle.
+- Assumed: gmail.modify already covers reads; no scope change, no re-auth needed. Mailbox is only read (format=metadata, snippet only).
+- Assumed: "own" addresses include every team member, so a colleague replying in a thread is not a prospect reply.
+- Assumed: LLM feature `triage` + prompt_version `reply-v1` reused (llm_calls CHECK has no reply feature; avoided another CHECK migration).
+- Assumed: transient LLM failure defers a message (retried next cycle); an unusable answer stores human/other with classified_by=fallback.
+- Assumed: soft bounces (mailbox full / delay) are recorded but not suppressed; unsubscribe suppresses the replier AND the original recipients.
+- Assumed: "follow-up drafts" = outreach_messages.follow_up_of_id (new nullable column); nothing creates follow-ups yet.
+- Harness friction: structlog `event=` kwarg collision crashed the event dispatcher's error log (found by tests); concurrent builders contend for port 8766 in the e2e LiveServer (flaky LiveServerError when run in parallel).

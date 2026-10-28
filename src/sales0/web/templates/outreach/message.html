@@ -143,9 +143,26 @@
           </div>
         </section>
 
-        <section class="card" aria-labelledby="later-title">
-          <div class="card__header"><h2 id="later-title">CRM and replies</h2><span class="badge badge--stub">Coming later</span></div>
-          <div class="card__body"><p class="muted">Linking this message to a CRM pipeline prospect and tracking replies are planned for a later phase. They are not part of today's version, and nothing on this page depends on them.</p></div>
+        <section class="card" aria-labelledby="replies-title">
+          <div class="card__header"><h2 id="replies-title">Replies</h2><span class="muted">{{ replies|length }}</span></div>
+          <div class="card__body stack" id="message-replies">
+            {% if msg.reply_status == "bounced" %}
+              <div class="flash flash--error" id="bounce-note" role="alert">This message bounced: the address did not accept it. Do not send to it again.</div>
+            {% endif %}
+            {% if suppressed_to %}
+              <div class="flash flash--error" id="suppressed-note" role="alert">On the suppression list: {{ suppressed_to|join(", ") }}. sales0 will not draft or send to {{ "it" if suppressed_to|length == 1 else "them" }}. <a href="/replies/suppressions">See the suppression list</a>.</div>
+            {% endif %}
+            {% for v in replies %}{% set r = v.reply %}
+              <div class="reply-item" data-kind="{{ r.kind }}">
+                <span class="badge reply-kind reply-kind--{{ r.kind }}">{{ {"human": "Human", "auto_reply": "Auto-reply", "bounce": "Bounce"}.get(r.kind, r.kind) }}</span>
+                {% if r.intent %}<span class="badge reply-intent reply-intent--{{ r.intent }}">{{ r.intent|replace("_", " ")|capitalize }}</span>{% endif %}
+                <span class="muted">{{ r.from_addr }} - {{ r.received_at|ago }}{% if r.handled %} - handled{% endif %}</span>
+                <div class="reply-snippet">{{ r.snippet }}</div>
+              </div>
+            {% else %}
+              <p class="muted">No replies yet. They appear here automatically (see <a href="/replies">Replies</a>).</p>
+            {% endfor %}
+          </div>
         </section>
       </div>
     </div>

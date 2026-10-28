@@ -25,6 +25,7 @@ from sales0.llm import LLMAuthError, LLMBadResponse, LLMClient, LLMError, LLMMod
 from sales0.llm.client import StructuredRequest
 from sales0.logging import get_logger
 from sales0.services._common import clip, now_or
+from sales0.services import suppressions
 from sales0.services.outreach import decks, templates
 from sales0.services.outreach._shared import add_event, join_addrs, split_addrs
 from sales0.services.team.connections import connection_status
@@ -169,6 +170,7 @@ def generate_draft(
     ``template_id=None`` picks the active template for the offering (else a generic one, else none).
     ``deck_id=None`` picks the deck mapped to the offering. ``requirement`` is the enquiry text.
     """
+    suppressions.assert_not_suppressed(db, to, cc)
     stamp = now_or(now)
     company = " ".join(company.split())
     first_name = (first_name or "").strip() or None

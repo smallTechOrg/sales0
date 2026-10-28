@@ -54,7 +54,7 @@
       <div class="card__body table-wrap">
         {% if items %}
         <table class="table" id="outbox-table">
-          <thead><tr><th>State</th><th>To</th><th>Subject</th>{% if scope == "all" %}<th>Owner</th>{% endif %}<th>Updated</th></tr></thead>
+          <thead><tr><th>State</th><th>To</th><th>Subject</th>{% if scope == "all" %}<th>Owner</th>{% endif %}<th>Replies</th><th>Updated</th></tr></thead>
           <tbody>
           {% for it in items %}{% set m = it.msg %}
             <tr id="message-{{ m.id }}" data-state="{{ m.state }}">
@@ -62,6 +62,7 @@
               <td>{{ m.to_addrs or "(no recipient yet)" }}</td>
               <td><a href="/outreach/messages/{{ m.id }}">{{ m.subject or "(no subject)" }}</a></td>
               {% if scope == "all" %}<td>{{ it.owner }}</td>{% endif %}
+              <td>{% with m=m, counts=reply_counts.get(m.id, {}) %}{% include "outreach/_reply_badge.html" %}{% endwith %}</td>
               <td>{{ m.updated_at|ago }}</td>
             </tr>
           {% endfor %}
@@ -75,6 +76,6 @@
       </div>
     </section>
 
-    <p class="muted"><span class="badge badge--stub">Coming later</span> Reply tracking and linking messages to CRM prospects arrive in a later phase; today this list only shows what you drafted and sent here.</p>
+    <p class="muted">The Replies column fills in automatically as people answer; open <a href="/replies">Replies</a> to read and handle them.</p>
   </div>
 {% endblock %}

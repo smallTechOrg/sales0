@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from sales0.clock import ensure_utc, local_today, utcnow
 from sales0.config import get_settings
 from sales0.services import costs as costs_service
+from sales0.services import replies as replies_service
 from sales0.services import runs as runs_service
 from sales0.services import session as session_service
 from sales0.services.team import acting as acting_service
@@ -45,6 +46,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Competitors & Groups", "/competitors", 2),
     ("Import", "/import", 2),
     ("Outreach", "/outreach", None),
+    ("Replies", "/replies", None),
     ("Metrics", "/metrics", 4),
     ("WhatsApp", "/whatsapp", 5),
 )
@@ -104,6 +106,8 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
         "banner": banner_text(session),
         "mode": get_settings().linkedin_mode,
         "light": status_light_view(session),
+        "replies": replies_service.poller_health(db),
+        "replies_unread": replies_service.unhandled_human_count(db, acting_member) if acting_member else 0,
     }
 
 
