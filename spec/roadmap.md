@@ -21,7 +21,8 @@ Phases 1–4 use one shared login. Per-user accounts come in Phase 5. Every acto
 - [ ] The scraper never pushes through a logout, captcha, checkpoint or rate-limit page. It stops the run, marks LinkedIn "Needs attention", and shows an alert banner.
 - [ ] Every AI call records tokens and USD cost. Each enquiry card shows its cost, and the totals for today and this month are visible.
 - [ ] Every accept, discard and override is stored. Later triage calls use these decisions as examples (the learning loop).
-- [ ] Discarded enquiries are kept forever and can be searched.
+- [ ] Discarded enquiries are kept forever and can be searched. (Phase 1.4: posts the AI skips are kept as a fingerprint, reason and snippet and searched under "Skipped by AI"; their full text is purged after 14 days. Human-discarded enquiries are kept in full.)
+- [ ] (Phase 1.4) Each run scans ≥ 200 posts; only AI-relevant posts become enquiries; the same post or author is never stored twice; relevant posts link to the post itself when LinkedIn gives the link.
 - [ ] (Phase 2) Every company and person has a full timeline, and follow-ups due today are listed.
 - [ ] (Phase 3) No email is ever sent without a human approving that exact message.
 - [ ] (Phase 4) The Weekly and Secondary metrics sheets are produced automatically per ISO week.
@@ -38,7 +39,7 @@ Phases 1–4 use one shared login. Per-user accounts come in Phase 5. Every acto
 
 ## Phases of Development
 
-The phase plan is: **Scaffold → Phase 1 Discovery+Triage+Inbox → Phase 1.1 Real-Chrome connect + robust LinkedIn detection (spec change from the Phase 1 gate) → Phase 1.2 Parse LinkedIn SDUI search results (spec change from the Phase 1.1 gate) → Phase 2 CRM Memory → Phase 3 Research+Outreach → Phase 4 Metrics+Automation → Phase 5 WhatsApp+Accounts+Replies.**
+The phase plan is: **Scaffold → Phase 1 Discovery+Triage+Inbox → Phase 1.1 Real-Chrome connect + robust LinkedIn detection (spec change from the Phase 1 gate) → Phase 1.2 Parse LinkedIn SDUI search results (spec change from the Phase 1.1 gate) → Phase 1.3 marker-free `listitem` results variant (a hot-fix, specified in `architecture.md` → LinkedIn results variants; no roadmap entry) → Phase 1.4 Thorough, idempotent discovery (spec change from the Phase 1.3 gate) → Phase 2 CRM Memory → Phase 3 Research+Outreach → Phase 4 Metrics+Automation → Phase 5 WhatsApp+Accounts+Replies.**
 
 Each phase ends at a human testing gate. All paths below are from `spec/architecture.md` → `## Layout`. Every command runs from the repo root `/Users/sai/Workspace/Code/sales0` (written as `./` below).
 
@@ -317,6 +318,82 @@ Gate assertions the tests must make (beyond the Phase 1 + 1.1 sets, which stay g
 
 ---
 
+### Phase 1.4 — Thorough, idempotent discovery
+
+**Why (user gate evidence, binding).** One keyword, "agentic ai training", ran with caps of 15 posts / 4 scrolls / 1 keyword: 9 posts seen, 5 new, and Haiku correctly discarded all 5 (event promotions and thought leadership) because the keyword was a TOPIC, not buyer intent. The user wants discovery "way more thorough": each run should scan ≥ 200 candidate posts; a post stored only if relevant; no post and no LinkedIn profile ever stored twice; a link to the relevant post (the listitem-variant cards had none); and prospects tracked later from their LinkedIn profile.
+
+**Goal:** press **Run now** once and get a long background run (1–3 h, progress live, resumable after a restart) that searches a library of ~60 buyer-intent phrases deeply (sorted latest, past week then past month, up to 80 posts per keyword), scans ≥ 200 posts, triages only posts it has never seen (4 at a time), and files only the relevant ones in the Review inbox, each with a "View post" link. Everything the AI skips is kept as a searchable one-line record under **Skipped by AI** with one-click Rescue. Authors are remembered once each. The run summary states scanned vs relevant honestly.
+
+**Capabilities touched (4):** [linkedin-discovery](capabilities/linkedin-discovery.md) (depth, caps, resumable runs, after-triage permalinks on every card tier, profiles), [ai-triage](capabilities/ai-triage.md) (triage-before-storage, concurrency, prompt v2, eval set), [review-inbox](capabilities/review-inbox.md) (relevant-only inbox, Skipped by AI, Rescue/Override, View post), [search-setup](capabilities/search-setup.md) (60-phrase library, yield stats). HOW: `architecture.md` → `## Thorough discovery (Phase 1.4)`, Configuration, Contracts. Schema: `data.md` → Phase 1.4 (migration `0003_phase1_4_seen_posts`; later phases renumber to 0004–0007). AI: `agent.md` → Concurrency, Prompt v2. UI: `ui.md`. Out of scope: scheduled runs (Phase 4), visiting post pages, the People/Jobs tabs, LLM models other than Haiku, automatic keyword deactivation, creating prospects from profiles (Phase 2 — Phase 1.4 only provides the identity and the `tracked` flag).
+
+**Real vs stubbed:** everything touched is REAL. Every Phase-1 nav stub stays a labelled stub.
+
+**Independent slices.** A–F build concurrently against `architecture.md` → `## Thorough discovery (Phase 1.4)`; the signatures there are the only coupling. Paths are disjoint. "Gate-after" = the slice's own integration tests need that slice landed; its code does not wait. Slice A writes `services/keyword_library.py` (pure data) and the config names FIRST because B, C and the fixture import them. Tests that encode superseded behaviour (see each capability's "Superseded" criteria) are updated by the slice that owns the path.
+
+| Slice | Owns (disjoint paths) | Build dependency | Gate-after |
+|---|---|---|---|
+| **A — Schema, config, keyword data** | `src/sales0/db/models/seen_posts.py`, `db/models/profiles.py` (new); edits to `db/models/keywords.py`, `runs.py`, `enquiries.py`, `llm_calls.py`, `enums.py`, `__init__.py`; `migrations/versions/0003_phase1_4_seen_posts.py`; `src/sales0/config.py`, `.env.example`; `src/sales0/services/keyword_library.py`; `tests/conftest.py`, `tests/unit/test_config.py`, `tests/unit/test_test_isolation.py`, `tests/unit/services/test_keyword_library.py`, `tests/integration/db/**` (incl. `test_migration_0003.py`, model tests) | Phase 1.3 | — |
+| **B — Services** | `src/sales0/services/profiles.py`, `seen_posts.py` (new); edits to `services/keywords.py`, `runs.py`, `views.py`, `inbox.py`; `tests/unit/services/**` (except `test_keyword_library.py`), `tests/integration/services/**` | A contract (`data.md`), existing `TriageOutcome`/`ScrapedPost` | A |
+| **C — Scraper depth + fixture** | `src/sales0/scraper/**` (`search.py` `scan`/`capture_links`, `permalink.py` listitem tier, `urls.py` sort, `selectors.py`, `parsing.py`, `types.py`), `src/sales0/linkedin_fixture/**` (`bulk.py`, infinite scroll route, listitem + SDUI variants for bulk), `tests/unit/scraper/**`, `tests/integration/scraper/**`, `tests/fixtures/linkedin_pages/**` | A (setting names, `keyword_library`) | A |
+| **D — Triage** | `src/sales0/agent/**` (`batch.py`, `schemas.py` `subject`, `nodes.py` `triage-v2`), `src/sales0/prompts/**`, `tests/support/fake_llm.py` (`with_oracle`), `tests/support/__init__.py`, `tests/unit/agent/**`, `tests/integration/agent/**` (incl. `eval_set.py`, `test_triage_eval.py`) | Phase 1 | — |
+| **E — Discovery job** | `src/sales0/jobs/**` (`discovery_job.py` keyword loop; summary; resume), `src/sales0/web/app.py` (the two startup lines only), `tests/unit/jobs/**`, `tests/integration/jobs/**` | Contracts of A, B, C, D | A, B, C, D |
+| **F — Web UI** | `src/sales0/web/routes/setup.py`, `routes/runs.py`, `routes/inbox.py`, `web/templates/setup/**`, `web/templates/runs/**`, `web/templates/inbox/**`, `web/templates/_shell/**`, `web/static/css/app.css`, `web/static/js/app.js`, `web/context.py`, `web/templating.py`, `tests/integration/web/**` (incl. `test_every_page_renders.py` with the new routes and states) | B views | B |
+| **G — E2E, cross-slice tests, README** | `tests/e2e/**`, `tests/support/live_server.py` (seeding off, `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN=6`, ports 8766+), `tests/integration/pipeline/**` (≥ 200-scan run, two-run idempotency, resume, permalink ordering, purge-on-run-start; uses the fake-LLM oracle + `bulk.expected_verdict`), `README.md` | All | A–F |
+
+**Gate (run in order; all must pass; real Haiku key from `.env`; SQLite production engine; never port 8765, never `data/sales0.db`, never the repo's `data/` profiles; no automated test opens real LinkedIn):**
+
+```bash
+# working directory: /Users/sai/Workspace/Code/sales0
+GATE_TMP="$(mktemp -d)"
+uv sync
+uv run playwright install chromium
+SALES0_DATABASE_URL="sqlite:///$GATE_TMP/gate.db" uv run alembic upgrade head
+SALES0_DATABASE_URL="sqlite:///$GATE_TMP/gate.db" uv run alembic current     # must print: 0003_phase1_4_seen_posts (head)
+test -z "$(git ls-files | grep -i 'scratchpad\|capture/')"                    # the raw capture is never in the repo
+# unit, integration and e2e run CONCURRENTLY: each uses its own temp DBs/profiles; ports are ephemeral (integration) or 8766 (e2e)
+uv run pytest tests/unit -q &            P1=$!
+uv run pytest tests/integration -q &     P2=$!   # real Haiku (incl. the >=40-post eval); fixture LinkedIn; real headless Chrome (marker chrome); ~10-15 min
+uv run pytest tests/e2e -q &             P3=$!   # live server on 8766 (fixture mode) + headless Chromium + real Haiku
+RC=0; for P in $P1 $P2 $P3; do wait $P || RC=1; done; test $RC -eq 0
+# boot gate (live mode, temp DB + data dir; startup seeds the 60 suggested keywords) — launch with the terminal tool's background mechanism:
+SALES0_PORT=8767 SALES0_LINKEDIN_MODE=live SALES0_DATABASE_URL="sqlite:///$GATE_TMP/gate.db" SALES0_DATA_DIR="$GATE_TMP/data" uv run python -m sales0
+curl -fsS http://127.0.0.1:8767/api/health                                   # "db_revision":"0003_phase1_4_seen_posts"
+curl -fsS http://127.0.0.1:8767/setup | grep -q 'Add suggested keywords'
+test "$(curl -fsS http://127.0.0.1:8767/setup | grep -o 'data-keyword-id' | wc -l)" -eq 60
+curl -fsS http://127.0.0.1:8767/inbox | grep -q 'Review inbox'
+curl -fsS 'http://127.0.0.1:8767/inbox?tab=skipped' | grep -q 'Skipped by AI'
+curl -fsS http://127.0.0.1:8767/runs | grep -q 'Run now'
+curl -fsS http://127.0.0.1:8767/pipeline | grep -q 'Coming in Phase 2'
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8767/__fixtures/linkedin/feed/   # must print: 404
+# stop the 8767 server, then the real local browser smoke (about:blank only, throwaway profile):
+uv run python -m sales0.cli check-browser   # must print exactly one line: browser OK channel=chrome version=156.<…>  (exit 0)
+```
+
+Gate assertions the tests must make (beyond the Phase 1–1.3 sets, which stay green except where a capability marks a criterion "Superseded"): the Phase 1.4 success criteria in [linkedin-discovery](capabilities/linkedin-discovery.md), [ai-triage](capabilities/ai-triage.md), [review-inbox](capabilities/review-inbox.md) and [search-setup](capabilities/search-setup.md), in particular:
+1. Migration 0003 on a populated 0002 DB: counts and FKs survive; exactly the never-touched AI-discards move to `seen_posts`; the frozen fingerprint equals the app's.
+2. Seeding: 60 keywords, idempotent, never overwrites an edit.
+3. A fixture run over ≥ 6 bulk keywords scans ≥ 200 posts (each keyword ≤ 80, two date-filter passes, infinite scroll), with `scan` → `register` → `triage` → `capture_links` in that order per keyword.
+4. Two consecutive runs on the same fixture: run 2 has 0 new, 0 relevant, unchanged `enquiries` and `seen_posts` counts, 0 new triage calls; the author profile rows are unchanged except `posts_seen`/`last_seen_at`.
+5. Real Haiku eval: ≥ 90 % accuracy on ≥ 40 labelled posts, 0 hallucinated emails/phones; max concurrent triage calls == 4.
+6. Run 1 / run 2 corpus counts 9/7/2/relevant 4/skipped 3, then 11/2/9/relevant 1/skipped 1.
+7. Permalinks only for genuine posts, on both the SDUI and `listitem` fixture variants; cap and 3-miss stop hold; only "Copy link to post" is clicked.
+8. Purge at run start; Rescue works before the purge and returns `raw_purged` after; a purged post re-found makes no row and no LLM call.
+9. A restart mid-run → `aborted` (restart message, no cool-down); the next run plans the un-run keywords first.
+10. E2E: Setup → **Add suggested keywords** (60) → **Run now** returns in < 2 s and the live counters move → run `succeeded` with scanned ≥ 200 → the inbox shows only genuine cards (real Haiku content, "View post ↗" on at least one) → Skipped by AI is non-empty and searchable → Rescue one → second **Run now** shows New 0 / Relevant 0.
+
+**How the user tests it (handoff seed):**
+
+1. Stop sales0, run `uv run alembic upgrade head` once (the app refuses to start on an old database and tells you so), then start it with `uv run python -m sales0` and open http://127.0.0.1:8765/setup. No re-login is needed. Your existing keywords are untouched. Unreviewed posts the AI had already discarded move quietly to Skipped by AI; everything you decided stays where it was.
+2. **Setup → Keywords** now lists 60 buyer-intent phrases under the four offerings ("looking for AI trainer", "corporate AI training", "Claude Code trainer", "hiring AI consultant" …). Edit, switch off or remove any; press **Add suggested keywords** to see "Added 0 · 60 already present". Your own topic keywords stay allowed.
+3. Go to **Runs** and press **Run now**. It returns at once. The panel shows live counters (Scanned · New to us · Already seen · Relevant · Skipped by AI · Post links) and "Keyword 7/40". A run takes **1–3 hours on purpose** (human pacing, deep scrolling); you can close the tab, and the server keeps working. If you restart the server mid-run, it reads "Interrupted…" and the next Run now continues with the keywords it hadn't reached.
+4. When it finishes, the summary says honestly how many posts were scanned (expect 200+), how many were new, and how many were relevant (a few percent is normal). Open the **Inbox**: only relevant posts are there, each with **View post ↗** (or "Author profile (post link unavailable)" plus when it was posted). 
+5. Open **Inbox → Skipped by AI**: the posts the AI rejected, with the reason. Search "freelance" or an author. Press **Rescue → enquiry** on one the AI got wrong (it moves to To review), or **Override: accept**. Your corrections teach the AI.
+6. Run again later: the same posts count as "Already seen", nothing is triaged twice, nothing is duplicated, and an author who posts again is still one profile. Setup shows each keyword's yield ("Scanned 412 · Relevant 6"); switch off keywords that never yield.
+7. Optional: lower `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` in `.env` (e.g. 10) for a ~30-minute run; set `SALES0_TRIAGE_CONCURRENCY` or `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` to tune. 
+8. Stubs unchanged: Pipeline, Contacts, Competitors & Groups, Import, Outreach, Metrics and WhatsApp show "Coming in Phase N".
+
+---
+
 ### Phase 2 — CRM Memory: Pipeline, Contacts, Timeline, Signals, Registries, Import, Shared Login
 
 **Goal:** accepted enquiries become real Prospects that move New → Contacted → Follow-up 1 → Follow-up 2 → Final follow-up, convert to Leads (Meeting scheduled → Proposal sent → Won/Lost/No response) and then to Clients. Shared contacts link to everything. Every change is on a timeline. Follow-ups due today are listed. Repeat posters and competitor mentions are flagged. The existing Google Sheets can be imported, and single posts can be pasted in by hand. A shared-password login protects the app for VPS use.
@@ -327,7 +404,7 @@ Gate assertions the tests must make (beyond the Phase 1 + 1.1 sets, which stay g
 
 | Slice | Owns | Build dependency | Gate-after |
 |---|---|---|---|
-| **2A — CRM data + migration** | `src/sales0/db/models/crm.py`, `db/models/contacts.py`, `db/models/timeline.py`, `db/models/registries.py`, edits to `db/models/__init__.py` (exports only), `migrations/versions/0003_phase2_crm.py` (incl. backfill of prospects from accepted enquiries), `tests/integration/db/test_phase2_migration.py` | Phase 1 | — |
+| **2A — CRM data + migration** | `src/sales0/db/models/crm.py`, `db/models/contacts.py`, `db/models/timeline.py`, `db/models/registries.py`, edits to `db/models/__init__.py` (exports only), `migrations/versions/0004_phase2_crm.py` (incl. backfill of prospects from accepted enquiries; links each to its `linkedin_profiles` row and sets `tracked`), `tests/integration/db/test_phase2_migration.py` | Phase 1.4 | — |
 | **2B — Pipeline + timeline services** | `src/sales0/services/crm/**`, `tests/integration/services/crm/**` | 2A contract | 2A |
 | **2C — Signals (repeat poster, competitor mention)** | `src/sales0/services/signals.py`, `tests/integration/services/test_signals.py` | 2A contract | 2A |
 | **2D — Import + manual paste** | `src/sales0/services/importer/**`, `tests/integration/services/importer/**`, `tests/fixtures/import/**` | 2A contract; reuses the Phase-1 triage agent | 2A |
@@ -342,7 +419,7 @@ The routers for 2E–2G are registered by slice 2H in `web/app.py`. That is the 
 
 ```bash
 # working directory: /Users/sai/Workspace/Code/sales0
-uv run alembic upgrade head && uv run alembic current   # 0003_phase2_crm (head)
+uv run alembic upgrade head && uv run alembic current   # 0004_phase2_crm (head)
 uv run pytest tests -q                                  # real Haiku + SQLite; includes Phase-1 suite (regression)
 uv run python -m sales0                                 # background; then:
 curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/inbox   # 303 to /login when SALES0_APP_PASSWORD is set
@@ -358,9 +435,9 @@ curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/inbox   # 303 to 
 
 **Capabilities (3):** [profile-outreach-discovery](capabilities/profile-outreach-discovery.md), [company-research](capabilities/company-research.md), [email-outreach](capabilities/email-outreach.md).
 
-**Slices:** 3A data + migration `0004_phase3_outreach` (`db/models/outreach.py`); 3B profile scraper (`src/sales0/scraper/profiles.py`, `linkedin_fixture/profiles/**`); 3C research ReAct agent (`src/sales0/agent/research/**`, `prompts/research_*.md`); 3D Gmail adapter + OAuth (`src/sales0/integrations/gmail/**`); 3E templates/decks/approval services (`src/sales0/services/outreach/**`); 3F Outreach UI (`web/routes/outreach.py`, `web/templates/outreach/**`); 3G E2E + README. Dependencies: 3B, 3C and 3D are independent. 3E depends on 3A and 3D. 3F depends on 3E. 3G depends on all.
+**Slices:** 3A data + migration `0005_phase3_outreach` (`db/models/outreach.py`); 3B profile scraper (`src/sales0/scraper/profiles.py`, `linkedin_fixture/profiles/**`); 3C research ReAct agent (`src/sales0/agent/research/**`, `prompts/research_*.md`); 3D Gmail adapter + OAuth (`src/sales0/integrations/gmail/**`); 3E templates/decks/approval services (`src/sales0/services/outreach/**`); 3F Outreach UI (`web/routes/outreach.py`, `web/templates/outreach/**`); 3G E2E + README. Dependencies: 3B, 3C and 3D are independent. 3E depends on 3A and 3D. 3F depends on 3E. 3G depends on all.
 
-**Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0004_phase3_outreach (head)`), then `uv run pytest tests -q`. The suite includes:
+**Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0005_phase3_outreach (head)`), then `uv run pytest tests -q`. The suite includes:
 
 - a real Gmail `drafts.create` + `drafts.delete` against the team account, using `data/google_token.json` from a one-time `uv run python -m sales0.cli google-auth`;
 - the real Haiku research loop against the fixture company site.
@@ -377,7 +454,7 @@ curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/inbox   # 303 to 
 
 **Slices:** 4A metrics queries (`src/sales0/services/metrics/**`); 4B cost view (`src/sales0/services/costs_report.py`); 4C scheduler (`src/sales0/jobs/scheduler.py`); 4D digest + suggestions agent (`src/sales0/agent/suggest/**`, `prompts/suggest_*.md`); 4E dashboard UI (`web/routes/metrics.py`, `web/templates/metrics/**`); 4F E2E + README. Dependencies: 4A–4D are independent. 4E depends on 4A and 4B.
 
-**Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0005_phase4_metrics (head)`), then `uv run pytest tests -q`. The metrics tests use a seeded fixture of ≥300 enquiries spread over 6 ISO weeks and assert the exact computed weekly counts.
+**Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0006_phase4_metrics (head)`), then `uv run pytest tests -q`. The metrics tests use a seeded fixture of ≥300 enquiries spread over 6 ISO weeks and assert the exact computed weekly counts.
 
 **How the user tests it:** open Metrics and compare this week's numbers against what you did. Then enable the schedule and see the next run time. Read the digest.
 
@@ -389,8 +466,8 @@ curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/inbox   # 303 to 
 
 **Capabilities (3):** [whatsapp-ingest](capabilities/whatsapp-ingest.md), [per-user-accounts](capabilities/per-user-accounts.md), [reply-tracking](capabilities/reply-tracking.md).
 
-**Slices:** 5A WhatsApp bridge, a Node sidecar under `whatsapp-bridge/` that posts to `/api/ingest/whatsapp` (assumed in architecture); 5B ingest endpoint + group config (`src/sales0/services/ingest_whatsapp.py`, `web/routes/ingest.py`); 5C accounts (`src/sales0/services/users.py`, `web/routes/users.py`, migration `0006_phase5_users`); 5D Gmail reply poller (`src/sales0/jobs/reply_poller.py`); 5E E2E + README. 5A and 5B share the HTTP contract only.
+**Slices:** 5A WhatsApp bridge, a Node sidecar under `whatsapp-bridge/` that posts to `/api/ingest/whatsapp` (assumed in architecture); 5B ingest endpoint + group config (`src/sales0/services/ingest_whatsapp.py`, `web/routes/ingest.py`); 5C accounts (`src/sales0/services/users.py`, `web/routes/users.py`, migration `0007_phase5_users`); 5D Gmail reply poller (`src/sales0/jobs/reply_poller.py`); 5E E2E + README. 5A and 5B share the HTTP contract only.
 
-**Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0006_phase5_users (head)`), then `uv run pytest tests -q` and `npm --prefix whatsapp-bridge test`.
+**Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0007_phase5_users (head)`), then `uv run pytest tests -q` and `npm --prefix whatsapp-bridge test`.
 
 **How the user tests it:** link WhatsApp by scanning the QR code, and messages from a selected group appear in the inbox. Each user logs in separately and sees their own name on the timeline. A reply to a sent email shows on the Lead.

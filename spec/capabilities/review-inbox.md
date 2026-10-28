@@ -37,6 +37,25 @@ Shows triaged enquiries as cards, so the team can accept genuine buyers (they be
 - Discarded enquiries are never deleted.
 - Every decision writes a status-history row with the from/to values and the time.
 
+## Phase 1.4 — Only relevant posts; Skipped by AI; View post
+- **The inbox shows only relevant enquiries.** Cards are AI-genuine posts or posts a human rescued. The AI's discards are not cards.
+- **Skipped by AI tab.** Lists the posts the AI judged not relevant: snippet, one-line reason, poster type, author, keyword, how often and when last seen. Searchable (snippet, reason, author, and the full text while retained). Failed triages are under a "Triage failed" filter with **Retry triage**.
+  - **Rescue → enquiry**: creates the enquiry in To review (the AI's verdict stays "discard"; the card shows it, so the AI's mistake is visible). Works only while the post text is still stored (14 days); afterwards the row shows "text purged" and the action is disabled (`raw_purged`).
+  - **Override: accept**: rescue plus accept in one click; recorded as an override (`is_override=true`), so it teaches the AI.
+  - A rescued or overridden post leaves the Skipped list at once.
+- **View post.** A card shows **View post ↗** when sales0 captured the post link; otherwise "Author profile (post link unavailable) ↗ · posted ~Xh before sales0 found it".
+- Tab counts: To review · Accepted · Discarded · Skipped by AI.
+- The learning loop is unchanged: only human decisions on enquiries feed it, so a Rescue/Override is the strongest signal.
+
+### Success Criteria (Phase 1.4)
+- [ ] After fixture run 1 the inbox "To review" lists exactly the 4 genuine posts (P1, P5, P6, P8) and the "Skipped by AI" tab count is 3 (P2, P3, P9); `/inbox?tab=skipped` renders their snippets and reasons.
+- [ ] Searching "freelance" in Skipped by AI returns P2 and P3 (the old Discarded-tab check); "zzzz" shows the no-match empty state.
+- [ ] **Rescue** on P3 creates 1 enquiry in To review (counts: review 5, skipped 2), `ai_verdict` stays "discard", the card shows the Discard badge and the AI reason, and a second Rescue returns `already_rescued`.
+- [ ] **Override** on P9 → the enquiry is Accepted with "Prospect · New" and "Overrode AI"; one `triage_decisions` row with `is_override=true`; the next run's triage `fewshot_count ≥ 1`.
+- [ ] After `purge_expired` with the clock advanced 15 days: the P2 row has `raw_text` NULL but keeps its snippet and fingerprint; Rescue returns `raw_purged` and the buttons render disabled with "text purged"; re-finding P2 in a run still creates no row and no LLM call.
+- [ ] P1's card has `a.enquiry__link[data-link-kind=post]` labelled "View post ↗" after a run whose menu copy worked, and "Author profile (post link unavailable) ↗" with "posted ~" after one whose menu was a no-op.
+- [ ] Superseded: the Phase 1 criteria that expect the AI-discard posts (P2, P3, P9, P11) as cards in To review, bulk-discard them, or find them in the Discarded tab now apply to the Skipped by AI tab or to a rescued card; "To review (7)" becomes "(4)".
+
 ## Success Criteria
 - [ ] After fixture run 1, "To review (7)" lists P1 before every discard-verdict card, and the P1 card shows "Genuine", its reason, its summary containing "Acme", "Open post" linking to `{base}/feed/update/urn:li:activity:7300000000000000001/`, and a cost text matching `AI \$0\.\d{4}`.
 - [ ] Accepting P1 moves it to the Accepted tab with "Prospect · New". The counts become review 6 / accepted 1, and there is 1 `triage_decisions` row with `is_override=false`.

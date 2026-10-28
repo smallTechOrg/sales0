@@ -6,6 +6,8 @@ The product narrative is in `roadmap.md` and `capabilities/`. This file is the H
 
 > **Phase 1.2 change (binding; user gate evidence from one real headless capture on the sales0 profile).** LinkedIn content search now ships **SDUI** markup (`data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent"`). The page has NO `urn:li:activity` anywhere, no `data-urn`/`data-id`, no `/feed/update/` or `/posts/` links, and obfuscated classes, so the Phase 1.1 parser found 0 cards and raised the drift warning. Phase 1.2 parses SDUI posts from `data-view-name` / `data-testid` / `role` / `componentkey` / href patterns (never classes), keeps the Phase 1.1 URN shapes as the fallback of ONE ordered strategy, identifies posts without a URN (`ck:<KEY>` + content dedupe + a same-author fingerprint), and recovers the permalink cheaply through the post's own "Copy link to post" menu item with the page clipboard intercepted. The schema does not change (head stays `0002_phase1_discovery`). Details: `## LinkedIn SDUI search results (Phase 1.2)`.
 
+> **Phase 1.4 change (binding; user gate evidence).** One keyword ("agentic ai training", a topic, not buyer intent) with caps of 15 posts / 4 scrolls / 1 keyword saw 9 posts, 5 new, and Haiku correctly discarded all 5. Searches were too shallow and too topical, and the inbox filled with discards. Phase 1.4 makes discovery thorough and idempotent: a seeded buyer-intent keyword library; deep scrolling (80 posts per keyword, sort=latest, past-week then past-month); every scanned post remembered in `seen_posts` (never re-triaged, never duplicated); `enquiries` rows created only for AI-genuine posts; authors remembered in `linkedin_profiles`; permalinks captured only for genuine posts, after triage, for every card tier (including `listitem`); triage with bounded concurrency; long resumable background runs with an honest scanned-vs-relevant summary. Migration `0003_phase1_4_seen_posts`. Details: `## Thorough discovery (Phase 1.4)`. Where it contradicts the Discovery run data flow, caps and defaults below, Phase 1.4 wins.
+
 ## System Overview
 
 sales0 is a single Python process: one uvicorn worker serving a FastAPI app. It contains:
@@ -32,6 +34,8 @@ Browser (htmx) ──HTTP──> FastAPI routes ──> services ──> SQLAlch
 
 ### Discovery run data flow
 
+> **Phase 1.4 supersedes steps 2 (keyword selection and caps), 3, 4 and 5** with the keyword loop in `## Thorough discovery (Phase 1.4)` → Job flow (scan → register → triage → permalink, per keyword). Steps 1, 2 (login check and its three outcomes), 6, 6a–6c and 7 stand; "interrupted by a server restart" now means `aborted` (not `failed`).
+
 1. `POST /runs` calls `services.runs.start_run`. This checks eligibility, inserts a `scrape_runs` row with status `queued`, and submits `discovery_job.execute(run_id)` to the runner.
 2. The job sets status `running`. It selects keywords: active ones, ordered by `last_run_at` (never-run first) then `id`, capped at `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN`. It opens the persistent context headless and runs the login check (`## LinkedIn browser` → Logged-in detection) on `{base}/feed/`:
    - **No `li_at` cookie in the profile at all.** No LinkedIn request has been made yet. This raises `SessionMissing`. The run ends `failed` with "Not logged in to LinkedIn in sales0's browser — press Connect LinkedIn in Setup". Every keyword becomes `skipped` "Not searched — not logged in". The session becomes `not_connected` with the same message. `abort_reason` stays null, so there is no cool-down and no banner. This is the first-run-after-upgrade case: the Phase-1 Chromium profile is not reused by Chrome.
@@ -50,7 +54,7 @@ Browser (htmx) ──HTTP──> FastAPI routes ──> services ──> SQLAlch
 6b. The keyword list is snapshotted at step 2. A keyword deleted (or deactivated) mid-run does not change the run: it is still searched if planned, and its hits are saved with `keyword_text` set and `keyword_id` null (`SET NULL`, `data.md`). If the keyword is deleted while that keyword's posts are being saved, the insert of a keyword hit raises an `IntegrityError` (FK). The job rolls back that post and retries its `upsert_post` once with `keyword_id` null. Deletion never fails the run or a keyword row.
 7. The run is finalised: status `succeeded` (or `aborted`/`failed`) and `finished_at` are set, and on success `linkedin_session.last_successful_run_at` is updated. **Phase 1.1:** `RunView.layout_warnings` is the number of the run's keyword rows with status `warning`. It is computed on read, not stored. When it is above 0, the Runs panel and the run detail show the run-level drift alert (`ui.md`), and the `scrape_run` log line carries `layout_warnings`.
 
-At startup, any run left in `queued` or `running` is marked `failed` with the error "Interrupted by server restart".
+At startup, any run left in `queued` or `running` is marked `failed` with the error "Interrupted by server restart". **Phase 1.4:** it is marked `aborted` (`abort_reason` null, no cool-down) with "Interrupted by server restart — the next run continues with the keywords it had not reached", and its unfinished keyword rows become `skipped` (`data.md` → Phase 1.4).
 
 ## Stack
 
@@ -107,7 +111,8 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   ├── script.py.mako
 │   └── versions/
 │       ├── 0001_baseline.py        # scaffold: app_meta
-│       └── 0002_phase1_discovery.py
+│       ├── 0002_phase1_discovery.py
+│       └── 0003_phase1_4_seen_posts.py   # Phase 1.4 (later phases renumber: CRM 0004, outreach 0005, metrics 0006, users 0007)
 ├── src/sales0/
 │   ├── __init__.py
 │   ├── __main__.py                 # load settings → configure logging → verify DB at head → uvicorn.run(app, host, port, workers=1)
@@ -125,6 +130,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   │       ├── __init__.py         # exports every model (Alembic autogenerate target)
 │   │       ├── meta.py  users.py  offerings.py  keywords.py  linkedin.py
 │   │       ├── runs.py  enquiries.py  decisions.py  llm_calls.py  history.py
+│   │       ├── seen_posts.py  profiles.py     # Phase 1.4: SeenPost, LinkedinProfile (table linkedin_profiles)
 │   ├── llm/                        # scaffold: LLM abstraction layer
 │   │   ├── __init__.py             # get_llm_client(), reset_llm_client()
 │   │   ├── client.py               # LLMClient Protocol, StructuredRequest, LLMResponse
@@ -141,7 +147,8 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   │   ├── nodes.py                # build_prompt, call_model, validate_and_guard, repair, finalize
 │   │   ├── graph.py                # run_triage(inp, deps) — assembly + routing
 │   │   ├── guards.py               # pure output guardrails
-│   │   └── fewshot.py              # select_examples (pure) + load_candidates(db)
+│   │   ├── fewshot.py              # select_examples (pure) + load_candidates(db)
+│   │   └── batch.py                # Phase 1.4: triage_concurrently (bounded thread pool around run_triage)
 │   ├── scraper/                    # slice C (Phase 1.1: R1 browser/login, R2 detection/parsing): no DB access
 │   │   ├── __init__.py
 │   │   ├── types.py                # ScrapedPost, KeywordScrapeResult, SessionCheckResult, ConnectResult  (R2)
@@ -161,13 +168,16 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   │   ├── __init__.py
 │   │   ├── routes.py               # login (2FA flow), feed, authwall, search/results/content, checkpoint/challenge
 │   │   ├── corpus.py               # trigger keywords + corpus loader
+│   │   ├── bulk.py                 # Phase 1.4: deterministic 300-post synthetic bulk corpus + keyword→results mapping + expected_verdict(text)
 │   │   ├── posts.json              # the corpus (see "Fixture LinkedIn corpus")
 │   │   └── templates/              # CURRENT-LinkedIn-shaped DOM: obfuscated classes, no global-nav (Phase 1.1)
 │   ├── services/                   # slice D: the only DB-writing domain layer
 │   │   ├── __init__.py
 │   │   ├── views.py                # typed view models returned to routes (see Contracts)
 │   │   ├── keywords.py  offerings.py  session.py  runs.py
-│   │   ├── dedupe.py               # normalize_text, content_hash (pure) + upsert_post(db, …)
+│   │   ├── keyword_library.py      # Phase 1.4: SUGGESTED_KEYWORDS (60) — pure data
+│   │   ├── profiles.py  seen_posts.py   # Phase 1.4: profile upsert; sightings, triage persistence, rescue, skipped list, purge
+│   │   ├── dedupe.py               # normalize_text, content_hash (pure) + upsert_post(db, …) (legacy path; the Phase 1.4 job uses seen_posts)
 │   │   ├── triage.py               # triage_enquiry / retry_triage (persist agent outcome)
 │   │   ├── inbox.py                # list/decide/update/search
 │   │   └── costs.py                # cost_summary
@@ -225,7 +235,7 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 - Every new migration gets a test that upgrades a POPULATED previous-head DB (runs, run keywords, enquiries, sources, hits, decisions, llm_calls) and asserts that every row count and FK value survives.
 - Gates and tests never run migrations against `data/sales0.db`. They use a temp DB file.
 
-> **Assumed:** this is a rule for future migrations. 0001–0002 are not rewritten. Phase 1.1 adds no migration: the head stays `0002_phase1_discovery`. Phase 1.2 adds no migration either (link kind and fingerprint are derived; `data.md` → Phase 1.2).
+> **Assumed:** this is a rule for future migrations. 0001–0002 are not rewritten. Phase 1.1 adds no migration: the head stays `0002_phase1_discovery`. Phase 1.2 adds no migration either (link kind and fingerprint are derived; `data.md` → Phase 1.2). Phase 1.4 adds `0003_phase1_4_seen_posts`: two new tables, in-place `ADD COLUMN`s (nullable or with a `server_default`; a nullable FK column is added with plain `op.add_column`, and if SQLite rejects an inline FK the model keeps the FK and the migration adds the bare column), a data backfill, and NO rebuild of `scrape_runs`, `enquiries`, `keywords` or any other referenced table (so no new CHECK value: interrupted runs are `aborted` + null reason).
 
 **Error shape**
 - JSON endpoints (`/api/*` and any `Accept: application/json`) return `{"ok": true, "data": {...}}`, or `{"ok": false, "error": {"code": "snake_code", "message": "Human sentence with next step."}}` with the matching HTTP status.
@@ -317,15 +327,21 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 | `SALES0_LINKEDIN_CONNECT_TIMEOUT_S` | `300` | How long Connect waits for a login |
 | `SALES0_SAFETY_COOLDOWN_MIN` | `60` | Phase 1.1. Minutes Run now stays refused (`safety_cooldown`) after a run aborted with `rate_limited` or `captcha`. 0 = off (tests). |
 | `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN` | `15` | Phase 1.1. Same, after a run aborted with `checkpoint` or `logout`. 0 = off (tests). |
-| `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` | `10` | Cap |
-| `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` | `15` | Cap |
-| `SALES0_SCRAPE_MAX_POSTS_PER_DAY` | `150` | Cap across runs (posts seen, local day) |
-| `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | `3` | Cap (runs started, local day; aborted runs count) |
+| `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` | `40` | Cap (Phase 1.4; was 10) |
+| `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` | `80` | Cap on posts scanned per keyword across all passes (Phase 1.4; was 15) |
+| `SALES0_SCRAPE_MAX_POSTS_PER_DAY` | `2000` | Cap across runs (posts scanned, local day; Phase 1.4; was 150) |
+| `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | `4` | Cap (runs started, local day; aborted runs count; Phase 1.4; was 3) |
 | `SALES0_SCRAPE_DELAY_MIN_S` / `_MAX_S` | `3` / `9` | Random delay between page actions (scrolls, expands) |
 | `SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S` / `_MAX_S` | `20` / `60` | Random pause between keywords |
-| `SALES0_SCRAPE_MAX_SCROLLS` | `4` | Max scrolls per keyword results page |
-| `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | `15` | Phase 1.2. Max "Copy link to post" attempts per keyword (posts without a URN). Integer ≥ 0; 0 disables permalink capture (cards then link to the author profile). In `.env.example` right after `SALES0_SCRAPE_MAX_SCROLLS`. |
-| `SALES0_SCRAPE_DATE_FILTER` | `past-week` | `past-24h`, `past-week` or `past-month` |
+| `SALES0_SCRAPE_MAX_SCROLLS` | `20` | Max scrolls per search pass (Phase 1.4; was 4) |
+| `SALES0_SCRAPE_NO_GROWTH_SCROLLS` | `2` | Phase 1.4. Consecutive scrolls without new cards that end a pass ("no growth") |
+| `SALES0_SCRAPE_SORT` | `latest` | Phase 1.4. `latest` (LinkedIn `sortBy="date_posted"`) or `relevance` |
+| `SALES0_SCRAPE_DATE_FILTERS` | `past-week,past-month` | Phase 1.4. Comma list of `past-24h`/`past-week`/`past-month`; one search pass each, in order; the next pass runs only while the keyword's post cap is not reached. Replaces `SALES0_SCRAPE_DATE_FILTER`, which is still read as a one-item list when `…_FILTERS` is unset |
+| `SALES0_SCRAPE_EXPAND_MAX_PER_KEYWORD` | `40` | Phase 1.4. Max "see more" clicks per keyword (only truncated cards; `pacer.short` delays). Beyond it a card is read truncated |
+| `SALES0_TRIAGE_CONCURRENCY` | `4` | Phase 1.4. Concurrent Haiku triage calls (1–8) |
+| `SALES0_SEEN_RAW_RETENTION_DAYS` | `14` | Phase 1.4. Days the raw text of an AI-skipped post is kept (0 = purge at the next run start) |
+| `SALES0_SEED_SUGGESTED_KEYWORDS` | `true` | Phase 1.4. Auto-seed the 60 suggested keywords once at startup. Tests and the E2E harness set `false` |
+| `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | `15` | Phase 1.2. Max "Copy link to post" attempts per keyword (posts without a URN). Phase 1.4: attempted only for AI-genuine posts, after triage. Integer ≥ 0; 0 disables permalink capture (cards then link to the author profile). In `.env.example` right after `SALES0_SCRAPE_MAX_SCROLLS`. |
 | `SALES0_FEWSHOT_MAX_EXAMPLES` | `6` | Few-shot cap per triage call |
 | `SALES0_FEWSHOT_TEXT_CHARS` | `600` | Truncation per example |
 | `SALES0_TRIAGE_MAX_INPUT_CHARS` | `4000` | Truncation of the enquiry text sent to the LLM |
@@ -1021,5 +1037,133 @@ P1 appears under two keywords with the same URN (URN duplicate). P7 is the same 
 The same command runs on any Linux host after `uv sync && uv run playwright install --with-deps chromium`. With `SALES0_LINKEDIN_BROWSER_CHANNEL=auto`, sales0 uses Google Chrome when `google-chrome-stable` is installed (`/opt/google/chrome/chrome`), and otherwise the bundled Chromium with the Setup note. The live headed **Connect** needs a display. On a VPS, either run it under `xvfb-run` and reach it through a VNC/noVNC tunnel, or log in on the laptop and copy the profile directory for the channel in use (`data/linkedin-chrome-profile/` for Chrome). Copying works only between the same browser channel. This is documented in the README in Phase 2, together with the shared login. A Postgres switch is a URL change (see Stack).
 
 
+## Thorough discovery (Phase 1.4)
+
+Binding for slices A–G (`roadmap.md` → Phase 1.4). Each slice codes against the signatures below; they are the only coupling.
+
+### Funnel and honesty
+
+```
+scanned (cards parsed, repeats included)
+  └─ already seen (seen_posts hit: source_ref | fingerprint | content_hash | same-author prefix)  → no LLM, no new row
+  └─ new (never seen) → registered in seen_posts → triaged once (Haiku)
+        ├─ genuine  → enquiry created (To review) → permalink captured → profile.relevant_count+1
+        ├─ discard  → stays in seen_posts only (Skipped by AI tab; raw text purged after 14 days)
+        └─ failed   → seen_posts.triage_status=failed (retry from Skipped tab); no enquiry
+```
+A normal run must scan ≥ 200 posts with the defaults, and the summary states scanned vs relevant honestly (never "found 200 enquiries").
+
+### Slice A — schema and config
+`db/models/seen_posts.py::SeenPost` and `db/models/profiles.py::LinkedinProfile` map `data.md` → Phase 1.4 exactly (column names = field names; `enums.py` gains `SEEN_TRIAGE_STATUSES`, `PROFILE_KINDS`). Existing models gain the listed columns. `Settings` gains (names binding): `scrape_no_growth_scrolls: int=2 (ge 1)`, `scrape_sort: Literal["latest","relevance"]="latest"`, `scrape_date_filters: tuple[str,...]=("past-week","past-month")` (parsed from the comma list; each in `DATE_FILTERS`; the old `scrape_date_filter` is kept as a read-only property returning the first), `scrape_expand_max_per_keyword: int=40 (ge 0)`, `triage_concurrency: int=4 (1..8)`, `seen_raw_retention_days: int=14 (ge 0)`, `seed_suggested_keywords: bool=True`; the changed defaults of `architecture.md` → Configuration. `.env.example` lists them. Slice A also owns `services/keyword_library.py` (the 60 phrases of `search-setup.md`, `key` = slug of the text; a unit test asserts 60 unique keys/texts, 15 per group, 2–100 chars each). `tests/conftest.py` sets `SALES0_SEED_SUGGESTED_KEYWORDS=false`, `SALES0_TRIAGE_CONCURRENCY=4` and, as before, tiny pacing. The migration follows `data.md` → Backfill and the Migrations rules, and `tests/integration/db/test_migration_0003.py` upgrades a POPULATED 0002 DB (P1 accepted, P2/P3 AI-discard pending, a human-discarded AI-discard, a failed-triage one, one with two sources) and asserts: row counts and FK values survive, moved/kept sets exactly as `data.md`, `llm_calls` kept with `seen_post_id`, profile counters, and that the migration's frozen fingerprint equals `services.seen_posts.fingerprint` for the same input.
+
+### Slice B — services (all take `db` first; flush, never commit; clock via `now`)
+```python
+# services/profiles.py
+def touch_profile(db, *, profile_url: str | None, name: str | None, headline: str | None, now=None) -> int | None
+#   upsert by profile_slug(profile_url); +1 posts_seen; last_seen_at=now; fills display_name/headline when non-null; None if the URL has no /in|/company slug
+def mark_relevant(db, profile_id: int | None, n: int = 1) -> None        # relevant_count += n
+def get_profile(db, slug: str) -> ProfileView | None
+# services/seen_posts.py
+def fingerprint(author_slug: str | None, text: str) -> str               # sha256((author_slug or "") + "\n" + normalize_text(text))
+def snippet_of(text: str) -> str                                         # one line, <= 240 chars
+@dataclass(frozen=True)
+class Sighting: kind: Literal["new","seen"]; seen_post_id: int; profile_id: int | None; verdict: Literal["genuine","discard"] | None
+                triage_status: Literal["pending","done","failed"]; enquiry_id: int | None
+                needs_permalink: bool        # seen + has an enquiry whose source_url is not a post link
+def register_sighting(db, post: ScrapedPost, run_id: int, keyword_id: int | None, keyword_text: str, *, now=None) -> Sighting
+#   match order: source_ref → fingerprint → content_hash → same-profile text_prefix near-duplicate (>=100 chars overlap).
+#   Always: touch_profile; last_seen_at/times_seen. "seen" + enquiry: keyword hit, unseen source ref, link upgrade (as dedupe._merge). "new": insert (triage_status pending, raw_text, raw_purge_after). Never calls the LLM.
+def triage_inputs(db, seen_post_ids: list[int]) -> list[tuple[int, TriageInput]]      # TriageInput(subject="seen_post", enquiry_id=<seen_post_id>)
+@dataclass(frozen=True)
+class Persisted: seen_post_id: int; verdict: Literal["genuine","discard"] | None; enquiry_id: int | None; cost_usd_micros: int; triage_status: str
+def persist_triage(db, seen_post_id: int, outcome: TriageOutcome | None, *, error: str | None = None, run_id: int | None, keyword_id: int | None, now=None) -> Persisted
+#   writes llm_calls rows (feature triage, seen_post_id, run_id); sets verdict/reason/poster_type/ai_result/triage_status.
+#   genuine → create the Enquiry (all ai_* + editable fields as triage_enquiry does; content_hash; EnquirySource rows; keyword hit; author_profile_id; seen_post_id; posted_relative; source_url = post_url or profile URL or search URL; triage_status done; review_status pending_review), set seen_posts.enquiry_id, raw_text=NULL, raw_purge_after=NULL, update llm_calls.enquiry_id, mark_relevant, status_history rows.
+#   discard → keep raw_text. outcome None / failed → triage_status failed + triage_error.
+def attach_permalink(db, seen_post_id: int, url: str, *, urn: str | None = None, now=None) -> bool  # seen_posts.post_url; enquiry.source_url (+ URN source row) when the enquiry link is not already a post link
+def retry_triage(db, seen_post_id: int, llm=None) -> SkippedPostView        # sync one real call; DomainError not_found | raw_purged | triage_failed
+def rescue(db, seen_post_id: int, *, accept: bool = False, actor_user_id: int | None = None) -> EnquiryCardView
+#   DomainError not_found | raw_purged ("post text no longer stored") | already_rescued. Creates the enquiry from seen_posts.ai_result (ai_verdict stays "discard"), review_status pending_review; accept=True also records decision accept (is_override=True) → accepted/prospect_new (via inbox.decide). Sets rescued_at, enquiry_id, mark_relevant.
+def list_skipped(db, *, q: str | None = None, state: Literal["discard","failed"] = "discard", page: int = 1, page_size: int = 25) -> SkippedPage
+#   state discard: verdict discard AND enquiry_id IS NULL; failed: triage_status failed. q: case-insensitive substring over snippet, reason, author_name, raw_text. Newest last_seen first.
+def purge_expired(db, *, now=None) -> int           # raw_text=NULL, raw_purged_at=now where raw_purge_after<=now AND raw_text IS NOT NULL; keeps fingerprint/text_prefix/snippet
+# services/keyword_library.py  (OWNED BY SLICE A — pure data, written first; B, C and the fixture import it)
+@dataclass(frozen=True) class SuggestedKeyword: key: str; text: str; group: str
+SUGGESTED_KEYWORDS: tuple[SuggestedKeyword, ...]     # the 60 of search-setup.md; group = an offering name
+# services/keywords.py (additions)
+@dataclass(frozen=True) class SeedResult: added: int; already_present: int
+def seed_suggested(db) -> SeedResult                 # idempotent, never overwrites (search-setup.md)
+def seed_suggested_once(db) -> SeedResult | None     # honours app_meta keywords_seeded_v1 and settings.seed_suggested_keywords
+def update_keyword(db, keyword_id: int, text: str | None = None, group_name: str | None | _Unset = UNSET) -> KeywordView   # keyword_invalid | keyword_duplicate | not_found
+def record_yield(db, keyword_id: int | None, scanned: int, relevant: int) -> None   # Core UPDATE: scanned_total/relevant_total += , last_scanned/last_relevant = ; deleted keyword → 0 rows
+# services/runs.py (additions/changes)
+def plan_keywords(db, limit: int) -> list[tuple[int, str]]    # resume-first (data.md), then never-run, then least-recently-run, then id; active only
+def recover_interrupted_runs(db) -> int           # now aborted + null reason + keyword rows skipped (data.md)
+# run_eligibility / posts_seen_today: "posts" = scanned (runs.posts_seen). Caps from settings (2000/day, 4 runs/day).
+# services/inbox.py: InboxPage.counts gains "skipped" (discard, no enquiry) and "skipped_failed"; list_enquiries unchanged for the 3 tabs.
+```
+Views (frozen Pydantic, `services/views.py`): `KeywordView` gains `group_name: str | None, suggested: bool, scanned_total: int, relevant_total: int, last_scanned: int, last_relevant: int`; `RunView` gains `posts_relevant, posts_skipped_ai, permalinks_found: int`, `relevance_pct: float | None` (= relevant ÷ posts_new × 100; None when posts_new is 0); `RunKeywordView` gains `posts_relevant, posts_skipped_ai, permalinks_found, scrolls, cost_usd_micros`; `EnquiryCardView` gains `posted_relative: str | None`, `author_profile_url: str | None`; `SkippedPostView(id, snippet, reason, poster_type, author_name, author_headline, profile_url, keyword_text, post_url, link_kind, posted_relative, first_seen_at, last_seen_at, times_seen, triage_status, triage_error, raw_text: str | None, can_rescue: bool)`; `SkippedPage(items, total, page, page_size, state, q, counts: dict[str,int])`.
+
+### Slice C — scraper depth and fixture
+```python
+# scraper/urls.py
+def search_url(base: str, keyword: str, date_filter: str, sort: Literal["latest","relevance"] = "latest") -> str   # sortBy="date_posted" | "relevance"
+# scraper/types.py: KeywordScrapeResult gains  passes: int = 1; expanded: int = 0; stop_reason: Literal["cap","no_growth","max_scrolls","no_results","drift"] = "cap"
+# scraper/search.py
+class LinkedInSearcher:
+    def scan(self, keyword: str, max_posts: int) -> KeywordScrapeResult
+    #   passes = settings.scrape_date_filters × settings.scrape_sort. Per pass: goto, checkpoint, wait; scroll loop (delay, hover, wheel, settle-wait, checkpoint) until
+    #   cards >= cap OR scrolls >= scrape_max_scrolls OR scrape_no_growth_scrolls consecutive scrolls without growth; expand truncated cards (<= scrape_expand_max_per_keyword, pacer.short, checkpoint each);
+    #   EXTRACT + parse_cards; merge across passes by source_ref (first sighting wins); stop when posts >= cap, else next pass. NEVER opens a post menu. Keeps the last page loaded for capture_links.
+    def capture_links(self, refs: Sequence[str]) -> LinkCaptureResult
+    #   refs = ScrapedPost.source_ref values from the LAST scan() (page still loaded). Locates each card (see below), runs the Permalink-capture steps for at most scrape_permalink_max_per_keyword refs, 3 consecutive misses end it.
+    #   A ref whose card is no longer in the DOM is skipped ("no_card") and counts neither as an attempt nor a miss. Raises AccountSafetyStop (browser closed first).
+    def search(self, keyword: str, max_posts: int) -> KeywordScrapeResult     # kept: scan() then capture_links(all eligible); Phase 1.2/1.3 callers and tests unchanged
+@dataclass(frozen=True) class LinkCaptureResult: links: dict[str, str]; attempts: int; found: int      # links: source_ref → canonical permalink URL (hits only)
+```
+**Listitem-tier permalink capture.** For the `listitem` card tier (`has_control_menu` was false in Phase 1.3) `EXTRACT_JS` now also returns `has_control_menu=true` when the card contains `LISTITEM_MENU` (`button[aria-label^="Open control menu for post by"]`), plus `card_index` (position among that tier's cards in DOM order) and `menu_label` (the button's `aria-label`). Capture locates the card by `component_key` when present, else by `card_index` verified against `menu_label` (a mismatch = "no_card"), clicks the `LISTITEM_MENU` button as the trigger, then finds the "Copy link to post" item in the opened menu or a visible document-level `[role="menu"]` (else any visible innermost element whose trimmed text equals `COPY_LINK_TEXT`). Everything else (hook, pacing, one item only, checkpoints, `Escape`) is the Phase 1.2 design. `permalink.eligible_indices` is replaced by `eligible_refs(raws, refs, cap)`.
+
+**Date/sort evidence of depth.** `scan()` logs one `scraper_pass` DEBUG line per pass (`date_filter`, `sort`, `scrolls`, `cards`, `stop`). `KeywordScrapeResult.stop_reason`: `cap`, `no_growth` (last pass ended without reaching the cap), `max_scrolls`, `no_results`, `drift`.
+
+**Fixture bulk corpus (`linkedin_fixture/bulk.py`).** `generate_bulk(n=300, seed=1404) -> list[FixturePost]`, deterministic, ids `B001`–`B300`, synthetic authors (`bulk-author-NNN`, names "Bulk Author NNN", `.example` emails, `+91 90000 0xxxx` phones), `expected` ∈ genuine/discard by `kind`: buyer (10%, genuine), agency_recruiting (20%), trainer_ad (15%), event_promo (20%), job_post (10%), thought_leadership (25%) (all discard). `results_for(keyword) -> list[FixturePost] | None`: None unless the lower-cased keyword is a `SUGGESTED_KEYWORDS` text other than the four legacy test keywords (`corporate ai training`, `ai workshop`, `ai consulting`, `claude code training`, which keep returning exactly the P-set, so Phase 1/1.2 counts are unchanged); else 90 distinct posts `bulk[(h + 7*i) % 300]`, `h = int(sha1(keyword).hexdigest(), 16) % 300`, with `age_days = i*30//90` (newest first for sort=latest; a stable shuffle for relevance). `datePosted="past-week"` keeps `age_days <= 7` (≈24 posts), `past-month` all 90. `expected_verdict(text) -> "genuine" | "discard" | None` finds the bulk post by normalised text (used by the fake-LLM oracle in tests). Markup variant per keyword: even `h` → SDUI (`feed-full-update`), odd `h` → the marker-free `listitem` variant (with the `Open control menu for post by` button and a menu portal containing "Copy link to post"). "Copy link to post" writes a permalink via `navigator.clipboard.writeText` for ≈80% of posts and is a no-op for the rest (never 3 in a row, except under `permalink-miss-test`). **Infinite scroll**: the results page renders the first 10 cards plus a sentinel; a scroll listener (and an IntersectionObserver) fetches `GET /search/results/content/more/?keywords=…&datePosted=…&sortBy=…&start=N` (10 cards as the same markup, ≈150 ms latency) and appends them to the lazy column; an empty fragment ends the list. The fixture honours `datePosted` and `sortBy` and records them (`window.__fixture_query`) for assertions. Trigger keywords and routes of Phase 1.1–1.3 are unchanged.
+
+### Slice D — triage agent
+`TriageInput` gains `subject: Literal["enquiry","seen_post"] = "enquiry"` (for `seen_post`, `enquiry_id` carries the seen_post id and `log_context` uses the key `seen_post_id`). `PROMPT_VERSION = "triage-v2"`. `prompts/triage_system.md` is rewritten per `agent.md` → Prompt v2. New:
+```python
+# agent/batch.py
+@dataclass(frozen=True) class BatchItem: key: int; inp: TriageInput
+@dataclass(frozen=True) class BatchResult: key: int; outcome: TriageOutcome | None; fatal: Exception | None
+def triage_concurrently(items: Sequence[BatchItem], deps: TriageDeps, *, concurrency: int = 4,
+                        should_stop: Callable[[], bool] = lambda: False) -> Iterator[BatchResult]
+#   ThreadPoolExecutor(max_workers=concurrency) around run_triage; yields in completion order. The first LLMAuthError/LLMModelNotFound yields BatchResult(fatal=exc),
+#   submits nothing further (items never started yield nothing: the caller leaves them pending). should_stop is polled before each submission. No DB access inside the pool.
+```
+Test support: `tests/support/fake_llm.py::FakeLLMClient.with_oracle(label: Callable[[str], Literal["genuine","discard"] | None])` answers `record_triage` from the enquiry text found in the prompt (a valid, guarded-safe result; thread-safe; counts `calls`). Eval: `tests/integration/agent/eval_set.py` (`EVAL_POSTS`, ≥ 40 labelled synthetic posts: 16 genuine and 24 discard across agency / marketplace / trainer-ad / event / job / thought-leadership / individual-trainer-seeker / non-English / emoji-heavy / no-contact genuine) and `test_triage_eval.py` (real Haiku, `triage_concurrently`, concurrency 4): verdict accuracy ≥ 90 %, every returned email/phone literally present in the post (0 hallucinated), reason ≤ 160 chars.
+
+### Slice E — discovery job (`jobs/discovery_job.py`)
+Job flow (replaces data flow steps 2 selection, 3, 4, 5):
+1. Run start: `seen_posts.purge_expired(db)` (log `seen_posts_purged`); `plan_keywords(db, settings.scrape_max_keywords_per_run)`; open the searcher; login check as before.
+2. Per keyword (`max_posts = max(1, min(scrape_max_posts_per_keyword, scrape_max_posts_per_day − scanned today))`):
+   1. `result = searcher.scan(keyword, max_posts)`.
+   2. For each post: `register_sighting` → counters (`posts_seen` +1 always; `new`/`dupe`); commit every 10 posts for live progress. IntegrityError on a deleted keyword → the existing retry-with-null rule.
+   3. Triage the keyword's new posts: `triage_inputs` → `triage_concurrently(concurrency=settings.triage_concurrency)`; for each `BatchResult` on the job thread `persist_triage` (+ commit). Fatal LLM error → as step 6a (remaining items stay `pending`, run `failed`). Counters: `enquiries_triaged`, `posts_relevant`, `posts_skipped_ai`, `triage_failed`, per-keyword `cost_usd_micros`.
+   4. Permalinks (only now, page still loaded): refs = this keyword's newly-genuine posts + `needs_permalink` sightings → `searcher.capture_links(refs)` → `attach_permalink` for each hit. A safety stop here keeps everything already persisted.
+   5. `record_yield`, keyword row `done|warning` via `keyword_outcome`, `keywords_done += 1`, `_mark_keyword_run`, commit, `scrape_keyword` log, paced pause.
+3. The daily scanned-post cap is checked after each keyword (as before). Safety stops, `SessionMissing`, open errors and fatal LLM errors keep their Phase 1.1 handling.
+4. Finalise: `current_step` = "Run finished — scanned 312 · new 140 · relevant 9 (6%) · skipped by AI 131 · already seen 172" (also on `aborted`/cap, prefixed with the reason).
+5. Resumability: every keyword commits independently and `seen_posts` makes a re-scan free; a restart marks the run `aborted` and the next run's `plan_keywords` continues with the un-run keywords (data.md).
+`web/app.py` startup gets two lines: `keywords.seed_suggested_once(db)` and the existing `recover_interrupted_runs`.
+
+### Slice F — web
+Routes (`api.md`): `POST /setup/keywords/suggested`, `POST /setup/keywords/{id}/edit`, `GET /inbox?tab=skipped&state=discard|failed&q=&page=`, `POST /inbox/skipped/{id}/rescue`, `POST /inbox/skipped/{id}/override`, `POST /inbox/skipped/{id}/retry`. Templates per `ui.md`.
+
+### Logging additions
+`scrape_keyword`: `posts_relevant`, `posts_skipped_ai`, `scrolls`, `passes`, `expanded`, `stop_reason`, `cost_usd`. `scrape_run`: `posts_relevant`, `posts_skipped_ai`, `permalinks_found`, `relevance_pct`, `purged`. New: `seen_posts_purged` (`rows`), `keywords_seeded` (`added`, `already_present`), `triage_batch` (`items`, `concurrency`, `duration_ms`).
+
+### Tests (conventions)
+- Fixture server ports stay ephemeral (integration) / 8766 (E2E) / 8767 (boot); never 8765.
+- Integration tests that run a full multi-keyword discovery use `@pytest.mark.timeout(480)` and the fake-LLM oracle; real Haiku is used by the eval (slice D), the existing triage suites and the E2E.
+- Gate commands for unit, integration and E2E use disjoint temp DBs, profiles and ports, so they run concurrently (`roadmap.md` → Phase 1.4 Gate).
+
 ## LinkedIn results variants (Phase 1.3)
-The SDUI results page ships in several markup variants. Card discovery order: `sdui` (`data-view-name="feed-full-update"`), `urn`, then `listitem` (`role=listitem` containing an expandable text box / `Open control menu for post by <Name>` button / `feed-commentary`). `listitem` also wins when the earlier tiers produce no post text. Its raws have `has_control_menu=false` (no permalink capture; the card links to the author profile). Selectors live in `scraper/selectors.py` (`LISTITEM_*`); sample: `tests/integration/scraper/test_listitem_variant.py`.
+The SDUI results page ships in several markup variants. Card discovery order: `sdui` (`data-view-name="feed-full-update"`), `urn`, then `listitem` (`role=listitem` containing an expandable text box / `Open control menu for post by <Name>` button / `feed-commentary`). `listitem` also wins when the earlier tiers produce no post text. Its raws have `has_control_menu=false` (no permalink capture; the card links to the author profile). **Phase 1.4 supersedes this:** `listitem` raws carry `has_control_menu`, `card_index` and `menu_label`, and permalink capture works on this tier (`## Thorough discovery (Phase 1.4)` → Slice C). Selectors live in `scraper/selectors.py` (`LISTITEM_*`); sample: `tests/integration/scraper/test_listitem_variant.py`.

@@ -1,6 +1,6 @@
 # sales0 — Data Model
 
-All timestamps are UTC, timezone-aware. Every table has `id` (integer PK) unless noted. Enum-like fields are lowercase strings with the allowed values listed. Actor-bearing tables carry a nullable `actor_user_id → users.id` for per-user attribution later. Raw scraped text is never deleted.
+All timestamps are UTC, timezone-aware. Every table has `id` (integer PK) unless noted. Enum-like fields are lowercase strings with the allowed values listed. Actor-bearing tables carry a nullable `actor_user_id → users.id` for per-user attribution later. The raw text of an **enquiry** is never deleted. The raw text of a post the AI skipped (`seen_posts`, Phase 1.4) is purged after 14 days; its fingerprint and snippet stay.
 
 ## Phase 1 entities (migration `0002_phase1_discovery`)
 
@@ -87,7 +87,7 @@ Group seeds: Training (1), Services (2), Products (3).
 | error_message | str(300) null | |
 
 ### enquiries
-The core record: one per real-world post, after dedupe.
+The core record: one per real-world RELEVANT post, after dedupe. From Phase 1.4 a row is created only for an AI-`genuine` post (at triage time, already triaged) or by a human Rescue; AI discards live in `seen_posts` (see Phase 1.4 below). Pre-1.4 rows with `triage_status` pending/failed keep the old behaviour.
 | Field | Type | Notes |
 |---|---|---|
 | source | `linkedin_post` (later `whatsapp_group`, `manual`, `import`) | |
@@ -205,8 +205,74 @@ Index `(entity_type, entity_id, changed_at)`.
 - **Near-duplicate fingerprint** (same author profile slug + first 300 normalised characters) is computed on read from `author_profile_url` and `raw_text` (`services.dedupe.near_duplicate`); it is never stored. `content_hash` keeps its meaning.
 - **`date_posted`** keeps its meaning: estimated from the relative time (`now`, `24m`, `3h`, `2d`, `1w`, `3mo`, `1yr`, `• Edited` ignored).
 
+### Phase 1.4: thorough, idempotent discovery (migration `0003_phase1_4_seen_posts`, new head)
+
+> **Binding storage policy.** A scraped post becomes an `enquiries` row ONLY when the AI verdict is `genuine` (or a human rescues it). Every other scanned post is remembered in `seen_posts` (fingerprint + verdict + reason + snippet), so it is never triaged twice and never duplicated. Authors are remembered in `linkedin_profiles`. Earlier text in this file that says "one enquiry per post" now means "one enquiry per relevant post".
+
+#### linkedin_profiles
+The identity Phase 2 prospects and Phase 3 prospect-watch will use.
+| Field | Type | Notes |
+|---|---|---|
+| slug | str(200) unique | Normalised by `scraper.urls.profile_slug`: path `/in/<slug>` or `/company/<slug>` → `in/<slug>` / `company/<slug>`; query, fragment and trailing slash dropped; percent-decoded; lower-cased |
+| kind | `person` \| `company` | From the slug prefix |
+| profile_url | str(500) | Canonical `https://www.linkedin.com/<slug>/` (live-shaped even in fixture mode) |
+| display_name | str(200) null, headline str(500) null | Latest non-null value seen |
+| first_seen_at, last_seen_at | datetime | Upserted on EVERY sighting |
+| posts_seen | int default 0 | +1 per sighting (scanned card, repeats included) |
+| relevant_count | int default 0 | +1 per distinct post that became an enquiry |
+| tracked | bool null | NULL = never tracked. Set `true` when a Phase-2 prospect is created from this profile (Phase 2 adds `prospect_id`) |
+
+#### seen_posts
+One row per distinct post sighted, whatever the verdict.
+| Field | Type | Notes |
+|---|---|---|
+| fingerprint | str(64) unique | `sha256(author_slug + "\n" + normalize_text(text))`; `author_slug` is `""` when unknown |
+| content_hash | str(64) indexed | `dedupe.content_hash(text)` (author-independent; merges the same text posted by two authors, as Phase 1 did) |
+| text_prefix | str(300) | `normalize_text(strip_ellipsis(text))[:300]`; survives the purge; feeds the same-author near-duplicate rule |
+| source_ref | str(200) unique null | URN or `ck:<KEY>` when present |
+| profile_id | FK linkedin_profiles null (SET NULL) | |
+| author_name str(200) null, author_headline str(500) null | | |
+| keyword_text | str(100) | Keyword of the first sighting |
+| first_run_id | FK scrape_runs null (SET NULL) | |
+| triage_status | `pending` \| `done` \| `failed` | `failed` = LLM error; retried from the Skipped tab |
+| triage_error | str(300) null | |
+| verdict | `genuine` \| `discard` null | Immutable AI output (null until triaged) |
+| reason | str(160) null, poster_type str(40) null | |
+| ai_result | JSON null | The guarded `TriageResult`; used by Rescue |
+| snippet | str(240) | First 240 chars of the text, one line. Kept forever |
+| raw_text | text null | Full text. NULL once purged, and NULL when the post became an enquiry (the text lives on the enquiry) |
+| raw_purge_after | datetime null | `first_seen_at + SALES0_SEEN_RAW_RETENTION_DAYS` (14). Set only while `raw_text` is held |
+| raw_purged_at | datetime null | |
+| post_url | str(500) null | Permalink when captured, else null |
+| posted_relative | str(30) null | As scraped ("3h") |
+| enquiry_id | FK enquiries null (SET NULL) | Set when a genuine post, or a rescued one, became an enquiry |
+| rescued_at | datetime null | Set by Rescue / Override |
+| first_seen_at, last_seen_at | datetime | |
+| times_seen | int default 1 | |
+Indexes: `(verdict, first_seen_at)`, `profile_id`, `content_hash`, `enquiry_id`.
+
+#### Changes to Phase 1 tables (all in-place `ADD COLUMN`, no table rebuild)
+| Table | New columns |
+|---|---|
+| keywords | `group_name` str(40) null (one of the 4 offering names for suggested keywords); `suggested_key` str(60) null unique (stable slug of the suggested phrase; the seeding identity); `scanned_total`, `relevant_total`, `last_scanned`, `last_relevant` int default 0 (yield stats; `last_*` = the latest run) |
+| scrape_runs | `posts_relevant`, `posts_skipped_ai`, `permalinks_found` int default 0 |
+| scrape_run_keywords | `posts_relevant`, `posts_skipped_ai`, `permalinks_found`, `scrolls` int default 0; `cost_usd_micros` int default 0 |
+| enquiries | `author_profile_id` FK linkedin_profiles null (SET NULL); `seen_post_id` FK seen_posts null (SET NULL); `posted_relative` str(30) null |
+| llm_calls | `seen_post_id` FK seen_posts null (SET NULL), indexed. Triage of a new post runs before its enquiry exists; when it becomes an enquiry, its rows also get `enquiry_id` |
+
+Counter meaning (per run and per keyword): `posts_seen` = **scanned** (every parsed card, repeats included); `posts_new` = distinct posts never seen before (each triaged once); `posts_dupe` = already-seen (no LLM call); `posts_relevant` = new posts the AI called genuine (each created an enquiry); `posts_skipped_ai` = new posts the AI discarded; `posts_new = relevant + skipped_ai + triage_failed`. Relevance rate = `posts_relevant / posts_new`.
+
+- **Interrupted runs** (server restart) are `status='aborted'` with `abort_reason` NULL and `error_message` "Interrupted by server restart — the next run continues with the keywords it had not reached" (a new abort reason would need a rebuild of the FK-referenced `scrape_runs`, which the migration rules forbid). They start no cool-down (the cool-down reads only the four safety reasons).
+- **Keyword resume**: the next run plans first the active keywords whose row in the most recent run is `pending`/`running`/`skipped` and whose `last_run_at` is null or before that run's `started_at`; then least-recently-run order.
+- **Seed**: `app_meta` key `keywords_seeded_v1` = `1` once the suggested library (`capabilities/search-setup.md`) has been auto-seeded at startup.
+- **Backfill in 0003** (frozen copies of `normalize_text`, `profile_slug` and the fingerprint formula live inside the migration; a test asserts they equal the app versions):
+  1. Every existing enquiry gets a `linkedin_profiles` upsert (when it has an author profile URL) and a `seen_posts` row (`enquiry_id` set, `verdict` = its `ai_verdict`, `raw_text` NULL), and `enquiries.author_profile_id` / `seen_post_id` are set.
+  2. Enquiries with `ai_verdict='discard'` AND `review_status='pending_review'` AND no `triage_decisions` row (never touched by a human) are MOVED: their `seen_posts` row keeps `raw_text` (purge after 14 days from the migration time), `enquiry_id` NULL, and the enquiry is deleted (cascading sources, hits; `llm_calls.enquiry_id` becomes NULL and the rows get `seen_post_id`). Costs are preserved.
+  3. Everything else stays: accepted enquiries, any enquiry a human decided (including discarded ones, which keep feeding the learning loop and stay in the Discarded tab), `triage_status` pending/failed enquiries (they keep the Phase 1 Retry behaviour), and AI-genuine ones.
+  4. Profile counters are recomputed: `posts_seen` = seen_posts rows, `relevant_count` = remaining AI-genuine or accepted enquiries.
+
 ### app_meta (scaffold)
-`key` str PK, `value` str. Holds `schema_note`.
+`key` str PK, `value` str. Holds `schema_note` and (Phase 1.4) `keywords_seeded_v1`.
 
 ### Foreign-key delete rules and key normalisation (binding)
 - **Offering references** (`enquiries.offering_id`, `enquiries.ai_offering_id`, `offerings.group_id`): `RESTRICT`. `delete_offering` therefore deletes only an unreferenced offering, and deactivates (`active=false`) one still in use.
@@ -239,7 +305,7 @@ Client (Phase 2): status active | legacy (older projects, imported)
 | Entity | Phase | Key fields |
 |---|---|---|
 | companies | 2 | name, name_key unique, website, linkedin_url, city, is_competitor, notes, research_brief (P3) |
-| prospects | 2 | kind (`company_enquiry` \| `outreach_person`), company_id, contact_id null, origin_enquiry_id null, stage, next_follow_up_on date null, closed_reason, actor_user_id. 0003 backfill: one prospect per `accepted` enquiry (stage `new`). |
+| prospects | 2 | kind (`company_enquiry` \| `outreach_person`), company_id, contact_id null, origin_enquiry_id null, stage, next_follow_up_on date null, closed_reason, actor_user_id. 0004 backfill: one prospect per `accepted` enquiry (stage `new`); each prospect's company/person links to its `linkedin_profiles` row (`tracked = true`) via `enquiries.author_profile_id`. |
 | leads | 2 | prospect_id unique, stage, meeting_at, proposal_sent_on, value_estimate null, outcome_note |
 | clients | 2 | company_id, status (`active` \| `legacy`), started_on, source (`lead` \| `legacy_import`) |
 | contacts | 2 | full_name, email (indexed), phone, linkedin_url (unique null), title, company_id null, tags (via contact_tags) |
