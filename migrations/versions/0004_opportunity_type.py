@@ -2,7 +2,7 @@
 agency_requirement | individual_trainer_wanted | other), backfilled from ``ai_extraction``.
 
 Revision ID: 0004_opportunity_type
-Revises: 0003_phase1_4_seen_posts
+Revises: p3_outreach_a7c41e9d
 Create Date: 2026-10-28
 """
 
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004_opportunity_type"
-down_revision: str | Sequence[str] | None = "0003_phase1_4_seen_posts"
+down_revision: str | Sequence[str] | None = "p3_outreach_a7c41e9d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
