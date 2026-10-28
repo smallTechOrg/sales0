@@ -60,7 +60,7 @@ secret_access() {  # grant the runtime service account read access to ONE new se
 
 step_secrets() {
   note "step: secrets (create-if-missing; values never printed)"
-  secret_from_cmd sales0-db-password   "openssl rand -base64 24 | tr -d '/+=\\n'"
+  secret_from_cmd sales0-db-password   "printf '%s-Aa1' \"\$(openssl rand -base64 24 | tr -d '/+=\\n')\""
   secret_from_cmd sales0-secret-key    "openssl rand -base64 48 | tr -d '\\n'"
   secret_from_cmd sales0-worker-token  "openssl rand -base64 36 | tr -d '\\n'"
   secret_from_cmd sales0-app-password  "openssl rand -base64 18 | tr -d '/+=\\n'"
