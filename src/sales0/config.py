@@ -177,6 +177,13 @@ class Settings(BaseSettings):
     session_days: int = Field(14, ge=1, le=90)
     login_max_attempts: int = Field(5, ge=1)
     login_lockout_s: int = Field(60, ge=1)
+    # --- Per-user accounts (Phase 5) ---
+    session_remember_days: int = Field(30, ge=1, le=365)  # "remember me" cookie lifetime
+    trusted_proxies: str = ""  # comma-separated IPs/CIDRs whose X-Forwarded-For may be trusted
+    password_reset_ttl_h: int = Field(24, ge=1, le=168)  # lifetime of an admin-issued set-password link
+    password_min_length: int = Field(10, ge=8, le=128)
+    # --- LinkedIn accounts (Phase 5) ---
+    linkedin_session_backend: Literal["folder", "db"] = "folder"  # backend for NEW accounts (default account is folder)
     followup_days_1: int = Field(3, ge=1)
     followup_days_2: int = Field(7, ge=1)
     followup_days_final: int = Field(14, ge=1)
