@@ -1,8 +1,8 @@
 """Outreach persistence (Phase 3, defined in slice A so the migration is single).
 
-NOTE for the integrator: ``prospect_id`` / ``enquiry_id`` / ``company_id`` / ``offering_id``
-columns are plain nullable integers WITHOUT foreign keys, because the CRM tables (prospects,
-companies) do not exist on this branch. Add the FK constraints (new migration) at merge time.
+Phase 2 (migration p6_crm_5b2e7d14) added the foreign keys on ``outreach_messages.prospect_id`` /
+``enquiry_id`` / ``company_id`` and ``company_briefs.prospect_id`` / ``enquiry_id`` (all ``SET NULL``).
+``offering_id`` columns on templates/decks stay plain integers.
 ``outreach_events`` is an append-only audit trail: never update or delete its rows.
 """
 
@@ -70,9 +70,9 @@ class OutreachMessage(Base):
     error: Mapped[str | None] = mapped_column(Text)
     send_outcome_unknown: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     retry_decided_by: Mapped[str | None] = mapped_column(String(80))
-    prospect_id: Mapped[int | None] = mapped_column(Integer, index=True)  # no FK (see module note)
-    enquiry_id: Mapped[int | None] = mapped_column(Integer, index=True)  # no FK
-    company_id: Mapped[int | None] = mapped_column(Integer, index=True)  # no FK
+    prospect_id: Mapped[int | None] = mapped_column(ForeignKey("prospects.id", ondelete="SET NULL"), index=True)
+    enquiry_id: Mapped[int | None] = mapped_column(ForeignKey("enquiries.id", ondelete="SET NULL"), index=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     brief_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
@@ -108,8 +108,8 @@ class CompanyBrief(Base):
     sources_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, index=True)
     cost_usd_micros: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    enquiry_id: Mapped[int | None] = mapped_column(Integer, index=True)  # no FK
-    prospect_id: Mapped[int | None] = mapped_column(Integer, index=True)  # no FK
+    enquiry_id: Mapped[int | None] = mapped_column(ForeignKey("enquiries.id", ondelete="SET NULL"), index=True)
+    prospect_id: Mapped[int | None] = mapped_column(ForeignKey("prospects.id", ondelete="SET NULL"), index=True)
 
 
 __all__ = [

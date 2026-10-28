@@ -8,7 +8,7 @@ from datetime import date, datetime
 
 from sales0.clock import utcnow
 from sales0.services.sheetsync.fetch import SheetFetchError, TabSource
-from sales0.services.sheetsync.parsers import parse_tab
+from sales0.services.sheetsync.parsers import RowIssue, parse_tab
 from sales0.services.sheetsync.report import SyncReport, TabReport
 from sales0.services.sheetsync.repository import RecordId, SheetRepository, SheetSource
 from sales0.services.sheetsync.tabs import TabSpec
@@ -50,9 +50,20 @@ class SyncEngine:
         for tab in tabs:
             report.tabs[tab.name] = self._sync_tab(tab, dry_run, seen_across, collisions)
         report.cross_tab_collisions = len(collisions)
+        finish = getattr(self._repo, "finish_run", None)
+        if callable(finish) and not dry_run:
+            try:
+                finish()  # derived data (flags) after a real run; must never fail the sync
+            except Exception:  # noqa: BLE001
+                pass
         report.duration_s = time.monotonic() - t0
         report.finished_at = self._now()
         return report
+
+    @staticmethod
+    def _drain(repo: SheetRepository) -> list[RowIssue]:
+        drain = getattr(repo, "drain_errors", None)
+        return list(drain()) if callable(drain) else []
 
     def _sync_tab(self, tab: TabSpec, dry_run: bool, seen_across: set[RecordId], collisions: set[RecordId]) -> TabReport:
         tr = TabReport(tab=tab.name, kind=tab.kind)
@@ -82,6 +93,7 @@ class SyncEngine:
             src = SheetSource(tab.sheet_id, tab.gid, row.row_number, row.row_hash, tab.name)
             stored = self._repo.get_by_key(*rid)
             current = stored.sources.get(tab.tab_key) if stored else None
+            kind = "added"
             if current is None:
                 tr.added += 1
             elif current.row_hash == row.row_hash and stored is not None and stored.sheet_removed_at is None:
@@ -91,8 +103,15 @@ class SyncEngine:
                 continue
             else:
                 tr.updated += 1
+                kind = "updated"
             if not dry_run:
                 self._repo.upsert(row.record, src)
+                failed = self._drain(self._repo)
+                if failed:
+                    # The row was NOT applied (and keeps its old hash, so the next sync retries it):
+                    # it moves from added/updated to the error list - no row is lost silently.
+                    setattr(tr, kind, getattr(tr, kind) - 1)
+                    tr.errors.extend(failed)
 
         gone = self._repo.list_keys_for_tab(tab.sheet_id, tab.gid) - present
         if gone:

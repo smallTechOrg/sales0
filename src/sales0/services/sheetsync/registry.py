@@ -20,3 +20,8 @@ def register_repository_factory(factory: Callable[[], SheetRepository] | None) -
 
 def get_repository() -> SheetRepository | None:
     return _factory() if _factory is not None else None
+
+
+def repository_installed() -> bool:
+    """True once a real (CRM) repository factory is registered."""
+    return _factory is not None

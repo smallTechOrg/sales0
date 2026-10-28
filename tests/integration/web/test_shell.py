@@ -14,11 +14,8 @@ from sales0.config import reset_settings
 from sales0.web.app import create_app
 from tests.integration.web.conftest import HX, add_llm_call, set_session
 
+# Phase 2 built Pipeline, Contacts, Competitors & Groups and Import for real; only these two remain stubs.
 STUBS = [
-    ("/pipeline", "Pipeline", 2),
-    ("/contacts", "Contacts", 2),
-    ("/competitors", "Competitors &amp; Groups", 2),
-    ("/import", "Import", 2),
     ("/metrics", "Metrics", 4),
     ("/whatsapp", "WhatsApp groups", 5),
 ]
@@ -43,12 +40,50 @@ def test_header_shows_not_connected_light_zero_cost_and_nav_in_order(client: Tes
     assert re.search(r'id="cost-badge".*?AI today <strong>\$0\.00</strong> · month <strong>\$0\.00</strong>', html, re.S)
     nav = html.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
     labels = re.findall(r'<a href="(/[a-z]+)"', nav)
-    assert labels == ["/inbox", "/runs", "/setup", "/pipeline", "/contacts", "/competitors", "/import", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/whatsapp"]
-    assert nav.count("badge--stub") == 6  # Outreach is real since Phase 3
+    assert labels == ["/inbox", "/runs", "/setup", "/pipeline", "/contacts", "/competitors", "/import", "/sync", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/whatsapp"]
+    assert nav.count("badge--stub") == 2  # only Metrics (Phase 4) and WhatsApp (Phase 5) are stubs now
     assert 'href="/inbox" aria-current="page"' in nav
     assert 'id="alert-banner"' not in html
     assert 'id="toasts"' in html and 'aria-live="polite"' in html
     assert "FIXTURE MODE" not in html
+
+
+@pytest.mark.parametrize(("path", "key"), [("/pipeline", 'id="pipeline-tabs"'), ("/contacts", 'id="contacts-search"'),
+                                           ("/competitors", 'id="competitor-list"'), ("/import", 'id="paste-form"')])
+def test_phase2_nav_entries_are_real_pages_not_stubs(client: TestClient, path: str, key: str) -> None:
+    resp = client.get(path)
+    assert resp.status_code == 200
+    main = _main(resp.text)
+    assert key in main and "Coming in Phase" not in main and "stub-title" not in main
+    nav = resp.text.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
+    assert f'<a href="{path}" aria-current="page">' in nav
+    assert re.search(rf'<a href="{path}"[^>]*>\s*[^<]*(<span class="nav-count"[^>]*>\d+</span>)?\s*</a>', nav)
+
+
+def test_nav_has_a_sync_entry_without_a_phase_badge(client: TestClient) -> None:
+    nav = client.get("/inbox").text.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
+    link = nav.split('<a href="/sync"', 1)[1].split("</a>", 1)[0]
+    assert "Sync" in link and "badge--stub" not in link
+
+
+def test_pipeline_nav_shows_a_due_badge_only_while_follow_ups_are_due(client: TestClient) -> None:
+    from datetime import timedelta
+
+    from sales0.clock import local_today
+    from sales0.config import get_settings
+    from sales0.db.engine import session_scope
+    from sales0.services.crm import followups, prospects
+
+    assert 'id="due-badge"' not in client.get("/inbox").text
+    with session_scope() as db:
+        pid = prospects.create_manual(db, name="Due Person", email="due@x.example").id
+        today = local_today(get_settings().tz)
+        followups.add_custom(db, prospect_id=pid, due_on=today)
+        followups.add_custom(db, prospect_id=pid, due_on=today - timedelta(days=1))
+        followups.add_custom(db, prospect_id=pid, due_on=today + timedelta(days=5))
+    html = client.get("/inbox").text
+    nav = html.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
+    assert re.search(r'<a href="/pipeline"[^>]*>\s*Pipeline <span class="nav-count" id="due-badge"[^>]*>2</span>', nav)
 
 
 def test_connected_light_shows_last_run_age(client: TestClient) -> None:
@@ -60,7 +95,7 @@ def test_connected_light_shows_last_run_age(client: TestClient) -> None:
 
 def test_needs_attention_shows_banner_on_every_page_and_red_light(client: TestClient) -> None:
     set_session("needs_attention", last_error="Checkpoint page at /checkpoint/challenge/")
-    for path in ("/inbox", "/runs", "/setup", "/metrics"):
+    for path in ("/inbox", "/runs", "/setup", "/metrics", "/pipeline", "/contacts", "/competitors", "/import"):
         html = client.get(path).text
         assert 'id="alert-banner"' in html, path
         assert 'role="alert"' in html

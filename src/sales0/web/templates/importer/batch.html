@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Import {{ b.filename }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/import">&larr; Import</a></div>
+  <div class="page__header"><div><h1>Import summary</h1><p>{{ b.filename }} · {{ kind_labels.get(b.kind, b.kind) }} · {{ b.created_at|localdt }}{% if b.actor %} · {{ b.actor }}{% endif %}</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="import-summary" aria-labelledby="sum-title">
+      <div class="card__header"><h2 id="sum-title">Result</h2></div>
+      <div class="card__body">
+        <div class="import-summary">
+          <div><strong id="sum-total">{{ b.total }}</strong><span>Rows</span></div>
+          <div><strong id="sum-new">{{ b.new }}</strong><span>New</span></div>
+          <div><strong id="sum-merged">{{ b.merged }}</strong><span>Merged (already synced)</span></div>
+          <div><strong id="sum-unchanged">{{ b.unchanged }}</strong><span>Unchanged</span></div>
+          <div><strong id="sum-errors">{{ b.errors_count }}</strong><span>Errors</span></div>
+        </div>
+        {% if b.new == 0 and b.errors_count == 0 and b.total %}<p class="hint">Nothing new — this file was already imported.</p>{% endif %}
+      </div>
+    </section>
+    <section class="card" id="import-errors" aria-labelledby="err-title">
+      <div class="card__header"><h2 id="err-title">Row problems</h2><span class="muted">row numbers and codes only; no cell content is stored</span></div>
+      <div class="card__body table-wrap">
+        {% if b.errors %}
+          <table class="table"><thead><tr><th scope="col" class="num">Row</th><th scope="col">Level</th><th scope="col">Code</th></tr></thead>
+            <tbody>{% for e in b.errors %}<tr><td class="num">{{ e.row }}</td><td>{% if e.level == "warning" %}<span class="badge badge--warn">Warning</span>{% else %}<span class="badge badge--discard">Error</span>{% endif %}</td><td><code>{{ e.code }}</code></td></tr>{% endfor %}</tbody></table>
+        {% else %}
+          <div class="empty-state empty-state--compact"><p>No problems in this file.</p></div>
+        {% endif %}
+      </div>
+    </section>
+    {% if b.ignored_columns %}<p class="hint" id="ignored-columns">Columns that were ignored (not recognised): {{ b.ignored_columns|join(", ") }}</p>{% endif %}
+    <div class="row"><a class="btn btn--primary" href="/import">Import another</a><a class="btn" href="/pipeline">Open the pipeline</a></div>
+  </div>
+{% endblock %}

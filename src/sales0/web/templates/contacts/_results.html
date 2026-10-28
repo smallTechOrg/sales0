@@ -1,0 +1,29 @@
+{# Needs: page (ContactPage), params. Swapped by the search box. #}
+{% from "pipeline/_macros.html" import pager with context %}
+<div id="contact-results">
+  <section class="card" aria-label="Contacts">
+    <div class="card__body table-wrap">
+      {% if page.items %}
+        <table class="table" id="contact-list">
+          <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Company</th><th scope="col">Tags</th></tr></thead>
+          <tbody>
+          {% for c in page.items %}
+            <tr id="contact-{{ c.id }}">
+              <td><a href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "(unnamed)" }}</a>{% if c.title %}<div class="muted">{{ c.title }}</div>{% endif %}</td>
+              <td>{{ c.email or "—" }}</td>
+              <td>{{ c.phone or "—" }}</td>
+              <td>{% if c.company_id %}<a href="/companies/{{ c.company_id }}">{{ c.company_name }}</a>{% else %}{{ c.company_name or "—" }}{% endif %}</td>
+              <td>{% for t in c.tags %}<span class="tag">{{ t.name }}</span> {% endfor %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% elif params.q or params.tag or params.company_id %}
+        <div class="empty-state empty-state--compact" id="contacts-empty"><p>No contacts match{% if params.q %} '{{ params.q }}'{% endif %}.</p><a class="btn" href="/contacts">Clear filters</a></div>
+      {% else %}
+        <div class="empty-state" id="contacts-empty"><p>No contacts yet — they are created when you accept an enquiry or send an email.</p><a class="btn" href="#new-contact">New contact</a></div>
+      {% endif %}
+    </div>
+  </section>
+  {{ pager("/contacts", params, page.page, page.page_size, page.total, "contacts") }}
+</div>

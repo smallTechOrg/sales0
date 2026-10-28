@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner, flag_badges %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/pipeline">&larr; Pipeline</a> / <a href="/pipeline?tab=prospects">Prospects</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    {% include "pipeline/_prospect_header.html" %}
+    <div class="grid-2">
+      <div class="stack">
+        {% with timeline=p.timeline, base="/pipeline/prospects/%d" % p.id %}{% include "pipeline/_timeline.html" %}{% endwith %}
+      </div>
+      <div class="stack">
+        {% with follow_ups=p.follow_ups, base="/pipeline/prospects/%d" % p.id, can_act=(p.status == "open" and not p.lead), no_follow_up=(p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0) %}{% include "pipeline/_followups.html" %}{% endwith %}
+
+        <section class="card" id="linked-enquiries" aria-labelledby="enq-title">
+          <div class="card__header"><h2 id="enq-title">Linked enquiries</h2><span class="muted">{{ p.enquiries|length }}</span></div>
+          <div class="card__body">
+            {% for e in p.enquiries %}
+              <div class="reply-item" id="enquiry-{{ e.id }}">
+                <strong>{{ e.requirement_summary or "(no summary)" }}</strong>
+                <div class="muted">
+                  {% if e.priority %}<span class="badge badge--{{ e.priority }}">{{ e.priority|capitalize }}</span> {% endif %}
+                  <span class="badge">{{ e.review_status|replace("_", " ")|capitalize }}</span>
+                  {% if e.sheet_status %}<span class="chip chip--sheet">Sheet: {{ e.sheet_status }}</span>{% endif %}
+                  {% if e.company %}{{ e.company }} · {% endif %}{% if e.date_added %}{{ e.date_added|ago }}{% endif %}
+                </div>
+                <div class="row">
+                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">View post</a>{% endif %}
+                  <a href="/inbox?tab=accepted&q={{ (e.requirement_summary or '')[:40]|urlencode }}">Open in Inbox</a>
+                  <a href="/outreach/compose?enquiry_id={{ e.id }}">Draft from this enquiry</a>
+                </div>
+              </div>
+            {% else %}<p class="muted">No enquiries are linked to this prospect.</p>{% endfor %}
+          </div>
+        </section>
+
+        <section class="card" id="prospect-contacts" aria-labelledby="ct-title">
+          <div class="card__header"><h2 id="ct-title">Contacts</h2><span class="muted">{{ p.contacts|length }}</span></div>
+          <div class="card__body">
+            {% for c in p.contacts %}
+              <div class="reply-item"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "Contact" }}</a>
+                <div class="muted">{{ c.email or "" }}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.title %} · {{ c.title }}{% endif %}</div></div>
+            {% else %}<p class="muted">No contact details yet. They are added when you send an email or accept an enquiry with an address.</p>{% endfor %}
+          </div>
+        </section>
+
+        <section class="card" id="prospect-outreach" aria-labelledby="out-title">
+          <div class="card__header"><h2 id="out-title">Outreach</h2><a class="btn btn--sm" href="/outreach/compose?prospect_id={{ p.id }}">Draft email</a></div>
+          <div class="card__body">
+            {% for m in p.messages %}
+              <div class="reply-item" id="message-{{ m.id }}"><a href="/outreach/messages/{{ m.id }}">{{ m.subject or "(no subject)" }}</a>
+                <div class="muted"><span class="badge state state--{{ m.state }}">{{ m.state|capitalize }}</span>
+                  {% if m.reply_status %}<span class="badge reply-badge reply-badge--{{ m.reply_status }}">{{ m.reply_status|replace("_", " ")|capitalize }}</span>{% endif %}
+                  {% if m.sent_at %}sent {{ m.sent_at|ago }}{% endif %}{% if m.owner_name %} · {{ m.owner_name }}{% endif %}</div></div>
+            {% else %}<p class="muted">No emails drafted for this prospect yet.</p>{% endfor %}
+          </div>
+        </section>
+
+        <section class="card" id="prospect-replies" aria-labelledby="rep-title">
+          <div class="card__header"><h2 id="rep-title">Replies</h2><span class="muted">{{ p.replies|length }}</span></div>
+          <div class="card__body">
+            {% for r in p.replies %}
+              <div class="reply-item"><span class="badge reply-kind reply-kind--{{ r.kind }}">{{ r.kind|replace("_", " ")|capitalize }}</span>
+                {% if r.intent %}<span class="badge reply-intent reply-intent--{{ r.intent }}">{{ r.intent|replace("_", " ")|capitalize }}</span>{% endif %}
+                <span class="muted">{{ r.received_at|ago }} · <a href="/outreach/messages/{{ r.message_id }}">Message #{{ r.message_id }}</a></span>
+                {% if r.snippet %}<div class="reply-snippet">{{ r.snippet }}</div>{% endif %}</div>
+            {% else %}<p class="muted">No replies yet.</p>{% endfor %}
+          </div>
+        </section>
+
+        {% if p.sheet_sources or p.sheet_tabs %}
+        <section class="card" id="sheet-panel" aria-labelledby="sheet-title">
+          <div class="card__header"><h2 id="sheet-title">Synced from sheet</h2><span class="badge badge--info">Read-only</span></div>
+          <div class="card__body">
+            <p class="lock">Synced from sheet - edits are overwritten</p>
+            <p class="hint">The sheet is the source of truth for the name, company, contact details and sheet status. Notes, stage changes you make here, follow-ups, flags and the timeline are yours and are never overwritten. sales0 never writes to Google.</p>
+            <table class="table" id="sheet-sources">
+              <thead><tr><th scope="col">Tab</th><th scope="col">Row</th><th scope="col">Sheet status</th><th scope="col">Last seen</th></tr></thead>
+              <tbody>
+              {% for s in p.sheet_sources %}
+                <tr><td><span class="chip chip--sheet">{{ s.sheet_tab or "—" }}</span></td><td>{{ s.row_number or "—" }}</td><td>{{ s.sheet_status or p.sheet_status or "—" }}</td><td>{{ s.last_seen_at|ago if s.last_seen_at else "—" }}</td></tr>
+              {% else %}
+                <tr><td colspan="4">{% for t in p.sheet_tabs %}<span class="chip chip--sheet">{{ t }}</span> {% endfor %}{% if p.sheet_status %}Status: {{ p.sheet_status }}{% endif %}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if p.reason_text or p.reason_url or p.extra_link %}
+        <section class="card" id="prospect-reason" aria-labelledby="reason-title">
+          <div class="card__header"><h2 id="reason-title">Why this prospect</h2></div>
+          <div class="card__body">
+            {% if p.reason_text %}<p>{{ p.reason_text }}</p>{% endif %}
+            {% for u in (p.reason_url, p.extra_link) if u and u.startswith(("http://", "https://")) %}<p><a href="{{ u }}" rel="noopener noreferrer" target="_blank">{{ u }}</a></p>{% endfor %}
+          </div>
+        </section>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

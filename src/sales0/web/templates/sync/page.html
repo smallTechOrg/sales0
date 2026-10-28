@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Sync{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Google Sheet sync</h1>
+      <p><span class="badge badge--info">Read-only: sales0 never writes to your sheets</span>
+        The sheet wins the fields it holds; everything you add in the CRM (notes, stages you set, tags, follow-ups) is kept.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+<div class="stack">
+  {% if flash %}<div class="flash flash--{{ flash.kind }}" id="sync-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>{% endif %}
+  {% include "sync/_status.html" %}
+  <p class="muted">See also the <a href="/schedule">Schedule</a> page and the <a href="/pipeline">Pipeline</a>.</p>
+</div>
+{% endblock %}

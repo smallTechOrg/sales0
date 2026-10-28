@@ -1,0 +1,32 @@
+{# Needs: follow_ups (list[FollowUpView]), base ("/pipeline/prospects/3"), today; oob optional. #}
+<section class="card" id="follow-ups" aria-labelledby="fu-title"{% if oob %} hx-swap-oob="outerHTML:#follow-ups"{% endif %}>
+  <div class="card__header"><h2 id="fu-title">Follow-ups</h2></div>
+  <div class="card__body">
+    {% if follow_ups %}
+      {% for f in follow_ups %}
+        <div class="due-row{% if f.overdue %} due-row--overdue{% endif %}" id="fu-{{ f.id }}">
+          <div class="due-row__main"><strong>{{ f.kind_label }}</strong> <span class="due-date">{{ f.due_on.strftime("%d %b %Y") }}{% if f.overdue %} (overdue){% endif %}</span>
+            {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}</div>
+          {% if can_act %}
+          <div class="due-row__actions">
+            <form method="post" action="/pipeline/followups/{{ f.id }}/done" hx-post="/pipeline/followups/{{ f.id }}/done" hx-swap="none"><button class="btn btn--sm btn--primary" type="submit">Done</button></form>
+            <form method="post" action="/pipeline/followups/{{ f.id }}/snooze" hx-post="/pipeline/followups/{{ f.id }}/snooze" hx-swap="none">
+              <label class="visually-hidden" for="fu-snooze-{{ f.id }}">Snooze until</label>
+              <input class="input input--date" id="fu-snooze-{{ f.id }}" type="date" name="due_on" required min="{{ today.isoformat() }}" value="{{ (today + one_day).isoformat() }}">
+              <button class="btn btn--sm" type="submit">Snooze</button></form>
+          </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted" id="fu-empty">No open follow-ups.{% if no_follow_up %} This prospect is marked Do not follow up.{% endif %}</p>
+    {% endif %}
+    {% if can_act %}
+    <form class="inline-form" method="post" action="{{ base }}/followup" hx-post="{{ base }}/followup" hx-swap="none" data-reset-on-success>
+      <div class="field"><label class="field__label" for="fu-due">Add follow-up</label><input class="input" id="fu-due" type="date" name="due_on" required min="{{ today.isoformat() }}"></div>
+      <div class="field"><label class="field__label" for="fu-note">Note (optional)</label><input class="input" id="fu-note" name="note" maxlength="500"></div>
+      <button class="btn" type="submit">Add follow-up</button>
+    </form>
+    {% endif %}
+  </div>
+</section>

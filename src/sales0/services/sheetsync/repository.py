@@ -26,6 +26,7 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from sales0.clock import utcnow
+from sales0.services.sheetsync.parsers import RowIssue
 from sales0.services.sheetsync.records import SheetRecord
 
 RecordId = tuple[str, str]  # (entity, key)
@@ -73,6 +74,14 @@ class SheetRepository(Protocol):
         """Ids with a live (not removed) source in that tab."""
         ...
 
+    def drain_errors(self) -> list[RowIssue]:
+        """Row problems met while applying (``apply-failed:<Exc>``), returned once and cleared.
+
+        The engine calls it after every non-dry-run ``upsert``; a repository that reports an
+        error must NOT have stored the row's new hash, so the next sync retries the row.
+        """
+        ...
+
 
 class InMemorySheetRepository:
     """Reference implementation used by tests and by the CLI when no CRM repo exists."""
@@ -84,6 +93,9 @@ class InMemorySheetRepository:
 
     def get_by_key(self, entity: str, key: str) -> StoredRecord | None:
         return self.records.get((entity, key))
+
+    def drain_errors(self) -> list[RowIssue]:
+        return []  # the in-memory store cannot fail to apply a row
 
     def _merge(self, stored: StoredRecord) -> None:
         merged: dict[str, Any] = {}

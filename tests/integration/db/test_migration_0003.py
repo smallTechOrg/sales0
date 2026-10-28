@@ -342,7 +342,7 @@ def test_profile_counters_and_identity(populated: dict[str, object]) -> None:
     )
     assert priya.display_name == "Priya Menon" and priya.headline == "HR Head"
     assert (priya.posts_seen, priya.relevant_count) == (1, 1)  # accepted
-    assert priya.tracked is None
+    assert priya.tracked == 1  # 0003 leaves it NULL; the p6 CRM backfill tracks the author of an accepted enquiry
     bulk = profiles["in/bulk-author-1"]
     assert (bulk.posts_seen, bulk.relevant_count) == (
         2,

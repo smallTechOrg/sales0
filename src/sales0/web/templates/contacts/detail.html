@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner, timeline_list %}
+{% block title %}{{ c.full_name or c.email or "Contact" }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/contacts">&larr; Contacts</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="contact-header" aria-labelledby="contact-title">
+      <div class="card__body record-head">
+        <div class="record-head__title"><h1 id="contact-title">{{ c.full_name or c.email or "(unnamed)" }}</h1>
+          <span class="chip chip--source">{{ c.origin|replace("_", " ")|capitalize }}</span></div>
+        <div class="pcard__meta">
+          {% if c.title %}{{ c.title }} · {% endif %}
+          {% if c.company_id %}<a href="/companies/{{ c.company_id }}">{{ c.company_name }}</a>{% elif c.company_name %}{{ c.company_name }}{% endif %}
+          {% if c.linkedin_url and c.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ c.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn</a>{% endif %}
+        </div>
+        <div class="grid-2">
+          <div><h2 class="group-heading">Emails</h2>
+            <ul class="item-list" id="contact-emails">{% for e in c.emails %}<li>{{ e }}{% if loop.first %} <span class="badge">Primary</span>{% endif %}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
+          <div><h2 class="group-heading">Phones</h2>
+            <ul class="item-list" id="contact-phones">{% for e in c.phones %}<li>{{ e }}{% if loop.first %} <span class="badge">Primary</span>{% endif %}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
+        </div>
+        <div id="contact-tags">
+          <h2 class="group-heading">Tags</h2>
+          <div class="row">
+            {% for t in c.tags %}
+              <span class="tag">{{ t.name }}
+                <form method="post" action="/contacts/{{ c.id }}/tags/{{ t.id }}/delete"><button type="submit" aria-label="Remove tag {{ t.name }}">&times;</button></form></span>
+            {% else %}<span class="muted">No tags yet.</span>{% endfor %}
+          </div>
+          <form class="inline-form" id="tag-form" method="post" action="/contacts/{{ c.id }}/tags">
+            <div class="field"><label class="field__label" for="tag-name">Add a tag</label><input class="input" id="tag-name" name="name" required maxlength="40" list="tag-suggestions" placeholder="e.g. HR head">
+              <datalist id="tag-suggestions">{% for t in all_tags %}<option value="{{ t.name }}">{% endfor %}</datalist></div>
+            <div class="field"><label class="field__label" for="tag-category">Category</label>
+              <select class="input" id="tag-category" name="category">{% for k in tag_categories %}<option value="{{ k }}"{% if k == "custom" %} selected{% endif %}>{{ k|replace("_", " ")|capitalize }}</option>{% endfor %}</select></div>
+            <button class="btn" type="submit">Add tag</button>
+          </form>
+        </div>
+        <details class="inline-edit">
+          <summary>Edit contact</summary>
+          <form class="stack" method="post" action="/contacts/{{ c.id }}">
+            <div class="grid-2">
+              <div class="field"><label class="field__label" for="ec-name">Name</label><input class="input" id="ec-name" name="full_name" value="{{ c.full_name or '' }}" maxlength="200"></div>
+              <div class="field"><label class="field__label" for="ec-title">Title</label><input class="input" id="ec-title" name="title" value="{{ c.title or '' }}" maxlength="200"></div>
+              <div class="field"><label class="field__label" for="ec-company">Company</label><input class="input" id="ec-company" name="company" value="{{ c.company_name or '' }}" maxlength="200"></div>
+            </div>
+            <div class="field"><label class="field__label" for="ec-notes">Notes</label><textarea class="input" id="ec-notes" name="notes" rows="3" maxlength="4000">{{ c.notes or "" }}</textarea></div>
+            <div><button class="btn btn--primary" type="submit">Save contact</button></div>
+          </form>
+        </details>
+        {% if c.notes %}<p class="timeline__text" id="contact-notes">{{ c.notes }}</p>{% endif %}
+      </div>
+    </section>
+    <div class="grid-2">
+      <section class="card" id="contact-links" aria-labelledby="links-title">
+        <div class="card__header"><h2 id="links-title">Linked to</h2></div>
+        <div class="card__body">
+          {% for l in c.links %}
+            <div class="reply-item"><span class="badge">{{ l.entity_type|replace("_", " ")|capitalize }}</span>
+              {% if l.href %}<a class="contact-link" href="{{ l.href }}">{{ l.label }}</a>{% else %}{{ l.label }}{% endif %}
+              {% if l.role %}<span class="muted"> · {{ l.role }}</span>{% endif %}</div>
+          {% else %}<p class="muted">Not linked to any prospect, lead or enquiry yet.</p>{% endfor %}
+        </div>
+      </section>
+      <section class="card" id="contact-timeline" aria-labelledby="ct-title">
+        <div class="card__header"><h2 id="ct-title">Timeline</h2></div>
+        <div class="card__body"><div id="timeline">{{ timeline_list(c.timeline) }}</div></div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

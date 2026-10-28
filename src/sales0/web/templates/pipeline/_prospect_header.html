@@ -1,0 +1,102 @@
+{# Needs: p (ProspectDetail), prospect_stage_options, close_reasons; oob optional. #}
+{% from "pipeline/_macros.html" import flag_badges, source_chips %}
+{% set is_open = p.status == "open" %}
+{% set no_fu = p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0 %}
+<section class="card" id="prospect-header" aria-labelledby="prospect-title"{% if oob %} hx-swap-oob="outerHTML:#prospect-header"{% endif %}>
+  <div class="card__body record-head">
+    <div class="record-head__title">
+      <h1 id="prospect-title">{{ p.name }}</h1>
+      <span class="badge stage-badge" id="stage-badge">{{ p.stage_label }}</span>
+      {% if p.status != "open" %}<span class="badge" id="status-badge">{{ p.status|capitalize }}{% if p.closed_reason %} · {{ p.closed_reason|replace("_", " ") }}{% endif %}</span>{% endif %}
+      {{ flag_badges(p.flags) }}
+    </div>
+    <div class="pcard__meta">
+      {% if p.company_name %}{% if p.company_id %}<a href="/companies/{{ p.company_id }}">{{ p.company_name }}</a>{% else %}{{ p.company_name }}{% endif %} · {% endif %}
+      {% if p.contacted_at %}contacted {{ p.contacted_at|ago }}{% if p.contacted_estimated %} (date estimated){% endif %}{% else %}not contacted yet{% endif %}
+      {% if p.responded_at %} · replied {{ p.responded_at|ago }}{% endif %}
+      {% if p.next_follow_up_on %} · next follow-up <span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% endif %}
+      {% if p.linkedin_url %} · <a href="{{ p.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn profile</a>{% endif %}
+    </div>
+    <div class="row">{{ source_chips(p) }}
+      {% if p.sheet_status %}<span class="chip chip--sheet" id="sheet-status" title="Status in the Google Sheet (read-only)">Sheet status: {{ p.sheet_status }}</span>{% endif %}
+      {% if p.tracked is none %}<span class="tracked">No LinkedIn profile linked</span>
+      {% else %}
+        <form method="post" action="/pipeline/prospects/{{ p.id }}/tracked" hx-post="/pipeline/prospects/{{ p.id }}/tracked" hx-swap="none" class="actions">
+          <input type="hidden" name="tracked" value="{{ 'false' if p.tracked else 'true' }}">
+          <span class="tracked{% if p.tracked %} tracked--on{% endif %}" id="tracked-state">{{ "Tracked" if p.tracked else "Not tracked" }}</span>
+          <button class="btn btn--sm" id="btn-tracked" type="submit">{{ "Stop tracking" if p.tracked else "Track this person" }}</button>
+        </form>
+      {% endif %}
+    </div>
+    {% if p.sheet_removed_at %}
+      <div class="notice" id="sheet-removed" role="status">Removed from the Google Sheet on {{ p.sheet_removed_at|localdt("%d %b %Y") }}. It stays here with its full history; if the row returns it is restored automatically.</div>
+    {% endif %}
+
+    <div class="actions" id="prospect-actions">
+      {% if is_open %}
+        <form method="post" action="/pipeline/prospects/{{ p.id }}/stage" hx-post="/pipeline/prospects/{{ p.id }}/stage" hx-swap="none">
+          <label class="field__label" for="stage-select">Stage</label>
+          <select class="select" id="stage-select" name="stage">
+            {% for key, label in prospect_stage_options %}<option value="{{ key }}"{% if key == p.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <button class="btn" type="submit">Move</button>
+        </form>
+        {% if not p.responded_at %}
+        <form method="post" action="/pipeline/prospects/{{ p.id }}/response" hx-post="/pipeline/prospects/{{ p.id }}/response" hx-swap="none">
+          <button class="btn" id="btn-response" type="submit">Response received</button>
+        </form>
+        {% else %}<span class="badge badge--genuine" id="responded-badge">Response recorded</span>{% endif %}
+        {% if p.open_lead_id %}
+          <a class="btn btn--primary" id="btn-convert" href="/pipeline/leads/{{ p.open_lead_id }}">Open lead</a>
+        {% else %}
+          {% set why = "Contact it first - mark it Contacted." if not p.contacted_at else ("Record a response first - press 'Response received'." if not p.responded_at else "") %}
+          {% if why %}
+            <span><button class="btn" id="btn-convert" type="button" disabled aria-disabled="true" title="{{ why }}" aria-describedby="convert-why">Convert to lead</button>
+              <span class="hint" id="convert-why">{{ why }}</span></span>
+          {% else %}
+            <form method="post" action="/pipeline/prospects/{{ p.id }}/convert" hx-post="/pipeline/prospects/{{ p.id }}/convert" hx-swap="none">
+              <input type="hidden" name="stage" value="meeting_scheduled">
+              <label class="visually-hidden" for="convert-meeting">Meeting time (optional)</label>
+              <input class="input input--date" id="convert-meeting" type="datetime-local" name="meeting_at" title="Meeting time (optional)">
+              <button class="btn btn--primary" id="btn-convert" type="submit">Convert to lead</button>
+            </form>
+          {% endif %}
+        {% endif %}
+      {% endif %}
+      <a class="btn" id="btn-draft" href="/outreach/compose?prospect_id={{ p.id }}">Draft email</a>
+      {% if is_open %}
+        <form method="post" action="/pipeline/prospects/{{ p.id }}/flag" hx-post="/pipeline/prospects/{{ p.id }}/flag" hx-swap="none">
+          <input type="hidden" name="kind" value="no_follow_up">
+          <input type="hidden" name="on" value="{{ 'false' if no_fu else 'true' }}">
+          <button class="btn" id="btn-no-follow-up" type="submit">{{ "Allow follow-ups again" if no_fu else "Do not follow up" }}</button>
+        </form>
+        <form method="post" action="/pipeline/prospects/{{ p.id }}/close" hx-post="/pipeline/prospects/{{ p.id }}/close" hx-swap="none" hx-confirm="Close this prospect? You can reopen it later.">
+          <label class="visually-hidden" for="close-reason">Reason for closing</label>
+          <select class="select" id="close-reason" name="reason">
+            {% for key, label in close_reasons %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select>
+          <button class="btn btn--danger" id="btn-close" type="submit">Close</button>
+        </form>
+      {% elif p.status == "closed" %}
+        <form method="post" action="/pipeline/prospects/{{ p.id }}/reopen" hx-post="/pipeline/prospects/{{ p.id }}/reopen" hx-swap="none">
+          <button class="btn btn--primary" id="btn-reopen" type="submit">Reopen</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <details class="inline-edit">
+      <summary>Edit details</summary>
+      <form class="stack" method="post" action="/pipeline/prospects/{{ p.id }}/edit" hx-post="/pipeline/prospects/{{ p.id }}/edit" hx-swap="none">
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="ed-name">Name{% if p.sheet_tabs %} <span class="lock">Synced from sheet - edits are overwritten</span>{% endif %}</label>
+            <input class="input" id="ed-name" name="name" value="{{ p.name }}" required maxlength="200"></div>
+          <div class="field"><label class="field__label" for="ed-company">Company</label>
+            <input class="input" id="ed-company" name="company" value="{{ p.company_name or '' }}" maxlength="200"></div>
+        </div>
+        <div class="field"><label class="field__label" for="ed-notes">Notes</label>
+          <textarea class="input" id="ed-notes" name="notes" rows="3" maxlength="4000">{{ p.notes or "" }}</textarea></div>
+        <div><button class="btn btn--primary" type="submit">Save details</button></div>
+      </form>
+    </details>
+  </div>
+</section>

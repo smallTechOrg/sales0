@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Import{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Import</h1>
+    <p>Add a single post by hand, or import a CSV of data that is not in your Google Sheets. Your Google Sheets are synced automatically (see <a href="/sync">Sync</a>) — import is for data that is not in them.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    {% if result %}
+      {% set card = result.card %}
+      <section class="card" id="paste-result" aria-labelledby="result-title" role="status">
+        <div class="card__header"><h2 id="result-title">{% if result.duplicate %}Already in your inbox{% elif card.triage_status == "failed" %}Added - AI triage failed{% else %}Added - AI says {{ card.ai_verdict|verdict_label }}{% endif %}</h2>
+          {% if card.ai_verdict and not result.duplicate %}<span class="badge badge--{{ card.ai_verdict }}">{{ card.ai_verdict|verdict_label }}</span>{% endif %}</div>
+        <div class="card__body">
+          {% if card.requirement_summary %}<p><strong>{{ card.requirement_summary }}</strong></p>{% endif %}
+          {% if card.ai_reason and not result.duplicate %}<p class="muted">{{ card.ai_reason }}</p>{% endif %}
+          {% if card.triage_status == "failed" and not result.duplicate %}<p class="text-danger">{{ card.triage_error or "Triage failed." }} Use Retry on the card in To review.</p>{% endif %}
+          <div class="row"><a class="btn btn--primary" id="result-link" href="/inbox?tab={{ 'accepted' if card.review_status == 'accepted' else ('discarded' if card.review_status == 'discarded' else 'review') }}">Open in {{ 'Accepted' if card.review_status == 'accepted' else ('Discarded' if card.review_status == 'discarded' else 'To review') }}</a></div>
+        </div>
+      </section>
+    {% endif %}
+    <div class="grid-2">
+      <section class="card" id="paste-card" aria-labelledby="paste-title">
+        <div class="card__header"><h2 id="paste-title">Paste a post</h2></div>
+        <form class="card__body" id="paste-form" method="post" action="/import/paste" hx-post="/import/paste" hx-swap="none" hx-indicator="#paste-indicator" hx-disabled-elt="#paste-btn">
+          <div class="field"><label class="field__label" for="paste-text">Post text (at least 40 characters)</label>
+            <textarea class="input" id="paste-text" name="text" rows="8" required minlength="40" maxlength="20000" placeholder="Paste the full text of the LinkedIn post or message here">{{ form.text or "" }}</textarea></div>
+          <div class="grid-2">
+            <div class="field"><label class="field__label" for="paste-link">Link to the post (optional)</label><input class="input" id="paste-link" name="link" maxlength="1000" placeholder="https://www.linkedin.com/posts/…" value="{{ form.link or '' }}"></div>
+            <div class="field"><label class="field__label" for="paste-author">Author (optional)</label><input class="input" id="paste-author" name="author" maxlength="200" value="{{ form.author or '' }}"></div>
+          </div>
+          <div class="field"><label class="field__label" for="paste-profile">Author profile URL (optional)</label><input class="input" id="paste-profile" name="author_profile_url" maxlength="1000" placeholder="https://www.linkedin.com/in/…" value="{{ form.author_profile_url or '' }}"></div>
+          <div class="row">
+            <button class="btn btn--primary" id="paste-btn" type="submit">Add to inbox</button>
+            <span class="htmx-indicator" id="paste-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Asking the AI to triage it… a few seconds.</span>
+          </div>
+          <p class="hint">The post is checked against everything already in sales0, then triaged once by the AI and lands in To review.</p>
+        </form>
+      </section>
+
+      <section class="card" id="csv-card" aria-labelledby="csv-title">
+        <div class="card__header"><h2 id="csv-title">Import a CSV</h2></div>
+        <form class="card__body" id="csv-form" method="post" action="/import/csv" enctype="multipart/form-data">
+          <div class="field"><label class="field__label" for="csv-file">CSV file (up to 5 MB, 20,000 rows)</label>
+            <input class="input" id="csv-file" type="file" name="file" accept=".csv,text/csv" required></div>
+          <div class="field"><label class="field__label" for="csv-kind">What is in it</label>
+            <select class="input" id="csv-kind" name="kind" required>
+              {% for key, label in kinds %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select></div>
+          <div><button class="btn btn--primary" id="csv-btn" type="submit">Import</button></div>
+          <p class="hint">Imported rows are yours and stay editable. A row that is already synced from a Google Sheet is left as the sheet has it. Importing the same file again changes nothing.</p>
+        </form>
+      </section>
+    </div>
+
+    <section class="card" id="recent-batches" aria-labelledby="batches-title">
+      <div class="card__header"><h2 id="batches-title">Recent imports</h2></div>
+      <div class="card__body table-wrap">
+        {% if batches %}
+          <table class="table" id="batch-list">
+            <thead><tr><th scope="col">When</th><th scope="col">File</th><th scope="col">Kind</th><th scope="col" class="num">Rows</th><th scope="col" class="num">New</th><th scope="col" class="num">Merged</th><th scope="col" class="num">Unchanged</th><th scope="col" class="num">Errors</th></tr></thead>
+            <tbody>
+            {% for b in batches %}
+              <tr id="batch-{{ b.id }}">
+                <td>{{ b.created_at|ago }}</td>
+                <td><a href="/import/batches/{{ b.id }}">{{ b.filename }}</a></td>
+                <td>{{ kind_labels.get(b.kind, b.kind) }}</td>
+                <td class="num">{{ b.total }}</td><td class="num">{{ b.new }}</td><td class="num">{{ b.merged }}</td><td class="num">{{ b.unchanged }}</td>
+                <td class="num">{% if b.errors_count %}<span class="text-danger">{{ b.errors_count }}</span>{% else %}0{% endif %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="batches-empty"><p>Nothing imported yet.</p></div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

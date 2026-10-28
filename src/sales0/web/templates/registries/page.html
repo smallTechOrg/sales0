@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Competitors &amp; Groups{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Competitors &amp; Groups</h1>
+    <p>Competitor training firms the team watches (mentions are flagged on enquiries) and the WhatsApp / LinkedIn groups worth monitoring. Rows that come from the Google Sheet are read-only here for the fields the sheet owns.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="competitors-card" aria-labelledby="comp-title">
+      <div class="card__header"><h2 id="comp-title">Competitors</h2>
+        <form class="inline-form search-form" method="get" action="/competitors" role="search">
+          <div class="field"><label class="visually-hidden" for="comp-q">Search competitors</label><input class="input" id="comp-q" type="search" name="q" value="{{ q }}" placeholder="Search competitors…"></div>
+          <button class="btn btn--sm" type="submit">Search</button>
+        </form>
+        <a class="btn btn--primary btn--sm" href="#new-competitor">Add competitor</a></div>
+      <div class="card__body table-wrap">
+        {% if competitors %}
+          <table class="table" id="competitor-list">
+            <thead><tr><th scope="col">Name</th><th scope="col">Website</th><th scope="col" class="num">Approx. clients</th><th scope="col">Client names</th><th scope="col">Contact</th><th scope="col" class="num">Mentions</th><th scope="col">Active</th><th scope="col">Actions</th></tr></thead>
+            <tbody>
+            {% for c in competitors %}
+              <tr id="competitor-{{ c.id }}" data-active="{{ 1 if c.active else 0 }}">
+                <td><a href="/competitors/competitor/{{ c.id }}">{{ c.name }}</a>{% if c.sheet_synced %} <span class="chip chip--sheet" title="This row is synced from the Google Sheet">Synced from sheet</span>{% endif %}</td>
+                <td>{% if c.website and c.website.startswith(("http://", "https://")) %}<a href="{{ c.website }}" rel="noopener noreferrer" target="_blank">{{ c.website }}</a>{% else %}{{ c.website or "—" }}{% endif %}</td>
+                <td class="num">{{ c.approx_clients if c.approx_clients is not none else "—" }}</td>
+                <td>{{ c.client_names or "—" }}</td>
+                <td>{{ c.contact or "—" }}{% if c.email %}<div class="muted">{{ c.email }}</div>{% endif %}</td>
+                <td class="num">{% if c.mention_count %}<a href="/competitors/competitor/{{ c.id }}">{{ c.mention_count }}</a>{% else %}0{% endif %}</td>
+                <td>{% if c.active %}<span class="badge badge--genuine">Active</span>{% else %}<span class="badge">Inactive</span>{% endif %}</td>
+                <td>
+                  <details class="inline-edit"><summary>Edit</summary>
+                    <form class="stack" method="post" action="/competitors/competitor/{{ c.id }}">
+                      {% if c.sheet_synced %}<p class="lock">Synced from sheet - name, website, clients and contact are overwritten by the sheet. You can edit notes and Active.</p>{% endif %}
+                      <div class="grid-2">
+                        <div class="field"><label class="field__label" for="cn-{{ c.id }}">Name</label><input class="input" id="cn-{{ c.id }}" name="name" value="{{ c.name }}" required maxlength="200"{% if c.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="cw-{{ c.id }}">Website</label><input class="input" id="cw-{{ c.id }}" name="website" value="{{ c.website or '' }}" maxlength="300"{% if c.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="cc-{{ c.id }}">Approx. clients</label><input class="input" id="cc-{{ c.id }}" type="number" min="0" name="approx_clients" value="{{ c.approx_clients if c.approx_clients is not none else '' }}"{% if c.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="ck-{{ c.id }}">Client names</label><input class="input" id="ck-{{ c.id }}" name="client_names" value="{{ c.client_names or '' }}"{% if c.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="cct-{{ c.id }}">Contact</label><input class="input" id="cct-{{ c.id }}" name="contact" value="{{ c.contact or '' }}" maxlength="300"{% if c.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="ce-{{ c.id }}">Email</label><input class="input" id="ce-{{ c.id }}" name="email" value="{{ c.email or '' }}" maxlength="254"{% if c.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                      </div>
+                      <div class="field"><label class="field__label" for="cno-{{ c.id }}">Notes</label><textarea class="input" id="cno-{{ c.id }}" name="notes" rows="2" maxlength="4000">{{ c.notes or "" }}</textarea></div>
+                      <label class="enquiry__select"><input type="hidden" name="active" value="false"><input type="checkbox" name="active" value="true"{% if c.active %} checked{% endif %}> Active (mentions are flagged)</label>
+                      <div><button class="btn btn--primary btn--sm" type="submit">Save</button></div>
+                    </form>
+                  </details>
+                  {% if c.sheet_synced %}
+                    <button class="btn btn--sm btn--danger" type="button" disabled aria-disabled="true" title="This row comes from the Google Sheet. Remove it in the sheet instead.">Delete</button>
+                  {% else %}
+                    <form method="post" action="/competitors/competitor/{{ c.id }}/delete" hx-post="/competitors/competitor/{{ c.id }}/delete" hx-swap="none" hx-confirm="Delete {{ c.name }}? Its mentions are removed too.">
+                      <button class="btn btn--sm btn--danger" type="submit">Delete</button></form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% elif q %}
+          <div class="empty-state empty-state--compact" id="competitors-empty"><p>No competitors match '{{ q }}'.</p><a class="btn" href="/competitors">Clear search</a></div>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="competitors-empty"><p>No competitors yet. Add the firms you compete with and sales0 will flag enquiries that mention them.</p></div>
+        {% endif %}
+      </div>
+      <form class="card__footer card__footer--form stack" id="new-competitor" method="post" action="/competitors/competitor" aria-label="Add competitor">
+        <h3>Add competitor</h3>
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="newc-name">Name</label><input class="input" id="newc-name" name="name" required maxlength="200"></div>
+          <div class="field"><label class="field__label" for="newc-web">Website</label><input class="input" id="newc-web" name="website" maxlength="300" placeholder="https://competitor.example"></div>
+          <div class="field"><label class="field__label" for="newc-count">Approx. clients</label><input class="input" id="newc-count" type="number" min="0" name="approx_clients"></div>
+          <div class="field"><label class="field__label" for="newc-clients">Client names</label><input class="input" id="newc-clients" name="client_names"></div>
+          <div class="field"><label class="field__label" for="newc-contact">Contact</label><input class="input" id="newc-contact" name="contact" maxlength="300"></div>
+          <div class="field"><label class="field__label" for="newc-email">Email</label><input class="input" id="newc-email" name="email" maxlength="254"></div>
+        </div>
+        <div class="field"><label class="field__label" for="newc-notes">Notes</label><textarea class="input" id="newc-notes" name="notes" rows="2" maxlength="4000"></textarea></div>
+        <div><button class="btn btn--primary" type="submit">Add competitor</button></div>
+      </form>
+    </section>
+
+    <section class="card" id="groups-card" aria-labelledby="grp-title">
+      <div class="card__header"><h2 id="grp-title">Groups</h2><a class="btn btn--primary btn--sm" href="#new-group">Add group</a></div>
+      <div class="card__body table-wrap">
+        {% if groups %}
+          <table class="table" id="group-list">
+            <thead><tr><th scope="col">Name</th><th scope="col">Platform</th><th scope="col">Link</th><th scope="col">Keep level</th><th scope="col">Active</th><th scope="col">Actions</th></tr></thead>
+            <tbody>
+            {% for g in groups %}
+              <tr id="group-{{ g.id }}" data-active="{{ 1 if g.active else 0 }}">
+                <td>{{ g.name }}{% if g.sheet_synced %} <span class="chip chip--sheet" title="This row is synced from the Google Sheet">Synced from sheet</span>{% endif %}{% if g.details %}<div class="muted">{{ g.details }}</div>{% endif %}</td>
+                <td>{{ g.platform|capitalize }}</td>
+                <td>{% if g.link and g.link.startswith(("http://", "https://")) %}<a href="{{ g.link }}" rel="noopener noreferrer" target="_blank">Open</a>{% else %}{{ g.link or "—" }}{% endif %}</td>
+                <td>{% if g.keep_level == "keep" %}<span class="badge badge--genuine">Keep</span>{% elif g.keep_level == "keep_low" %}<span class="badge badge--medium">Keep (low)</span>{% else %}—{% endif %}</td>
+                <td>
+                  <form method="post" action="/competitors/group/{{ g.id }}" hx-post="/competitors/group/{{ g.id }}" hx-swap="none">
+                    <input type="hidden" name="name" value="{{ g.name }}">
+                    <input type="hidden" name="active" value="{{ 'false' if g.active else 'true' }}">
+                    <button class="btn btn--sm" type="submit" aria-pressed="{{ 'true' if g.active else 'false' }}">{{ "Active - turn off" if g.active else "Inactive - turn on" }}</button>
+                  </form>
+                </td>
+                <td>
+                  <details class="inline-edit"><summary>Edit</summary>
+                    <form class="stack" method="post" action="/competitors/group/{{ g.id }}">
+                      {% if g.sheet_synced %}<p class="lock">Synced from sheet - name, platform, link and details are overwritten by the sheet. You can edit notes and Active.</p>{% endif %}
+                      <div class="grid-2">
+                        <div class="field"><label class="field__label" for="gn-{{ g.id }}">Name</label><input class="input" id="gn-{{ g.id }}" name="name" value="{{ g.name }}" required maxlength="200"{% if g.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="gp-{{ g.id }}">Platform</label>
+                          <select class="input" id="gp-{{ g.id }}" name="platform"{% if g.sheet_synced %} disabled{% endif %}>{% for p in platforms %}<option value="{{ p }}"{% if p == g.platform %} selected{% endif %}>{{ p|capitalize }}</option>{% endfor %}</select></div>
+                        <div class="field"><label class="field__label" for="gl-{{ g.id }}">Link</label><input class="input" id="gl-{{ g.id }}" name="link" value="{{ g.link or '' }}" maxlength="500"{% if g.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                        <div class="field"><label class="field__label" for="gd-{{ g.id }}">Details</label><input class="input" id="gd-{{ g.id }}" name="details" value="{{ g.details or '' }}" maxlength="200"{% if g.sheet_synced %} readonly aria-readonly="true"{% endif %}></div>
+                      </div>
+                      <label class="enquiry__select"><input type="hidden" name="active" value="false"><input type="checkbox" name="active" value="true"{% if g.active %} checked{% endif %}> Active</label>
+                      <div><button class="btn btn--primary btn--sm" type="submit">Save</button></div>
+                    </form>
+                  </details>
+                  {% if g.sheet_synced %}
+                    <button class="btn btn--sm btn--danger" type="button" disabled aria-disabled="true" title="This row comes from the Google Sheet. Remove it in the sheet instead.">Delete</button>
+                  {% else %}
+                    <form method="post" action="/competitors/group/{{ g.id }}/delete" hx-post="/competitors/group/{{ g.id }}/delete" hx-swap="none" hx-confirm="Delete the group {{ g.name }}?">
+                      <button class="btn btn--sm btn--danger" type="submit">Delete</button></form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="groups-empty"><p>No groups yet. Add the WhatsApp or LinkedIn groups the team watches.</p></div>
+        {% endif %}
+      </div>
+      <form class="card__footer card__footer--form stack" id="new-group" method="post" action="/competitors/group" aria-label="Add group">
+        <h3>Add group</h3>
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="newg-name">Name</label><input class="input" id="newg-name" name="name" required maxlength="200"></div>
+          <div class="field"><label class="field__label" for="newg-platform">Platform</label>
+            <select class="input" id="newg-platform" name="platform">{% for p in platforms %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}</select></div>
+          <div class="field"><label class="field__label" for="newg-link">Link</label><input class="input" id="newg-link" name="link" maxlength="500"></div>
+          <div class="field"><label class="field__label" for="newg-details">Details</label><input class="input" id="newg-details" name="details" maxlength="200"></div>
+        </div>
+        <div class="field"><label class="field__label" for="newg-notes">Notes</label><textarea class="input" id="newg-notes" name="notes" rows="2" maxlength="4000"></textarea></div>
+        <div><button class="btn btn--primary" type="submit">Add group</button></div>
+      </form>
+    </section>
+
+  </div>
+{% endblock %}

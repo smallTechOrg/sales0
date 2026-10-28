@@ -25,7 +25,7 @@ from sales0.services.sheetsync.records import (
     SheetProspect,
     SheetRecord,
 )
-from sales0.services.sheetsync.registry import get_repository, register_repository_factory
+from sales0.services.sheetsync.registry import get_repository, register_repository_factory, repository_installed
 from sales0.services.sheetsync.report import SyncReport, TabReport
 from sales0.services.sheetsync.repository import (
     InMemorySheetRepository,
@@ -75,5 +75,6 @@ __all__ = [
     "make_client",
     "parse_tab",
     "register_repository_factory",
+    "repository_installed",
     "tabs_from_settings",
 ]

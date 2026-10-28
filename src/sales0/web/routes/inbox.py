@@ -11,12 +11,14 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from sales0.db.engine import get_db
+from sales0.db.models import TeamMember
 from sales0.errors import DomainError
 from sales0.services import inbox as inbox_service
 from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
+from sales0.web.acting import get_acting_member_optional
 from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
 
 router = APIRouter()
@@ -188,6 +190,7 @@ def decide(
     q: str = Form(""),
     page: str = Form("1"),
     db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     ids: list[int] = []
     for raw in enquiry_ids:
@@ -199,7 +202,9 @@ def decide(
     if decision not in {"accept", "discard"} or not ids:
         raise DomainError("decision_invalid", DECISION_INVALID, 400)
     reason = (discard_reason.strip() or None) if decision == "discard" else None
-    decided = inbox_service.decide(db, ids, decision, discard_reason=reason)  # type: ignore[arg-type]
+    decided = inbox_service.decide(
+        db, ids, decision, discard_reason=reason, actor_member_id=member.id if member else None
+    )  # type: ignore[arg-type]
     current_tab, query, page_no = _tab(tab), _q(q), _page_number(page)
     if not is_htmx(request):
         return redirect("/inbox", tab=current_tab, q=query, page=page_no if page_no > 1 else None)

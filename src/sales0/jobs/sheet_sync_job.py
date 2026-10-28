@@ -7,10 +7,12 @@ survives restarts. The scheduler just calls ``runner.tick()`` while the job is e
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from sales0.config import Settings
 from sales0.db.engine import get_sessionmaker
+from sales0.services.sheetsync.fetch import TabSource
 from sales0.services.sheetsync import (
     SheetFetcher,
     SheetSyncRunner,
@@ -22,10 +24,20 @@ from sales0.services.sheetsync import (
     tabs_from_settings,
 )
 
-NO_REPOSITORY = "Waiting for the Phase 2 CRM tables - there is nowhere to sync into yet."
+NO_REPOSITORY = "The Phase 2 CRM sheet repository is not installed (the app installs it at startup), so there is nowhere to sync into."
+
+# Test seam: a callable returning a ``TabSource`` (e.g. ``StaticSource``) so the runner never
+# touches the network. ``None`` = the real read-only fetcher.
+_source_factory: Callable[[], TabSource] | None = None
+
+
+def set_source_factory(factory: Callable[[], TabSource] | None) -> None:
+    global _source_factory
+    _source_factory = factory
 
 
 def repository_available() -> bool:
+    """Ready once ``sql_repository.install()`` has registered the CRM repository."""
     return get_repository() is not None
 
 
@@ -33,16 +45,22 @@ def run_sync(settings: Settings) -> SyncReport:
     repo = get_repository()
     if repo is None:
         raise RuntimeError(NO_REPOSITORY)
-    fetcher = SheetFetcher(
-        make_client(timeout_s=settings.sheet_fetch_timeout_s),
-        retries=settings.sheet_fetch_retries,
-        max_bytes=settings.sheet_fetch_max_bytes,
-    )
+    fetcher = None
+    if _source_factory is not None:
+        source: TabSource = _source_factory()
+    else:
+        fetcher = SheetFetcher(
+            make_client(timeout_s=settings.sheet_fetch_timeout_s),
+            retries=settings.sheet_fetch_retries,
+            max_bytes=settings.sheet_fetch_max_bytes,
+        )
+        source = fetcher
     try:
-        engine = SyncEngine(fetcher, repo, tabs_from_settings(settings), today=lambda: datetime.now(settings.tz).date())  # type: ignore[arg-type]
+        engine = SyncEngine(source, repo, tabs_from_settings(settings), today=lambda: datetime.now(settings.tz).date())
         return engine.run(dry_run=False, only_tab=None)
     finally:
-        fetcher.close()
+        if fetcher is not None:
+            fetcher.close()
 
 
 def build_runner(settings: Settings, **overrides) -> SheetSyncRunner:  # type: ignore[no-untyped-def]

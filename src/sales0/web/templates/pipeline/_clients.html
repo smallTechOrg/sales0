@@ -1,0 +1,27 @@
+{# Needs: items (ClientView list), total, page, page_size, params. #}
+{% from "pipeline/_macros.html" import pager with context %}
+<section class="card" aria-label="Clients">
+  <div class="card__body table-wrap">
+    {% if items %}
+      <table class="table" id="client-list">
+        <thead><tr><th scope="col">Client</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">Since</th><th scope="col">Origin</th></tr></thead>
+        <tbody>
+        {% for c in items %}
+          <tr id="client-{{ c.id }}">
+            <td><a href="/pipeline/clients/{{ c.id }}">{{ c.name }}</a></td>
+            <td><span class="badge">{{ c.status|capitalize }}</span></td>
+            <td>{{ c.source|replace("_", " ")|capitalize }}</td>
+            <td>{{ c.started_on.strftime("%d %b %Y") if c.started_on else "—" }}</td>
+            <td>{% if c.lead_id %}<a href="/pipeline/leads/{{ c.lead_id }}">Won lead</a>{% else %}Added by hand{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% elif params.q %}
+      <div class="empty-state empty-state--compact" id="pipeline-empty"><p>No clients match '{{ params.q }}'.</p><a class="btn" href="/pipeline?tab=clients">Clear search</a></div>
+    {% else %}
+      <div class="empty-state" id="pipeline-empty"><p>No clients yet. A lead you mark Won becomes a client; you can also add an existing client by hand.</p><a class="btn" href="#new-client">Add legacy client</a></div>
+    {% endif %}
+  </div>
+</section>
+{{ pager("/pipeline", params, page, page_size, total, "clients") }}

@@ -1,0 +1,43 @@
+{# Needs: c (ProspectView | LeadView), kind ("prospect" | "lead"), today, next. One board card. #}
+{% from "pipeline/_macros.html" import flag_badges, source_chips %}
+{% if kind == "prospect" %}
+<article class="pcard" id="prospect-{{ c.id }}" data-stage="{{ c.stage }}">
+  <h3><a href="/pipeline/prospects/{{ c.id }}">{{ c.name }}</a></h3>
+  {% if c.company_name %}<div class="pcard__meta">{{ c.company_name }}</div>{% endif %}
+  <div class="pcard__meta">
+    {% if c.contacted_at %}contacted {{ c.contacted_at|ago }}{% if c.contacted_estimated %} (estimated){% endif %}{% else %}not contacted yet{% endif %}
+    {% if c.next_follow_up_on %}<br>Next follow-up <span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b") }}{% if c.next_follow_up_on < today %} (overdue){% endif %}</span>{% endif %}
+  </div>
+  <div class="pcard__badges">{{ flag_badges(c.flags) }}{{ source_chips(c) }}
+    {% if c.tracked %}<span class="tracked tracked--on" title="Tracked: new posts by this person are watched">Tracked</span>{% endif %}
+    {% if c.sheet_removed_at %}<span class="badge badge--warn">Removed from sheet</span>{% endif %}</div>
+  {% if c.status == "open" %}
+    <form class="pcard__move" method="post" action="/pipeline/prospects/{{ c.id }}/stage" hx-post="/pipeline/prospects/{{ c.id }}/stage" hx-swap="none">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="visually-hidden" for="stage-p{{ c.id }}">Move {{ c.name }} to stage</label>
+      <select class="select" id="stage-p{{ c.id }}" name="stage" onchange="this.form.requestSubmit()">
+        {% for key, label in stage_options %}<option value="{{ key }}"{% if key == c.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn--sm" type="submit">Move</button></noscript>
+    </form>
+  {% else %}
+    <div class="pcard__meta">{{ c.status|capitalize }}{% if c.closed_reason %} · {{ c.closed_reason|replace("_", " ") }}{% endif %}</div>
+  {% endif %}
+</article>
+{% else %}
+<article class="pcard" id="lead-{{ c.id }}" data-stage="{{ c.stage }}">
+  <h3><a href="/pipeline/leads/{{ c.id }}">{{ c.prospect_name }}</a></h3>
+  {% if c.company_name %}<div class="pcard__meta">{{ c.company_name }}</div>{% endif %}
+  <div class="pcard__meta">opened {{ c.opened_at|ago }}{% if c.days_since_activity is not none %} · last activity {{ c.days_since_activity }}d ago{% endif %}
+    {% if c.value_estimate %}<br>Est. ₹{{ "{:,}".format(c.value_estimate) }}{% endif %}</div>
+  <div class="pcard__badges">{{ flag_badges(c.flags) }}</div>
+  <form class="pcard__move" method="post" action="/pipeline/leads/{{ c.id }}/stage" hx-post="/pipeline/leads/{{ c.id }}/stage" hx-swap="none">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="visually-hidden" for="stage-l{{ c.id }}">Move {{ c.prospect_name }} to stage</label>
+    <select class="select" id="stage-l{{ c.id }}" name="stage" onchange="this.form.requestSubmit()">
+      {% for key, label in stage_options %}<option value="{{ key }}"{% if key == c.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <noscript><button class="btn btn--sm" type="submit">Move</button></noscript>
+  </form>
+</article>
+{% endif %}

@@ -38,6 +38,9 @@
           {% include "team/_acting.html" %}
         </div>
       {% endif %}
+      {% if request.state.auth_enabled|default(false) %}
+        <form class="logout-form" method="post" action="/logout"><button class="btn btn--sm btn--ghost" id="logout" type="submit">Log out</button></form>
+      {% endif %}
     </div>
   </header>
   <div class="banner-slot" id="banner-slot" hx-get="/_shell/banner" hx-trigger="session-changed from:body" hx-swap="innerHTML">{% if shell and shell.banner %}{% with banner=shell.banner %}{% include "_shell/banner.html" %}{% endwith %}{% endif %}</div>

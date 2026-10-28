@@ -223,8 +223,21 @@ def _check_browser() -> int:
 
 
 # ----------------------------------------------------------------------------- sync-sheets
-def sync_sheets(settings: Settings, *, dry_run: bool, tab: str | None, source: object | None = None) -> int:
-    """Read-only Google Sheet sync; prints per-tab COUNTS only (never cell content)."""
+NOT_MIGRATED = "database is not migrated: run alembic upgrade head"
+CRM_COUNT_TABLES = (
+    "enquiries", "companies", "contacts", "prospects", "leads", "clients", "follow_ups", "flags",
+    "timeline_events", "competitors", "channel_groups", "sheet_sources", "sheet_metrics", "sheet_metric_weeks",
+)
+
+
+def sync_sheets(
+    settings: Settings, *, dry_run: bool, tab: str | None, source: object | None = None, memory: bool = False
+) -> int:
+    """Read-only Google Sheet sync; prints per-tab COUNTS only (never cell content).
+
+    Default repository: a registered one if any, else the CRM ``SqlSheetRepository`` (the DB must be at
+    head, exit 3 otherwise). ``memory=True`` forces the in-memory repository (nothing persisted, no DB).
+    """
     from sales0.services.sheetsync import (
         InMemorySheetRepository,
         SheetFetcher,
@@ -235,11 +248,27 @@ def sync_sheets(settings: Settings, *, dry_run: bool, tab: str | None, source: o
     )
 
     tabs = tabs_from_settings(settings)
-    repo = get_repository()
     note = ""
-    if repo is None:
+    if memory:
         repo = InMemorySheetRepository()
-        note = " (no CRM repository registered: in-memory, nothing is persisted)"
+        note = " (--memory: in-memory, nothing is persisted)"
+    else:
+        from sales0.db.migrate_check import DatabaseNotAtHead, assert_at_head
+        from sales0.services.sheetsync import sql_repository
+
+        repo = get_repository()
+        if repo is None:
+            sql_repository.install()
+            repo = get_repository()
+        if isinstance(repo, sql_repository.SqlSheetRepository):
+            try:
+                assert_at_head()
+            except DatabaseNotAtHead:
+                print(f"sync-sheets ERROR {NOT_MIGRATED}", file=sys.stderr)
+                return 3
+        if repo is None:  # pragma: no cover - install() always registers
+            repo = InMemorySheetRepository()
+            note = " (no CRM repository registered: in-memory, nothing is persisted)"
     fetcher = None
     if source is None:
         fetcher = SheetFetcher(
@@ -265,7 +294,7 @@ def sync_sheets(settings: Settings, *, dry_run: bool, tab: str | None, source: o
     return 0 if report.ok else 1
 
 
-def _sync_sheets(dry_run: bool, tab: str | None) -> int:
+def _sync_sheets(dry_run: bool, tab: str | None, memory: bool = False) -> int:
     from pydantic import ValidationError
 
     from sales0.config import get_settings
@@ -275,7 +304,30 @@ def _sync_sheets(dry_run: bool, tab: str | None) -> int:
     except ValidationError as exc:
         print(f"sync-sheets ERROR invalid configuration: {exc.error_count()} error(s)", file=sys.stderr)
         return 1
-    return sync_sheets(settings, dry_run=dry_run, tab=tab)
+    return sync_sheets(settings, dry_run=dry_run, tab=tab, memory=memory)
+
+
+def crm_counts() -> int:
+    """One line of ``table=rowcount`` pairs for the CRM tables that exist. Counts only."""
+    from sqlalchemy import inspect, text
+
+    from sales0.db.engine import get_engine
+    from sales0.db.migrate_check import DatabaseNotAtHead, assert_at_head
+
+    engine = get_engine()
+    try:
+        assert_at_head(engine)
+    except DatabaseNotAtHead:
+        print(f"crm-counts ERROR {NOT_MIGRATED}", file=sys.stderr)
+        return 3
+    existing = set(inspect(engine).get_table_names())
+    parts = []
+    with engine.connect() as conn:
+        for name in CRM_COUNT_TABLES:
+            if name in existing:
+                parts.append(f"{name}={conn.execute(text(f'SELECT count(*) FROM {name}')).scalar_one()}")
+    print(" ".join(parts))
+    return 0
 
 
 def _eval_triage() -> int:
@@ -310,13 +362,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     ss = sub.add_parser("sync-sheets", help="Read-only sync of the Google Sheets (prints per-tab counts only)")
     ss.add_argument("--dry-run", action="store_true", help="compute the diff report without applying it")
     ss.add_argument("--tab", default=None, help="sync only this tab (e.g. 'Active Enquiries')")
+    ss.add_argument("--memory", action="store_true", help="use an in-memory repository: no database needed, nothing persisted")
+    sub.add_parser("crm-counts", help="Print the row count of each CRM table (counts only)")
     sub.add_parser(
         "eval-triage",
         help="Run the real triage over the team's real Google Sheets (fetched at runtime) and print precision/recall",
     )
     args = parser.parse_args(argv)
     if args.command == "sync-sheets":
-        return _sync_sheets(args.dry_run, args.tab)
+        return _sync_sheets(args.dry_run, args.tab, args.memory)
+    if args.command == "crm-counts":
+        return crm_counts()
     if args.command == "eval-triage":
         return _eval_triage()
     if args.command == "check-llm":

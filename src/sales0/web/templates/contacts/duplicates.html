@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Possible duplicate contacts{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/contacts">&larr; Contacts</a></div>
+  <div class="page__header"><div><h1>Possible duplicates</h1><p>Contacts that share an email, a LinkedIn profile, a phone number, or the same name and company. Merging keeps one contact and moves everything onto it.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack" id="merge-list">
+    {{ flash_banner(flash) }}
+    {% set ns = namespace(first=true) %}
+    {% for g in groups %}
+      {% set gi = loop.index %}
+      <section class="dup-group" aria-label="Duplicate group {{ loop.index }}">
+        <p><strong>{{ g.reason }}</strong></p>
+        <div class="dup-group__cols">
+          {% for c in g.contacts %}
+            <div class="dup-contact" id="dup-{{ gi }}-{{ c.id }}">
+              <strong><a href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "(unnamed)" }}</a></strong>
+              <span>{{ c.email or "no email" }}{% if c.phone %} · {{ c.phone }}{% endif %}</span>
+              <span class="muted">{{ c.company_name or "no company" }}{% if c.title %} · {{ c.title }}{% endif %}</span>
+              <span>{% for t in c.tags %}<span class="tag">{{ t.name }}</span> {% endfor %}</span>
+              {% for other in g.contacts if other.id != c.id %}
+                <form class="merge-form"{% if ns.first %} id="merge-form"{% set ns.first = false %}{% endif %} method="post" action="/contacts/merge" hx-post="/contacts/merge" hx-swap="none"
+                      hx-confirm="Merge {{ other.full_name or other.email or 'the other contact' }} into {{ c.full_name or c.email or 'this contact' }}? This cannot be undone.">
+                  <input type="hidden" name="keep_id" value="{{ c.id }}">
+                  <input type="hidden" name="drop_id" value="{{ other.id }}">
+                  <button class="btn btn--sm" type="submit">Merge {{ other.full_name or other.email or "other" }} into this one</button>
+                </form>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% else %}
+      <div class="empty-state" id="merge-empty"><p>No duplicate contacts found.</p><a class="btn" href="/contacts">Back to contacts</a></div>
+    {% endfor %}
+  </div>
+{% endblock %}

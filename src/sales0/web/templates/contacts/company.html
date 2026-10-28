@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner, timeline_list, flag_badges %}
+{% block title %}{{ co.name }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/contacts">&larr; Contacts</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="company-header" aria-labelledby="company-title">
+      <div class="card__body record-head">
+        <div class="record-head__title"><h1 id="company-title">{{ co.name }}</h1></div>
+        <div class="pcard__meta">{% if co.city %}{{ co.city }}{% endif %}
+          {% if co.website and co.website.startswith(("http://", "https://")) %} · <a href="{{ co.website }}" rel="noopener noreferrer" target="_blank">{{ co.website }}</a>{% elif co.website %} · {{ co.website }}{% endif %}</div>
+      </div>
+    </section>
+    <div class="grid-2">
+      <div class="stack">
+        <section class="card" id="company-prospects" aria-labelledby="cp-title">
+          <div class="card__header"><h2 id="cp-title">Prospects</h2></div>
+          <div class="card__body">
+            {% for p in co.prospects %}
+              <div class="reply-item"><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a> <span class="badge stage-badge">{{ p.stage_label }}</span>
+                {% if p.status != "open" %}<span class="badge">{{ p.status|capitalize }}</span>{% endif %} {{ flag_badges(p.flags) }}</div>
+            {% else %}<p class="muted">No prospects at this company.</p>{% endfor %}
+          </div>
+        </section>
+        <section class="card" id="company-enquiries" aria-labelledby="ce-title">
+          <div class="card__header"><h2 id="ce-title">Enquiries</h2></div>
+          <div class="card__body">
+            {% for e in co.enquiries %}
+              <div class="reply-item"><strong>{{ e.requirement_summary or "(no summary)" }}</strong>
+                <div class="muted">{{ e.review_status|replace("_", " ")|capitalize }}{% if e.date_added %} · {{ e.date_added|ago }}{% endif %}</div></div>
+            {% else %}<p class="muted">No enquiries.</p>{% endfor %}
+          </div>
+        </section>
+        <section class="card" id="company-contacts" aria-labelledby="cc-title">
+          <div class="card__header"><h2 id="cc-title">Contacts</h2></div>
+          <div class="card__body">
+            {% for c in co.contacts %}<div class="reply-item"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "(unnamed)" }}</a> <span class="muted">{{ c.email or "" }}</span></div>
+            {% else %}<p class="muted">No contacts.</p>{% endfor %}
+          </div>
+        </section>
+      </div>
+      <section class="card" id="company-timeline" aria-labelledby="cti-title">
+        <div class="card__header"><h2 id="cti-title">Timeline</h2><span class="muted">read-only</span></div>
+        <div class="card__body"><div id="timeline">{{ timeline_list(co.timeline) }}</div></div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

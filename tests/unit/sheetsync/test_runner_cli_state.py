@@ -207,7 +207,7 @@ def test_settings_defaults_and_tab_overrides(monkeypatch) -> None:
 
 def test_cli_dry_run_prints_counts_only(capsys) -> None:
     s = Settings(_env_file=None)
-    code = sync_sheets(s, dry_run=True, tab=None, source=StaticSource(fx.all_tabs_csv()))
+    code = sync_sheets(s, dry_run=True, tab=None, source=StaticSource(fx.all_tabs_csv()), memory=True)
     out = capsys.readouterr().out
     assert code == 0 and "DRY-RUN" in out
     assert "Active Enquiries: rows=8 added=7" in out and "Weekly:" in out
@@ -218,18 +218,19 @@ def test_cli_dry_run_prints_counts_only(capsys) -> None:
 def test_cli_single_tab_unknown_tab_and_failures(capsys) -> None:
     s = Settings(_env_file=None)
     src = StaticSource({**fx.all_tabs_csv(), "Groups": RuntimeError("x")})
-    assert sync_sheets(s, dry_run=True, tab="groups", source=src) == 1
+    assert sync_sheets(s, dry_run=True, tab="groups", source=src, memory=True) == 1
     assert "FETCH-ERROR" in capsys.readouterr().out
-    assert sync_sheets(s, dry_run=True, tab="nope", source=src) == 2
-    assert sync_sheets(s, dry_run=True, tab="competitors", source=src) == 0
+    assert sync_sheets(s, dry_run=True, tab="nope", source=src, memory=True) == 2
+    assert sync_sheets(s, dry_run=True, tab="competitors", source=src, memory=True) == 0
 
 
 def test_cli_entry_point_registers_subcommand(monkeypatch) -> None:
     seen = {}
-    monkeypatch.setattr("sales0.cli._sync_sheets", lambda dry, tab: seen.update(dry=dry, tab=tab) or 0)
+    monkeypatch.setattr("sales0.cli._sync_sheets", lambda dry, tab, memory=False: seen.update(dry=dry, tab=tab, memory=memory) or 0)
     assert cli_main(["sync-sheets", "--dry-run", "--tab", "Groups"]) == 0
-    assert seen == {"dry": True, "tab": "Groups"}
-    assert cli_main(["sync-sheets"]) == 0 and seen == {"dry": False, "tab": None}
+    assert seen == {"dry": True, "tab": "Groups", "memory": False}
+    assert cli_main(["sync-sheets"]) == 0 and seen == {"dry": False, "tab": None, "memory": False}
+    assert cli_main(["sync-sheets", "--memory"]) == 0 and seen["memory"] is True
 
 
 def test_cli_uses_registered_repository_when_present(capsys) -> None:

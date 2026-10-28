@@ -1,5 +1,6 @@
 """Shell routes (slice E): ``/`` → ``/inbox``, header fragments, and the labelled
-"Coming in Phase N" stub pages for features that later phases build."""
+"Coming in Phase N" stub pages for features that later phases build (Phase 2 built the
+Pipeline, Contacts, Competitors & Groups and Import pages; only Metrics and WhatsApp remain)."""
 
 from __future__ import annotations
 
@@ -24,22 +25,6 @@ class StubPage:
 
 
 STUBS: dict[str, StubPage] = {
-    "/pipeline": StubPage(
-        "Pipeline", 2,
-        "Accepted enquiries become Prospects, then Leads and Clients, with stages, follow-ups due today and a full timeline.",
-    ),
-    "/contacts": StubPage(
-        "Contacts", 2,
-        "One shared address book of every person and company, linked to their enquiries, prospects and leads.",
-    ),
-    "/competitors": StubPage(
-        "Competitors & Groups", 2,
-        "Registries of competitor training firms and the WhatsApp/LinkedIn groups the team watches, with competitor-mention flags.",
-    ),
-    "/import": StubPage(
-        "Import", 2,
-        "Import the existing Active and Discarded Enquiries sheets (CSV) and paste single posts by hand, with duplicates merged.",
-    ),
     "/metrics": StubPage(
         "Metrics", 4,
         "The Weekly and Secondary metrics sheets, produced automatically per ISO week against your targets, plus the AI cost view.",

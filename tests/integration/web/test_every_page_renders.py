@@ -28,17 +28,29 @@ from tests.integration.web.conftest import make_enquiry, make_keyword, make_run,
 
 # (path, key text) — full pages. "/" follows its redirect to the inbox.
 STUB_PAGES = {
-    "/pipeline": 2,
-    "/contacts": 2,
-    "/competitors": 2,
-    "/import": 2,
     "/metrics": 4,
     "/whatsapp": 5,
+}
+# Phase 2 pages (real since slice S4) and their key text; "/sync" and "/login" belong to S2 / S3 and have their own tests.
+CRM_PAGES = {
+    "/pipeline": 'id="pipeline-tabs"',
+    "/pipeline?tab=leads": "Gina Globex",
+    "/pipeline?tab=leads&view=list": 'id="pipeline-list"',
+    "/pipeline?tab=clients": "Old Customer Ltd",
+    "/pipeline?tab=prospects&view=list": 'id="pipeline-list"',
+    "/pipeline?tab=prospects&q=zzz": "Nothing matches these filters.",
+    "/contacts": 'id="contact-list"',
+    "/contacts?q=zzzz": "No contacts match 'zzzz'.",
+    "/contacts/duplicates": 'id="merge-list"',
+    "/competitors": 'id="competitor-list"',
+    "/import": 'id="csv-form"',
+    "/sync": "Google Sheet sync",  # S2 builds the page; the nav entry must never 500
 }
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
-COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
+COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/competitors", "/import",
+                    "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/replies", "/replies/suppressions"}
 
@@ -57,6 +69,7 @@ class State:
     extra_setup: list[str] = field(default_factory=list)
     extra_runs: list[str] = field(default_factory=list)
     extra_detail: list[str] = field(default_factory=list)
+    crm: dict[str, int] = field(default_factory=dict)  # ids of the seeded CRM records
 
 
 # ---------------------------------------------------------------------- seeding helpers
@@ -74,6 +87,37 @@ def _seed_inbox() -> None:
     with session_scope() as db:
         inbox_service.decide(db, [accepted], "accept")
         inbox_service.decide(db, [discarded], "discard", discard_reason="Agency")
+
+
+def _seed_crm() -> dict[str, int]:
+    """A prospect with due follow-ups, a lead, a client, a contact with a tag, a competitor and group, an import batch."""
+    from datetime import timedelta as td
+
+    from sales0.clock import local_today
+    from sales0.config import get_settings
+    from sales0.db.models import ImportBatch
+    from sales0.services.crm import clients, contacts, followups, leads, prospects, registries
+
+    with session_scope() as db:
+        today = local_today(get_settings().tz)
+        first = prospects.create_manual(db, name="Priya Menon", company="Acme Logistics", email="priya@acme.example")
+        prospects.move_stage(db, first.id, "contacted")
+        prospects.record_response(db, first.id)
+        followups.add_custom(db, prospect_id=first.id, due_on=today, note="Send the agenda")
+        followups.add_custom(db, prospect_id=first.id, due_on=today - td(days=3), note="Chase the quote")
+        second = prospects.create_manual(db, name="Gina Globex", company="Globex", email="gina@globex.example")
+        prospects.move_stage(db, second.id, "contacted")
+        prospects.record_response(db, second.id)
+        lead = leads.convert(db, second.id)
+        clients.create_legacy(db, name="Old Customer Ltd")
+        contact = contacts.upsert(db, full_name="Ravi Kumar", email="ravi@zen.example")
+        contacts.add_tag(db, contact.id, "HR head")
+        competitor = registries.create_competitor(db, name="Rival Academy")
+        registries.create_group(db, name="HR Leaders", platform="whatsapp")
+        batch = ImportBatch(filename="clients.csv", kind="clients", rows_total=2, rows_new=2, errors=[])
+        db.add(batch)
+        db.flush()
+        return {"prospect": first.id, "lead": lead.id, "contact": contact.id, "competitor": competitor.id, "batch": batch.id}
 
 
 def _finished_run(**fields) -> int:  # noqa: ANN003
@@ -225,12 +269,18 @@ def seeded(request: pytest.FixtureRequest, db_url: str, monkeypatch: pytest.Monk
     blocker = _Blocker()
     with TestClient(create_app()) as client:
         _seed_inbox()
+        crm_ids = _seed_crm()
         state = _seed(request.param, blocker, monkeypatch)
+        state.crm = crm_ids
         try:
             yield client, state
         finally:
             blocker.stop()
     reset_runner()
+
+
+def _main_of(html: str) -> str:
+    return html.split('<main id="main"', 1)[1].split("</main>", 1)[0]
 
 
 def _get(client: TestClient, path: str, status: int = 200) -> str:
@@ -248,6 +298,7 @@ def _assert_contains(html: str, needles: Callable[[], list[str]] | list[str], wh
 @pytest.mark.parametrize("seeded", STATES, indirect=True)
 def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, State]) -> None:
     client, state = seeded
+    state_crm_ids = state.crm
     where = lambda path: f"[{state.name}] {path}"  # noqa: E731
 
     def page(path: str, key: str, extra: list[str] | None = None) -> str:
@@ -277,6 +328,18 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
     page(f"/runs/{state.run_id}", f"Run #{state.run_id}", ['id="run-keywords"', 'id="run-summary"', *state.extra_detail])
     for path, phase in STUB_PAGES.items():
         page(path, f"Coming in Phase {phase}")
+    for path, key in CRM_PAGES.items():
+        html = page(path, key)
+        assert "Coming in Phase" not in _main_of(html), where(path)
+    ids = state_crm_ids
+    page(f"/pipeline/prospects/{ids['prospect']}", "Priya Menon", ['id="timeline"', 'id="btn-draft"', 'id="follow-ups"'])
+    page(f"/pipeline/leads/{ids['lead']}", "Gina Globex", ['id="lead-stepper"', 'id="timeline"'])
+    page(f"/contacts/{ids['contact']}", "Ravi Kumar", ['id="tag-form"'])
+    page(f"/competitors/competitor/{ids['competitor']}", "Rival Academy", ['id="link-client-form"'])
+    page(f"/import/batches/{ids['batch']}", "Import summary", ['id="import-summary"'])
+    due = page("/pipeline", "Send the agenda", ['id="due-today"', "Chase the quote", 'id="due-badge"'])
+    assert "Nothing due today." not in due, where("/pipeline")
+    _assert_contains(_get(client, "/contacts?q=ravi"), ["Ravi Kumar"], where("/contacts?q"))
 
     # Phase 3 outreach pages (the acting member is the seeded admin).
     page("/outreach", "Outreach", ['id="cap-usage"', "0 of 40</strong> sent today", 'id="outbox-filters"', "Replies column fills in"])
@@ -320,4 +383,4 @@ def test_route_list_covers_every_parameter_free_html_get_route(db_url: str) -> N
     }
     missing = html_gets - COVERED_PARAMLESS
     assert not missing, f"new page route(s) not covered by test_every_page_renders: {sorted(missing)}"
-    assert {"/inbox", "/setup", "/runs", "/pipeline"} <= html_gets
+    assert {"/inbox", "/setup", "/runs", "/pipeline", "/contacts", "/competitors", "/import"} <= html_gets

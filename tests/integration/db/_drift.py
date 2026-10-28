@@ -21,6 +21,10 @@ INLINE_FKS = {
     ("enquiries", "author_profile_id"),
     ("enquiries", "seen_post_id"),
     ("llm_calls", "seen_post_id"),
+    # p6_crm_5b2e7d14: the CRM links on enquiries are added the same way (enquiries is FK-referenced).
+    ("enquiries", "prospect_id"),
+    ("enquiries", "company_id"),
+    ("enquiries", "contact_id"),
 }
 
 

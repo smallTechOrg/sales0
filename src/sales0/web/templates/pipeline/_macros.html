@@ -1,0 +1,66 @@
+{# Shared CRM display macros: flag badges, source chips, timeline list, pagination. #}
+{% macro flag_badges(items) -%}
+  {%- for f in items or [] -%}
+    {%- if f.kind == "repeat_poster" -%}
+      <span class="badge flag flag--repeat_poster">Repeat poster{% if f.detail and f.detail.get("count") %} ×{{ f.detail.get("count") }}{% endif %}</span>
+    {%- elif f.kind == "competitor_mention" -%}
+      {%- set names = (f.detail or {}).get("names") or (f.detail or {}).get("competitors") or (f.detail or {}).get("competitor") -%}
+      <span class="badge flag flag--competitor_mention">Mentions {% if names is string %}{{ names }}{% elif names %}{{ names|join(", ") }}{% else %}a competitor{% endif %}</span>
+    {%- elif f.kind == "no_follow_up" -%}
+      <span class="badge flag flag--no_follow_up">Do not follow up</span>
+    {%- else -%}
+      <span class="badge flag">{{ f.kind|replace("_", " ")|capitalize }}</span>
+    {%- endif %}
+  {% endfor -%}
+{%- endmacro %}
+
+{% macro source_chips(p) -%}
+  <span class="chip chip--source">{{ {"enquiry": "Enquiry", "sheet": "Sheet", "manual": "Manual", "import": "Import", "outreach": "Outreach"}.get(p.source, p.source|capitalize) }}</span>
+  {%- for tab in p.sheet_tabs or [] %} <span class="chip chip--sheet" title="Synced from the Google Sheet, read-only">{{ tab }}</span>{% endfor %}
+  {%- if p.sheet_tabs %} <span class="lock">Synced from sheet</span>{% endif %}
+{%- endmacro %}
+
+{% macro stage_badge(stage, label) -%}
+  <span class="badge stage-badge stage-badge--{{ stage }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro timeline_list(items, empty="Nothing has happened yet.") -%}
+  {% set linkable = ["email_sent", "reply_received", "lead_created", "client_created", "proposal_sent", "lead_stage", "contact_merged", "contact_linked", "enquiry_linked"] %}
+  {% if items %}
+    <ol class="timeline timeline--crm" aria-label="Timeline">
+      {% for t in items %}
+        {% set k = t.kind %}
+        <li data-kind="{{ k }}">
+          <span class="timeline__icon {% if k == 'note' %}timeline__icon--note{% elif k.startswith('sheet_') %}timeline__icon--sheet{% elif k in ('email_sent','reply_received','client_created','lead_created') %}timeline__icon--ok{% endif %}" aria-hidden="true">
+            {%- if k == "note" %}N{% elif k == "email_sent" %}@{% elif k == "reply_received" %}R{% elif k == "stage_change" or k == "lead_stage" %}&rarr;{% elif k.startswith("sheet_") %}S{% elif k == "created" %}+{% elif k == "client_created" %}$ {% else %}&bull;{% endif -%}
+          </span>
+          <div class="timeline__body">
+            <div><strong>{% if t.href and k in linkable %}<a href="{{ t.href }}">{{ t.kind_label }}</a>{% else %}{{ t.kind_label }}{% endif %}</strong>
+              {% if t.body %}<span class="timeline__text">{{ t.body }}</span>
+              {% elif t.data and t.data.get("from") is not none and t.data.get("to") is not none %}<span class="timeline__text">{{ t.data.get("from") }} &rarr; {{ t.data.get("to") }}</span>{% endif %}</div>
+            <div class="timeline__meta">{{ t.actor }} · <time datetime="{{ t.occurred_at.isoformat() }}" title="{{ t.occurred_at|localdt }}">{{ t.occurred_at|ago }}</time></div>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="muted" id="timeline-empty">{{ empty }}</p>
+  {% endif %}
+{%- endmacro %}
+
+{% macro pager(base, params, page, page_size, total, noun="items") -%}
+  {% set pages = ((total + page_size - 1) // page_size) if page_size else 1 %}
+  {% if pages > 1 %}
+    <nav class="pagination" aria-label="Pages">
+      {% if page > 1 %}<a class="btn" href="{{ base }}?{{ qs(params, page=page - 1) }}">&larr; Prev</a>{% else %}<span></span>{% endif %}
+      <span class="muted">Page {{ page }} of {{ pages }} · {{ total }} {{ noun }}</span>
+      {% if page < pages %}<a class="btn" href="{{ base }}?{{ qs(params, page=page + 1) }}">Next &rarr;</a>{% else %}<span></span>{% endif %}
+    </nav>
+  {% elif total %}
+    <p class="muted">{{ total }} {{ noun }}</p>
+  {% endif %}
+{%- endmacro %}
+
+{% macro flash_banner(flash) -%}
+  {% if flash %}<div class="flash flash--{{ flash.kind }}" id="crm-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>{% endif %}
+{%- endmacro %}

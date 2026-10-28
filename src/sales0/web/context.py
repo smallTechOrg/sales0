@@ -6,17 +6,20 @@ Routes render through :func:`render_page` (full page) or :func:`render_fragment`
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from markupsafe import Markup
 from sqlalchemy.orm import Session
 
 from sales0.clock import ensure_utc, local_today, utcnow
 from sales0.config import get_settings
+from sales0.logging import get_logger
 from sales0.services import costs as costs_service
 from sales0.services import costs_report
 from sales0.services import replies as replies_service
@@ -25,8 +28,14 @@ from sales0.services import session as session_service
 from sales0.services.team import acting as acting_service
 from sales0.services.team import members as members_service
 from sales0.services.views import SessionStatusView
-from sales0.web.envelope import is_htmx
+from sales0.errors import DomainError
+from sales0.web.acting import set_flash
+from sales0.web.envelope import is_htmx, wants_json
+from sales0.web.envelope import ok as envelope_ok
 from sales0.web.templating import ago, get_templates
+
+
+log = get_logger("sales0.web.context")
 
 
 @dataclass(frozen=True)
@@ -42,10 +51,11 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Inbox", "/inbox", None),
     ("Runs", "/runs", None),
     ("Setup", "/setup", None),
-    ("Pipeline", "/pipeline", 2),
-    ("Contacts", "/contacts", 2),
-    ("Competitors & Groups", "/competitors", 2),
-    ("Import", "/import", 2),
+    ("Pipeline", "/pipeline", None),
+    ("Contacts", "/contacts", None),
+    ("Competitors & Groups", "/competitors", None),
+    ("Import", "/import", None),
+    ("Sync", "/sync", None),
     ("Outreach", "/outreach", None),
     ("Replies", "/replies", None),
     ("Metrics", "/metrics", 4),
@@ -71,12 +81,29 @@ POSTER_TYPE_LABELS = {
 }
 
 
-def nav_items(path: str) -> list[NavItem]:
+def nav_items(path: str, due: int = 0) -> list[NavItem]:
     items = []
     for label, href, phase in NAV:
         active = path == href or path.startswith(href + "/")
-        items.append(NavItem(label=label, href=href, phase=phase, active=active))
+        shown: str = label
+        if href == "/pipeline" and due > 0:
+            # base.html prints ``item.label``; the count badge rides along as safe markup.
+            shown = Markup(  # noqa: S704 - the number is an int, the label a constant
+                f'{label} <span class="nav-count" id="due-badge" title="Follow-ups due today or overdue">{int(due)}</span>'
+            )
+        items.append(NavItem(label=shown, href=href, phase=phase, active=active))
     return items
+
+
+def due_count(db: Session) -> int:
+    """Follow-ups due today + overdue (Pipeline nav badge). Never breaks a page: a CRM failure shows no badge."""
+    try:
+        from sales0.services.crm import followups
+
+        return int(followups.due_count(db))
+    except Exception:  # noqa: BLE001 - the header badge is decoration
+        log.warning("due_count_failed", exc_info=True)
+        return 0
 
 
 def banner_text(session: SessionStatusView) -> str | None:
@@ -107,13 +134,15 @@ def status_light_view(session: SessionStatusView) -> dict[str, Any]:
 def shell_context(request: Request, db: Session) -> dict[str, Any]:
     session = session_service.session_status(db)
     acting_member = acting_service.resolve_acting_member(db, request.cookies.get(acting_service.COOKIE_NAME))
+    due = due_count(db)
     return {
+        "due_count": due,
         "acting_member": acting_member,
         "team_members": members_service.list_members(db, include_inactive=False),
         "session": session,
         "cost": costs_service.cost_summary(db),
         "active_run": runs_service.active_run(db),
-        "nav": nav_items(request.url.path),
+        "nav": nav_items(request.url.path, due),
         "banner": banner_text(session),
         "spend_cap": costs_report.spend_cap_status(db),
         "mode": get_settings().linkedin_mode,
@@ -235,7 +264,18 @@ def interrupted(run: Any) -> bool:
     return bool(run) and run.status == "aborted" and not run.abort_reason
 
 
+def qs(params: dict[str, Any] | None = None, **overrides: Any) -> str:
+    """URL query string from ``params`` with ``overrides`` applied; None / empty values are dropped.
+
+    ``qs(params, page=2)`` keeps every filter and changes the page; ``qs(params, tag=None)`` removes one.
+    """
+    merged = {**(params or {}), **overrides}
+    clean = {k: v for k, v in merged.items() if v not in (None, "", False)}
+    return urlencode(clean)
+
+
 HELPERS: dict[str, Any] = {
+    "qs": qs,
     "pct_text": pct_text,
     "posted_hint": posted_hint,
     "interrupted": interrupted,
@@ -301,6 +341,100 @@ def cost_badge_oob(db: Session) -> str:
     return render_html_static("_shell/cost_badge.html", {"cost": costs_service.cost_summary(db), "oob": True})
 
 
+# ---------------------------------------------------------------------- CRM route helpers
+def flash_redirect(path: str, message: str, kind: str = "ok") -> RedirectResponse:
+    """303 to ``path`` with a one-shot flash message (plain form posts)."""
+    response = RedirectResponse(path, status_code=303)
+    set_flash(response, message, kind)
+    return response
+
+
+def crm_done(request: Request, back: str, message: str, data: Any = None) -> Response:
+    """Success answer of a mutating CRM route that has no fragment of its own.
+
+    JSON callers get the envelope, htmx gets ``HX-Redirect`` (the flash shows after the reload),
+    plain forms get 303 + flash.
+    """
+    if wants_json(request):
+        return envelope_ok(data if data is not None else {"message": message})
+    if is_htmx(request):
+        response = Response(status_code=204, headers={"HX-Redirect": back})
+        set_flash(response, message, "ok")
+        return response
+    return flash_redirect(back, message)
+
+
+def crm_guard(request: Request, back: str, action: Callable[[], Response], db: Session | None = None) -> Response:
+    """Run ``action``; a ``DomainError`` becomes a red flash on ``back`` for browser forms.
+
+    htmx and JSON callers get the envelope instead (toast / ``{ok: false}``), like the outreach routes.
+    """
+    try:
+        return action()
+    except DomainError as exc:
+        if db is not None:
+            db.rollback()  # nothing half-done is committed when the request ends normally
+        if wants_json(request) or is_htmx(request):
+            raise
+        return flash_redirect(back, exc.message, "error")
+
+
+def parse_local_datetime(value: str | None) -> datetime | None:
+    """A ``datetime-local`` form value (naive, in the team's timezone) → aware UTC; blank → None."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        naive = datetime.fromisoformat(text)
+    except ValueError:
+        raise DomainError("bad_request", "That date and time is not valid.", 400) from None
+    if naive.tzinfo is None:
+        naive = naive.replace(tzinfo=get_settings().tz)
+    return naive.astimezone(UTC)
+
+
+def parse_date(value: str | None, *, required: bool = False, label: str = "date") -> date | None:
+    text = (value or "").strip()
+    if not text:
+        if required:
+            raise DomainError("bad_request", f"Choose a {label}.", 400)
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise DomainError("bad_request", f"That {label} is not valid.", 400) from None
+
+
+def opt_str(value: str | None) -> str | None:
+    """Blank form field → None (so services see 'not provided')."""
+    text = (value or "").strip()
+    return text or None
+
+
+def opt_int(value: str | None, label: str = "number") -> int | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        raise DomainError("bad_request", f"That {label} is not valid.", 400) from None
+
+
+def page_number(value: str | int | None) -> int:
+    try:
+        return max(1, int(value or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def actor_of(member: Any) -> Any:
+    """``Actor.of_member(member)`` (None → the shared 'team' actor)."""
+    from sales0.services.crm.actor import Actor
+
+    return Actor.of_member(member)
+
+
 def redirect(path: str, **params: Any) -> RedirectResponse:
     clean = {k: v for k, v in params.items() if v not in (None, "")}
     url = f"{path}?{urlencode(clean)}" if clean else path
@@ -311,9 +445,19 @@ __all__ = [
     "HELPERS",
     "NAV",
     "NavItem",
+    "actor_of",
     "banner_text",
     "browser_is_chrome",
     "cooldown_clock",
+    "crm_done",
+    "crm_guard",
+    "flash_redirect",
+    "opt_int",
+    "opt_str",
+    "page_number",
+    "parse_date",
+    "parse_local_datetime",
+    "qs",
     "cost_badge_oob",
     "is_htmx",
     "nav_items",

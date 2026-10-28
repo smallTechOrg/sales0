@@ -462,6 +462,9 @@ def test_sheet_sync_job_delegates_to_the_existing_runner(db_url: str) -> None:
 
 
 def test_sheet_sync_without_crm_repository_is_unavailable_with_a_reason(db_url: str) -> None:
+    from sales0.services.sheetsync import register_repository_factory
+
+    register_repository_factory(None)  # the app lifespan of an earlier test installs the CRM repository (process-global)
     s = make(Clock(ist(28, 12)), jobs=[SheetSyncJob()])
     view = s.snapshot()[0]
     assert view.note and "Phase 2" in view.note

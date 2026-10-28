@@ -1,0 +1,26 @@
+{# Needs: board (Board), tab, params, today, next. #}
+{% set kind = "prospect" if tab == "prospects" else "lead" %}
+{% set any_cards = board.columns|sum(attribute="total") %}
+{% if not any_cards %}
+  <div class="empty-state" id="pipeline-empty">
+    {% if params.q or params.flag %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ tab }}">Clear filters</a>
+    {% elif tab == "prospects" %}<p>No prospects yet — accept an enquiry in the Inbox, or add one.</p><div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-prospect">New prospect</a></div>
+    {% else %}<p>No leads yet. A prospect becomes a lead once it has been contacted and has replied.</p>{% endif %}
+  </div>
+{% else %}
+<div class="board" id="pipeline-board" role="list" aria-label="{{ 'Prospects' if tab == 'prospects' else 'Leads' }} by stage">
+  {% for col in board.columns %}
+    <section class="board__col" role="listitem" data-stage="{{ col.stage }}" aria-labelledby="col-{{ col.stage }}">
+      <div class="board__head"><h2 id="col-{{ col.stage }}">{{ col.label }}</h2><span class="count-pill" title="{{ col.total }} in total">{{ col.total }}</span></div>
+      {% for c in col.cards if params.show_removed or not (kind == "prospect" and c.sheet_removed_at) %}
+        {% include "pipeline/_card.html" %}
+      {% else %}
+        <p class="board__empty">Nothing here.</p>
+      {% endfor %}
+      {% if col.total > col.cards|length %}
+        <p class="board__more"><a href="/pipeline?{{ qs(params, tab=tab, view='list', stage=col.stage, page=None) }}">Show all {{ col.total }}</a></p>
+      {% endif %}
+    </section>
+  {% endfor %}
+</div>
+{% endif %}

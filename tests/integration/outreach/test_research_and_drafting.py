@@ -39,17 +39,24 @@ def words(text: str) -> int:
 # ------------------------------------------------------------------ research (real Haiku)
 @pytest.mark.llm
 def test_research_company_persists_a_costed_brief_and_llm_rows(db: Session, team: Team, offering) -> None:
+    # Phase 2 gave company_briefs real foreign keys (p6_crm_5b2e7d14): the references must exist.
+    from sales0.services.crm import prospects
+    from tests.integration.crm import helpers as crm_helpers
+
+    enq = crm_helpers.enquiry(db, company="Acme Logistics")
+    prospect = prospects.ensure_for_enquiry(db, enq.id)
+    db.commit()
     with serve_fixture_site() as site:
         row = research_company(
             db, get_llm_client(), team.ann, company_name="Acme Logistics", website_url=site.url("/"),
-            context_text="Their ops head asked about AI training.", enquiry_id=424242,  # no such enquiry: must not break the FK
-            prospect_id=7, limits=ResearchLimits(max_steps=6, max_pages=4, total_time_s=90),
+            context_text="Their ops head asked about AI training.", enquiry_id=enq.id,
+            prospect_id=prospect.id, limits=ResearchLimits(max_steps=6, max_pages=4, total_time_s=90),
             fetcher=SafeFetcher(allow_private_hosts=["127.0.0.1"]),
         )  # fmt: skip
         db.commit()
     brief = brief_dict(row)
-    assert row.company_name == "Acme Logistics" and row.website == site.url("/") and row.prospect_id == 7
-    assert row.enquiry_id == 424242  # the brief keeps the caller's reference; only llm_calls drops dangling ids
+    assert row.company_name == "Acme Logistics" and row.website == site.url("/") and row.prospect_id == prospect.id
+    assert row.enquiry_id == enq.id  # the brief keeps the caller's (now foreign-keyed) references
     assert brief["research_status"] == "done" and brief["personalisation_hooks"]
     assert json.loads(row.sources_json) and all(u.startswith(site.base_url) for u in json.loads(row.sources_json))
     calls = db.scalars(select(LlmCall).where(LlmCall.feature == "research")).all()

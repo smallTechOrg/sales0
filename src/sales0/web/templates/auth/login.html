@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Log in · sales0</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <style>
+    .login { min-height: 100vh; display: grid; place-items: center; padding: var(--space-4); }
+    .login__card { width: min(24rem, 100%); }
+    .login__mark { font-size: 1.5rem; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main class="login" id="main">
+    <section class="card login__card" aria-labelledby="login-title">
+      <form class="card__body" id="login-form" method="post" action="/login">
+        <p class="login__mark" id="login-title">sales0</p>
+        {% if error %}<p class="field__error" id="login-error" role="alert">{{ error }}</p>{% endif %}
+        <input type="hidden" name="next" value="{{ next_path }}">
+        <div class="field">
+          <label class="field__label" for="login-password">Password</label>
+          <input class="input" id="login-password" name="password" type="password" autocomplete="current-password" required autofocus>
+        </div>
+        <button class="btn btn--primary" id="login-submit" type="submit">Log in</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

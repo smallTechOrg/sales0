@@ -35,9 +35,11 @@ def test_upgrade_creates_every_outreach_table_and_is_head(db_url: str) -> None:
         insp = inspect(engine)
         cols = {c["name"] for c in insp.get_columns("outreach_messages")}
         assert {"state", "content_sha256", "send_outcome_unknown", "gmail_thread_id", "brief_json"} <= cols
-        # CRM references are plain integers: no FK to tables that do not exist yet.
+        # The CRM links got their foreign keys in p6_crm_5b2e7d14 (Phase 2).
         fk_cols = {c for fk in insp.get_foreign_keys("outreach_messages") for c in fk["constrained_columns"]}
-        assert {"member_id", "approved_by_member_id"} <= fk_cols <= {"member_id", "approved_by_member_id", "follow_up_of_id"}
+        assert {"member_id", "approved_by_member_id"} <= fk_cols <= {
+            "member_id", "approved_by_member_id", "follow_up_of_id", "prospect_id", "enquiry_id", "company_id",
+        }
         assert [fk["referred_table"] for fk in insp.get_foreign_keys("gmail_connections")] == ["team_members"]
     finally:
         engine.dispose()

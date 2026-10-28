@@ -1,0 +1,52 @@
+{# Needs: tab, items, total, page, page_size, params, today. Prospect or lead table. #}
+{% from "pipeline/_macros.html" import flag_badges, source_chips, pager with context %}
+<section class="card" aria-label="{{ 'Prospects' if tab == 'prospects' else 'Leads' }}">
+  <div class="card__body table-wrap">
+    {% if items %}
+      {% if tab == "prospects" %}
+      <table class="table" id="pipeline-list">
+        <thead><tr><th scope="col">Name</th><th scope="col">Company</th><th scope="col">Stage</th><th scope="col">Last activity</th><th scope="col">Next follow-up</th><th scope="col">Flags</th><th scope="col">Source</th><th scope="col">Contact</th></tr></thead>
+        <tbody>
+        {% for p in items if params.show_removed or not p.sheet_removed_at %}
+          <tr id="prospect-{{ p.id }}" data-stage="{{ p.stage }}">
+            <td><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a></td>
+            <td>{{ p.company_name or "—" }}</td>
+            <td><span class="badge stage-badge">{{ p.stage_label }}</span>{% if p.status != "open" %} <span class="badge">{{ p.status|capitalize }}</span>{% endif %}</td>
+            <td>{% if p.contacted_at %}contacted {{ p.contacted_at|ago }}{% else %}created {{ p.created_at|ago }}{% endif %}</td>
+            <td>{% if p.next_follow_up_on %}<span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% else %}—{% endif %}</td>
+            <td>{{ flag_badges(p.flags) }}</td>
+            <td>{{ source_chips(p) }}</td>
+            <td>{% if p.contact_id %}<a href="/contacts/{{ p.contact_id }}">{{ p.contact_name or "Contact" }}</a>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <table class="table" id="pipeline-list">
+        <thead><tr><th scope="col">Name</th><th scope="col">Company</th><th scope="col">Stage</th><th scope="col">Opened</th><th scope="col">Last activity</th><th scope="col" class="num">Est. value</th><th scope="col">Flags</th></tr></thead>
+        <tbody>
+        {% for l in items %}
+          <tr id="lead-{{ l.id }}" data-stage="{{ l.stage }}">
+            <td><a href="/pipeline/leads/{{ l.id }}">{{ l.prospect_name }}</a></td>
+            <td>{{ l.company_name or "—" }}</td>
+            <td><span class="badge stage-badge stage-badge--{{ l.stage }}">{{ l.stage_label }}</span></td>
+            <td>{{ l.opened_at|ago }}</td>
+            <td>{% if l.days_since_activity is not none %}{{ l.days_since_activity }}d ago{% else %}—{% endif %}</td>
+            <td class="num">{% if l.value_estimate %}₹{{ "{:,}".format(l.value_estimate) }}{% else %}—{% endif %}</td>
+            <td>{{ flag_badges(l.flags) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    {% elif params.q or params.stage or params.flag or params.source or params.due %}
+      <div class="empty-state empty-state--compact" id="pipeline-empty"><p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ tab }}&view=list">Clear filters</a></div>
+    {% elif tab == "prospects" %}
+      <div class="empty-state" id="pipeline-empty"><p>No prospects yet — accept an enquiry in the Inbox, or add one.</p>
+        <div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-prospect">New prospect</a></div></div>
+    {% else %}
+      <div class="empty-state" id="pipeline-empty"><p>No leads yet. A prospect becomes a lead once it has been contacted and has replied.</p></div>
+    {% endif %}
+  </div>
+</section>
+{{ pager("/pipeline", params, page, page_size, total, "prospects" if tab == "prospects" else "leads") }}

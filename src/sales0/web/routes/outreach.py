@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -67,6 +67,7 @@ EVENT_LABELS: dict[str, str] = {
     "retry_confirmed": "Retry confirmed",
 }
 STUCK_AFTER = timedelta(minutes=5)
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 SAMPLE_VALUES = {
     "first_name": "Priya",
@@ -218,8 +219,38 @@ def _defaults_ctx(db: Session, offering_id: int | None, template_id: int | None 
     }
 
 
-def _prefill(db: Session, enquiry_id: int | None) -> dict[str, Any]:
-    out: dict[str, Any] = {"enquiry_id": None, "contact_name": "", "email": "", "company": "", "website": "", "requirement": "", "offering_id": None}
+def _prospect_prefill(db: Session, prospect_id: int) -> dict[str, Any]:
+    """Compose fields from a CRM prospect: its primary contact, company and newest enquiry.
+
+    Only what the CRM actually knows is filled in; nothing is invented for the rest.
+    """
+    from sales0.services.crm import prospects as prospects_service
+
+    prospect = prospects_service.get_prospect(db, prospect_id)  # not_found 404 (envelope / error page)
+    contact = next((c for c in prospect.contacts if c.id == prospect.contact_id), None) or (
+        prospect.contacts[0] if prospect.contacts else None
+    )
+    newest = max(prospect.enquiries, key=lambda e: ensure_utc(e.date_added) if e.date_added else _EPOCH, default=None)
+    return {
+        "prospect_id": prospect.id,
+        "company_id": prospect.company_id,
+        "enquiry_id": newest.id if newest else None,
+        "contact_name": (contact.full_name if contact else None) or prospect.name or "",
+        "email": (contact.email if contact else None) or "",
+        "company": prospect.company_name or "",
+        "requirement": ((newest.requirement_summary if newest else None) or "").strip(),
+    }
+
+
+def _prefill(db: Session, enquiry_id: int | None, prospect_id: int | None = None) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "enquiry_id": None, "prospect_id": None, "company_id": None, "contact_name": "", "email": "", "company": "",
+        "website": "", "requirement": "", "offering_id": None,
+    }  # fmt: skip
+    if prospect_id is not None:
+        out.update(_prospect_prefill(db, prospect_id))
+        if enquiry_id is None:
+            enquiry_id = out["enquiry_id"]
     if enquiry_id is None:
         return out
     enquiry = db.get(Enquiry, enquiry_id)
@@ -240,10 +271,11 @@ def _prefill(db: Session, enquiry_id: int | None) -> dict[str, Any]:
 def compose(
     request: Request,
     enquiry_id: str | None = None,
+    prospect_id: str | None = None,
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
 ) -> HTMLResponse:
-    form = _prefill(db, _opt_int(enquiry_id))
+    form = _prefill(db, _opt_int(enquiry_id), _opt_int(prospect_id))
     ctx = {
         "form": form, "offerings": offerings_service.list_offerings(db), "section": "compose",
         "connection": connections_service.connection_status(db, member.id), "cap": _cap_info(db, member),
@@ -319,6 +351,8 @@ def generate(
     deck_id: str = Form(""),
     brief_id: str = Form(""),
     enquiry_id: str = Form(""),
+    prospect_id: str = Form(""),
+    company_id: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
     llm: LLMClient = Depends(get_llm),
@@ -336,6 +370,7 @@ def generate(
             db, llm, member, to=to, cc=cc or None, offering_id=_opt_int(offering_id), template_id=_opt_int(template_id),
             first_name=(contact_name.split() or [""])[0], company=company, requirement=requirement.strip(), brief=brief,
             deck_id=None if no_deck else _opt_int(deck_id), enquiry_id=_opt_int(enquiry_id),
+            prospect_id=_opt_int(prospect_id), company_id=_opt_int(company_id),
         )  # fmt: skip
     except (LLMAuthError, LLMModelNotFound) as exc:
         db.commit()

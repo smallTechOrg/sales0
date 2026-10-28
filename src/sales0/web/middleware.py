@@ -101,6 +101,9 @@ def allowed_origins(request: Request) -> set[Origin]:
         if own and own[1].strip("[]") in trusted_hosts:
             origins.add(own)
             ports.add(own[2])  # the port actually served (tests / --port overrides)
+    public = _parse_origin(settings.public_base_url) if settings.public_base_url else None
+    if public:
+        origins.add(public)  # a VPS behind a domain: the browser's Origin is the public URL
     for host in trusted_hosts:
         for port in ports:
             parsed = _parse_origin(f"http://{'[' + host + ']' if ':' in host else host}:{port}")

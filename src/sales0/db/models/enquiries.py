@@ -71,6 +71,18 @@ class Enquiry(Base):
         )
     )
 
+    # Phase 2 (CRM links; added by plain ALTER TABLE ADD COLUMN, enquiries is FK-referenced).
+    prospect_id: Mapped[int | None] = mapped_column(
+        ForeignKey("prospects.id", ondelete="SET NULL", use_alter=True, name="fk_enquiries_prospect_id"), index=True
+    )
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
+    origin: Mapped[str] = mapped_column(String(10), nullable=False, default="discovery", server_default="discovery")
+    sheet_status: Mapped[str | None] = mapped_column(String(200))
+    sheet_notes: Mapped[str | None] = mapped_column(Text)
+    sheet_removed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    sheet_fields: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
     review_status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

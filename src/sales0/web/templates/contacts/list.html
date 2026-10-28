@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Contacts{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div><h1>Contacts</h1><p>One shared address book. People are added when you accept an enquiry or send an email, and each links to everything about them.</p></div>
+    <div class="row">
+      <a class="btn" id="link-duplicates" href="/contacts/duplicates">Possible duplicates{% if dup_count %} ({{ dup_count }}){% endif %}</a>
+      <a class="btn btn--primary" href="#new-contact">New contact</a>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <form class="filters" id="contacts-filters" method="get" action="/contacts" role="search"
+          hx-get="/contacts" hx-target="#contact-results" hx-push-url="true" hx-trigger="input changed delay:250ms from:#contacts-search, search from:#contacts-search, change, submit">
+      <input type="hidden" name="tag" value="{{ params.tag }}">
+      <div class="field field--grow">
+        <label class="field__label" for="contacts-search">Search</label>
+        <input class="input" id="contacts-search" type="search" name="q" value="{{ params.q }}" placeholder="Search name, email, company, tag…" autocomplete="off">
+      </div>
+      {% if company %}
+        <input type="hidden" name="company_id" value="{{ company.id }}">
+        <p class="hint">Company: <strong>{{ company.name }}</strong> · <a href="/contacts?{{ qs(params, company_id=None, page=None) }}">remove filter</a></p>
+      {% endif %}
+      <noscript><button class="btn" type="submit">Search</button></noscript>
+    </form>
+    {% if tags %}
+      <nav class="tag-filter" id="tag-filter" aria-label="Filter by tag">
+        <a href="/contacts?{{ qs(params, tag=None, page=None) }}"{% if not params.tag %} aria-current="true"{% endif %}>All</a>
+        {% for t in tags %}<a href="/contacts?{{ qs(params, tag=t.name, page=None) }}"{% if t.name == params.tag %} aria-current="true"{% endif %}>{{ t.name }} ({{ t.count }})</a>{% endfor %}
+      </nav>
+    {% endif %}
+
+    {% include "contacts/_results.html" %}
+
+    <section class="card" id="new-contact" aria-labelledby="new-contact-title">
+      <div class="card__header"><h2 id="new-contact-title">New contact</h2></div>
+      <form class="card__body" method="post" action="/contacts">
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="nc-full-name">Full name</label><input class="input" id="nc-full-name" name="full_name" maxlength="200"></div>
+          <div class="field"><label class="field__label" for="nc-email">Email</label><input class="input" id="nc-email" type="email" name="email" maxlength="254"></div>
+          <div class="field"><label class="field__label" for="nc-phone">Phone</label><input class="input" id="nc-phone" name="phone" maxlength="50"></div>
+          <div class="field"><label class="field__label" for="nc-linkedin">LinkedIn URL</label><input class="input" id="nc-linkedin" name="linkedin_url" maxlength="500"></div>
+          <div class="field"><label class="field__label" for="nc-title">Title</label><input class="input" id="nc-title" name="title" maxlength="200"></div>
+          <div class="field"><label class="field__label" for="nc-co">Company</label><input class="input" id="nc-co" name="company" maxlength="200"></div>
+        </div>
+        <div class="row"><button class="btn btn--primary" type="submit">Add contact</button><span class="hint">A name, an email or a LinkedIn URL is required. An existing contact with the same email is reused.</span></div>
+      </form>
+    </section>
+  </div>
+{% endblock %}

@@ -10,11 +10,14 @@
     {% if connection.status != "connected" %}
       <div class="flash flash--error" id="gmail-block" role="alert">Your Gmail is not connected ({{ connection.label }}), so you can draft but not send. <a href="/team">Connect it on the Team page</a>.</div>
     {% endif %}
-    {% if form.enquiry_id %}<p class="muted" id="prefill-note">Prefilled from enquiry #{{ form.enquiry_id }}. Check every field - nothing is invented for missing ones.</p>{% endif %}
+    {% if form.prospect_id %}<p class="muted" id="prefill-note">Prefilled from <a href="/pipeline/prospects/{{ form.prospect_id }}">prospect #{{ form.prospect_id }}</a>. Check every field - nothing is invented for missing ones.</p>
+    {% elif form.enquiry_id %}<p class="muted" id="prefill-note">Prefilled from enquiry #{{ form.enquiry_id }}. Check every field - nothing is invented for missing ones.</p>{% endif %}
 
     <form id="compose-form" class="stack" method="post" action="/outreach/draft"
           hx-post="/outreach/draft" hx-indicator="#draft-indicator" hx-disabled-elt="#draft-btn, #research-btn">
       <input type="hidden" name="enquiry_id" value="{{ form.enquiry_id or '' }}">
+      <input type="hidden" name="prospect_id" value="{{ form.prospect_id or '' }}">
+      <input type="hidden" name="company_id" value="{{ form.company_id or '' }}">
       <section class="card" aria-labelledby="recipient-title">
         <div class="card__header"><h2 id="recipient-title">1. Recipient</h2></div>
         <div class="card__body stack">
