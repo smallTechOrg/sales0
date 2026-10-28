@@ -19,6 +19,7 @@ from sales0.db.models.llm_calls import LlmCall
 from sales0.db.models.meta import AppMeta
 from sales0.db.models.offerings import Offering, OfferingGroup
 from sales0.db.models.profiles import LinkedinProfile
+from sales0.db.models.metrics import ManualMetric
 from sales0.db.models.ops import Digest, ScheduledJob, Suggestion
 from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
 from sales0.db.models.replies import OutreachReply, ReplyPollState, Suppression
@@ -71,6 +72,7 @@ __all__ = [
     "OfferingGroup",
     "OutreachEvent",
     "OutreachMessage",
+    "ManualMetric",
     "ScheduledJob",
     "OutreachReply",
     "ReplyPollState",

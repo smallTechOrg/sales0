@@ -60,7 +60,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Sync", "/sync", None),
     ("Outreach", "/outreach", None),
     ("Replies", "/replies", None),
-    ("Metrics", "/metrics", 4),
+    ("Metrics", "/metrics", None),
     ("Digest", "/digest", None),
     ("Suggestions", "/suggestions", None),
     ("Costs", "/costs", None),

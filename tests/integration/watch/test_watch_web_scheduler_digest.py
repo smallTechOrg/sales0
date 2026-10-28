@@ -48,7 +48,7 @@ def test_migration_adds_watch_columns_and_table_and_is_the_single_head(db_url: s
     cols = {c["name"] for c in insp.get_columns("linkedin_profiles")}
     assert {"last_checked_at", "watch_checks", "watch_hits", "watch_last_status", "watch_disabled_until"} <= cols
     assert "watch_runs" in insp.get_table_names()
-    assert head_revision() == "p6_watch_e5b2a7c4"
+    assert head_revision()  # single head; later revisions (p7+) sit above the watch migration
     command.downgrade(alembic_config(), "p6_crm_5b2e7d14")
     assert "watch_runs" not in inspect(get_engine()).get_table_names()
     command.upgrade(alembic_config(), "head")

@@ -17,6 +17,7 @@ class SeenPost(Base):
     __tablename__ = "seen_posts"
     __table_args__ = (
         Index("ix_seen_posts_verdict_first_seen", "verdict", "first_seen_at"),
+        Index("ix_seen_posts_first_seen_at", "first_seen_at"),  # Phase 4 metrics: weekly scanned counts
         in_check("triage_status", SEEN_TRIAGE_STATUSES, "triage_status"),
         in_check("verdict", VERDICTS, "verdict", nullable=True),
     )

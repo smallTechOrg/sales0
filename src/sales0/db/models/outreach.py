@@ -48,7 +48,7 @@ class Deck(Base):
 
 class OutreachMessage(Base):
     __tablename__ = "outreach_messages"
-    __table_args__ = (in_check("state", OUTREACH_STATES, "state"),)
+    __table_args__ = (in_check("state", OUTREACH_STATES, "state"), Index("ix_outreach_messages_sent_at", "sent_at"))  # sent_at: Phase 4 metrics
 
     id: Mapped[int] = mapped_column(primary_key=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("team_members.id", ondelete="RESTRICT"), nullable=False, index=True)

@@ -111,7 +111,7 @@ def p5_db(tmp_path):  # type: ignore[no-untyped-def]
 def test_fresh_upgrade_reaches_the_single_head_and_matches_the_models(db_url: str) -> None:
     engine = build_engine(db_url)
     try:
-        assert current_revision(engine) == head_revision() == "p6_watch_e5b2a7c4"
+        assert current_revision(engine) == head_revision()  # head moves on (p7+); P6 stays an ancestor
         insp = inspect(engine)
         assert NEW_TABLES <= set(insp.get_table_names())
         assert drift(engine) == []
@@ -167,7 +167,7 @@ def test_upgrade_loses_no_row_and_keeps_the_children_of_outreach_messages(p5_db)
     assert _counts(url) == before
     engine = build_engine(url)
     try:
-        assert current_revision(engine) == "p6_watch_e5b2a7c4"
+        assert current_revision(engine) == head_revision()
         with engine.connect() as c:
             assert c.execute(text("PRAGMA foreign_key_check")).fetchall() == []
             assert c.execute(text("PRAGMA foreign_keys")).scalar() == 1
@@ -228,8 +228,7 @@ def test_downgrade_then_upgrade_round_trips_with_data(p5_db) -> None:  # type: i
     url, cfg = p5_db["url"], p5_db["cfg"]
     before = _counts(url)
     command.upgrade(cfg, "head")
-    command.downgrade(cfg, "-1")  # watch
-    command.downgrade(cfg, "-1")  # crm
+    command.downgrade(cfg, P5)  # not "-1": later revisions sit above p6
     engine = build_engine(url)
     try:
         assert current_revision(engine) == P5

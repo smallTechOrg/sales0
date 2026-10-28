@@ -28,7 +28,6 @@ from tests.integration.web.conftest import make_enquiry, make_keyword, make_run,
 
 # (path, key text) — full pages. "/" follows its redirect to the inbox.
 STUB_PAGES = {
-    "/metrics": 4,
     "/whatsapp": 5,
 }
 # Phase 2 pages (real since slice S4) and their key text; "/sync" and "/login" belong to S2 / S3 and have their own tests.
@@ -44,6 +43,8 @@ CRM_PAGES = {
     "/contacts/duplicates": 'id="merge-list"',
     "/competitors": 'id="competitor-list"',
     "/import": 'id="csv-form"',
+    "/metrics": 'id="weekly-table"',
+    "/metrics?weeks=4&mode=sheet": 'id="secondary-table"',
     "/sync": "Google Sheet sync",  # S2 builds the page; the nav entry must never 500
 }
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
@@ -52,7 +53,7 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/competitors", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 
