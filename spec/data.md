@@ -125,7 +125,7 @@ The core record: one per real-world RELEVANT post, after dedupe. From Phase 1.4 
 
 Indexes: `(review_status, ai_verdict, priority, date_added)`, `date_added`, `company`.
 
-**Sheet → field mapping** (used by Phase 2 import): Date posted→date_posted, Date added→date_added, Requirement Summary→requirement_summary, E-Mail→email, Priority→priority, Status→review_status/stage, Notes→notes, Company→company, Date email sent→date_email_sent, Date proposal sent→date_proposal_sent, Contact number→phone, Link→source_url, Full Enquiry→raw_text, Keyword used→enquiry_keyword_hits, Update→update_note, Contact person→contact_person. Discarded sheet "reason"→discard_reason.
+**Sheet → field mapping** (historical, Phase 1 draft; **superseded by `## Phase 2 entities` → "Sheet record → CRM column mapping"**, which is binding for the read-only sheet sync and the CSV import): Date posted→date_posted, Date added→date_added, Requirement Summary→requirement_summary, E-Mail→email, Priority→priority, Status→review_status/stage, Notes→notes, Company→company, Date email sent→date_email_sent, Date proposal sent→date_proposal_sent, Contact number→phone, Link→source_url, Full Enquiry→raw_text, Keyword used→enquiry_keyword_hits, Update→update_note, Contact person→contact_person. Discarded sheet "reason"→discard_reason.
 
 ### enquiry_sources
 Each distinct source post merged into an enquiry.
@@ -289,34 +289,248 @@ Enquiry (scraped item)
                                 ──discard─> discarded (kept, searchable, feeds learning)
   accepted <──> discarded may be re-decided (each decision appended to triage_decisions)
 
-Prospect (Phase 2: company with an open enquiry, OR person shortlisted via outreach)
-  stage: new → contacted → follow_up_1 → follow_up_2 → final_follow_up
-  exit: converted (→ Lead, only after contact AND a response) | closed
+Prospect (Phase 2: ONE per linkedin_profile; or per enquiry / sheet row / manual entry when there is no profile)
+  stage: new → contacted → follow_up_1 → follow_up_2 → final_follow_up      (prospects.stage)
+  exit (prospects.status): open → converted (→ Lead, only after contact AND a response) | closed (closed_reason)
 
 Lead (Phase 2)
-  stage: meeting_scheduled → proposal_sent → won | lost | no_response
-  won → Client
+  stage: meeting_scheduled → proposal_sent → won | lost | no_response       (leads.stage; won/lost/no_response set closed_at)
+  won → Client (active)
 
-Client (Phase 2): status active | legacy (older projects, imported)
+Client (Phase 2): status active | legacy (older projects, imported or typed in)
 ```
 
-## Phase 2+ entities (summary; full columns are fixed in each phase's migration)
+Full column definitions of every Phase 2 table, the sheet-owned vs CRM-owned split and the sheet-status mapping follow in `## Phase 2 entities` below.
+
+## Phase 2 entities (ONE migration: `migrations/versions/p6_crm_5b2e7d14.py`, `down_revision = "p5_replies_c3d81f20"`)
+
+> **Binding conventions for every Phase 2 table.** Timestamps are UTC `UTCDateTime`; `created_at`/`updated_at` on every table unless noted. Enum-like columns are lowercase strings validated by a CHECK (new tables only; CHECKs are never added to an existing, FK-referenced table). Actor attribution is `actor` (str(80): a team member's name, `system`, `sheet-sync`, `import`) plus `actor_member_id` FK `team_members` `SET NULL`; the Phase 1 `actor_user_id` (users) is NOT used by Phase 2 tables. All `*_key` columns are `lower(trim(...))` with inner whitespace collapsed, set by the service layer. A table's "sheet columns" are the five defined under `### Sheet-fed tables`.
+>
+> The shared Python enum tuples live in `src/sales0/db/models/enums_crm.py`; the model modules are `db/models/{crm,contacts,timeline,registries,sheetdata}.py` (see `architecture.md` → Phase 2 layout).
+
+### companies
+| Field | Type | Notes |
+|---|---|---|
+| name | str(200) | |
+| name_key | str(200) unique | |
+| website | str(300) null, website_key str(200) null indexed | `sheetsync.values.website_key` form |
+| linkedin_url | str(500) null, city str(100) null, notes text null | |
+
+### contacts (shared people; built for 10k+ rows)
+| Field | Type | Notes |
+|---|---|---|
+| full_name | str(200) null | at least one of full_name / an email / linkedin_slug is required |
+| email | str(254) null | display/primary; lower-cased. ALL addresses also live in `contact_emails` |
+| phone | str(40) null | display/primary, `+<digits>` |
+| linkedin_slug | str(200) null **unique** | `scraper.urls.profile_slug` form (`in/<slug>`); the matching key |
+| linkedin_url | str(500) null, title str(200) null, notes text null | |
+| company_id | FK companies null, `SET NULL`, indexed | |
+| search_text | str(700) | `lower(full_name + ' ' + email + ' ' + company name)`; rebuilt on every write; the search column (`LIKE %q%`) |
+| merged_into_id | FK contacts null (`SET NULL`) | set on the dropped row's timeline only; the dropped row itself is deleted, so this stays NULL in practice (reserved) |
+| origin | `manual` \| `enquiry` \| `sheet` \| `import` \| `reply` | first source |
+| actor, actor_member_id | | |
+Indexes: `ix_contacts_company_id`, `ix_contacts_full_name` (`full_name` COLLATE NOCASE), unique `linkedin_slug`.
+**contact_emails**: `contact_id` FK `CASCADE`, `email` str(254) **unique** (lower-cased), `is_primary` bool. **contact_phones**: `contact_id` FK `CASCADE`, `phone` str(40), `digits` str(20) (last 10 digits; indexed), unique `(contact_id, digits)`.
+**tags**: `name` str(40), `name_key` unique, `category` `role` \| `segment` \| `custom` (default `custom`). **contact_tags**: composite PK `(contact_id, tag_id)`, both `CASCADE`. Index `tag_id`.
+**contact_links**: `contact_id` FK `CASCADE`, `entity_type` (`enquiry` \| `prospect` \| `lead` \| `client` \| `competitor` \| `company`), `entity_id` int (no FK; polymorphic), `role` str(40) null (`author`, `buyer`, `recipient`, `replied`, `sheet`), unique `(contact_id, entity_type, entity_id)`, index `(entity_type, entity_id)`.
+
+### prospects
+One per `linkedin_profiles` row (unique), else one per origin enquiry / sheet row / manual entry.
+| Field | Type | Notes |
+|---|---|---|
+| kind | `company_enquiry` \| `outreach_person` | enquiry/manual-company = `company_enquiry`; Outreach/Prospects/Working rows = `outreach_person` |
+| name | str(200) | display name: person, else company |
+| linkedin_profile_id | FK linkedin_profiles null **unique**, `RESTRICT` | the identity; NULL when there is no profile (SQLite allows many NULLs) |
+| company_id | FK companies null (`SET NULL`), indexed | |
+| contact_id | FK contacts null (`SET NULL`), indexed | primary contact |
+| origin_enquiry_id | FK enquiries null (`SET NULL`) | the first enquiry (CRM-owned link) |
+| stage | `new` \| `contacted` \| `follow_up_1` \| `follow_up_2` \| `final_follow_up` | default `new` |
+| stage_source | `app` \| `sheet` | who last set the stage; the sync NEVER overwrites `app` |
+| status | `open` \| `converted` \| `closed` | default `open`; `converted` once a lead exists |
+| closed_reason | str(60) null, closed_at datetime null | `no_response`, `lost`, `not_interested`, `enquiry_discarded`, `unsubscribed`, `sheet: <raw status>`, free text |
+| contacted_at | datetime null, contacted_estimated bool default false | `estimated` = derived from a sheet status, not an observed send |
+| responded_at | datetime null | "response received" (reply or manual). Required with contacted_at for a lead |
+| next_follow_up_on | date null | denormalised: earliest open `follow_ups.due_on` (maintained by `followups`) |
+| source | `enquiry` \| `sheet` \| `manual` \| `import` | |
+| reason_url, reason_text, extra_link | str(1000) / str(500) / str(1000) null | sheet "Reason of adding" (post link or text), the spare column |
+| notes | text null | CRM-owned free text (timeline notes are separate rows) |
+| actor, actor_member_id | | |
+| *sheet columns* | | see below |
+Indexes: `(status, stage)`, `next_follow_up_on`, `company_id`, `contact_id`, unique `linkedin_profile_id`.
+
+### leads
+| Field | Type | Notes |
+|---|---|---|
+| prospect_id | FK prospects `CASCADE`, indexed | partial unique index `uq_leads_one_open_per_prospect (prospect_id) WHERE closed_at IS NULL` |
+| company_id | FK companies null `SET NULL` | copied from the prospect |
+| stage | `meeting_scheduled` \| `proposal_sent` \| `won` \| `lost` \| `no_response` | |
+| stage_source | `app` \| `sheet` | as on prospects |
+| opened_at | datetime | |
+| closed_at | datetime null | set by won/lost/no_response; cleared if moved back |
+| meeting_at | datetime null, proposal_sent_on date null, value_estimate int null (whole INR), outcome_note str(500) null | |
+| opened_by | `reply` \| `manual` \| `sheet` | |
+| actor, actor_member_id | | |
+Index `(stage, closed_at)`.
+
+### clients
+`name` str(200); `company_id` FK null `SET NULL`; `status` `active` \| `legacy`; `source` `lead` \| `legacy_import` \| `manual` \| `sheet`; `lead_id` FK leads null unique `SET NULL`; `prospect_id` FK prospects null `SET NULL`; `started_on` date null; `notes` text null; `actor`, `actor_member_id`. Index `(status)`.
+
+### follow_ups (reminders)
+| Field | Type | Notes |
+|---|---|---|
+| prospect_id / lead_id | FK `CASCADE` null | exactly one is set (CHECK) |
+| kind | `follow_up_1` \| `follow_up_2` \| `final_follow_up` \| `custom` | |
+| due_on | date | local-calendar date |
+| note | str(300) null, auto bool | `auto` = scheduled by the system |
+| done_at, done_actor, cancelled_at, cancel_reason | datetime / str / datetime / str(80) null | open = both `done_at` and `cancelled_at` NULL |
+Index `(due_on, done_at, cancelled_at)`, `prospect_id`, `lead_id`.
+**Schedule rule (config in Settings):** when a prospect is observed `contacted` at `T` (the app saw a send, or a human moved it) the service creates three open reminders: `follow_up_1` at `T + SALES0_FOLLOWUP_DAYS_1` (3), `follow_up_2` at `T + SALES0_FOLLOWUP_DAYS_2` (7), `final_follow_up` at `T + SALES0_FOLLOWUP_DAYS_FINAL` (14), calendar days from the contact date (not from the previous follow-up). Completing a reminder moves the prospect to that reminder's stage (and completes earlier open ones); moving the prospect to a later stage completes the reminders up to it. A recorded response, a lead, a close, or the `no_follow_up` flag cancels the open ones. Sheet-derived stages and the migration backfill create NO reminders.
+
+### flags
+| Field | Type | Notes |
+|---|---|---|
+| entity_type | `prospect` \| `enquiry` \| `contact` \| `company` \| `client` \| `lead` | |
+| entity_id | int | no FK (polymorphic) |
+| kind | `repeat_poster` \| `competitor_mention` \| `no_follow_up` | |
+| source | `auto` \| `user` | `auto` flags are recomputed; `user` flags are never auto-cleared |
+| detail | JSON null | `{"count": 3, "within_days": 60}` / `{"competitor_ids": [1], "names": ["Future Labs"]}` / `{"reason": "unsubscribe", "reply_id": 12}` |
+| cleared_at, cleared_by | datetime / str null | cleared flags are kept for history |
+Partial unique index `uq_flags_active (entity_type, entity_id, kind) WHERE cleared_at IS NULL`. Index `(kind, cleared_at)`.
+
+### timeline_events (append-only; every change to every record)
+| Field | Type | Notes |
+|---|---|---|
+| subject_type / subject_id | `prospect` \| `lead` \| `client` \| `contact` \| `company` \| `enquiry` \| `competitor` \| `group` + int | the record the event is about |
+| prospect_id, enquiry_id, company_id, contact_id | FK null (`SET NULL`), each indexed | the aggregation scopes: a lead/client/email event also carries its `prospect_id`; an enquiry event carries its `prospect_id` and `company_id`. A page's timeline = `WHERE <scope>_id = X` |
+| kind | `created` \| `stage_change` \| `note` \| `email_sent` \| `reply_received` \| `lead_created` \| `lead_stage` \| `client_created` \| `proposal_sent` \| `enquiry_linked` \| `flag_set` \| `flag_cleared` \| `follow_up_added` \| `follow_up_done` \| `follow_up_cancelled` \| `tracked_changed` \| `contact_merged` \| `contact_linked` \| `call` \| `meeting` \| `research` \| `import` \| `sheet_created` \| `sheet_updated` \| `sheet_removed` \| `sheet_restored` \| `sheet_status` | |
+| body | text null | human sentence; for `sheet_*` events it lists changed FIELD NAMES only, never cell values (personal data) |
+| data | JSON null | e.g. `{"from": "new", "to": "contacted"}`, `{"message_id": 4}`, `{"reply_id": 9, "intent": "interested"}` |
+| actor, actor_member_id | | `sheet-sync` for every sheet-driven event |
+| occurred_at | datetime indexed | |
+Indexes: `(prospect_id, occurred_at)`, `(company_id, occurred_at)`, `(contact_id, occurred_at)`, `(enquiry_id, occurred_at)`, `(subject_type, subject_id, occurred_at)`. The Phase 1 `status_history` rows of an enquiry are merged into the read model (`timeline.list_timeline`), not copied.
+
+### competitors
+`name` str(200), `name_key` unique; `website` str(300) null; `website_key` str(200) **unique null**; `approx_clients` int null; `client_names` text null; `contact` str(300) null; `email` str(254) null; `emails` JSON null (every address of the sheet cell); `notes` text null (CRM-owned); `active` bool default true; `company_id` FK null; *sheet columns*. **Seeded in the migration (idempotent by `name_key`, `origin` not sheet):** Future Labs, Savya Technologies, White Spaces, Evolvv, Ritu Arora.
+**competitor_mentions**: `competitor_id` FK `CASCADE`, `entity_type` (`enquiry` \| `client` \| `prospect`), `entity_id`, `source` `auto` \| `user`, `snippet` str(200) null, `created_at`; unique `(competitor_id, entity_type, entity_id)`, index `(entity_type, entity_id)`. This is how "competitors link to enquiries/clients" is stored; the `competitor_mention` flag on the entity is derived from it.
+
+### channel_groups
+`name` str(200), `name_key`; `platform` str(20) (`whatsapp` default, `linkedin`, `telegram`, `facebook`, `other`; lower-cased); `link` str(500) null, `link_key` str(500) **unique null**; `details` str(200) null (raw sheet text); `keep_level` `keep` \| `keep_low` \| null; `active` bool default true (Phase 5 ingests only active groups); `notes` text null; *sheet columns*. Unique `(platform, name_key)` when `link_key` is NULL is enforced by the service.
+
+### import_batches (app-owned CSV import / paste; NOT sheet sync)
+`filename` str(255); `kind` `enquiries` \| `discarded` \| `outreach` \| `prospects` \| `working` \| `competitors` \| `groups` \| `clients` \| `contacts` \| `paste`; `rows_total`, `rows_new`, `rows_merged`, `rows_unchanged`, `rows_error` ints; `errors` JSON (`[{"row": 7, "code": "bad-date:date_posted"}]`, capped at 500); `actor`, `actor_member_id`; `created_at`.
+
+### Sheet-fed tables: sheet columns and the sheet-owned / CRM-owned contract
+Applies to `enquiries`, `prospects`, `competitors`, `channel_groups` (all added to the existing tables with plain `ADD COLUMN`). Columns:
+| Column | Type | Meaning |
+|---|---|---|
+| `sheet_status` | str(200) null | the raw sheet Status cell, never remapped |
+| `sheet_notes` | text null | the raw sheet Notes cell (the CRM's own `notes` is separate) |
+| `sheet_removed_at` | datetime null | set (soft) when the row disappears from every tab that fed it; cleared on return. **Never a hard delete.** |
+| `sheet_fields` | JSON null | the merged overlay of every tab's `record.sheet_fields()` (audit + the "previous value" for clear detection); not rendered except in the "Synced from sheet" panel |
+| `origin` (enquiries only) | `discovery` \| `sheet` \| `manual` \| `import`, default `discovery` | the enquiries `source` CHECK stays `linkedin_post` (rebuilding the referenced table is forbidden); `origin` says who created the row |
+
+**`sheet_sources`** (per entity, per tab; the `sheet_source` of the requirements): `entity` str(12) (`enquiry` \| `discarded` \| `prospect` \| `competitor` \| `group` \| `metric`; the `SheetRecord.ENTITY`), `key` str(200) (the record's natural key), `target_type` (`enquiry` \| `prospect` \| `competitor` \| `channel_group` \| `sheet_metric`), `target_id` int, `sheet_id` str(64), `gid` str(20), `tab_name` str(60), `row_number` int, `row_hash` str(40), `fields` JSON (this tab's `sheet_fields()` snapshot, used for the overlay and to detect cleared cells), `first_seen_at`, `last_seen_at`. Unique `(entity, key, sheet_id, gid)`. Indexes `(sheet_id, gid)` (the `list_keys_for_tab` query) and `(target_type, target_id)` (the "Synced from sheet" panel). A removed row's source is deleted (`mark_removed` drops that tab's source); the target gets `sheet_removed_at` when no live source remains.
+
+**Ownership** (binding; mirrors the `services/sheetsync/repository.py` docstring):
+- SHEET-OWNED = exactly the columns in the mapping table below. `upsert` overwrites them; a new non-null value wins; a cell that was non-null in the stored `fields` and is now null clears the column; null→null leaves it alone. Sheet wins every conflict.
+- CRM-OWNED, never touched by a sync: `timeline_events`, every `ai_*` column and `triage_decisions`, `notes` / `update_note` (on non-sheet rows), `flags`, `follow_ups`, `tags`, `contact_links`, `stage` / `status` / `closed_*` / `contacted_at` / `responded_at` of prospects and leads once `stage_source = 'app'`, `review_status` of a non-sheet enquiry, `raw_text` and `date_added` of a discovery-origin enquiry, `llm_calls`, `outreach_*`.
+- A sheet row that matches an existing app record (same post, same profile, same website) ADOPTS it: a `sheet_sources` row is added and only sheet-owned columns are written.
+- The app can edit CRM-owned fields of a sheet-fed row freely. The UI marks sheet-owned fields "Synced from sheet" (edits would be overwritten), and `DELETE`-style actions on a sheet-fed competitor/group return `sheet_owned` (remove the row in the sheet instead).
+
+### sheet_metrics (baseline for the Phase 4 dashboard)
+| Table | Columns |
+|---|---|
+| `sheet_metrics` | `metric_set` `weekly` \| `secondary`; `group_label` str(200) null (Secondary section label carried down); `metric` str(200); `metric_key` str(300) **unique** (= the record key, e.g. `weekly:/leads#2`); `weekly_target` float null; `weekly_target_raw` str(60) null; `sheet_removed_at`; `sheet_fields` JSON; `updated_at` |
+| `sheet_metric_weeks` | `metric_id` FK `CASCADE`; `week_no` int (1-53); `occurrence` int (1; 2+ for a duplicated "Week 43" column); `label` str(20); `raw` str(60); `value` float null; unique `(metric_id, week_no, occurrence)` |
+The sheet gives no year: `week_no` is stored as is. Phase 4 assigns the ISO year by "nearest past occurrence" when it merges these with computed figures. `sheet_metrics` rows are replaced wholesale (the weeks are deleted and re-inserted) when the row hash changes. No timeline events (there is no timeline subject).
+
+### Changes to existing tables (in the same migration)
+| Table | Change | How |
+|---|---|---|
+| enquiries | `prospect_id` FK prospects null `SET NULL` (indexed); `company_id` FK companies null `SET NULL`; `contact_id` FK contacts null `SET NULL`; `origin`, `sheet_status`, `sheet_notes`, `sheet_removed_at`, `sheet_fields` | plain `ALTER TABLE enquiries ADD COLUMN ... [REFERENCES ... ON DELETE SET NULL]` via `op.execute` (as 0003 did); NO table rebuild (enquiries is FK-referenced) |
+| prospects / competitors / channel_groups | (new tables, sheet columns included) | `create_table` |
+| outreach_messages | FKs on the existing plain columns: `prospect_id` → prospects, `enquiry_id` → enquiries, `company_id` → companies, all `ON DELETE SET NULL` | needs a table rebuild and `outreach_messages` IS referenced (`outreach_events`, `outreach_replies`, itself) → the **four-step recipe** in `architecture.md` Migrations: inside `with op.get_context().autocommit_block():` run `PRAGMA foreign_keys=OFF`, `batch_alter_table("outreach_messages", recreate="always", reflect_args=[...restate follow_up_of_id FK ON DELETE SET NULL...])` with the three `create_foreign_key`, then `PRAGMA foreign_key_check` (must return no rows, else raise), then `PRAGMA foreign_keys=ON`. Before the rebuild: `UPDATE outreach_messages SET prospect_id = NULL, company_id = NULL` and `SET enquiry_id = NULL WHERE enquiry_id NOT IN (SELECT id FROM enquiries)` (the Phase 3 ids pointed nowhere). After the backfill, `prospect_id`/`company_id` are re-derived from `enquiry_id`. |
+| company_briefs | FKs `prospect_id`, `enquiry_id` (leaf table → plain batch) | `batch_alter_table` |
+| linkedin_profiles | none (the prospect holds the FK; `tracked` is set by the service/backfill) | |
+| status_history | `entity_type` is a free string already; Phase 2 stages are written to `timeline_events`, not `status_history` | |
+
+### Backfill in the migration (frozen helpers inside the migration; a test asserts they equal the app versions)
+1. `companies`: one per distinct `lower(trim(company))` of enquiries with `review_status='accepted'`.
+2. `contacts`: one per distinct lower-cased `email` among accepted enquiries; else one per `(lower(contact_person), company_key)` when a person is named; `contact_emails`/`contact_phones`/`contact_links(enquiry, role=author|buyer)` rows.
+3. `prospects`: one per accepted enquiry **grouped by `author_profile_id`** when present, otherwise per enquiry. Stage `new`; but `contacted` (with `contacted_at` = `date_email_sent` or the first `outreach_messages.sent_at` of a message linked to it, `contacted_estimated` = true only for the date-only case) when either exists. `kind='company_enquiry'`, `source='enquiry'`, `origin_enquiry_id` = the oldest enquiry. `enquiries.prospect_id/company_id/contact_id` are set, `linkedin_profiles.tracked = 1` for each profile that got a prospect.
+4. `timeline_events`: one `created` per prospect (`actor='backfill'`, `occurred_at` = the enquiry's `decided_at`), one `enquiry_linked` per additional enquiry, one `email_sent` per `sent` outreach message that resolves to a prospect.
+5. `outreach_messages.prospect_id/company_id` re-derived from `enquiry_id`.
+6. The five competitors are seeded. NO follow-up reminders, NO flags (flags are recomputed once at first startup: `app_meta.crm_flags_backfilled_v1`).
+Row counts of every pre-existing table are asserted unchanged after the upgrade (migration test), and `PRAGMA foreign_key_check` returns no rows.
+
+### Sheet status → CRM stage mapping (binding; implemented in `services/sheetsync/mapping.py`)
+The raw text stays in `sheet_status`. The mapped stage is applied **only when `stage_source != 'app'`** (a human's move always wins; the sync then just refreshes `sheet_status` and writes a `sheet_status` timeline event). The sync creates NO reminders. Matching is on `casefold()` of the trimmed cell; rules are evaluated top to bottom, first match wins. "contact evidence" = `date_email_sent` or `date_proposal_sent` present.
+
+**Active Enquiries rows** (record `SheetEnquiry`) always create/adopt an accepted enquiry (`origin='sheet'` if new, `review_status='accepted'`, `stage='prospect_new'`) and a prospect, then:
+| # | Sheet Status (or date) | Prospect | Lead |
+|---|---|---|---|
+| 1 | `won`, `closed won`, `converted`, `client`, `confirmed`, `project done`, `completed`, `delivered` | `converted` (stage kept at its last observed value, else `contacted`) | `won` → active **client** (`source='sheet'`) |
+| 2 | `lost`, `closed lost`, `rejected`, `declined`, `not interested`, `dropped` and contact evidence | `converted` | `lost` |
+| 2b | `closed` / `close` AND `date_proposal_sent` present | `converted` | `lost` |
+| 3 | `no response`, `no reply`, `not responding`, `ghosted` | contact evidence: `converted`, else `closed` (`closed_reason='no_response'`) | contact evidence: `no_response`; else none |
+| 4 | `meeting scheduled`, `meeting`, `call scheduled`, `demo scheduled`, `in discussion`, `discussion`, `negotiation`, `interested`, `responded`, `replied`, `in progress`, `ongoing`, `hot`, `warm` | `converted` | `meeting_scheduled` |
+| 5 | contains `proposal`, OR `date_proposal_sent` present (any status not matched above) | `converted` | `proposal_sent` (`proposal_sent_on` = the date) |
+| 6 | `follow up 1` / `followup 1` / `fu1` / `first follow up` | `follow_up_1` | none |
+| 6b | `follow up 2` / `followup 2` / `fu2` / `second follow up` | `follow_up_2` | none |
+| 6c | `final follow up` / `last follow up` | `final_follow_up` | none |
+| 7 | `contacted`, `message sent`, `email sent`, `mail sent`, `connection request sent`, `sent`, OR `date_email_sent` present | `contacted` (`contacted_at` = `date_email_sent` else first sync, `contacted_estimated`) | none |
+| 8 | `closed`, `close`, `inactive`, `hold`, `on hold`, `parked`, `cancelled`, `na` | `closed`, `closed_reason = "sheet: <raw>"` | none |
+| 9 | blank, `new`, `open`, `pending`, `to do`, anything else | `new` | none |
+A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_sent` or `date_added` or the first sync, `responded_at` = `opened_at` (the sheet moving a row to those states IS the evidence of contact and response; the app-level guard applies only to app-driven conversion), and for closed outcomes `closed_at` = `date_proposal_sent` or the first sync. A later sheet edit that changes the mapped outcome while `stage_source='sheet'` updates the lead stage in place (timeline `lead_stage`, actor `sheet-sync`). **Unknown statuses are logged once per distinct value as a `sheet_status` timeline event and map to rule 9; they never abort a row.**
+
+**Outreach / Prospects / Working Sheet rows** (`SheetOutreachPerson`, `SheetProspect`) create/adopt a prospect (`kind='outreach_person'`, `source='sheet'`):
+| Sheet Status | Prospect |
+|---|---|
+| `Message sent`, `Connection request sent` (case-insensitive, any `sent`) | `contacted` (`contacted_estimated`) |
+| `Closed` | `closed`, `closed_reason='sheet: Closed'` |
+| blank / anything else | `new` |
+**Discarded Enquiries rows** (`SheetDiscarded`): an `enquiries` row with `review_status='discarded'`, `discard_reason` = Notes (else the Status text), `origin='sheet'`, `triage_status='done'`, `ai_*` NULL; Status `No Response` / `Rejected` is kept in `sheet_status` (not mapped to a prospect). **No `triage_decisions` row is written** (the sheet's discard labels are not AI-relevance labels; the Phase 1.5 calibration found them ambiguous). If an Active row and a Discarded row resolve to the same enquiry, the Active row wins (accepted); the Discarded reason is only stored in `discard_reason`.
+
+### Sheet record → CRM column mapping (every `SheetRecord` field; "SO" = sheet-owned, written by the sync)
+| Record field | Target | Notes |
+|---|---|---|
+| **Enquiry / Discarded** `key`, `key_source` | `sheet_sources.key`, `.fields` | bookkeeping |
+| `date_posted` | `enquiries.date_posted` SO | |
+| `date_added` | `enquiries.date_added` SO **only for `origin='sheet'`** (local midnight → UTC); else `sheet_fields` only | |
+| `requirement_summary` | `enquiries.requirement_summary` SO (clip 140) | |
+| `summary_company`, `summary_topic`, `summary_city`, `engagement_mode` | company name fallback; `enquiries.topic` SO; `enquiries.city` SO; `enquiries.mode` SO | `company` cell wins over `summary_company` |
+| `emails` | `enquiries.email` SO (first); every address → `contacts` / `contact_emails` | |
+| `email_note` | `sheet_fields` only | UI: "e-mail cell had no valid address" |
+| `priority` | `enquiries.priority` SO (only `high\|medium\|low`) | |
+| `sheet_status`, `sheet_notes` | `enquiries.sheet_status`, `.sheet_notes` SO | |
+| `company` | `enquiries.company` SO + `companies` row | |
+| `date_email_sent`, `date_proposal_sent` | `enquiries.date_email_sent`, `.date_proposal_sent` SO | feed the status rules |
+| `phones` | `enquiries.phone` SO (first); all → `contact_phones` | |
+| `contact_link` | `contacts.linkedin_url` / `linkedin_slug` if it is a LinkedIn profile; else `sheet_fields` | |
+| `post_url` | `enquiries.source_url` SO | also the adoption key |
+| `link_text` | `sheet_fields` only | |
+| `full_enquiry` | `enquiries.raw_text` SO **only for `origin='sheet'`** (else fallback chain: summary, `"(no text in the sheet row)"`); `content_hash` = sha256 of normalised text, or of `"sheet:"+key` when there is none | |
+| `keyword_used` | `sheet_fields` only | |
+| `sheet_update` | `enquiries.update_note` SO for `origin='sheet'` rows | |
+| `contact_person` | `enquiries.contact_person` SO + `contacts.full_name` | |
+| `discard_reason` (Discarded) | `enquiries.discard_reason` SO (clip 200) | |
+| **Person** `key`, `key_source`, `linkedin_slug` | bookkeeping | |
+| `name` | `prospects.name` SO + `contacts.full_name` | |
+| `linkedin_url` | `linkedin_profiles` (`profiles.ensure_profile`) → `prospects.linkedin_profile_id`; `contacts.linkedin_slug/url` | an existing prospect of that profile is ADOPTED (never a second one) |
+| `company`, `website` | `companies` row (`website` fills `companies.website` when empty) | |
+| `sheet_status`, `sheet_notes` | `prospects.sheet_status`, `.sheet_notes` SO | |
+| `reason_url`, `reason_text`, `extra_link` | `prospects.reason_url`, `.reason_text`, `.extra_link` SO | |
+| `source_tab` | `sheet_sources.tab_name` (shown as chips "Outreach", "Prospects", "Working Sheet") | |
+| **Competitor** `website`, `website_key`, `name`, `approx_clients`, `client_names`, `contact`, `emails`, `sheet_notes` | `competitors.website`, `.website_key`, `.name`, `.approx_clients`, `.client_names`, `.contact`, `.email`+`.emails`, `.sheet_notes` — all SO | adoption by `website_key`, else `name_key` (so the 5 seeded competitors are adopted, not duplicated) |
+| **Group** `name`, `platform`, `link`, `details`, `keep_level` | `channel_groups.name`, `.platform` (null → `whatsapp`), `.link`/`.link_key`, `.details`, `.keep_level` (`keep-low` → `keep_low`) — all SO | adoption by `link_key`, else `(platform, name_key)` |
+| **Metric** `metric_set`, `metric`, `group`, `weekly_target(_raw)`, `weeks` | `sheet_metrics` / `sheet_metric_weeks` | |
+
+**No row lost without an error entry (binding invariant, tested per tab):** every non-blank data row of a tab ends in exactly one of: `added`, `updated`, `unchanged`, or an entry in the tab's `errors` list (parser errors such as `no-identifying-content`, `row-parse-failed`, `duplicate-row`; or `apply-failed:<ExceptionName>` when the repository could not apply a parsed row). A duplicate natural key that differs is re-keyed by row hash (warning `duplicate-key-rekeyed`) and still applied. So `tab.rows == added + updated + unchanged + len({e.row for e in errors})` for a tab that did not fail to fetch. Blank and template-placeholder rows are counted in `blank_rows` and are not data rows. An `apply-failed` row rolls back its own transaction only; the tab continues; the stored row hash is NOT updated so the next sync retries it.
+
+### Later-phase entities (built; defined by their models and migrations)
 
 | Entity | Phase | Key fields |
 |---|---|---|
-| companies | 2 | name, name_key unique, website, linkedin_url, city, is_competitor, notes, research_brief (P3) |
-| prospects | 2 | kind (`company_enquiry` \| `outreach_person`), company_id, contact_id null, origin_enquiry_id null, stage, next_follow_up_on date null, closed_reason, actor_user_id. 0004 backfill: one prospect per `accepted` enquiry (stage `new`); each prospect's company/person links to its `linkedin_profiles` row (`tracked = true`) via `enquiries.author_profile_id`. |
-| leads | 2 | prospect_id unique, stage, meeting_at, proposal_sent_on, value_estimate null, outcome_note |
-| clients | 2 | company_id, status (`active` \| `legacy`), started_on, source (`lead` \| `legacy_import`) |
-| contacts | 2 | full_name, email (indexed), phone, linkedin_url (unique null), title, company_id null, tags (via contact_tags) |
-| contact_tags / tags | 2 | tag name unique, category (`role`, `segment`, `custom`) |
-| contact_links | 2 | contact_id, entity_type (`enquiry` \| `prospect` \| `lead` \| `client` \| `competitor`), entity_id, role |
-| timeline_events | 2 | subject_type, subject_id, company_id null, contact_id null, kind (`status_change`, `note`, `email_sent`, `proposal_sent`, `enquiry_linked`, `call`, `meeting`, `research`), body, occurred_at, actor_user_id |
-| follow_ups | 2 | prospect_id or lead_id, due_on date, done_at null, note |
-| signals | 2 | entity_type, entity_id, kind (`repeat_poster`, `competitor_mention`), detail JSON, created_at |
-| competitors | 2 | company_id, approx_clients int null, client_names text, contact, email, website, notes (seed: Future Labs, Savya Technologies, White Spaces, Evolvv, Ritu Arora) |
-| channel_groups | 2 | name, platform (`whatsapp`), link, details (`keep` \| `keep_low` \| free text), active |
-| import_batches | 2 | filename, sheet_kind (`active` \| `discarded` \| `prospects` \| `competitors` \| `groups`), rows_total, rows_new, rows_merged, rows_error, created_at |
 | outreach_templates / decks / email_drafts / sent_emails | 3 | per-offering template (subject, body with placeholders); deck PDF path + offering_id/group_id; draft (prospect_id, version, subject, body, deck_id, status `draft` \| `approved` \| `sent` \| `failed`, approved_by, approved_at); gmail message/thread ids |
 | profile_candidates | 3 | name, linkedin_url unique, company, headline, reason_post_url, status (`message_sent` \| `connection_request_sent` \| `closed` \| `new`), notes |
 | weekly_targets | 4 | metric_key, target (seed: linkedin_scrape 15, whatsapp_scrape 5, linkedin_outreach 5, messages_sent 25, first_followups 20) |

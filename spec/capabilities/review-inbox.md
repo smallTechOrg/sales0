@@ -28,7 +28,7 @@ Shows triaged enquiries as cards, so the team can accept genuine buyers (they be
 
 ## Business Rules
 - The "To review" tab shows pending-review enquiries: failed triage first, then AI-genuine, then by priority, then newest. Pending (not yet triaged) enquiries show "AI triage pending…" and cannot be decided until triaged or failed. Failed ones CAN be decided by hand.
-- **Accept** sets the review status to accepted and the stage to Prospect · New, and records a decision. If the AI said discard, the decision is an override.
+- **Accept** sets the review status to accepted and the stage to Prospect · New, and records a decision. If the AI said discard, the decision is an override. (Phase 2) `decide` publishes `EnquiryDecided`; the CRM subscriber creates or reuses ONE prospect per author profile, links the enquiry, contact and company, sets the profile `tracked` and writes the timeline (`capabilities/crm-pipeline.md`). Without the CRM subscriber installed (Phase 1 tests) `decide` behaves exactly as before.
 - **Discard** sets the review status to discarded and records the reason: a chosen preset, or the AI's reason if none is chosen. If the AI said genuine, the decision is an override.
 - Changing the priority or offering on a card stores the new value and records which field changed from what. The AI's original value is kept.
 - An enquiry can be re-decided from the Accepted or Discarded tab ("Discard instead" / "Accept instead"). Every decision is appended to the history, and the latest decision wins.

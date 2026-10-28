@@ -112,7 +112,9 @@ Dependency rule: everything needed at runtime or deploy time goes in `[project].
 │   └── versions/
 │       ├── 0001_baseline.py        # scaffold: app_meta
 │       ├── 0002_phase1_discovery.py
-│       └── 0003_phase1_4_seen_posts.py   # Phase 1.4 (later phases renumber: CRM 0004, outreach 0005, metrics 0006, users 0007)
+│       └── 0003_phase1_4_seen_posts.py   # Phase 1.4. Actual later chain (linear, ids not numbers): 0003_sheet_sync_state > p3_outreach_a7c41e9d > 0004_opportunity_type > p4_ops_c3d8e1f2 > p5_replies_c3d81f20 > p6_crm_5b2e7d14 (Phase 2, head)
+│   # Phase 2 adds (full tree: "## Phase 2 layout delta" at the end of this file): db/models/{enums_crm,crm,contacts,timeline,registries,sheetdata}.py,
+│   #   services/crm/**, services/importer/**, services/sheetsync/{sql_repository,mapping,status_map,metrics}.py, web/auth.py, web/routes/{auth,pipeline,contacts,registries,importer,sync}.py
 ├── src/sales0/
 │   ├── __init__.py
 │   ├── __main__.py                 # load settings → configure logging → verify DB at head → uvicorn.run(app, host, port, workers=1)
@@ -353,7 +355,7 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 - The Setup "Safety limits" rows drop "Browser window during runs" and add "Browser" (the resolved label), "Runs" ("hidden (headless)"), "Cool-down after rate limit / captcha" (`N min`) and "Cool-down after checkpoint / logout" (`N min`).
 - Locale and timezone are not configurable in Phase 1.1. They are derived (`## LinkedIn browser` → Launch options).
 
-Phase 2 adds `SALES0_APP_PASSWORD` and `SALES0_SESSION_SECRET`. Phase 3 adds `SALES0_GOOGLE_CLIENT_SECRETS_FILE`, `SALES0_GMAIL_SENDER`, `SALES0_GMAIL_TEST_RECIPIENT` and `SALES0_LINKEDIN_MAX_PROFILES_PER_DAY` (30). Phase 5 adds `SALES0_WHATSAPP_INGEST_TOKEN`. Each is appended to `.env.example` in its phase.
+Phase 2 adds `SALES0_APP_PASSWORD` (and the CRM variables in `## Phase 2` → Settings; the planned `SALES0_SESSION_SECRET` is dropped: the session cookie is signed with `SALES0_SECRET_KEY`). Phase 3 adds `SALES0_GOOGLE_CLIENT_SECRETS_FILE`, `SALES0_GMAIL_SENDER`, `SALES0_GMAIL_TEST_RECIPIENT` and `SALES0_LINKEDIN_MAX_PROFILES_PER_DAY` (30). Phase 5 adds `SALES0_WHATSAPP_INGEST_TOKEN`. Each is appended to `.env.example` in its phase.
 
 > **Assumed:** Phase 5's WhatsApp bridge is a small Node sidecar (`whatsapp-bridge/`, using a maintained WhatsApp Web linked-device library). It POSTs messages to `/api/ingest/whatsapp` with a bearer token. The Python ecosystem has no mature linked-device client. Keeping the bridge out of process isolates its session and crashes. Until Phase 2, startup refuses any `SALES0_HOST` other than `127.0.0.1`/`localhost` with the message "Set SALES0_APP_PASSWORD (Phase 2) before binding to a public host".
 
@@ -1167,3 +1169,322 @@ Routes (`api.md`): `POST /setup/keywords/suggested`, `POST /setup/keywords/{id}/
 
 ## LinkedIn results variants (Phase 1.3)
 The SDUI results page ships in several markup variants. Card discovery order: `sdui` (`data-view-name="feed-full-update"`), `urn`, then `listitem` (`role=listitem` containing an expandable text box / `Open control menu for post by <Name>` button / `feed-commentary`). `listitem` also wins when the earlier tiers produce no post text. Its raws have `has_control_menu=false` (no permalink capture; the card links to the author profile). **Phase 1.4 supersedes this:** `listitem` raws carry `has_control_menu`, `card_index` and `menu_label`, and permalink capture works on this tier (`## Thorough discovery (Phase 1.4)` → Slice C). Selectors live in `scraper/selectors.py` (`LISTITEM_*`); sample: `tests/integration/scraper/test_listitem_variant.py`.
+
+---
+
+# Phase 2 — CRM memory, read-only Google Sheet sync, shared login
+
+> This section is the **binding contract between the Phase 2 slices** (`roadmap.md` → Phase 2). Every name, path and signature below can be coded against before the owning slice lands. Data: `data.md` → Phase 2 entities. Behaviour: the capability files. HTTP: `api.md`. Screens: `ui.md`.
+> **Assumed (all Phase 2 decisions are also listed in `NOTES.md` → Phase 2 spec):** the shared login reuses `SALES0_SECRET_KEY` (`services/team/crypto.sign`, purpose `session`) instead of the planned `SALES0_SESSION_SECRET`; Origin/Referer CSRF stays and no per-form token is added; the CRM is event-driven off Phase 3/5 events so Phase 1/3/5 code only gains one-line `publish` calls.
+
+## Phase 2 layout delta (new files only; existing files are listed under "Shared-file edits")
+```
+migrations/versions/p6_crm_5b2e7d14.py              S1
+src/sales0/db/models/
+    enums_crm.py  crm.py  contacts.py  timeline.py  registries.py  sheetdata.py     S1   (+ exports in models/__init__.py)
+src/sales0/services/
+    crm/__init__.py          install()                                        S1
+    crm/actor.py  stages.py  views.py  timeline.py  prospects.py  leads.py  clients.py
+    crm/followups.py  flags.py  contacts.py  companies.py  registries.py  pipeline.py  hooks.py       S1
+    crm/digest_sections.py   register()                                       S5
+    sheetsync/sql_repository.py  mapping.py  metrics.py  status_map.py        S2
+    importer/__init__.py  csv_import.py  paste.py                             S5
+src/sales0/jobs/sheet_sync_job.py                                             S2 (edit)
+src/sales0/web/auth.py  routes/auth.py  templates/auth/login.html             S3
+src/sales0/web/routes/pipeline.py  contacts.py  registries.py  importer.py    S4
+src/sales0/web/routes/sync.py  templates/sync/page.html  templates/sync/_status.html   S2
+src/sales0/web/templates/pipeline/**  contacts/**  registries/**  importer/**           S4
+tests/unit/crm/**  tests/integration/crm/**  tests/integration/db/test_migration_p6_crm.py    S1
+tests/unit/sheetsync/** (extend)  tests/integration/sheetsync/**  tests/fixtures/sheets/**   S2
+tests/unit/test_auth_session.py  tests/integration/web/test_auth.py                        S3
+tests/integration/web/test_pipeline_routes.py  test_contacts_routes.py  test_registries_routes.py  test_import_routes.py   S4
+tests/integration/importer/**  tests/integration/crm/test_digest_sections.py              S5
+tests/e2e/test_phase2_journey.py  tests/integration/db/test_migration_realistic.py  README.md   S6
+```
+
+## Settings added in step 0 (`config.py`, `.env.example` `# --- CRM / login ---` block)
+| Variable (`SALES0_` prefix) | Field | Default | Purpose |
+|---|---|---|---|
+| `APP_PASSWORD` | `app_password: SecretStr \| None` | unset | Shared password. Unset = open (loopback only, as in Phase 1). Empty string counts as unset. `check_startup` refuses a non-loopback `SALES0_HOST` while it is unset ("Set SALES0_APP_PASSWORD before binding to a public host"). |
+| `SESSION_DAYS` | `session_days: int` (1-90) | `14` | Login cookie lifetime |
+| `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_S` | `login_max_attempts`, `login_lockout_s` | `5` / `60` | Failed logins per minute per client IP before a lockout |
+| `FOLLOWUP_DAYS_1` / `_2` / `_FINAL` | `followup_days_1/2/final` | `3` / `7` / `14` | Reminder offsets in calendar days from the contact date (`data.md` → follow_ups) |
+| `STALE_LEAD_DAYS` | `stale_lead_days` | `14` | A lead with no timeline event for this long is "stale" (digest) |
+| `REPEAT_POSTER_MIN` / `_DAYS` | `repeat_poster_min`, `repeat_poster_days` | `3` / `60` | Flag threshold |
+| `CRM_PAGE_SIZE` | `crm_page_size` | `50` | List page size (contacts, pipeline list) |
+The sheet variables already exist (`SALES0_SHEET_SYNC_MINUTES`, `_CLIENT_SOURCING_ID`, `_METRICS_ID`, `_TABS_JSON`, `_FETCH_*`).
+`session_cookie_secure` is derived (true when `SALES0_PUBLIC_BASE_URL` is `https://`).
+
+## Migrations — the FK recipe for a referenced table (binding for `p6_crm_5b2e7d14`)
+Adding a foreign key to an existing column in SQLite means rebuilding the table. `outreach_messages` is referenced by `outreach_events` (`CASCADE`), `outreach_replies` (`CASCADE`) and itself, so a plain batch rebuild under `foreign_keys=ON` would cascade-delete its children. The migration therefore runs the rebuild in `with op.get_context().autocommit_block():` — `PRAGMA foreign_keys=OFF`; `batch_alter_table("outreach_messages", recreate="always", reflect_args=[Column("follow_up_of_id", Integer, ForeignKey("outreach_messages.id", ondelete="SET NULL"))])` with `create_foreign_key(... ondelete="SET NULL")` x3; `PRAGMA foreign_key_check` (any row → `raise RuntimeError`); `PRAGMA foreign_keys=ON` (in a `finally`). The docstring carries the one-line justification required by "Migrations (binding)". The migration test (S1) and the realistic-DB test (S6) assert that `outreach_events` / `outreach_replies` / `outreach_messages` row counts are identical before and after. (Note for the maintainer: `p5_replies_c3d81f20` used a plain batch on the same table; it is harmless on an empty table and is not changed.)
+
+## Events (`services/events.py`; step 0 adds the dataclasses and the two publish calls)
+```python
+@dataclass(frozen=True)
+class MessageSent:            # published by services/outreach/messages.py::_execute, after state='sent', before db.commit()
+    outreach_message_id: int
+    member_id: int
+    to_addrs: tuple[str, ...]
+    sent_at: datetime
+
+@dataclass(frozen=True)
+class EnquiryDecided:         # published by services/inbox.py::decide(), once per enquiry, after the row is updated and flushed
+    enquiry_id: int
+    decision: str                       # "accept" | "discard"
+    previous_review_status: str
+    actor_user_id: int | None = None
+    actor_member_id: int | None = None  # decide() gains the optional keyword actor_member_id: int | None = None
+```
+`ReplyReceived` already exists (`kind` human|auto_reply|bounce; `intent` interested|not_now|unsubscribe|question|other|None; `outreach_message_id`, `reply_id`, `from_addr`). Handlers run synchronously in the publisher's session inside a savepoint (`events.publish`); a failing CRM handler is logged and never breaks sending, replying or deciding. `services/crm/__init__.py::install()` subscribes `hooks.on_message_sent`, `hooks.on_reply_received`, `hooks.on_enquiry_decided` (idempotent; `events.reset()` in tests removes them, so CRM tests call `install()` in a fixture).
+
+## Shared-file edits (each file has exactly ONE owner; others never touch it)
+| File | Owner | Edit |
+|---|---|---|
+| `config.py`, `.env.example` | S1 step 0 | the settings above + `check_startup` message |
+| `web/app.py` | S1 step 0 | wiring (below) |
+| `services/events.py`, `services/inbox.py` (`decide`), `services/outreach/messages.py` (`_execute`) | S1 step 0 | dataclasses + three `publish` calls |
+| `services/profiles.py` | S1 | `ensure_profile` |
+| `services/sheetsync/engine.py`, `repository.py`, `registry.py`, `state.py`, `__init__.py`, `jobs/sheet_sync_job.py`, `cli.py` | S2 | see S2 contract |
+| `web/middleware.py` (`allowed_origins`), `web/templates/base.html` (Log out control) | S3 | see S3 contract |
+| `web/context.py` (NAV, shell), `web/routes/stubs.py`, `web/routes/outreach.py` (compose `prospect_id`), `web/routes/inbox.py` (pass `actor_member_id`), `tests/integration/web/test_shell.py`, `test_every_page_renders.py`, `web/static/css/app.css` | S4 | see S4 contract |
+| `services/digest.py` | nobody (sections register through `digest.register_section`) | |
+| `tests/conftest.py` | S1 step 0 | `SALES0_APP_PASSWORD` is cleared from the environment per test; nothing else |
+
+### Step 0 — the wiring skeleton (the FIRST commit of S1, done before the other slices start coding against the tree; ~15 min)
+Creates (a) the settings, (b) `events.py` additions and the three publish calls, (c) **placeholder modules** that make `app.py` complete: `services/crm/__init__.py` (`install()` for real once hooks exist, no-op until then), `services/sheetsync/sql_repository.py` (`def install() -> None: pass`), `services/crm/digest_sections.py` (`def register() -> None: pass`), `web/auth.py` (`def install(app, settings) -> None: pass`), and **empty routers** `web/routes/{pipeline,contacts,registries,importer,sync,auth}.py` (`router = APIRouter()`), (d) `services/crm/views.py` with the Pydantic view classes named below (fields final), (e) `app.py`:
+```python
+app.add_middleware(CsrfOriginMiddleware)          # innermost
+web_auth.install(app, settings)                   # S3: AuthMiddleware (+ its router)  -- between CSRF and request-context
+app.add_middleware(RequestContextMiddleware)      # outermost
+... existing include_router calls ...
+for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router): app.include_router(r)
+# lifespan, after seed_admin:
+crm.install(); sql_repository.install(); crm_digest_sections.register()
+with session_scope() as db: crm.startup_backfill(db)      # once: app_meta crm_flags_backfilled_v1 -> flags.recompute_all
+```
+Until a slice replaces its placeholder the app behaves exactly as in Phase 1, so every Phase 1 test stays green. The slices **replace the placeholder files wholesale**.
+
+## S1 contract — `services/crm/*` (signatures are final; all functions take `db: Session` first, `flush` but never `commit`; time via `now: datetime | None = None` → `now_or(now)`; failures raise `DomainError`)
+```python
+# crm/actor.py
+@dataclass(frozen=True)
+class Actor:
+    label: str                      # "Priya", "system", "sheet-sync", "import", "team"
+    member_id: int | None = None
+    @staticmethod
+    def of_member(m: TeamMember | None) -> "Actor": ...      # None -> TEAM
+SYSTEM = Actor("system"); SHEET_SYNC = Actor("sheet-sync"); IMPORT = Actor("import"); TEAM = Actor("team")
+
+# crm/stages.py  (pure)
+PROSPECT_STAGES = ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
+LEAD_STAGES = ("meeting_scheduled", "proposal_sent", "won", "lost", "no_response")
+STAGE_LABELS: dict[str, str]        # "follow_up_1" -> "Follow-up 1", "meeting_scheduled" -> "Meeting scheduled", ...
+def stage_rank(stage: str) -> int; def is_terminal_lead_stage(stage: str) -> bool
+
+# crm/timeline.py
+def add_event(db, *, subject_type: str, subject_id: int, kind: str, body: str | None = None, data: dict | None = None,
+              actor: Actor = SYSTEM, occurred_at: datetime | None = None,
+              prospect_id: int | None = None, enquiry_id: int | None = None,
+              company_id: int | None = None, contact_id: int | None = None) -> TimelineEvent
+def add_note(db, *, subject_type: str, subject_id: int, body: str, actor: Actor, now=None) -> TimelineItemView   # body 1-4000 chars, kind="note"; scopes derived from the subject
+def list_timeline(db, *, prospect_id=None, enquiry_id=None, company_id=None, contact_id=None,
+                  subject: tuple[str, int] | None = None, limit: int = 200, before: datetime | None = None) -> list[TimelineItemView]
+    # newest first; merges status_history rows of the linked enquiries (kind "status_change", actor from actor_user_id or "team");
+    # exactly one scope argument is required (else ValueError)
+
+# crm/prospects.py
+def ensure_for_enquiry(db, enquiry_id: int, *, actor: Actor = TEAM, now=None) -> ProspectView
+    # IDEMPOTENT. One prospect per linkedin_profile (enquiry.author_profile_id, else ensure_profile(author_profile_url));
+    # no profile -> one prospect per enquiry. Sets enquiries.prospect_id/company_id/contact_id, linkedin_profiles.tracked=True (only when NULL),
+    # upserts company + contact (+ contact_links), timeline `created` (new prospect) + `enquiry_linked`, then flags.on_enquiry_linked.
+    # A prospect closed with reason "enquiry_discarded" is reopened.
+def create_manual(db, *, name: str, company: str | None = None, email: str | None = None, phone: str | None = None,
+                  linkedin_url: str | None = None, website: str | None = None, notes: str | None = None,
+                  source: str = "manual", actor: Actor = TEAM, now=None) -> ProspectView     # adopts an existing prospect of the same profile/email/contact
+def get_prospect(db, prospect_id: int) -> ProspectDetail                       # not_found 404
+def list_prospects(db, *, stage: str | None = None, status: str = "open",     # open | closed | converted | all
+                   q: str | None = None, company_id: int | None = None, source: str | None = None,
+                   flag: str | None = None, due: str | None = None,           # due: "today" | "overdue"
+                   page: int = 1, page_size: int | None = None) -> ProspectPage
+def move_stage(db, prospect_id: int, stage: str, *, actor: Actor = TEAM, note: str | None = None, now=None) -> ProspectView
+    # any move is allowed (back too), recorded as `stage_change`; sets stage_source="app"; entering `contacted` the first time sets contacted_at
+    # and calls followups.schedule_for_contact; entering a later stage completes the reminders up to it; refuses a closed/converted prospect (`prospect_closed` 409)
+def mark_contacted(db, prospect_id: int, *, when: datetime | None = None, actor: Actor = TEAM, channel: str = "manual", note: str | None = None, now=None) -> ProspectView
+def record_response(db, prospect_id: int, *, actor: Actor = TEAM, source: str = "manual", reply_id: int | None = None, note: str | None = None, now=None) -> ProspectView
+    # sets responded_at (first time), cancels open reminders, timeline `reply_received`
+def close(db, prospect_id: int, reason: str, *, actor: Actor = TEAM, now=None) -> ProspectView      # status=closed; reason in ("no_response","lost","not_interested") also sets linkedin_profiles.tracked=False
+def reopen(db, prospect_id: int, *, actor: Actor = TEAM, now=None) -> ProspectView
+def set_tracked(db, prospect_id: int, tracked: bool, *, actor: Actor = TEAM, now=None) -> ProspectView
+def update(db, prospect_id: int, *, name=UNSET, notes=UNSET, company=UNSET, actor: Actor = TEAM, now=None) -> ProspectView
+def resolve_for_message(db, message_id: int) -> int | None                     # outreach_messages.prospect_id -> enquiries.prospect_id via enquiry_id -> prospect of a contact whose email is in to_addrs
+
+# crm/leads.py
+def convert(db, prospect_id: int, *, stage: str = "meeting_scheduled", meeting_at: datetime | None = None,
+            opened_by: str = "manual", actor: Actor = TEAM, note: str | None = None, now=None) -> LeadView
+    # DomainError: lead_needs_contact 409 ("This prospect has not been contacted yet - mark it Contacted first."),
+    #              lead_needs_response 409 ("No response is recorded yet - press 'Response received' first."), lead_exists 409
+    # prospect.status -> converted; cancels reminders; timeline `lead_created`
+def move_stage(db, lead_id: int, stage: str, *, proposal_sent_on: date | None = None, meeting_at: datetime | None = None,
+               value_estimate: int | None = None, outcome_note: str | None = None, actor: Actor = TEAM, now=None) -> LeadView
+    # proposal_sent -> sets proposal_sent_on (default local today) AND enquiries.date_proposal_sent of the origin enquiry; timeline `proposal_sent`
+    # won -> closed_at + clients.create_from_lead; lost/no_response -> closed_at + prospect `tracked=False`; moving back clears closed_at (and does not delete the client)
+def get_lead(db, lead_id: int) -> LeadDetail
+def list_leads(db, *, stage: str | None = None, open_only: bool = True, q: str | None = None, page: int = 1, page_size: int | None = None) -> LeadPage
+
+# crm/clients.py
+def create_from_lead(db, lead_id: int, *, actor: Actor = SYSTEM, now=None) -> ClientView      # idempotent per lead
+def create_legacy(db, *, name: str, company: str | None = None, started_on: date | None = None, notes: str | None = None, actor: Actor = TEAM, now=None) -> ClientView
+def get_client(db, client_id: int) -> ClientDetail; def update_client(db, client_id: int, *, name=UNSET, notes=UNSET, status=UNSET, actor: Actor = TEAM, now=None) -> ClientView
+def list_clients(db, *, status: str | None = None, q: str | None = None, page: int = 1, page_size: int | None = None) -> ClientPage
+
+# crm/followups.py
+def schedule_for_contact(db, prospect_id: int, contacted_at: datetime, *, now=None) -> list[FollowUpView]     # the three reminders; no-op if the prospect has no_follow_up or already has open auto reminders
+def list_due(db, *, today: date | None = None, member_id: int | None = None) -> DuePanel                       # DuePanel(due_today: list[FollowUpView], overdue: list[FollowUpView]); today default = local_today(settings.tz)
+def due_count(db, *, today: date | None = None) -> int                                                        # due today + overdue
+def complete(db, follow_up_id: int, *, actor: Actor = TEAM, note: str | None = None, now=None) -> FollowUpView  # moves the prospect to the reminder's stage
+def snooze(db, follow_up_id: int, due_on: date, *, actor: Actor = TEAM, now=None) -> FollowUpView
+def add_custom(db, *, prospect_id: int | None = None, lead_id: int | None = None, due_on: date, note: str | None = None, actor: Actor = TEAM, now=None) -> FollowUpView
+def cancel_open(db, *, prospect_id: int | None = None, lead_id: int | None = None, reason: str, actor: Actor = SYSTEM, now=None) -> int
+# Every function that changes reminders refreshes prospects.next_follow_up_on.
+
+# crm/flags.py
+def set_flag(db, entity_type: str, entity_id: int, kind: str, *, source: str = "auto", detail: dict | None = None, actor: Actor = SYSTEM, now=None) -> FlagView   # idempotent; updates detail
+def clear_flag(db, entity_type: str, entity_id: int, kind: str, *, actor: Actor = TEAM, now=None) -> bool
+def flags_for(db, entity_type: str, ids: Sequence[int]) -> dict[int, list[FlagView]]                           # active only
+def on_enquiry_linked(db, enquiry_id: int, *, now=None) -> None        # recompute repeat_poster for its prospect/profile + detect_competitor_mentions
+def recompute_repeat_poster(db, prospect_id: int, *, now=None) -> FlagView | None
+    # count enquiries linked to the prospect (or sharing its linkedin_profile) whose date_added is within repeat_poster_days of `now`; >= repeat_poster_min -> flag {"count": n, "within_days": d}; below -> auto flag cleared
+def detect_competitor_mentions(db, enquiry_id: int) -> list[int]
+    # for every ACTIVE competitor: name or website host appears in raw_text/requirement_summary/company (casefold, word boundary) -> competitor_mentions(enquiry) + flag competitor_mention on the enquiry and its prospect; returns competitor ids
+def recompute_all(db, *, now=None) -> dict[str, int]                   # {"repeat_poster": n, "competitor_mention": n}; run once at startup and after an import / sheet sync that touched enquiries
+# no_follow_up: set_flag(db, "prospect", id, "no_follow_up", source="user"|"auto") ALSO cancels open reminders; clear_flag does not recreate them.
+
+# crm/contacts.py
+def upsert(db, *, full_name: str | None = None, email: str | None = None, phone: str | None = None, linkedin_url: str | None = None,
+           title: str | None = None, company_id: int | None = None, origin: str = "manual", actor: Actor = SYSTEM, now=None) -> ContactView
+    # match order: any email in contact_emails (casefold) -> linkedin_slug -> phone digits (only when a name also matches loosely, else new);
+    # fills empty columns, never blanks one; adds new emails/phones to contact_emails/contact_phones; DomainError contact_invalid 400 if no name/email/linkedin
+def get_contact(db, contact_id: int) -> ContactDetail
+def list_contacts(db, *, q: str | None = None, tag: str | None = None, company_id: int | None = None, page: int = 1, page_size: int | None = None) -> ContactPage
+    # q: casefold LIKE over search_text; tag: exact tag name; ordered by full_name, id; one query + one count; < 300 ms at 10k rows (tested)
+def update_contact(db, contact_id: int, *, full_name=UNSET, title=UNSET, notes=UNSET, company=UNSET, actor: Actor = TEAM, now=None) -> ContactView
+def add_tag(db, contact_id: int, name: str, category: str = "custom", *, actor: Actor = TEAM, now=None) -> ContactView   # tag_invalid 400 (1-40 chars)
+def remove_tag(db, contact_id: int, tag_id: int, *, actor: Actor = TEAM, now=None) -> ContactView
+def list_tags(db) -> list[TagView]                                      # with usage counts
+def link(db, contact_id: int, entity_type: str, entity_id: int, role: str | None = None) -> None   # idempotent
+def find_duplicates(db, *, limit: int = 50) -> list[DuplicateGroup]     # groups sharing an email, a linkedin_slug, a phone, or an identical casefolded full_name+company
+def merge(db, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now=None) -> ContactView
+    # merge_self 400; moves emails/phones/tags/contact_links; repoints prospects.contact_id, enquiries.contact_id, timeline_events.contact_id; fills empty columns of keep; deletes drop; timeline `contact_merged`
+
+# crm/companies.py
+def get_or_create(db, name: str, *, website: str | None = None, city: str | None = None) -> CompanyView   # by name_key
+def get_company(db, company_id: int) -> CompanyDetail                  # + prospects, enquiries, contacts, timeline
+def list_companies(db, *, q: str | None = None, page: int = 1, page_size: int | None = None) -> CompanyPage
+
+# crm/registries.py
+def list_competitors(db, *, q: str | None = None) -> list[CompetitorView]; def get_competitor(db, id) -> CompetitorDetail   # + mentions (linked enquiries/clients)
+def create_competitor(db, *, name: str, website=None, approx_clients=None, client_names=None, contact=None, email=None, notes=None, actor=TEAM, now=None) -> CompetitorView
+def update_competitor(db, id: int, *, ... same optional fields ..., active=UNSET, actor=TEAM, now=None) -> CompetitorView
+def delete_competitor(db, id: int, *, actor=TEAM, now=None) -> None     # sheet_owned 409 if it has a sheet source; competitor_invalid 400 for a blank name
+def link_competitor(db, competitor_id: int, entity_type: str, entity_id: int, *, actor=TEAM, now=None) -> None   # manual mention (source="user")
+def list_groups(db, *, active: bool | None = None) -> list[GroupView]
+def create_group(db, *, name: str, platform: str = "whatsapp", link=None, details=None, notes=None, actor=TEAM, now=None) -> GroupView
+def update_group(db, id: int, *, ..., active=UNSET, actor=TEAM, now=None) -> GroupView; def delete_group(db, id: int, *, actor=TEAM, now=None) -> None
+
+# crm/pipeline.py
+def summary(db, *, today: date | None = None) -> PipelineSummary
+    # prospect counts per stage (open only), leads per stage (open) + won/lost/no_response last 90 days, client counts active/legacy, due_today, overdue
+def board(db, *, kind: str = "prospects", q: str | None = None, flag: str | None = None, per_column: int = 50) -> Board    # columns in stage order, each with total + first `per_column` cards
+
+# crm/hooks.py  (subscribers; each wraps its work so one failure cannot break the publisher)
+def on_enquiry_decided(db, ev: EnquiryDecided) -> None
+    # accept -> prospects.ensure_for_enquiry; discard -> if the enquiry has a prospect that is `new`/open, stage_source != "sheet" and no OTHER accepted enquiry is linked -> close(reason="enquiry_discarded")
+def on_message_sent(db, ev: MessageSent) -> None
+    # prospect = resolve_for_message (an accepted enquiry without a prospect gets one via ensure_for_enquiry); none -> return.
+    # timeline `email_sent` (data: message_id; body: subject); contacts.upsert for each recipient + contact_links(prospect, role="recipient");
+    # enquiries.date_email_sent = sent date when NULL; stage `new` -> mark_contacted(when=sent_at, channel="email");
+    # a message with follow_up_of_id (or any send while the prospect is already contacted/follow-up) completes the EARLIEST open reminder and moves the prospect to its stage.
+def on_reply_received(db, ev: ReplyReceived) -> None
+    # prospect = resolve_for_message(ev.outreach_message_id); none -> return.
+    # auto_reply / bounce: timeline note only (never counts as a response).
+    # human: timeline `reply_received` (data: reply_id, intent) + record_response(source="reply");
+    #   intent == "unsubscribe": flag no_follow_up (source auto, detail {"reason":"unsubscribe","reply_id":..}) + cancel reminders; NO lead;
+    #   intent in ("interested","question","not_now") AND prospect.contacted_at is not None AND no open lead: leads.convert(stage="meeting_scheduled", opened_by="reply", actor=SYSTEM, note=<intent>);
+    #   intent "other"/None: response recorded, no lead (a human decides).
+def startup_backfill(db) -> None      # in crm/__init__.py: once per DB, guarded by app_meta key crm_flags_backfilled_v1
+```
+View classes (`services/crm/views.py`, frozen Pydantic, created in step 0 with these fields): `FlagView(kind, source, detail, created_at)`; `FollowUpView(id, prospect_id, lead_id, who, kind, kind_label, due_on, note, overdue: bool)`; `DuePanel(due_today, overdue)`; `TimelineItemView(id, kind, kind_label, body, data, actor, occurred_at, subject_type, subject_id, href: str | None)`; `ProspectView(id, name, kind, stage, stage_label, status, closed_reason, source, company_id, company_name, contact_id, contact_name, linkedin_profile_id, linkedin_url, tracked, contacted_at, contacted_estimated, responded_at, next_follow_up_on, flags, sheet_status, sheet_removed_at, sheet_tabs, open_lead_id, created_at)`; `ProspectDetail(ProspectView + notes, reason_url, reason_text, extra_link, enquiries: list[LinkedEnquiryView], messages: list[LinkedMessageView], replies: list[LinkedReplyView], contacts: list[ContactView], follow_ups, timeline, lead, client, sheet_sources: list[SheetSourceView])`; `LinkedEnquiryView(id, requirement_summary, priority, review_status, ai_verdict, date_added, source_url, company, sheet_status)`; `LinkedMessageView(id, subject, state, sent_at, reply_status, owner_name)`; `LinkedReplyView(id, message_id, received_at, kind, intent, snippet)`; `LeadView(id, prospect_id, prospect_name, company_name, stage, stage_label, opened_at, closed_at, meeting_at, proposal_sent_on, value_estimate, outcome_note, flags, days_since_activity)`; `LeadDetail(LeadView + timeline, follow_ups, client, enquiries, messages)`; `ClientView(id, name, company_id, status, source, started_on, lead_id, prospect_id)`; `ClientDetail(ClientView + notes, timeline, competitors)`; `ContactView(id, full_name, email, phone, linkedin_url, title, company_id, company_name, tags: list[TagView], origin)`; `ContactDetail(ContactView + emails, phones, notes, links: list[ContactLinkView(entity_type, entity_id, label, href, role)], timeline)`; `TagView(id, name, category, count)`; `DuplicateGroup(reason, contacts: list[ContactView])`; `CompanyView(id, name, website, city)`; `CompetitorView(id, name, website, approx_clients, client_names, contact, email, notes, active, sheet_synced: bool, mention_count)`; `GroupView(id, name, platform, link, details, keep_level, active, sheet_synced: bool)`; `PipelineSummary(prospects_by_stage, leads_by_stage, closed_recent, clients_active, clients_legacy, due_today, overdue)`; `Board(kind, columns: list[BoardColumn(stage, label, total, cards)])`; and the `*Page(items, total, page, page_size)` wrappers.
+
+## S2 contract — SQL repository, mapping, metrics, CLI, scheduler, Sync page
+```python
+# services/sheetsync/sql_repository.py
+class SqlSheetRepository:                  # implements SheetRepository (+ drain_errors); one short transaction per call (session_scope), never shares a session across calls
+    def __init__(self, session_factory: Callable[[], Session] | None = None, *, clock=utcnow): ...
+    def get_by_key(self, entity: str, key: str) -> StoredRecord | None       # built from sheet_sources rows with that (entity, key); crm = {} (opaque)
+    def upsert(self, record: SheetRecord, sheet_source: SheetSource) -> None  # = mapping.apply_record + write/refresh the sheet_sources row; catches Exception -> rollback, remember (row_number, "apply-failed:<ExceptionName>"), do NOT store the new row hash
+    def refresh_source(self, entity, key, sheet_source) -> None               # row_number only
+    def mark_removed(self, sheet_id, gid, ids) -> int                         # delete that tab's sources; targets with no live source -> sheet_removed_at + timeline `sheet_removed` (actor sheet-sync); never deletes a row
+    def list_keys_for_tab(self, sheet_id, gid) -> set[RecordId]
+    def drain_errors(self) -> list[RowIssue]                                  # returned once, cleared; engine appends them to tab.errors
+def install(session_factory=None) -> None  # register_repository_factory(lambda: SqlSheetRepository(...)); idempotent
+
+# services/sheetsync/mapping.py  (the ONLY place that knows the sheet -> CRM column mapping of data.md)
+@dataclass
+class ApplyResult: action: str  # created | updated | restored | unchanged;  changed_fields: tuple[str, ...];  target_type: str;  target_id: int
+def apply_record(db: Session, record: SheetRecord, *, origin: str, source: SheetSource | None, actor: Actor, now: datetime,
+                 previous_fields: dict[str, Any] | None = None) -> ApplyResult
+    # origin "sheet" (sync: source given, actor SHEET_SYNC, stage_source="sheet")
+    # origin "import" (CSV import: source=None, no sheet_sources row, actor IMPORT; stage rules identical; a record whose key already belongs to a sheet-fed row is NOT written)
+# services/sheetsync/status_map.py (pure): def map_enquiry_status(sheet_status, *, date_email_sent, date_proposal_sent) -> StatusOutcome(prospect_stage|None, prospect_status, closed_reason, lead_stage|None)
+#                                          def map_person_status(sheet_status) -> StatusOutcome        # exactly the tables in data.md
+# services/sheetsync/metrics.py: def apply_metric(db, record: SheetMetricRow, *, now) -> ApplyResult
+```
+Engine changes (S2): after every non-dry-run `upsert`, `repo.drain_errors()` (if the repository has it) is appended to `tab.errors`; a dry-run additionally asks the repository nothing new. `SheetSyncJob.available()`/`NO_REPOSITORY` in `jobs/sheet_sync_job.py` become "ready" once `install()` ran (the "Waiting for the Phase 2 CRM tables" note is deleted; the Schedule page then shows the job as ready, still opt-in). A test seam `jobs.sheet_sync_job.set_source_factory(factory | None)` lets tests give the runner a `StaticSource` (no network). CLI: `sync-sheets [--dry-run] [--tab NAME] [--memory]` — default repository = `SqlSheetRepository` (the DB must be at head, else exit 3 with "database is not migrated: run alembic upgrade head"); `--memory` forces the in-memory repository (used by the live dry-run gate: no DB needed); the output stays counts only. New command `crm-counts`: one line per table with its row count (`prospects=212 leads=9 ...`), counts only, used by the live-temp-DB gate. The runner's status survives restarts through the existing `SqlStateStore` (singleton `sheet_sync_state`).
+**Sync page** (`web/routes/sync.py`): `GET /sync`, `POST /sync/run` ("Sync now": `get_scheduler().defs["sheet_sync"].runner(ctx).trigger_now()`), `GET /sync/status` (fragment, polls every 2 s while running), `GET /api/sync/status` (JSON of `SqlStateStore.load()` + runner status).
+
+## S3 contract — shared login (`web/auth.py`, `web/routes/auth.py`)
+```python
+# web/auth.py
+COOKIE = "sales0_session"
+OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/")      # plus "/__fixtures/" ONLY when settings.linkedin_mode == "fixture"
+def password_fingerprint(settings) -> str                            # HMAC(master_secret, "pw:" + password)[:12]; changing the password invalidates every session
+def issue_session(response: Response, settings, now=None) -> None   # value = crypto.sign(f"v1:{int(iat)}:{fp}", "session"); HttpOnly; SameSite=Lax; Path=/; Max-Age=session_days*86400; Secure iff settings.session_cookie_secure
+def session_valid(request: Request, settings, now=None) -> bool
+class LoginThrottle:                                                  # in-memory, per client IP (request.client.host; X-Forwarded-For is NOT trusted)
+    def check(self, ip, now) -> int | None      # seconds of lockout left, or None
+    def fail(self, ip, now) -> None; def reset(self, ip) -> None      # >= login_max_attempts failures within 60 s -> lockout login_lockout_s
+class AuthMiddleware(BaseHTTPMiddleware): ...                         # sets request.state.auth_enabled (bool) on every request
+def install(app: FastAPI, settings: Settings) -> None                # adds AuthMiddleware + includes routes.auth.router
+```
+Behaviour: see `capabilities/shared-login.md`. `web/middleware.py::allowed_origins` also accepts the origin of `settings.public_base_url` (so a VPS behind a domain passes the CSRF check). The header gets a "Log out" POST form (`#logout`) when `request.state.auth_enabled|default(false)`.
+
+## S4 contract — UI routes
+Routers: `web/routes/pipeline.py` (prefix none; paths in `api.md`), `contacts.py`, `registries.py`, `importer.py`. Routes never touch ORM objects: they call `services.crm.*` and `services.importer.*` and render `services.crm.views`. Acting member: `get_acting_member_optional` → `Actor.of_member(member)`. Every mutating route accepts htmx (returns the updated fragment + toast) and plain forms (303 + flash), exactly like `web/routes/outreach.py`. `context.py`: the four stub rows lose `phase=2` (NAV phase `None`), a `("Sync", "/sync", None)` row is added after Import, `shell_context` adds `due_count` (shown as a badge on Pipeline when > 0). "Draft email": `GET /outreach/compose?prospect_id=ID` pre-fills contact, email, company and requirement from the prospect's primary contact and newest enquiry, and `POST /outreach/draft` forwards the hidden `prospect_id` / `company_id` to `drafting.generate_draft` (which already accepts them); nothing else in the outreach flow changes (approval, sending, caps stay as built).
+
+## S5 contract — digest sections and import services
+```python
+# services/crm/digest_sections.py
+def register() -> None      # digest.register_section(DigestSection(key, title, order, build), replace=True) for the three sections below
+#   follow_ups_due  (order 25) "Follow-ups due": items {"text": "Acme Training - Follow-up 1 due today (Priya Menon)", "href": "/pipeline/prospects/12"} (cap 10; overdue first, marked "overdue 3d"); stats {"due_today": n, "overdue": n}; empty_text "No follow-ups due."
+#   stale_leads     (order 26) "Stale leads": open leads whose newest timeline event is older than settings.stale_lead_days; items {"text": "Acme - Proposal sent, quiet for 19 days", "href": "/pipeline/leads/4"}; stats {"stale": n, "open_leads": n}; empty_text "No stale leads."
+#   pipeline_movement (order 27) "Pipeline movement": counts inside the digest window of new prospects, contacted, replies, leads opened, won; stats = the same counts
+# services/importer/csv_import.py
+def import_csv(db, *, filename: str, kind: str, data: bytes, actor: Actor, now=None) -> ImportBatchView
+    # kind in the import_batches.kind values; decodes utf-8-sig/latin-1; parses with sheetsync.parsers.parse_tab (TabSpec(name, kind, "import", "0")) so every sheet quirk is handled the same way;
+    # applies each record with sheetsync.mapping.apply_record(origin="import", source=None, actor=IMPORT); a record whose natural key already belongs to a sheet-fed row is "merged" (sheet wins, nothing overwritten);
+    # kinds "clients" (name, company, started_on, notes) and "contacts" (name, email, phone, linkedin, company, tags) use small local parsers; idempotent (second import: new 0 / unchanged n); max 5 MB, 20 000 rows
+# services/importer/paste.py
+def paste_post(db, llm, *, text: str, link: str | None, author: str | None, author_profile_url: str | None, actor: Actor, now=None) -> PasteResult(enquiry_id, outcome)   # outcome: created | duplicate
+    # normalises + dedupes with services.dedupe (same content_hash as discovery), creates an enquiry (origin="manual", review_status pending_review), triages it synchronously with the real triage service (one Haiku call), touches the author profile when a URL is given; paste_invalid 400 under 40 chars
+```
+`import_batches` rows are written by `import_csv`/`paste_post` (kind `paste`).
+
+## Test plan (Phase 2)
+| Level | What | Owner |
+|---|---|---|
+| unit | stages/ranks; status mapping tables (every row of data.md, case/whitespace variants, unknown status → rule 9); follow-up date maths with a frozen clock; session cookie sign/verify/expiry/password-change; throttle; contact matching + merge helpers; every new parser/mapping edge | S1, S2, S3 |
+| integration (real SQLite) | **migration** on a fresh DB and on a **copy of a realistic DB** (S6 builds it at p5 head with ≥ 200 enquiries incl. accepted ones sharing an author, outreach messages + events + replies; asserts every old table's row count unchanged, `PRAGMA foreign_key_check` empty, downgrade -1 / upgrade round-trip, one head); services (accept idempotency across two enquiries from one profile; hooks: sent → Contacted + 3 reminders; reply interested/question/not_now → Lead only when contacted; unsubscribe → `no_follow_up` + reminders cancelled + no lead; auto_reply/bounce → no lead; Due today with a frozen clock; flags repeat_poster at 3 within 60 days, none at 2; competitor mention; contacts search < 300 ms at 10 000 rows; merge; tag filter); **sheet sync** with `httpx.MockTransport`/`StaticSource` over synthetic CSV fixtures `tests/fixtures/sheets/*.csv` (every quirk of `spec/capabilities/sheet-sync.md`): created counts per tab, sync twice = 0 changes, a sheet edit changes only sheet-owned columns, a CRM note/flag/stage/timeline survives a re-sync, a removed row → `sheet_removed_at` and restored on return, the same person in Outreach + Prospects = one prospect with two sources, a prospect adopted by LinkedIn slug when the app already has the profile, each status row of the mapping table, `apply-failed` row reported and retried, invariant `rows == added + updated + unchanged + error rows` on every tab, `sheet_metrics` weeks incl. the duplicate "Week 43"; the existing no-write guard test stays and a new test asserts that no code path under `src/sales0` can send a non-GET request to `docs.google.com` / `sheets.googleapis.com` (fetch guard + source scan, extended to the new modules); web routes (TestClient, real templates) for pipeline, contacts, registries, import, sync, login (password set: 303 `/login`, htmx 401 + `HX-Redirect`, JSON 401, wrong password no cookie, 6th attempt locked, `/api/health` open, logout, `next` is same-origin only) | S1-S5 |
+| e2e journey (live server, headless Chromium, real Haiku; port 8792) | enable the password → log in (redirect when logged out) → discovery run (fixture mode) → accept an enquiry → prospect appears in Pipeline (New) → **Draft email** from the prospect → approve → send with the in-process `FakeGmailClient` → prospect is **Contacted**, three reminders exist → add a note → move the clock / set a follow-up for today → shows under **Due today** → fake human reply (`interested`) through the real reply poller → **Lead · Meeting scheduled** → Proposal sent (`date_proposal_sent` set) → Won → **Client** → timeline lists every step with timestamps; repeat poster flag after 3 fixture posts from one author; Sync page: "Sync now" with a static synthetic source shows per-tab counts and the synced prospects/competitors/groups, 0 changes on the second run | S6 |
+| boot gate | server on 8767 with `SALES0_APP_PASSWORD` set: `/inbox` → 303 to `/login`, `/api/health` → 200; without the password `/inbox` → 200 | S3 test + S6 gate |
+| live (read-only, counts only, never in `pytest`) | `sync-sheets --dry-run --memory` against the two REAL sheets: per-tab row counts and parse-error counts, Active Enquiries rows > 0; then `sync-sheets` into a TEMP DB (`SALES0_DATABASE_URL`/`SALES0_DATA_DIR` in the scratchpad) twice (second run: 0 added/updated/removed) and `crm-counts` | S6 |
+All tests use temp DBs/dirs and ports ≥ 8766 (never 8765), never open linkedin.com, never write to Google.

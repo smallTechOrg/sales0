@@ -11,7 +11,7 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | GET | `/runs` | G | Run now panel + active run progress + history |
 | GET | `/runs/{run_id}` | G | Run detail (per-keyword log, totals, cost) |
 | GET | `/setup` | F | LinkedIn connection card, Keywords card, Offerings card, Safety caps (read-only) |
-| GET | `/pipeline`, `/contacts`, `/competitors`, `/import` | E | Stub page "Coming in Phase 2" + one-line description |
+| GET | `/pipeline`, `/contacts`, `/competitors`, `/import`, `/sync`, `/login` | Phase 2 | Real pages (no longer stubs): see "Phase 2 routes" below |
 | GET | `/outreach` | E | Stub "Coming in Phase 3" |
 | GET | `/metrics` | E | Stub "Coming in Phase 4" |
 | GET | `/whatsapp` | E | Stub "Coming in Phase 5" |
@@ -45,6 +45,71 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | POST | `/inbox/skipped/{id}/override` | — | `seen_posts.rescue(accept=True)` | row removed + toast "Accepted as Prospect · New (overrode AI)" |
 | POST | `/inbox/skipped/{id}/retry` | — | `seen_posts.retry_triage` | that row |
 
+## Phase 2 routes
+
+Conventions are the Phase 1 ones: forms are `application/x-www-form-urlencoded` (CSV upload: `multipart/form-data`), every mutating route accepts htmx (returns the updated fragment + toast; errors toasted) and plain forms (303 back with a flash), JSON callers (`Accept: application/json`) get the envelope. All routes except `/login`, `/logout`, `/api/health`, `/static/*` require the session when `SALES0_APP_PASSWORD` is set (`capabilities/shared-login.md`). `Actor` = the acting-as member. Owners: S4 = pipeline / contacts / competitors / import; S2 = sync; S3 = login.
+
+**Pipeline** (`web/routes/pipeline.py`)
+| Method | Path | Params / form fields | Effect | Returns |
+|---|---|---|---|---|
+| GET | `/pipeline` | `tab=prospects\|leads\|clients` (default prospects), `view=board\|list` (default board for prospects/leads), `stage`, `status=open\|closed\|converted\|all`, `q`, `flag=repeat_poster\|competitor_mention\|no_follow_up`, `source`, `due=today\|overdue`, `page` | `pipeline.summary/board/list_*` | page with the Due-today panel (`#due-today`) |
+| GET | `/pipeline/prospects/{id}` · `/pipeline/leads/{id}` · `/pipeline/clients/{id}` | — | `get_prospect/get_lead/get_client` | detail page (timeline, notes, linked enquiries, contacts, outreach messages, replies, flags, follow-ups, sheet panel) |
+| POST | `/pipeline/prospects` | `name`, `company`, `email`, `phone`, `linkedin_url`, `website`, `notes` | `create_manual` | 303 to the new prospect |
+| POST | `/pipeline/prospects/{id}/stage` | `stage`, `note` | `move_stage` | prospect header + timeline fragments |
+| POST | `/pipeline/prospects/{id}/response` | `note` | `record_response` ("Response received") | fragments |
+| POST | `/pipeline/prospects/{id}/convert` | `stage` (default meeting_scheduled), `meeting_at` | `leads.convert` | `HX-Redirect` to the lead |
+| POST | `/pipeline/prospects/{id}/close` · `/reopen` | `reason` | `close` / `reopen` | fragments |
+| POST | `/pipeline/prospects/{id}/tracked` | `tracked=true\|false` | `set_tracked` | fragment |
+| POST | `/pipeline/prospects/{id}/flag` | `kind=no_follow_up`, `on=true\|false` | `set_flag` / `clear_flag` | fragment |
+| POST | `/pipeline/prospects/{id}/note` · `/leads/{id}/note` · `/clients/{id}/note` | `body` | `timeline.add_note` | `#timeline` fragment |
+| POST | `/pipeline/prospects/{id}/followup` · `/leads/{id}/followup` | `due_on`, `note` | `followups.add_custom` | `#follow-ups` fragment |
+| POST | `/pipeline/followups/{id}/done` · `/snooze` | `note` / `due_on` | `complete` / `snooze` | `#due-today` + `#follow-ups` (oob) |
+| POST | `/pipeline/leads/{id}/stage` | `stage`, `proposal_sent_on`, `meeting_at`, `value_estimate`, `outcome_note` | `leads.move_stage` | lead header + timeline |
+| POST | `/pipeline/clients` | `name`, `company`, `started_on`, `notes` | `create_legacy` | 303 to the client |
+| POST | `/pipeline/clients/{id}` | `name`, `notes`, `status` | `update_client` | client header |
+| GET | `/outreach/compose?prospect_id=ID` | (existing route, extended) | pre-fills from the prospect | compose page; `POST /outreach/draft` accepts hidden `prospect_id`, `company_id` |
+
+**Contacts** (`web/routes/contacts.py`)
+| Method | Path | Params / form fields | Effect |
+|---|---|---|---|
+| GET | `/contacts` | `q`, `tag`, `company_id`, `page` | `list_contacts` (`#contact-list`, htmx-searchable) |
+| GET | `/contacts/{id}` · `/contacts/duplicates` · `/companies/{id}` | — | detail pages (companies: read-only timeline of its prospects and enquiries) |
+| POST | `/contacts` | `full_name`, `email`, `phone`, `linkedin_url`, `title`, `company` | `upsert` |
+| POST | `/contacts/{id}` | `full_name`, `title`, `notes`, `company` | `update_contact` |
+| POST | `/contacts/{id}/tags` · `/contacts/{id}/tags/{tag_id}/delete` | `name`, `category` | `add_tag` / `remove_tag` |
+| POST | `/contacts/merge` | `keep_id`, `drop_id` | `merge` (`hx-confirm`) |
+
+**Competitors & Groups** (`web/routes/registries.py`)
+| Method | Path | Form fields | Effect |
+|---|---|---|---|
+| GET | `/competitors` | `show=removed` (optional) | both registries on one page (`#competitor-list`, `#group-list`) |
+| POST | `/competitors/competitor` · `/competitors/competitor/{id}` · `/competitors/competitor/{id}/delete` | `name`, `website`, `approx_clients`, `client_names`, `contact`, `email`, `notes`, `active` | create / update / delete (`sheet_owned` 409 for sheet-fed rows) |
+| GET | `/competitors/competitor/{id}` | — | competitor detail with linked enquiries/clients |
+| POST | `/competitors/competitor/{id}/link` | `entity_type=enquiry\|client`, `entity_id` | `link_competitor` |
+| POST | `/competitors/group` · `/competitors/group/{id}` · `/competitors/group/{id}/delete` | `name`, `platform`, `link`, `details`, `notes`, `active` | create / update / delete |
+
+**Import** (`web/routes/importer.py`)
+| Method | Path | Form fields | Effect |
+|---|---|---|---|
+| GET | `/import` | — | two cards: Paste a post, Import a CSV; recent batches |
+| POST | `/import/csv` | file `file`, `kind` | `import_csv` → 303 `/import/batches/{id}` |
+| GET | `/import/batches/{id}` | — | batch summary with per-row errors |
+| POST | `/import/paste` | `text`, `link`, `author`, `author_profile_url` | `paste_post` → 303 `/inbox?tab=review` (toast with the verdict) |
+
+**Sync** (`web/routes/sync.py`)
+| Method | Path | Effect |
+|---|---|---|
+| GET | `/sync` | status panel + per-tab table + Sync now |
+| POST | `/sync/run` | `trigger_now()`; htmx returns the status panel (polls); `409 job_busy`-style toast "A sync is already running" |
+| GET | `/sync/status` | `#sync-status` fragment (`hx-trigger="every 2s"` only while running) |
+
+**Login** (`web/routes/auth.py`)
+| Method | Path | Form | Effect |
+|---|---|---|---|
+| GET | `/login` | `next` (query) | login page (303 `/` when no password is configured) |
+| POST | `/login` | `password`, `next` | success: `Set-Cookie` + 303 to `next` or `/inbox`; wrong: 401 page "Wrong password"; locked: 429 |
+| POST | `/logout` | — | clear cookie, 303 `/login` |
+
 ## JSON
 
 | Method | Path | Response `data` |
@@ -52,6 +117,10 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | GET | `/api/health` | `{"status":"ok","db_revision":"<rev>","linkedin_mode":"live\|fixture","model":"<SALES0_LLM_MODEL>","api_key_present":true}` |
 | GET | `/api/runs/{id}` | `RunDetailView` serialised (used by E2E for exact counter assertions). Served by `web/routes/runs.py` (G); unknown id → `not_found` 404. |
 | GET | `/api/session` | `SessionStatusView` serialised. Served by `web/routes/setup.py` (F). Phase 1.1 adds `browser_label`, `browser_note` and `cooldown_until`. It never contains a cookie value. |
+| GET | `/api/pipeline/summary` | Phase 2. `PipelineSummary` (counts per stage, due_today, overdue, clients). Served by `web/routes/pipeline.py`. |
+| GET | `/api/prospects/{id}` | Phase 2. `ProspectDetail` serialised (E2E assertions). Unknown id → `not_found` 404. |
+| GET | `/api/sync/status` | Phase 2. `{"enabled", "interval_min", "running", "next_run_at", "last_started_at", "last_finished_at", "last_status", "last_error", "tabs": [{"tab","kind","rows","added","updated","unchanged","removed","errors","warnings","fetch_error"}]}`. Counts only, never cell content. Served by `web/routes/sync.py`. |
+| POST | `/login`, `/logout` | HTML, see above. A JSON caller without a session gets `401 {"ok": false, "error": {"code": "unauthorized", ...}}` from every other route. |
 
 ## Fixture-only routes
 
@@ -80,6 +149,23 @@ These are mounted at `/__fixtures/linkedin` only when `SALES0_LINKEDIN_MODE=fixt
 | `triage_failed` | 502 | "AI triage failed: <error>. Try again in a minute." |
 | `raw_purged` | 410 | Phase 1.4. "The post text is no longer stored (kept 14 days) — it can't be rescued. Find it again in a later run." |
 | `already_rescued` | 409 | Phase 1.4. "This post is already in your inbox." |
+| `unauthorized` | 401 | Phase 2. "Please log in." |
+| `login_failed` | 401 | "Wrong password." |
+| `login_locked` | 429 | "Too many attempts - try again in N seconds." |
+| `prospect_closed` | 409 | "This prospect is closed - reopen it first." |
+| `stage_invalid` | 400 | "Choose a valid stage." |
+| `lead_needs_contact` | 409 | "This prospect has not been contacted yet - mark it Contacted first." |
+| `lead_needs_response` | 409 | "No response is recorded yet - press 'Response received' first." |
+| `lead_exists` | 409 | "This prospect already has an open lead." |
+| `followup_invalid` | 400 | "Choose a valid date for the follow-up." |
+| `contact_invalid` | 400 | "A contact needs a name, an email or a LinkedIn URL." |
+| `tag_invalid` | 400 | "A tag is 1-40 characters." |
+| `merge_self` | 400 | "Choose two different contacts to merge." |
+| `competitor_invalid` | 400 | "A competitor needs a name." |
+| `sheet_owned` | 409 | "This row comes from the Google Sheet - remove it there (or deactivate it here)." |
+| `import_invalid` | 400 | "Choose a CSV file and what it contains." (also: file too large 413 `import_too_large`) |
+| `paste_invalid` | 400 | "Paste at least 40 characters of the post." |
+| `sync_running` | 409 | "A sync is already running." |
 | `llm_auth` | 502 | "Anthropic rejected the key — check SALES0_ANTHROPIC_API_KEY in .env.", or for a key that is not workspace-scoped: "This Anthropic key is not workspace-scoped — set SALES0_ANTHROPIC_WORKSPACE_ID in .env." |
 
 **`start_run` / eligibility order** (Phase 1.1; the first failing check wins; `Eligibility.reason_code` is the code): `run_in_progress` → `needs_attention` → `safety_cooldown` → `not_connected` → `job_busy` → `no_keywords` → `daily_run_cap` → `daily_post_cap`. Phase 1.4: `daily_post_cap` counts posts **scanned** today (cap 2000) and `daily_run_cap` caps at 4; `POST /runs` returns immediately (the run is `queued`; the work happens on the job thread).

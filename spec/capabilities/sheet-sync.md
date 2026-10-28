@@ -1,8 +1,8 @@
 # Capability: Google Sheet Sync (read-only engine)
-**Phase 2 (engine built ahead of the CRM tables)**
+**Phase 2 (engine built ahead of the CRM tables; the CRM-backed repository is Phase 2 slice S2)**
 
 ## What It Does
-One-way, READ-ONLY sync from the team's Google Sheets into the CRM. The sheet is the source of truth for the fields it holds; the app never writes to Sheets. The engine is self-contained (`src/sales0/services/sheetsync/`): it parses each tab into canonical records, diffs them by row hash against a `SheetRepository`, and reports counts. The CRM-backed repository is implemented at Phase-2 integration.
+One-way, READ-ONLY sync from the team's Google Sheets into the CRM. The sheet is the source of truth for the fields it holds; the app never writes to Sheets. The engine is self-contained (`src/sales0/services/sheetsync/`): it parses each tab into canonical records, diffs them by row hash against a `SheetRepository`, and reports counts. The CRM-backed repository (`SqlSheetRepository`) is described under "Phase 2: the CRM repository".
 
 ## Sheets (defaults, overridable by settings)
 | Sheet | id | Tabs (gid) |
@@ -40,8 +40,17 @@ Sheet-owned = exactly `record.sheet_fields()` (sheet sync overwrites; sheet wins
 ## CLI
 `uv run python -m sales0.cli sync-sheets [--dry-run] [--tab NAME]` - prints per-tab `rows / added / updated / unchanged / removed / errors / warnings` only. Exit 1 if any tab failed to fetch, 2 for an unknown tab. Uses the registered CRM repository (`register_repository_factory`), else an in-memory one (nothing persisted).
 
+## Phase 2: the CRM repository (S2) — what is added on top of the engine
+The engine is unchanged except that it collects `repo.drain_errors()` after each applied row. New:
+- **`SqlSheetRepository`** (`services/sheetsync/sql_repository.py`) implements `SheetRepository` on the Phase 2 tables. State: table `sheet_sources` (one row per `(entity, key, sheet_id, gid)` with `row_number`, `row_hash`, the tab's `fields` snapshot) plus the columns `sheet_status`, `sheet_notes`, `sheet_removed_at`, `sheet_fields` on `enquiries`, `prospects`, `competitors`, `channel_groups` (`data.md` → Sheet-fed tables). One short transaction per record; a failing record rolls back alone, is reported as `apply-failed:<ExceptionName>` on its row and keeps its OLD hash so the next sync retries it.
+- **Mapping** (`services/sheetsync/mapping.py` + `status_map.py`): the exact record→column table, the Active/Outreach/Discarded status→stage tables and the "adopt, never duplicate" rules are in `data.md` → "Sheet status → CRM stage mapping" and "Sheet record → CRM column mapping". Summary: Active Enquiries → accepted `enquiries` (+ company, contacts, a prospect, and a lead/client when the status or dates show a response); Discarded Enquiries → discarded `enquiries` with the reason (no learning-loop decisions); Outreach / Prospects / Working Sheet → `prospects` keyed by LinkedIn slug (the profile's existing prospect is adopted), tagged by source tab; Competitors → `competitors` (seeded rows adopted); Groups → `channel_groups`; Weekly / Secondary → `sheet_metrics` + `sheet_metric_weeks`.
+- **Timeline:** every create / update / remove / restore writes an event with actor `sheet-sync` (field names only). Stage changes the sync applies are `stage_change` events with the same actor. No reminders are created by the sync.
+- **Surfaces:** `sync-sheets [--dry-run] [--tab NAME] [--memory]` and `crm-counts` (CLI); scheduler job `sheet_sync` becomes ready (still opt-in on the Schedule page; the interval runner is `SALES0_SHEET_SYNC_MINUTES`, default 30, first run ~20 s after boot, never overlapping, state in `sheet_sync_state`); the **Sync** page (`/sync`: Sync now, last sync, per-tab added / updated / unchanged / removed / errors / warnings, last error). A dry run never writes (not even `sheet_sync_state`).
+- **No row lost without an error entry:** per tab, `rows == added + updated + unchanged + distinct error rows`; asserted for every fixture tab.
+- **Read-only guarantee unchanged and extended:** the guard test also scans the new modules; nothing in `sales0` can issue a non-GET request to Google.
+
 ## Assumed
-- Sheet Status -> CRM stage mapping is the integrator's call; the engine only carries the raw `sheet_status`.
+- Sheet Status -> CRM stage mapping: decided in Phase 2 and recorded in `data.md` (tables) and `NOTES.md` → Phase 2 spec; a stage a human set in the app is never overwritten by the sync.
 - Row-hash fallback keys are unstable under edits (edit = remove + add); accepted for rows with no URL, e-mail or summary.
 - If a duplicate natural key disappears from the sheet, the surviving row may change key (documented risk).
 - The CSV export redirects to `doc-*-sheets.googleusercontent.com`; that GET-only host is allowed in addition to the two named hosts.

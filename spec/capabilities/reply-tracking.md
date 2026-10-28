@@ -42,6 +42,9 @@ Detects replies to emails sent from sales0, records them on the timeline, and ma
   connection to `needs_reauth`.
 - Effects via `services/events.ReplyReceived` subscribers. Default subscriber: `reply_status`
   (replied > bounced > auto_reply), stop pending follow-ups (`follow_up_of_id`), suppress unsubscribes and
-  hard bounces. Phase 2 (CRM) subscribes to the same event.
+  hard bounces. Phase 2 (CRM) subscribes to the same event (`services/crm/hooks.on_reply_received`): a human
+  reply records "Response received" on the message's prospect and, for intent `interested` / `question` /
+  `not_now` on a CONTACTED prospect, opens Lead · Meeting scheduled; `unsubscribe` sets the `no_follow_up` flag
+  and cancels the reminders; auto-replies and bounces are timeline notes only (`capabilities/crm-pipeline.md`).
 - Drafting, editing recipients, approving and sending refuse suppressed addresses (`recipient_suppressed`).
 - UI: `/replies`, `/replies/suppressions`, outbox badge, header status line.

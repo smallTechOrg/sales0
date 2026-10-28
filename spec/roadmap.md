@@ -396,36 +396,58 @@ Gate assertions the tests must make (beyond the Phase 1–1.3 sets, which stay g
 
 ### Phase 2 — CRM Memory: Pipeline, Contacts, Timeline, Signals, Registries, Import, Shared Login
 
-**Goal:** accepted enquiries become real Prospects that move New → Contacted → Follow-up 1 → Follow-up 2 → Final follow-up, convert to Leads (Meeting scheduled → Proposal sent → Won/Lost/No response) and then to Clients. Shared contacts link to everything. Every change is on a timeline. Follow-ups due today are listed. Repeat posters and competitor mentions are flagged. The existing Google Sheets can be imported, and single posts can be pasted in by hand. A shared-password login protects the app for VPS use.
+**Goal:** accepted enquiries become real Prospects (ONE per LinkedIn profile) that move New → Contacted → Follow-up 1 → Follow-up 2 → Final follow-up, convert to Leads only after contact AND a response (Meeting scheduled → Proposal sent → Won/Lost/No response) and then to Clients. Sending an approved email marks the prospect Contacted and schedules the follow-ups; a human reply to it opens the Lead. Shared contacts link to everything. Every change is on a timeline. Follow-ups due today are listed. Repeat posters and competitor mentions are flagged. **The team's two Google Sheets are synced into the CRM, one-way and READ-ONLY (the sheet is the source of truth; the app never writes to Google)**, on a 30-minute interval and on demand. Single posts can be pasted in and non-sheet CSVs imported. A shared-password login protects the app for VPS use.
 
-**Capabilities (7):** [crm-pipeline](capabilities/crm-pipeline.md), [contacts](capabilities/contacts.md), [timeline-followups](capabilities/timeline-followups.md), [signals-flags](capabilities/signals-flags.md), [registries](capabilities/registries.md), [sheet-import](capabilities/sheet-import.md), [shared-login](capabilities/shared-login.md).
+**Capabilities (8):** [crm-pipeline](capabilities/crm-pipeline.md), [contacts](capabilities/contacts.md), [timeline-followups](capabilities/timeline-followups.md), [signals-flags](capabilities/signals-flags.md), [registries](capabilities/registries.md), [sheet-sync](capabilities/sheet-sync.md) (engine already built; Phase 2 adds the CRM repository, mapping, metrics, CLI/scheduler wiring and the Sync page), [sheet-import](capabilities/sheet-import.md) (manual paste + app-owned CSV import), [shared-login](capabilities/shared-login.md). Phase 2 also wires the CRM into the already-built Phase 3 outreach, Phase 4 digest/scheduler and Phase 5 reply tracking through events (`architecture.md` → Phase 2).
 
 **Independent slices:**
 
-| Slice | Owns | Build dependency | Gate-after |
-|---|---|---|---|
-| **2A — CRM data + migration** | `src/sales0/db/models/crm.py`, `db/models/contacts.py`, `db/models/timeline.py`, `db/models/registries.py`, edits to `db/models/__init__.py` (exports only), `migrations/versions/0004_phase2_crm.py` (incl. backfill of prospects from accepted enquiries; links each to its `linkedin_profiles` row and sets `tracked`), `tests/integration/db/test_phase2_migration.py` | Phase 1.4 | — |
-| **2B — Pipeline + timeline services** | `src/sales0/services/crm/**`, `tests/integration/services/crm/**` | 2A contract | 2A |
-| **2C — Signals (repeat poster, competitor mention)** | `src/sales0/services/signals.py`, `tests/integration/services/test_signals.py` | 2A contract | 2A |
-| **2D — Import + manual paste** | `src/sales0/services/importer/**`, `tests/integration/services/importer/**`, `tests/fixtures/import/**` | 2A contract; reuses the Phase-1 triage agent | 2A |
-| **2E — Shared login** | `src/sales0/web/auth.py`, `src/sales0/web/templates/auth/**`, `src/sales0/web/routes/auth.py`, `tests/integration/web/test_auth.py` | Phase 1 | — |
-| **2F — Pipeline + Contacts UI** | `src/sales0/web/routes/pipeline.py`, `web/routes/contacts.py`, `web/templates/pipeline/**`, `web/templates/contacts/**`, `tests/integration/web/test_pipeline_routes.py` | 2B contract | 2B |
-| **2G — Registries + Import UI** | `src/sales0/web/routes/registries.py`, `web/routes/importer.py`, `web/templates/registries/**`, `web/templates/importer/**`, `tests/integration/web/test_registries_routes.py` | 2C, 2D contracts | 2C, 2D |
-| **2H — E2E + README** | `tests/e2e/test_phase2_journey.py`, `README.md` | All | All |
+> **Already built before Phase 2 (on this branch):** the sheet-sync engine (`services/sheetsync/**`, table `sheet_sync_state`, CLI `sync-sheets`, scheduler job `sheet_sync`), outreach drafting/approval/sending (Phase 3), the digest/scheduler/cost/suggestions (Phase 4), reply tracking with the `ReplyReceived` event (Phase 5). Phase 2 is the CRM that those were waiting for. All of them stay green.
 
-The routers for 2E–2G are registered by slice 2H in `web/app.py`. That is the only shared-file edit, and it is done last.
+**Independent slices** (file ownership is DISJOINT; the full path list and every shared-file edit is in `architecture.md` → Phase 2; the service signatures there are final, so every slice codes against them before S1 lands):
+
+| Slice | Owns | Depends on | Gate-after |
+|---|---|---|---|
+| **S1 — Foundation** (2 steps: **step 0 wiring skeleton first, ~15 min**, then the rest) | `db/models/{enums_crm,crm,contacts,timeline,registries,sheetdata}.py` + `models/__init__.py`; `migrations/versions/p6_crm_5b2e7d14.py` (one migration: tables, FKs on `outreach_messages` via the four-step recipe, sheet columns, backfill, competitor seeds); `services/crm/**` except `digest_sections.py` (stages, actor, views, timeline, prospects, leads, clients, followups, flags, contacts, companies, registries, pipeline, hooks); `services/profiles.py::ensure_profile`; step-0 shared edits (`config.py`, `.env.example`, `web/app.py`, `services/events.py`, `services/inbox.py`, `services/outreach/messages.py`, `tests/conftest.py`, the placeholder modules); `tests/unit/crm/**`, `tests/integration/crm/**` (not `test_digest_sections.py`), `tests/integration/db/test_migration_p6_crm.py` | Phase 1-5 as built | — (others only need the CONTRACT) |
+| **S2 — Sheet sync into the CRM** | `services/sheetsync/{sql_repository,mapping,status_map,metrics}.py`; edits to `sheetsync/{engine,repository,registry,__init__}.py`, `jobs/sheet_sync_job.py`, `cli.py`; `web/routes/sync.py`, `web/templates/sync/**`; `tests/unit/sheetsync/**` (extend), `tests/integration/sheetsync/**`, `tests/fixtures/sheets/**` | S1 contract (runtime needs S1's tables) | S1 for the integration tests |
+| **S3 — Shared login** | `web/auth.py`, `web/routes/auth.py`, `web/templates/auth/**`, `web/middleware.py` (origin list), `web/templates/base.html` (Log out control), `tests/unit/test_auth_session.py`, `tests/integration/web/test_auth.py` | step 0 only (settings, wiring) | — |
+| **S4 — CRM UI** | `web/routes/{pipeline,contacts,registries,importer}.py`; `web/templates/{pipeline,contacts,registries,importer}/**`; `web/context.py`, `web/routes/stubs.py`, `web/routes/outreach.py` (prospect prefill), `web/routes/inbox.py` (actor), `web/static/css/app.css`, `tests/integration/web/{test_pipeline_routes,test_contacts_routes,test_registries_routes,test_import_routes,test_shell,test_every_page_renders}.py` | S1 contract (views + services), S5 contract for the Import page | S1 for the route tests |
+| **S5 — Import services + digest sections** | `services/importer/**`, `services/crm/digest_sections.py`, `tests/integration/importer/**`, `tests/integration/crm/test_digest_sections.py`, `tests/fixtures/import/**` | S1 contract; S2's `mapping.apply_record` contract (CSV import reuses it) | S1, S2 |
+| **S6 — Journey, migration realism, live gate, README** | `tests/e2e/test_phase2_journey.py`, `tests/integration/db/test_migration_realistic.py`, `tests/support/crm_seed.py`, `README.md` (Phase 2 section) | all | all |
+
+**Dependency order:** step 0 (S1) → { S1 rest, S2, S3, S4, S5 in parallel, each coding against the contract and polling for the upstream module before running its integration tests } → S6. Real build order for green integration tests: S1 models+migration → S1 services → S2 / S5 → S4. S3 is independent after step 0. Each placeholder is replaced wholesale by its owner; nobody edits a file owned by another slice (shared edits are listed in `architecture.md` → "Shared-file edits").
 
 **Gate:**
 
 ```bash
-# working directory: /Users/sai/Workspace/Code/sales0
-uv run alembic upgrade head && uv run alembic current   # 0004_phase2_crm (head)
-uv run pytest tests -q                                  # real Haiku + SQLite; includes Phase-1 suite (regression)
-uv run python -m sales0                                 # background; then:
-curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/inbox   # 303 to /login when SALES0_APP_PASSWORD is set
+# working directory: /Users/sai/Workspace/Code/sales0 ; every shell: unset VIRTUAL_ENV
+uv run alembic upgrade head && uv run alembic heads && uv run alembic current   # ONE head: p6_crm_5b2e7d14 (head)
+uv run ruff check src tests
+# unit, integration and e2e run CONCURRENTLY: temp DBs, ephemeral ports (integration), 8792 (Phase 2 e2e), 8767 (boot); never 8765
+uv run pytest tests/unit -q
+uv run pytest tests/integration -q          # real Haiku + SQLite; includes the whole Phase 1-5 suite (regression) and the sheet no-write guards
+uv run pytest tests/e2e -q                  # live server + headless Chromium + real Haiku; includes test_phase2_journey.py
+# boot gate (temp DB + data dir, live mode, password set) - launch with the terminal tool's background mechanism, record the PID, kill ONLY that PID:
+SALES0_PORT=8767 SALES0_APP_PASSWORD=gate-pass SALES0_DATABASE_URL=sqlite:///<scratch>/boot.db SALES0_DATA_DIR=<scratch>/boot uv run python -m sales0
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' http://127.0.0.1:8767/inbox   # 303 http://127.0.0.1:8767/login?next=%2Finbox
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8767/api/health               # 200
+# LIVE, read-only, counts only (never inside pytest):
+uv run python -m sales0.cli sync-sheets --dry-run --memory      # per-tab rows / parse errors; Active Enquiries rows > 0
+SALES0_DATABASE_URL=sqlite:///<scratch>/live.db SALES0_DATA_DIR=<scratch>/live uv run alembic upgrade head
+SALES0_DATABASE_URL=sqlite:///<scratch>/live.db SALES0_DATA_DIR=<scratch>/live uv run python -m sales0.cli sync-sheets      # twice; 2nd run: 0 added/updated/removed
+SALES0_DATABASE_URL=sqlite:///<scratch>/live.db SALES0_DATA_DIR=<scratch>/live uv run python -m sales0.cli crm-counts
 ```
 
-**How the user tests it:** log in with the shared password. Accept an enquiry, open it in Pipeline and move it to Contacted, add a note, and set a follow-up for today. It appears under "Due today" on the Pipeline page. Mark that a reply came in and convert it to a Lead, then to Proposal sent. The timeline shows every step with timestamps. Import the two exported sheets (CSV) and see the rows appear with duplicates merged. A repeat poster shows a "Repeat poster ×N" flag. Outreach, Metrics and WhatsApp are still stubs.
+**Success criteria (Phase 2, testable):**
+- [ ] Accepting two enquiries from one LinkedIn author gives ONE prospect (`linkedin_profiles.tracked = 1`), both enquiries linked, timeline `created` + 2 `enquiry_linked`.
+- [ ] A SENT outreach message moves its prospect to Contacted and creates reminders at +3 / +7 / +14 days (Settings-driven); an unsent draft changes nothing.
+- [ ] A human `interested` / `question` / `not_now` reply to a contacted prospect creates Lead · Meeting scheduled; `unsubscribe` sets `no_follow_up` and creates no lead; an auto-reply or bounce creates none; a reply to a never-contacted prospect creates none.
+- [ ] Won creates an active Client; Lost / No response sets `linkedin_profiles.tracked = false`.
+- [ ] Sync twice = 0 changes; a sheet edit changes only sheet-owned columns; CRM notes, flags, stage and timeline survive; removal is soft; no write to Google is possible.
+- [ ] With `SALES0_APP_PASSWORD` set every page except `/login`, `/api/health`, `/static` redirects to `/login`; unset = open.
+- [ ] The migration upgrades a realistic p5-head DB with no row lost, `foreign_key_check` clean.
+
+**How the user tests it:** set `SALES0_APP_PASSWORD` in `.env`, restart, and log in. Open **Sync** and press **Sync now**: the per-tab counts appear and the sheet's prospects, competitors and groups show up in Pipeline / Competitors & Groups, marked "Synced from sheet". Accept an enquiry in the Inbox: it appears in **Pipeline** as New. Press **Draft email** on it, approve and send it (Outreach, as before): the prospect becomes **Contacted** and the three follow-ups appear on its page; set one for today and it shows under **Due today**. When the prospect replies "interested" (or you press **Response received**), convert it to a **Lead**, move it to Proposal sent and Won: it becomes a **Client**. The timeline shows every step with timestamps. A repeat poster shows "Repeat poster ×3". Contacts: search, tag, merge two duplicates. Import a CSV of legacy clients; paste a single post. Metrics and WhatsApp are still stubs. Nothing you do in sales0 changes your Google Sheets.
 
 ---
 
