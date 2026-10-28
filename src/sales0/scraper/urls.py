@@ -14,6 +14,7 @@ from typing import Literal
 from urllib.parse import quote, unquote, urlencode, urlsplit, urlunsplit
 
 from sales0.config import Settings
+from sales0.linkedin_url import profile_slug as _canonical_profile_slug
 from sales0.scraper import selectors as S
 from sales0.scraper.types import LinkKind
 
@@ -25,7 +26,6 @@ SORT_VALUES: dict[str, str] = {"latest": '"date_posted"', "relevance": '"relevan
 
 FEED_UPDATE_HREF = re.compile(S.FEED_UPDATE_HREF_RE)
 POSTS_SLUG_HREF = re.compile(S.POSTS_SLUG_HREF_RE)
-_PROFILE_PATH = re.compile(r"^/(in|company)/([^/?#]+)")
 
 
 def base_url(settings: Settings) -> str:
@@ -181,14 +181,9 @@ def link_kind_of(url: str | None) -> LinkKind | None:
 
 
 def profile_slug(url: str | None) -> str | None:
-    """``…/in/Priya-Menon%2D1/?x`` → ``"in/priya-menon-1"``; ``…/company/acme/`` → ``"company/acme"``."""
-    if not isinstance(url, str) or not url.strip():
-        return None
-    path = _path_of(url.strip())
-    if path is None:
-        return None
-    match = _PROFILE_PATH.match(path)
-    if not match:
-        return None
-    slug = unquote(match.group(2)).strip().lower()
-    return f"{match.group(1)}/{slug}" if slug else None
+    """``…/in/Priya-Menon%2D1/?x`` → ``"in/priya-menon-1"``; ``…/company/acme/`` → ``"company/acme"``.
+
+    Delegates to the one canonicaliser (``sales0.linkedin_url``): percent-decoded, NFC, casefolded, host
+    must be linkedin.com (or the app's fixture routes); site-relative card hrefs (``/in/x/``) are accepted.
+    """
+    return _canonical_profile_slug(url, allow_fixture=True, allow_relative=True)

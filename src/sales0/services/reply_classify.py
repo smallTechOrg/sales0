@@ -2,7 +2,7 @@
 
 Strong header evidence decides without any LLM call (bounces from MAILER-DAEMON or with
 multipart/report, Auto-Submitted, X-Autoreply, Precedence: bulk|auto_reply|junk, "Automatic
-reply" subjects, no-reply senders). Everything else goes to Haiku (feature ``triage``,
+reply" subjects, no-reply senders). Everything else goes to Haiku (feature ``reply``,
 prompt ``reply-v1``), which sees only sender, subject and Gmail's snippet and answers
 through a forced tool call. The text is untrusted: the answer is validated against fixed enums.
 """
@@ -23,6 +23,7 @@ from sales0.integrations.gmail.threads import ThreadMessage
 from sales0.llm import LLMAuthError, LLMBadResponse, LLMClient, LLMError, LLMModelNotFound, get_llm_client
 from sales0.llm.client import StructuredRequest
 from sales0.services._common import now_or
+from sales0.services.costs_report import SpendCapReached, ensure_within_spend_cap
 
 PROMPT_VERSION = "reply-v1"
 TOOL_NAME = "record_reply"
@@ -92,11 +93,11 @@ def _tool_schema() -> dict[str, object]:
 def _llm_row(resp: object | None, now: datetime, exc: Exception | None = None) -> LlmCall:
     if resp is None:
         return LlmCall(
-            feature="triage", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
+            feature="reply", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
             error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
         )  # fmt: skip
     return LlmCall(
-        feature="triage", model=resp.model[:100], prompt_version=PROMPT_VERSION,  # type: ignore[attr-defined]
+        feature="reply", model=resp.model[:100], prompt_version=PROMPT_VERSION,  # type: ignore[attr-defined]
         input_tokens=resp.input_tokens, output_tokens=resp.output_tokens,  # type: ignore[attr-defined]
         cost_usd_micros=resp.cost_usd_micros, latency_ms=resp.latency_ms, status="ok",  # type: ignore[attr-defined]
         request_id=resp.request_id[:100] if resp.request_id else None, created_at=now,  # type: ignore[attr-defined]
@@ -109,14 +110,16 @@ def _inert(text: str, limit: int) -> str:
 
 def classify_with_llm(db: Session, llm: LLMClient | None, msg: ThreadMessage, *, now: datetime | None = None) -> Classification:
     """Ask Haiku. Raises FATAL LLM errors and LLMError (transient) for the caller to handle;
-    a malformed answer raises LLMBadResponse. Adds an ``llm_calls`` row either way."""
+    a malformed answer raises LLMBadResponse. Adds an ``llm_calls`` row either way.
+    Raises ``SpendCapReached`` BEFORE any call (no row) when the monthly cap is used up; the poller defers."""
+    ensure_within_spend_cap(db, now)
     client = llm or get_llm_client()
     user = (
         f"From: {_inert(msg.from_addr, 120)}\nSubject: {_inert(msg.subject, 200)}\n"
         f"Snippet: {_inert(msg.snippet, 500)}\n"
     )
     req = StructuredRequest(
-        feature="triage",
+        feature="reply",
         system=(PROMPTS_DIR / "reply_classify_system.md").read_text(encoding="utf-8").strip() + "\n",
         messages=[{"role": "user", "content": user}],
         tool_name=TOOL_NAME,
@@ -147,4 +150,4 @@ def classify_with_llm(db: Session, llm: LLMClient | None, msg: ThreadMessage, *,
     )  # fmt: skip
 
 
-__all__ = ["FATAL_LLM_ERRORS", "PROMPT_VERSION", "Classification", "classify_by_headers", "classify_with_llm"]
+__all__ = ["SpendCapReached", "FATAL_LLM_ERRORS", "PROMPT_VERSION", "Classification", "classify_by_headers", "classify_with_llm"]

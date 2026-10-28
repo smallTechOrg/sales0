@@ -58,6 +58,15 @@ class Prospect(Base):
     __tablename__ = "prospects"
     __table_args__ = (
         Index("ix_prospects_status_stage", "status", "stage"),
+        # One prospect per originating enquiry (a profile-less enquiry has no other identity): concurrent accepts
+        # lose with an IntegrityError that ``ensure_for_enquiry`` turns into a re-read.
+        Index(
+            "uq_prospects_origin_enquiry",
+            "origin_enquiry_id",
+            unique=True,
+            sqlite_where=text("origin_enquiry_id IS NOT NULL"),
+            postgresql_where=text("origin_enquiry_id IS NOT NULL"),
+        ),
         in_check("kind", PROSPECT_KINDS, "kind"),
         in_check("stage", PROSPECT_STAGES, "stage"),
         in_check("stage_source", STAGE_SOURCES, "stage_source"),

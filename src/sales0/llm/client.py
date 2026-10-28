@@ -6,7 +6,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-Feature = Literal["triage", "ping", "research", "drafting", "suggest"]
+Feature = Literal["triage", "ping", "research", "drafting", "suggest", "reply"]
 # Anthropic ``output_config.effort``. None = the field is not sent (provider default).
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 

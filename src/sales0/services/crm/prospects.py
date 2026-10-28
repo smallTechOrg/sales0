@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from datetime import date, datetime
 
 from sqlalchemy import exists, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sales0.db.models import (
@@ -368,6 +369,10 @@ def _source_of(e: Enquiry) -> str:
     return e.origin if e.origin in ("sheet", "import", "manual") else "enquiry"
 
 
+def _by_origin(db: Session, enquiry_id: int) -> Prospect | None:
+    return db.scalar(select(Prospect).where(Prospect.origin_enquiry_id == enquiry_id).order_by(Prospect.id).limit(1))
+
+
 def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ProspectView:
     e = db.get(Enquiry, enquiry_id)
     if e is None:
@@ -393,6 +398,10 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
             e.author_profile_id = profile_id
     prof = db.get(LinkedinProfile, profile_id) if profile_id else None
     p = db.scalar(select(Prospect).where(Prospect.linkedin_profile_id == profile_id)) if profile_id else None
+    if p is None:
+        # a profile-less enquiry has no other identity than itself: a prospect that already names it as its
+        # origin (link lost, or a concurrent accept) is THE prospect (unique index uq_prospects_origin_enquiry)
+        p = _by_origin(db, e.id)
     created = p is None
     if p is None:
         name = (e.company or "").strip() or (e.author_name or "").strip() or (e.contact_person or "").strip() or (
@@ -403,9 +412,22 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
             origin_enquiry_id=e.id, stage="new", stage_source="app", status="open", source=_source_of(e),
             actor=actor.label[:80], actor_member_id=actor.member_id, created_at=stamp, updated_at=stamp,
         )
-        db.add(p)
-        db.flush()
-    else:
+        try:
+            with db.begin_nested():
+                db.add(p)
+                db.flush()
+        except IntegrityError:
+            # lost a race: another writer committed a prospect for this enquiry (or profile) between our read and
+            # our insert. Take theirs instead of making a duplicate.
+            if p in db:
+                db.expunge(p)
+            p = _by_origin(db, e.id) or (
+                db.scalar(select(Prospect).where(Prospect.linkedin_profile_id == profile_id)) if profile_id else None
+            )
+            if p is None:
+                raise
+            created = False
+    if not created:
         if p.company_id is None and comp is not None:
             p.company_id = comp.id
         if p.origin_enquiry_id is None:

@@ -275,8 +275,13 @@ Run `sync-sheets` twice: the second run reports 0 added / updated / removed.
 
 **Upgrading an existing database.** `uv run alembic upgrade head` keeps every row. Accepted
 enquiries are turned into prospects (one per LinkedIn author) with a timeline, so the
-Pipeline is not empty after the upgrade. Back up `data/sales0.db` (with its `-wal`/`-shm`)
-first if you want a way back: `uv run alembic downgrade -1` also works.
+Pipeline is not empty after the upgrade. For a way back, take a consistent backup first with
+SQLite's online backup, exactly as in [Backups (SQLite)](#backups-sqlite) (do not `cp` the live
+file and its `-wal`/`-shm`); restoring that backup is the supported rollback. `uv run alembic
+downgrade -1` is a structural convenience only: the `0003` and `0004` downgrades now keep child
+rows (they rebuild tables with foreign keys switched off and check them afterwards), but a
+downgrade never restores data the upgrade moved or backfilled (for example AI-discarded
+enquiries that became *Skipped by AI* rows).
 
 ## Prospect watch and Metrics
 
@@ -552,7 +557,16 @@ uv run alembic upgrade head        # from /opt/sales0, in case the backup is fro
 systemctl start sales0
 ```
 
-Before upgrading the app or running a migration, take a backup first; `alembic downgrade -1` exists but a backup is the safe way back.
+Before upgrading the app or running a migration, take a backup first. Restoring the backup is the supported way back; `alembic downgrade -1` only reverses the schema (it preserves child rows but does not restore data the upgrade moved) and is not a substitute.
+
+### Spend cap accuracy
+
+The monthly cap is checked **before** each AI call against the cost already recorded; a call's
+cost is only recorded when it finishes. There is no in-flight accounting, so calls that start
+concurrently (parallel triage, a run plus a watch run, a drafting request) can each pass the
+check and together overshoot the cap. The overshoot is bounded: roughly the number of
+concurrent calls times the cost of one call (cents with Haiku). Treat the cap as a soft limit
+and set it a little below the real budget.
 
 ## Gmail OAuth (per person)
 

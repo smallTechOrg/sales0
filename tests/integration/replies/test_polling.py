@@ -21,7 +21,7 @@ HUMAN = {"kind": "human", "intent": "interested", "reason": "wants a call"}
 
 def llm_rows(db: Session) -> int:
     db.expire_all()
-    return int(db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.feature == "triage")) or 0)
+    return int(db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.feature == "reply")) or 0)
 
 
 def state(db: Session, member_id: int) -> ReplyPollState:
@@ -158,7 +158,7 @@ def test_ambiguous_mail_goes_to_the_llm_with_sender_subject_and_snippet(db: Sess
     reply(team, team.ann, msg, subject="Re: Workshop for Acme", snippet="Who are you and how did you get my address?")
     llm = FakeLLMClient([{"kind": "human", "intent": "question", "reason": "who are you"}])
     replies.poll_all(llm=llm)
-    assert llm.calls == 1 and llm.requests[0].feature == "triage"
+    assert llm.calls == 1 and llm.requests[0].feature == "reply"
     user = llm.requests[0].messages[0]["content"]
     assert "p@acme.example" in user and "Who are you" in user
     (row,) = all_replies(db)
@@ -175,7 +175,7 @@ def test_llm_transient_failure_defers_then_the_next_cycle_stores_it(db: Session,
     assert state(db, team.ann.id).consecutive_failures == 0 and state(db, team.ann.id).last_ok_at is None
     (r2,) = replies.poll_all(llm=llm, force=True)
     assert r2.new_replies == 1 and len(all_replies(db)) == 1 and fresh(db, msg).reply_status == "replied"
-    statuses = sorted(db.scalars(select(LlmCall.status).where(LlmCall.feature == "triage")))
+    statuses = sorted(db.scalars(select(LlmCall.status).where(LlmCall.feature == "reply")))
     assert statuses == ["error", "ok"]
 
 

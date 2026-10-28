@@ -41,7 +41,7 @@ def repository_available() -> bool:
     return get_repository() is not None
 
 
-def run_sync(settings: Settings) -> SyncReport:
+def run_sync(settings: Settings, *, allow_mass_removal: bool = False) -> SyncReport:
     repo = get_repository()
     if repo is None:
         raise RuntimeError(NO_REPOSITORY)
@@ -56,7 +56,9 @@ def run_sync(settings: Settings) -> SyncReport:
         )
         source = fetcher
     try:
-        engine = SyncEngine(source, repo, tabs_from_settings(settings), today=lambda: datetime.now(settings.tz).date())
+        engine = SyncEngine(
+            source, repo, tabs_from_settings(settings), today=lambda: datetime.now(settings.tz).date(), allow_mass_removal=allow_mass_removal
+        )
         return engine.run(dry_run=False, only_tab=None)
     finally:
         if fetcher is not None:
@@ -66,6 +68,7 @@ def run_sync(settings: Settings) -> SyncReport:
 def build_runner(settings: Settings, **overrides) -> SheetSyncRunner:  # type: ignore[no-untyped-def]
     kwargs = {
         "job": lambda: run_sync(settings),
+        "mass_removal_job": lambda: run_sync(settings, allow_mass_removal=True),
         "interval_min": settings.sheet_sync_minutes,
         "state": SqlStateStore(get_sessionmaker()),
     }

@@ -17,7 +17,7 @@
         <p id="cap-line"><strong>{{ usd_precise(report.cap.month_micros) }}</strong> of {{ usd_precise(report.cap.cap_micros) }} used ({{ "%.0f"|format(report.cap.pct) }}%)
           - <span class="badge" id="cap-state" data-state="{{ report.cap.state }}">{{ {"ok": "Within cap", "warn": "Close to the cap", "exceeded": "Cap reached - AI paused"}[report.cap.state] }}</span></p>
         <progress max="100" value="{{ [report.cap.pct, 100]|min }}" aria-label="Share of the monthly cap used"></progress>
-        <p class="muted">When the cap is reached every AI feature stops (triage, research, drafting, suggestions, digest summary). A run keeps what it saved but leaves new enquiries untriaged ("pending"); use Retry triage after raising the cap or next month.</p>
+        <p class="muted">When the cap is reached every AI feature stops (triage, reply classification, research, drafting, suggestions, digest summary). A run keeps what it saved but leaves new enquiries untriaged ("pending"); use Retry triage after raising the cap or next month.</p>
       {% else %}
         <p id="cap-line">No cap is set. Set <code>SALES0_MONTHLY_SPEND_CAP_USD</code> in <code>.env</code> (0 = off) and restart to get a warning at the warning threshold and a hard stop at 100%.</p>
       {% endif %}

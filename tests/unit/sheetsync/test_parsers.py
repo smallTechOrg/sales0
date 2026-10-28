@@ -200,3 +200,16 @@ def test_no_personal_data_in_issue_messages() -> None:
             blob = f"{issue.code} {issue.message}".lower()
             for secret in ("@", "acme", "linkedin.com", "stray", "pat example", "+91"):
                 assert secret not in blob, (name, blob)
+
+
+def test_person_key_keeps_the_linkedin_kind_and_decodes_the_slug() -> None:
+    rows = [
+        ["Pat", "https://www.linkedin.com/in/Pat-Example%2D123/", "Pat Co", "", "", "", "", ""],
+        ["Acme page", "linkedin.com/company/Acme-Corp", "Acme", "", "", "", "", ""],
+        ["Short", "https://lnkd.in/p/abc", "Short Co", "", "", "", "", ""],
+    ]
+    p = parse("Prospects", fx.to_csv([fx.PERSON_HEADER, *rows]))
+    keys = [r.record.key for r in p.rows]
+    assert keys[0] == "li:pat-example-123" and keys[1] == "li:company/acme-corp"
+    assert keys[2].startswith("nc:")  # unresolved short link: name + company
+    assert p.rows[1].record.linkedin_slug == "acme-corp"

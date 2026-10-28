@@ -34,8 +34,21 @@ _URL = re.compile(
     r"(?:https?://|www\.)\S+|(?<![\w@.])(?:[a-z0-9-]+\.)+[a-z]{2,}/\S*",
     re.IGNORECASE,
 )
+# The numeric LinkedIn post id (urn:li:activity:N, /posts/x-activity-N-h, ugcPost/share variants). The same
+# pattern is frozen in migration p9_activity_d4a8c2e6 and used by the sheet sync (Enquiry.activity_id).
+ACTIVITY_RE = re.compile(r"(?:activity|ugcPost|share)[-:](\d{6,})", re.IGNORECASE)
 _HASHTAG = re.compile(r"#[^\s#]+")
 _WS = re.compile(r"\s+")
+
+
+def activity_id_of(*texts: str | None) -> str | None:
+    """The first LinkedIn activity id found in ``texts`` (URLs / URNs), or None."""
+    for t in texts:
+        if t:
+            m = ACTIVITY_RE.search(t)
+            if m:
+                return m.group(1)
+    return None
 
 
 def normalize_text(text: str) -> str:
@@ -93,7 +106,18 @@ def _source_url(post: ScrapedPost) -> str | None:
     return post.url if post.link_kind == "post" else post.search_url
 
 
+def _by_activity_id(db: Session, activity: str | None) -> int | None:
+    """Indexed lookup (``enquiries.activity_id``) replacing the old ``LIKE '%id%'`` scan."""
+    if not activity:
+        return None
+    return db.scalar(select(Enquiry.id).where(Enquiry.activity_id == activity).order_by(Enquiry.id).limit(1))
+
+
 def _near_duplicate_of(db: Session, post: ScrapedPost) -> int | None:
+    activity = activity_id_of(post.urn, post.url, post.source_ref)
+    by_activity = _by_activity_id(db, activity)
+    if by_activity is not None:
+        return by_activity  # same LinkedIn post id = same post, whatever the author URL looks like
     slug = profile_slug(post.author_profile_url)
     if slug is None or not normalize_text(post.text):
         return None
@@ -134,10 +158,11 @@ def _merge(
                 first_seen_at=now,
             )
         )
-    if post.link_kind == "post":
-        enquiry = db.get(Enquiry, enquiry_id)
-        if enquiry is not None and link_kind_of(enquiry.source_url) != "post":
-            enquiry.source_url = post.url
+    enquiry = db.get(Enquiry, enquiry_id)
+    if enquiry is not None and enquiry.activity_id is None:
+        enquiry.activity_id = activity_id_of(post.urn, post.url, post.source_ref)
+    if post.link_kind == "post" and enquiry is not None and link_kind_of(enquiry.source_url) != "post":
+        enquiry.source_url = post.url
 
 
 def _add_hit(
@@ -212,6 +237,7 @@ def upsert_post(
         author_headline=clip(post.author_headline, 500),
         author_profile_url=post.author_profile_url,
         source_url=post.url,
+        activity_id=activity_id_of(post.urn, post.url, post.source_ref),
         date_posted=post.posted_date,
         date_added=now,
         review_status="pending_review",
@@ -235,6 +261,8 @@ def upsert_post(
 
 
 __all__ = [
+    "ACTIVITY_RE",
+    "activity_id_of",
     "content_hash",
     "near_duplicate",
     "normalize_text",

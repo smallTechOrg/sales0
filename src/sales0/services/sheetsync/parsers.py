@@ -45,6 +45,7 @@ class ParsedRow:
     record: SheetRecord
     row_number: int
     row_hash: str
+    natural_key: str | None = None  # the key before a duplicate was re-keyed (set on every row of a duplicate group)
 
 
 @dataclass
@@ -200,6 +201,7 @@ class _Ctx:
     tab: TabSpec
     today: date
     warn: Callable[[str], None]
+    inferred: list[str] = field(default_factory=list)  # date fields parsed without a year in this row
 
 
 def _parse_table(text: str, tab: TabSpec, today: date, build: Builder) -> TabParse:
@@ -218,6 +220,7 @@ def _parse_table(text: str, tab: TabSpec, today: date, build: Builder) -> TabPar
         out.warnings.append(RowIssue(hdr_idx + 1, "duplicate-header", f"{dups} repeated column header(s) ignored"))
     needed = REQUIRED_ANY[tab.kind]
     seen: set[tuple[str, str]] = set()
+    first_at: dict[tuple[str, str], int] = {}  # natural record id -> index of the first row in out.rows
     for offset, raw in enumerate(rows[hdr_idx + 1 :]):
         rownum = hdr_idx + 2 + offset
         cells: dict[str, str] = {}
@@ -248,8 +251,13 @@ def _parse_table(text: str, tab: TabSpec, today: date, build: Builder) -> TabPar
         except Exception as exc:  # noqa: BLE001 — a bad row must never abort the tab
             out.errors.append(RowIssue(rownum, "row-parse-failed", type(exc).__name__))
             continue
+        natural: str | None = None
         if record.record_id in seen:
             # Same natural key as an earlier row: keep both when the rows differ, keyed by row hash.
+            natural = record.key
+            at = first_at.get(record.record_id)
+            if at is not None and out.rows[at].natural_key is None:
+                out.rows[at] = replace(out.rows[at], natural_key=natural)
             record = replace(record, key="row:" + row_hash)
             if hasattr(record, "key_source"):
                 record = replace(record, key_source="row_hash")  # type: ignore[type-var]
@@ -258,7 +266,8 @@ def _parse_table(text: str, tab: TabSpec, today: date, build: Builder) -> TabPar
                 out.errors.append(RowIssue(rownum, "duplicate-row", "identical to an earlier row"))
                 continue
         seen.add(record.record_id)
-        out.rows.append(ParsedRow(record, rownum, row_hash))
+        first_at.setdefault(record.record_id, len(out.rows))
+        out.rows.append(ParsedRow(record, rownum, row_hash, natural))
     return out
 
 
@@ -266,9 +275,11 @@ def _parse_table(text: str, tab: TabSpec, today: date, build: Builder) -> TabPar
 def _date(ctx: _Ctx, raw: str, name: str, *, not_after: date | None = None) -> date | None:
     if v.is_null(raw):
         return None
-    d = v.parse_date(raw, ref=ctx.today, not_after=not_after)
+    d, inferred = v.parse_date_info(raw, ref=ctx.today, not_after=not_after)
     if d is None:
         ctx.warn(f"bad-date:{name}")
+    elif inferred:
+        ctx.inferred.append(name)
     return d
 
 
@@ -346,6 +357,7 @@ def _enquiry_fields(c: dict[str, str], rownum: int, row_hash: str, ctx: _Ctx) ->
         "keyword_used": v.nullable(c.get("keyword_used")),
         "sheet_update": v.nullable(c.get("update")),
         "contact_person": v.nullable(c.get("contact_person")),
+        "year_inferred": tuple(ctx.inferred),
     }
 
 
@@ -361,11 +373,12 @@ def _build_discarded(c: dict[str, str], rownum: int, row_hash: str, ctx: _Ctx) -
 def _build_person(c: dict[str, str], rownum: int, row_hash: str, ctx: _Ctx) -> SheetRecord:
     li = v.nullable(c.get("linkedin"))
     slug = v.linkedin_slug(li)
+    li_key = v.linkedin_key(li)
     name, company = v.nullable(c.get("name")), v.nullable(c.get("company"))
     if li and not slug and not v.looks_like_url(li):
         ctx.warn("bad-linkedin-url")
     if slug:
-        key, key_source = f"li:{slug}", "linkedin"
+        key, key_source = f"li:{li_key}", "linkedin"
     else:
         key = "nc:" + v.stable_hash(v.norm_key_text(name), v.norm_key_text(company))
         key_source = "name_company"

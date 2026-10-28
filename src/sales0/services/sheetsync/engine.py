@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import time
+from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, datetime
 
 from sales0.clock import utcnow
+from sales0.config import get_settings
 from sales0.services.sheetsync.fetch import SheetFetchError, TabSource
-from sales0.services.sheetsync.parsers import RowIssue, parse_tab
+from sales0.services.sheetsync.parsers import ParsedRow, RowIssue, parse_tab
 from sales0.services.sheetsync.report import SyncReport, TabReport
 from sales0.services.sheetsync.records import SheetDiscarded, SheetEnquiry, SheetOutreachPerson, SheetProspect
 from sales0.services.sheetsync.status_map import map_enquiry_status, map_person_status
@@ -41,6 +44,43 @@ def _count_unknown(rows: list) -> int:  # type: ignore[type-arg]
     return n
 
 
+def _as_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10]) if value else None
+    except ValueError:
+        return None
+
+
+_KEY_SOURCE_BY_PREFIX = {"post:": "post", "url:": "post", "eh:": "email_summary", "li:": "linkedin", "nc:": "name_company", "row:": "row_hash"}
+
+
+def _rekey(row: ParsedRow, key: str) -> ParsedRow:
+    """The row with another record key (a duplicate group's identity assignment); no-op if unchanged."""
+    rec = row.record
+    if rec.key == key:
+        return row
+    changes: dict[str, str] = {"key": key}
+    if hasattr(rec, "key_source"):
+        changes["key_source"] = next((src for pre, src in _KEY_SOURCE_BY_PREFIX.items() if key.startswith(pre)), "row_hash")
+    return replace(row, record=replace(rec, **changes))  # type: ignore[type-var]
+
+
+def _freeze_years(rec, stored_fields: dict | None):  # type: ignore[no-untyped-def]
+    """Reuse the stored year of a year-less date while its day and month are unchanged (audit #4)."""
+    if not isinstance(rec, SheetEnquiry) or not rec.year_inferred or not stored_fields:
+        return rec
+    changes = {}
+    for name in rec.year_inferred:
+        new, old = getattr(rec, name, None), _as_date(stored_fields.get(name))
+        if new is not None and old is not None and new != old and (new.month, new.day) == (old.month, old.day):
+            changes[name] = old
+    return replace(rec, **changes) if changes else rec
+
+
 class SyncEngine:
     def __init__(
         self,
@@ -56,7 +96,8 @@ class SyncEngine:
         self._repo = repository
         self._tabs = tabs
         self._now = now
-        self._today = today or (lambda: now().date())
+        # 'today' is the configured local date (a 23:30-UTC run is already tomorrow in Asia/Kolkata)
+        self._today = today or (lambda: now().astimezone(get_settings().tz).date())
         self._allow_mass = allow_mass_removal
 
     def run(self, *, dry_run: bool = False, only_tab: str | None = None) -> SyncReport:
@@ -106,35 +147,18 @@ class SyncEngine:
             tr.fetch_error = parsed.fatal  # unusable tab: report, and never remove from it
             return tr
 
-        present: set[RecordId] = set()
-        for row in parsed.rows:
-            rid = row.record.record_id
-            present.add(rid)
-            if rid in seen_across:
-                collisions.add(rid)
-            seen_across.add(rid)
-            src = SheetSource(tab.sheet_id, tab.gid, row.row_number, row.row_hash, tab.name)
-            stored = self._repo.get_by_key(*rid)
-            current = stored.sources.get(tab.tab_key) if stored else None
-            kind = "added"
-            if current is None:
-                tr.added += 1
-            elif current.row_hash == row.row_hash and stored is not None and stored.sheet_removed_at is None:
-                tr.unchanged += 1
-                if current.row_number != row.row_number and not dry_run:
-                    self._repo.refresh_source(*rid, src)
-                continue
-            else:
-                tr.updated += 1
-                kind = "updated"
-            if not dry_run:
-                self._repo.upsert(row.record, src)
-                failed = self._drain(self._repo)
-                if failed:
-                    # The row was NOT applied (and keeps its old hash, so the next sync retries it):
-                    # it moves from added/updated to the error list - no row is lost silently.
-                    setattr(tr, kind, getattr(tr, kind) - 1)
-                    tr.errors.extend(failed)
+        stored_ids = self._repo.list_keys_for_tab(tab.sheet_id, tab.gid)
+        rows = self._stabilise_keys(tab, parsed.rows, stored_ids)
+        present: set[RecordId] = {row.record.record_id for row in rows}
+        begin = getattr(self._repo, "begin_tab", None)
+        if callable(begin) and not dry_run:
+            begin(tab.sheet_id, tab.gid, present)  # lets the repository tell an edited row from a brand-new one
+        try:
+            self._apply_rows(tab, tr, rows, dry_run, seen_across, collisions)
+        finally:
+            end = getattr(self._repo, "end_tab", None)
+            if callable(end):
+                end(tab.sheet_id, tab.gid)
 
         stored = self._repo.list_keys_for_tab(tab.sheet_id, tab.gid)
         gone = stored - present
@@ -150,3 +174,69 @@ class SyncEngine:
                 tr.removed = self._repo.mark_removed(tab.sheet_id, tab.gid, gone)
                 tr.errors.extend(self._drain(self._repo))
         return tr
+
+    def _stabilise_keys(self, tab: TabSpec, rows: list[ParsedRow], stored_ids: set[RecordId]) -> list[ParsedRow]:
+        """Give rows that share a natural key a STABLE identity (audit #10).
+
+        The parser keys the first such row by the natural key and re-keys the others by their row hash,
+        by sheet order. Here the identity follows what is stored: a row that already lives under its own
+        ``row:<hash>`` key keeps it; the natural key goes to the row whose hash the stored source holds
+        (else the first). Reordering or deleting a duplicate therefore never moves content between enquiries.
+        """
+        out = list(rows)
+
+        def own(r: ParsedRow) -> RecordId:
+            return (r.record.ENTITY, "row:" + r.row_hash)
+
+        for i, r in enumerate(out):
+            # A lone row that used to be a re-keyed duplicate keeps its own identity - unless it is the same
+            # enquiry as the natural key's (a shared post link): then it is promoted when the first row is gone.
+            if r.natural_key is None and not r.record.key.startswith("row:") and own(r) in stored_ids:
+                mine, natural = self._repo.get_by_key(*own(r)), self._repo.get_by_key(r.record.ENTITY, r.record.key)
+                shared = mine is not None and natural is not None and mine.target_id is not None and mine.target_id == natural.target_id
+                if not shared:
+                    out[i] = _rekey(r, own(r)[1])
+        groups: dict[RecordId, list[int]] = defaultdict(list)
+        for i, r in enumerate(out):
+            if r.natural_key is not None:
+                groups[(r.record.ENTITY, r.natural_key)].append(i)
+        for (entity, natural), idxs in groups.items():
+            free = [i for i in idxs if own(out[i]) not in stored_ids]
+            winner = None
+            if free:
+                stored = self._repo.get_by_key(entity, natural)
+                src = stored.sources.get(tab.tab_key) if stored else None
+                winner = next((i for i in free if src is not None and out[i].row_hash == src.row_hash), free[0])
+            for i in idxs:
+                out[i] = _rekey(out[i], natural if i == winner else own(out[i])[1])
+        return out
+
+    def _apply_rows(self, tab: TabSpec, tr: TabReport, rows: list[ParsedRow], dry_run: bool, seen_across: set[RecordId], collisions: set[RecordId]) -> None:
+        for row in rows:
+            rid = row.record.record_id
+            if rid in seen_across:
+                collisions.add(rid)
+            seen_across.add(rid)
+            src = SheetSource(tab.sheet_id, tab.gid, row.row_number, row.row_hash, tab.name)
+            stored = self._repo.get_by_key(*rid)
+            current = stored.sources.get(tab.tab_key) if stored else None
+            record = _freeze_years(row.record, stored.per_tab.get(tab.tab_key) if stored else None)
+            kind = "added"
+            if current is None:
+                tr.added += 1
+            elif current.row_hash == row.row_hash and stored is not None and stored.sheet_removed_at is None:
+                tr.unchanged += 1
+                if current.row_number != row.row_number and not dry_run:
+                    self._repo.refresh_source(*rid, src)
+                continue
+            else:
+                tr.updated += 1
+                kind = "updated"
+            if not dry_run:
+                self._repo.upsert(record, src)
+                failed = self._drain(self._repo)
+                if failed:
+                    # The row was NOT applied (and keeps its old hash, so the next sync retries it):
+                    # it moves from added/updated to the error list - no row is lost silently.
+                    setattr(tr, kind, getattr(tr, kind) - 1)
+                    tr.errors.extend(failed)

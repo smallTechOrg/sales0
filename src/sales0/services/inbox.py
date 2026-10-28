@@ -12,12 +12,15 @@ from sqlalchemy.orm import Session
 from sales0.db.models import (
     Enquiry, EnquiryKeywordHit, EnquirySource, LinkedinProfile, LlmCall, Offering, TeamMember, TriageDecision,
 )
+from sales0.db.locks import begin_write
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.llm import LLMAuthError, LLMModelNotFound
 from sales0.scraper.urls import link_kind_of
 from sales0.services import events
 from sales0.services._common import clip, not_found, now_or, record_history
+from sales0.services.crm import timeline
+from sales0.services.crm.actor import actor_for
 from sales0.services.views import EnquiryCardView, InboxPage, InboxTab
 
 TAB_STATUS: dict[str, str] = {"review": "pending_review", "accepted": "accepted", "discarded": "discarded"}
@@ -270,7 +273,13 @@ def decide(
     ids = list(dict.fromkeys(int(i) for i in (enquiry_ids or [])))
     if not ids or decision not in ("accept", "discard"):
         raise DomainError("decision_invalid", "Choose Accept or Discard for at least one enquiry.", 400)
-    rows = {e.id: e for e in db.scalars(select(Enquiry).where(Enquiry.id.in_(ids))).all()}
+    # Take the write lock BEFORE reading the rows: two simultaneous decisions on one enquiry serialise here and the
+    # loser re-reads the winner's committed state (-> idempotent no-op below) instead of acting on a stale read.
+    begin_write(db)
+    rows = {
+        e.id: e
+        for e in db.scalars(select(Enquiry).where(Enquiry.id.in_(ids)).execution_options(populate_existing=True)).all()
+    }
     if len(rows) != len(ids):
         raise not_found()
     pending = [i for i in ids if rows[i].triage_status == "pending"]
@@ -285,6 +294,7 @@ def decide(
     stamp = now_or(now)
     preset = clip(discard_reason, 200)
     by_note = _by_note(db, acted_by_member_id)
+    actor = actor_for(db, actor_member_id, acted_by_member_id)
     previous: dict[int, str] = {}
     for eid in ids:
         e = rows[eid]
@@ -297,6 +307,15 @@ def decide(
             to_status, to_stage = "discarded", None
             is_override = e.ai_verdict == "genuine"
             reason = preset or clip(e.ai_reason, 200)
+        if e.review_status == to_status:
+            # Idempotent: already in the target state -> no new TriageDecision (it would double-count in the
+            # few-shot learning) and no status_history row; only an audit trace that it was asked again.
+            timeline.add_event(
+                db, subject_type="enquiry", subject_id=e.id, kind="note", actor=actor, occurred_at=stamp,
+                body=f"{'Accept' if decision == 'accept' else 'Discard'} repeated; already {to_status} (no change).",
+                data={"system": True, "decision": f"{decision}_repeat", "status": to_status},
+            )
+            continue
         record_history(
             db, "enquiry", e.id, "review_status", e.review_status, to_status, actor_user_id=actor_user_id, now=stamp,
             note=by_note,
@@ -319,6 +338,14 @@ def decide(
                 decided_at=stamp,
                 actor_user_id=actor_user_id,
             )
+        )
+        # The timeline is the audit trail for every decision, also when there is (not yet) a prospect: the event is
+        # scoped to the enquiry (subject_type 'enquiry') and joins the prospect's timeline once it is linked.
+        timeline.add_event(
+            db, subject_type="enquiry", subject_id=e.id, kind="note", actor=actor, occurred_at=stamp,
+            body=("Accepted" if decision == "accept" else "Discarded" + (f": {reason}" if reason else ""))
+            + (" (overriding the AI)" if is_override else ""),
+            data={"system": True, "decision": decision, "from": previous[eid], "override": is_override, "reason": reason},
         )
     db.flush()
     for eid in ids:
@@ -382,6 +409,11 @@ def update_fields(
             note=_by_note(db, acted_by_member_id),
         )
     if changed:
+        timeline.add_event(
+            db, subject_type="enquiry", subject_id=e.id, kind="note", actor=actor_for(db, actor_user_id, acted_by_member_id),
+            body="Edited: " + ", ".join(f"{f} {'-' if b is None else b} -> {'-' if a is None else a}" for f, b, a in changed),
+            data={"system": True, "edit": True, "fields": {f: [b, a] for f, b, a in changed}},
+        )
         latest = _latest_decision(db, e.id)
         if latest is not None:
             latest.field_overrides = _field_overrides(e)

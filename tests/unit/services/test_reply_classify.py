@@ -136,10 +136,10 @@ def test_valid_answer_is_returned_and_costed(session: Session) -> None:
     c = classify_with_llm(session, llm, tm(), now=datetime(2026, 10, 28, tzinfo=UTC))
     assert (c.kind, c.intent, c.by, c.reason) == ("human", "interested", "llm", "asks for a call")
     (row,) = calls(session)
-    assert row.feature == "triage" and row.status == "ok" and row.prompt_version == reply_classify.PROMPT_VERSION
+    assert row.feature == "reply" and row.status == "ok" and row.prompt_version == reply_classify.PROMPT_VERSION
     assert row.input_tokens > 0 and row.cost_usd_micros > 0
     req = llm.requests[0]
-    assert req.feature == "triage" and req.tool_name == "record_reply"
+    assert req.feature == "reply" and req.tool_name == "record_reply"
     assert "priya@acme.example" in req.messages[0]["content"] and "Sounds good" in req.messages[0]["content"]
 
 
@@ -169,7 +169,7 @@ def test_invalid_answer_raises_bad_response_and_still_logs_the_call(session: Ses
     with pytest.raises(LLMBadResponse):
         classify_with_llm(session, llm, tm())
     (row,) = calls(session)
-    assert row.feature == "triage" and row.status == "ok"
+    assert row.feature == "reply" and row.status == "ok"
 
 
 def test_transient_error_adds_an_error_row_and_propagates(session: Session) -> None:
@@ -177,7 +177,7 @@ def test_transient_error_adds_an_error_row_and_propagates(session: Session) -> N
     with pytest.raises(LLMTransientError):
         classify_with_llm(session, llm, tm())
     (row,) = calls(session)
-    assert row.feature == "triage" and row.status == "error" and row.error_type == "transient"
+    assert row.feature == "reply" and row.status == "error" and row.error_type == "transient"
 
 
 def test_fatal_errors_propagate_and_are_in_the_fatal_tuple(session: Session) -> None:

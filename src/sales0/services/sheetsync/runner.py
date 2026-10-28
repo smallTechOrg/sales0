@@ -58,8 +58,10 @@ class SheetSyncRunner:
         executor: Executor | None = None,
         rng: random.Random | None = None,
         state: SyncState | None = None,
+        mass_removal_job: Callable[[], SyncReport] | None = None,
     ) -> None:
         self._job = job
+        self._mass_job = mass_removal_job  # the same sync with the removal guard lifted (admin "Apply anyway")
         self._interval_min = max(0, int(interval_min))
         self._jitter = max(0.0, min(jitter, 0.5))
         self._first_delay = first_run_delay_s
@@ -98,11 +100,16 @@ class SheetSyncRunner:
             return False
         return self._submit()
 
-    def trigger_now(self) -> bool:
-        """Manual 'Sync now'. False if a run is already active. Works even when disabled."""
-        return self._submit()
+    def trigger_now(self, *, allow_mass_removal: bool = False) -> bool:
+        """Manual 'Sync now'. False if a run is already active. Works even when disabled.
 
-    def _submit(self) -> bool:
+        ``allow_mass_removal`` runs the sync with the removal guard lifted (needs ``mass_removal_job``).
+        """
+        if allow_mass_removal and self._mass_job is None:
+            raise RuntimeError("this runner has no mass-removal job")
+        return self._submit(self._mass_job if allow_mass_removal else None)
+
+    def _submit(self, job: Callable[[], SyncReport] | None = None) -> bool:
         with self._lock:
             if self._running:
                 return False
@@ -112,15 +119,15 @@ class SheetSyncRunner:
         if self._interval_min > 0:
             self._next = self._now() + self._jittered(timedelta(minutes=self._interval_min))
             self._status.next_run_at = self._next
-        self._executor.submit(self._execute)
+        self._executor.submit(self._execute, job or self._job)
         return True
 
-    def _execute(self) -> None:
+    def _execute(self, job: Callable[[], SyncReport] | None = None) -> None:
         started = self._now()
         report: SyncReport | None = None
         error: str | None = None
         try:
-            report = self._job()
+            report = (job or self._job)()
         except Exception as exc:  # noqa: BLE001 — the scheduler must survive any job failure
             error = f"{type(exc).__name__}: {str(exc)[:200]}"
         finished = self._now()

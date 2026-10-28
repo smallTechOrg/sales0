@@ -236,3 +236,16 @@ Assumed:
 - Assumed: metrics 'LinkedIn profile watch' = `watch:<slug>` log rows (done/warning) of runs started that week, i.e. profiles actually visited (appended-to-discovery visits count too); manual `tracked_changed` events no longer count there (they still feed 'old prospects'). Watch log rows (keyword_id NULL, text `watch:*`) are excluded from the keyword yield (they showed up as deleted keywords on Metrics/Setup).
 - Assumed: timeline credit: member actions (track/untrack, run watch now) pass the acting member (and the admin-as-member pair) into the CRM; automated writers stay system actors (`system` for TrackedProfileHit notes and reply hooks, `sheet-sync` for sheet sync, `import`); unknown member = `team`.
 - Harness friction: two pre-existing hard-coded revision pins (p6 test, p7 retry test, watch migration test) made head/previous-relative; the audit test got EXEMPT entries for `/metrics/targets` and `/tracked/{id}/pause` (no actor column).
+
+## fix(data): audit findings #1-#10, #13-#19 (branch feature/sales0-fixdata)
+Migrations: p8_liaccts_b2e5f7a9 -> p9_reply_feat_c1e7a3b5 -> p9_activity_d4a8c2e6 -> p9_originuq_b7f2d9a1 -> p9_lirekey_7c3e9a15. #11/#12 left to fixscrape.
+- Assumed: #1 "human history" = any timeline event whose actor is not sheet-sync/system/import, an actor member id, outreach, follow-ups or an app-set stage. Adoption compares day+month of date_added (year may shift via inference). New flag kind `source_row_removed` (widened flags CHECK in p9_lirekey).
+- Assumed: #10 rows sharing a post link are one enquiry (extra rows = sources); rows sharing only company+contact stay separate enquiries; the row holding the stored hash keeps the natural key, else first row.
+- Assumed: #5 company page key = `li:company/<slug>`; person stays `li:<slug>`. p9_lirekey re-keys sheet_sources only; profile rows already filed as in/<slug> for company URLs are not repaired.
+- Assumed: #2 merge keeps the oldest prospect; a second open lead is closed lost with a note; duplicate auto follow-ups not collapsed.
+- Assumed: #14 decisions/edits with no prospect become timeline_events subject_type='enquiry' kind 'note' (flags system+decision|edit); repeat = `<x>_repeat`.
+- Assumed: #15 healer runs at startup (crm.startup_backfill) and as a hook on the nightly purge job; writes a heal_failed note each night for an unhealable enquiry.
+- Assumed: #6 old reply-v1 `triage` rows relabelled `reply` on upgrade; deferred replies retried next poll.
+- Assumed: #8 downgrades now preserve children; 0003 downgrade still intentionally drops seen_posts/linkedin_profiles data. Backup procedure = `sqlite3 .backup` (no backup code in src).
+- Assumed: #19 activity_id = digits of first activity|ugcPost|share id; same id = same post. #18 documented (README + docstring).
+- Harness friction: e2e test_phase2_journey dup-group merge timed out once under 3-way concurrent load (passes alone).

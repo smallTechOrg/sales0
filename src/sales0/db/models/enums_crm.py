@@ -17,7 +17,7 @@ CLIENT_STATUSES: tuple[str, ...] = ("active", "legacy")
 CLIENT_SOURCES: tuple[str, ...] = ("lead", "legacy_import", "manual", "sheet")
 FOLLOW_UP_KINDS: tuple[str, ...] = ("follow_up_1", "follow_up_2", "final_follow_up", "custom")
 FLAG_ENTITY_TYPES: tuple[str, ...] = ("prospect", "enquiry", "contact", "company", "client", "lead")
-FLAG_KINDS: tuple[str, ...] = ("repeat_poster", "competitor_mention", "no_follow_up")
+FLAG_KINDS: tuple[str, ...] = ("repeat_poster", "competitor_mention", "no_follow_up", "source_row_removed")
 FLAG_SOURCES: tuple[str, ...] = ("auto", "user")
 TIMELINE_SUBJECTS: tuple[str, ...] = (
     "prospect", "lead", "client", "contact", "company", "enquiry", "competitor", "group",

@@ -24,7 +24,7 @@ from sales0.db.models import LlmCall, OutreachMessage
 from sales0.errors import DomainError
 from sales0.services._common import now_or
 
-FEATURES = ("triage", "research", "drafting", "suggest")
+FEATURES = ("triage", "research", "drafting", "suggest", "reply")
 
 
 class SpendCapReached(DomainError):
@@ -91,7 +91,13 @@ def spend_cap_status(db: Session, now: datetime | None = None) -> SpendCap:
 
 
 def ensure_within_spend_cap(db: Session, now: datetime | None = None) -> None:
-    """Raise :class:`SpendCapReached` when the cap is used up. Call before every LLM call."""
+    """Raise :class:`SpendCapReached` when the cap is used up. Call before every LLM call.
+
+    Known, accepted limit (audit #18): the check compares *recorded* spend (``llm_calls`` rows, written after each
+    call) with the cap; there is no reservation for calls already in flight. Overshoot is therefore bounded by
+    the calls that were started before the first over-cap row was written: at most ``SALES0_TRIAGE_CONCURRENCY``
+    (default 4) parallel triage calls plus one call per other concurrently running feature (research, drafting,
+    suggestion, digest summary, reply classification), i.e. a few cents at Haiku prices, never unbounded."""
     status = spend_cap_status(db, now)
     if status.state == "exceeded":
         raise SpendCapReached(status.message or "Monthly AI spend cap reached.")

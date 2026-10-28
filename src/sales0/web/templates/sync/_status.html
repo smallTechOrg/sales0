@@ -27,6 +27,13 @@
         <form method="post" action="/sync/dry-run" hx-post="/sync/dry-run" hx-target="#sync-status" hx-swap="outerHTML" hx-disabled-elt="find button" class="inline-form">
           <button id="sync-dry-run" class="btn" type="submit" {% if not panel.available %}disabled{% endif %}>Preview changes (dry run)</button>
         </form>
+        {% if panel.blocked and can_override %}
+          <form method="post" action="/sync/run-anyway" hx-post="/sync/run-anyway" hx-target="#sync-status" hx-swap="outerHTML" class="inline-form"
+                hx-confirm="The last sync refused to hide many rows at once (the sheet may be half-loaded). Hide them anyway? Nothing is deleted.">
+            <input type="hidden" name="confirm" value="yes">
+            <button id="sync-apply-anyway" class="btn btn--danger" type="submit" {% if panel.running or not panel.available %}disabled{% endif %}>Apply anyway (admin)</button>
+          </form>
+        {% endif %}
         {% if interval > 0 %}
           {% if panel.job_enabled %}
             <form method="post" action="/sync/disable" hx-post="/sync/disable" hx-target="#sync-status" hx-swap="outerHTML" class="inline-form">

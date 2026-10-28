@@ -21,6 +21,7 @@ FLAG_LABELS = {
     "repeat_poster": "Repeat poster",
     "competitor_mention": "Mentions a competitor",
     "no_follow_up": "Do not follow up",
+    "source_row_removed": "Source row removed from sheet",
 }
 
 

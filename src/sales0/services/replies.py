@@ -107,6 +107,10 @@ def ingest_thread(
                 raise
             except LLMBadResponse:
                 verdict = reply_classify.Classification("human", "other", "AI answer unusable; shown for a human to read", "fallback")
+            except reply_classify.SpendCapReached:
+                result.skipped_deferred += 1
+                result.error = "AI spend cap reached; unclassified replies will be retried next cycle"
+                continue
             except LLMError as exc:
                 result.skipped_deferred += 1
                 result.error = f"AI classifier unavailable ({type(exc).__name__}); will retry next cycle"

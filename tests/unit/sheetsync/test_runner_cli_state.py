@@ -226,11 +226,15 @@ def test_cli_single_tab_unknown_tab_and_failures(capsys) -> None:
 
 def test_cli_entry_point_registers_subcommand(monkeypatch) -> None:
     seen = {}
-    monkeypatch.setattr("sales0.cli._sync_sheets", lambda dry, tab, memory=False: seen.update(dry=dry, tab=tab, memory=memory) or 0)
+    monkeypatch.setattr(
+        "sales0.cli._sync_sheets",
+        lambda dry, tab, memory=False, allow_mass_removal=False: seen.update(dry=dry, tab=tab, memory=memory, mass=allow_mass_removal) or 0,
+    )
     assert cli_main(["sync-sheets", "--dry-run", "--tab", "Groups"]) == 0
-    assert seen == {"dry": True, "tab": "Groups", "memory": False}
-    assert cli_main(["sync-sheets"]) == 0 and seen == {"dry": False, "tab": None, "memory": False}
+    assert seen == {"dry": True, "tab": "Groups", "memory": False, "mass": False}
+    assert cli_main(["sync-sheets"]) == 0 and seen == {"dry": False, "tab": None, "memory": False, "mass": False}
     assert cli_main(["sync-sheets", "--memory"]) == 0 and seen["memory"] is True
+    assert cli_main(["sync-sheets", "--allow-mass-removal"]) == 0 and seen["mass"] is True
 
 
 def test_cli_uses_registered_repository_when_present(capsys) -> None:

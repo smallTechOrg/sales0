@@ -231,7 +231,8 @@ CRM_COUNT_TABLES = (
 
 
 def sync_sheets(
-    settings: Settings, *, dry_run: bool, tab: str | None, source: object | None = None, memory: bool = False
+    settings: Settings, *, dry_run: bool, tab: str | None, source: object | None = None, memory: bool = False,
+    allow_mass_removal: bool = False,
 ) -> int:
     """Read-only Google Sheet sync; prints per-tab COUNTS only (never cell content).
 
@@ -279,7 +280,9 @@ def sync_sheets(
         source = fetcher
     from datetime import datetime
 
-    engine = SyncEngine(source, repo, tabs, today=lambda: datetime.now(settings.tz).date())  # type: ignore[arg-type]
+    engine = SyncEngine(
+        source, repo, tabs, today=lambda: datetime.now(settings.tz).date(), allow_mass_removal=allow_mass_removal  # type: ignore[arg-type]
+    )
     try:
         report = engine.run(dry_run=dry_run, only_tab=tab)
     except KeyError:
@@ -294,7 +297,7 @@ def sync_sheets(
     return 0 if report.ok else 1
 
 
-def _sync_sheets(dry_run: bool, tab: str | None, memory: bool = False) -> int:
+def _sync_sheets(dry_run: bool, tab: str | None, memory: bool = False, allow_mass_removal: bool = False) -> int:
     from pydantic import ValidationError
 
     from sales0.config import get_settings
@@ -304,7 +307,7 @@ def _sync_sheets(dry_run: bool, tab: str | None, memory: bool = False) -> int:
     except ValidationError as exc:
         print(f"sync-sheets ERROR invalid configuration: {exc.error_count()} error(s)", file=sys.stderr)
         return 1
-    return sync_sheets(settings, dry_run=dry_run, tab=tab, memory=memory)
+    return sync_sheets(settings, dry_run=dry_run, tab=tab, memory=memory, allow_mass_removal=allow_mass_removal)
 
 
 def crm_counts() -> int:
@@ -389,6 +392,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ss.add_argument("--dry-run", action="store_true", help="compute the diff report without applying it")
     ss.add_argument("--tab", default=None, help="sync only this tab (e.g. 'Active Enquiries')")
     ss.add_argument("--memory", action="store_true", help="use an in-memory repository: no database needed, nothing persisted")
+    ss.add_argument(
+        "--allow-mass-removal", action="store_true",
+        help="apply a removal the safety guard blocked (more than half of a tab's rows gone, or an empty tab); rows are only hidden, never deleted",
+    )
     sub.add_parser("crm-counts", help="Print the row count of each CRM table (counts only)")
     sub.add_parser(
         "eval-triage",
@@ -402,7 +409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "env-docs":
         return _env_docs(args.check, args.write)
     if args.command == "sync-sheets":
-        return _sync_sheets(args.dry_run, args.tab, args.memory)
+        return _sync_sheets(args.dry_run, args.tab, args.memory, args.allow_mass_removal)
     if args.command == "crm-counts":
         return crm_counts()
     if args.command == "eval-triage":

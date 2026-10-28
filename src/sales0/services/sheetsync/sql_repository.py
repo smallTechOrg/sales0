@@ -55,6 +55,7 @@ class SqlSheetRepository:
         self._errors: list[RowIssue] = []
         self._lock = threading.Lock()
         self._touched: set[str] = set()
+        self._present: dict[tuple[str, str], tuple[frozenset[RecordId], frozenset[RecordId]]] = {}
 
     # ------------------------------------------------------------------ plumbing
     def _session(self) -> Session:
@@ -70,7 +71,7 @@ class SqlSheetRepository:
             rows = list(db.scalars(select(SheetSourceRow).where(SheetSourceRow.entity == entity, SheetSourceRow.key == key)))
             if not rows:
                 return None
-            stored = StoredRecord(entity=entity, key=key)
+            stored = StoredRecord(entity=entity, key=key, target_id=rows[0].target_id)
             for r in rows:
                 tk = (r.sheet_id, r.gid)
                 stored.per_tab[tk] = dict(r.fields or {})
@@ -86,12 +87,22 @@ class SqlSheetRepository:
             return {(e, k) for e, k in db.execute(select(SheetSourceRow.entity, SheetSourceRow.key).where(SheetSourceRow.sheet_id == sheet_id, SheetSourceRow.gid == gid))}
 
     # ------------------------------------------------------------------ writes
+    def begin_tab(self, sheet_id: str, gid: str, present: Iterable[RecordId]) -> None:
+        """The engine tells which record ids the tab's rows have NOW (so an edited row can be told from a new one)."""
+        here = frozenset(present)
+        self._present[(sheet_id, gid)] = (here, frozenset(self.list_keys_for_tab(sheet_id, gid) - here))
+
+    def end_tab(self, sheet_id: str, gid: str) -> None:
+        self._present.pop((sheet_id, gid), None)
+
     def upsert(self, record: SheetRecord, sheet_source: SheetSource) -> None:
         now = ensure_utc(self._clock())
         with self._session() as db:
             try:
+                present, orphans = self._present.get((sheet_source.sheet_id, sheet_source.gid), (None, None))
                 result = mapping.apply_record(
-                    db, record, origin="sheet", source=sheet_source, actor=_actor(), now=now, previous_fields=None
+                    db, record, origin="sheet", source=sheet_source, actor=_actor(), now=now, previous_fields=None,
+                    present_keys=present, orphan_keys=orphans,
                 )
                 row = db.scalar(
                     select(SheetSourceRow).where(
@@ -174,6 +185,9 @@ class SqlSheetRepository:
         subject = TARGET_SUBJECT.get(target_type)
         if subject is None:
             return  # metrics have no timeline subject
+        if target_type == "enquiry":
+            db.flush()
+            mapping.on_enquiry_removed(db, target, now)
         scopes = {
             "prospect_id": target.id if target_type == "prospect" else getattr(target, "prospect_id", None),
             "enquiry_id": target.id if target_type == "enquiry" else None,

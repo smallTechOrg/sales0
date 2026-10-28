@@ -56,6 +56,7 @@ class StoredRecord:
     sources: dict[TabKey, SheetSource] = field(default_factory=dict)  # live sources only
     sheet_removed_at: datetime | None = None
     crm: dict[str, Any] = field(default_factory=dict)  # CRM-owned; sync never touches it
+    target_id: int | None = None  # the CRM row this record feeds (None: unknown / in-memory)
 
 
 @runtime_checkable

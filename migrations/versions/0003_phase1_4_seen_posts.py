@@ -17,7 +17,8 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from urllib.parse import unquote, urlsplit
 
@@ -429,8 +430,44 @@ def _backfill(bind: sa.engine.Connection) -> None:
 
 
 # ------------------------------------------------------------------ downgrade
+@contextmanager
+def _children_safe(ignore: Sequence[str] = ()) -> Iterator[None]:
+    """Run table rebuilds without cascading into child rows (p6 four-step recipe).
+
+    SQLite's batch rebuild drops the old table; under ``foreign_keys=ON`` that implicit DELETE cascades to
+    (or NULLs) the child rows. ``PRAGMA foreign_keys`` is a no-op inside a transaction, hence the autocommit
+    block. Afterwards ``foreign_key_check`` must not report more violations than before and every surviving
+    table keeps its row count, so a regression fails loudly instead of silently losing data.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        yield
+        return
+    tables = [t for t in sa.inspect(bind).get_table_names() if t not in ignore]
+    before = {t: bind.execute(sa.text(f'SELECT COUNT(*) FROM "{t}"')).scalar_one() for t in tables}
+    bad_before = len(bind.execute(sa.text("PRAGMA foreign_key_check")).fetchall())
+    with op.get_context().autocommit_block():
+        op.execute("PRAGMA foreign_keys=OFF")
+        try:
+            yield
+            bad = bind.execute(sa.text("PRAGMA foreign_key_check")).fetchall()
+            if len(bad) > bad_before:
+                raise RuntimeError(f"foreign_key_check found {len(bad) - bad_before} new violation(s) after the rebuild")
+        finally:
+            op.execute("PRAGMA foreign_keys=ON")
+    live = set(sa.inspect(bind).get_table_names())
+    after = {t: bind.execute(sa.text(f'SELECT COUNT(*) FROM "{t}"')).scalar_one() for t in tables if t in live}
+    if after != {t: before[t] for t in after}:
+        raise RuntimeError(f"downgrade rebuild changed child row counts: {before} -> {after}")
+
+
 def downgrade() -> None:
     """Structure only: enquiries moved to ``seen_posts`` by the upgrade are not restored."""
+    with _children_safe(ignore=("seen_posts", "linkedin_profiles")):
+        _downgrade_structure()
+
+
+def _downgrade_structure() -> None:
     with op.batch_alter_table("llm_calls") as batch:
         batch.drop_index("ix_llm_calls_seen_post_id")
         batch.drop_column("seen_post_id")

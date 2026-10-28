@@ -82,6 +82,8 @@ class Enquiry(Base):
     sheet_notes: Mapped[str | None] = mapped_column(Text)
     sheet_removed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     sheet_fields: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # LinkedIn activity id (digits) parsed from the post link / urn; indexed lookup instead of LIKE '%id%' scans.
+    activity_id: Mapped[str | None] = mapped_column(String(64), index=True)
 
     review_status: Mapped[str] = mapped_column(
         String(20),

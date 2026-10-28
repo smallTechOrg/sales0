@@ -14,13 +14,37 @@ from sqlalchemy.orm import Session
 
 from sales0.clock import local_today
 from sales0.config import get_settings
-from sales0.db.models import Enquiry, FollowUp, Lead, OutreachMessage, OutreachReply, Prospect, TeamMember, TimelineEvent
+from sales0.db.models import Enquiry, FollowUp, Lead, OutreachMessage, OutreachReply, Prospect, TimelineEvent
 from sales0.logging import get_logger
 from sales0.services import events
 from sales0.services.crm import contacts, flags, followups, leads, prospects, timeline
-from sales0.services.crm.actor import SYSTEM, TEAM, Actor
+from sales0.services.crm.actor import SYSTEM, TEAM, Actor, actor_for
 
 log = get_logger("sales0.crm.hooks")
+
+
+def _audit_failure(db: Session, hook: str, ev: Any, exc: Exception) -> None:
+    """Leave a visible trace of a swallowed hook failure on the enquiry's timeline (best effort, never raises).
+
+    The failed hook's savepoint is already rolled back, so this runs in its own savepoint. Hooks without an
+    enquiry in reach (e.g. a reply whose message has none) only log."""
+    try:
+        enquiry_id = getattr(ev, "enquiry_id", None)
+        if enquiry_id is None:
+            msg_id = getattr(ev, "outreach_message_id", None)
+            msg = db.get(OutreachMessage, msg_id) if msg_id else None
+            enquiry_id = msg.enquiry_id if msg is not None else None
+        if enquiry_id is None:
+            return
+        with db.begin_nested():
+            timeline.add_event(
+                db, subject_type="enquiry", subject_id=enquiry_id, kind="note", actor=SYSTEM,
+                body=f"CRM update failed ({hook}); it will be retried by the nightly check.",
+                data={"system": True, "hook_failed": True, "hook": hook, "event": type(ev).__name__,
+                      "error": f"{type(exc).__name__}: {exc}"[:300]},
+            )
+    except Exception:  # noqa: BLE001 - auditing must never break the publisher either
+        log.exception("crm_hook_audit_failed", hook=hook)
 
 
 def _guarded(fn: Callable[[Session, Any], None]) -> Callable[[Session, Any], None]:
@@ -28,8 +52,9 @@ def _guarded(fn: Callable[[Session, Any], None]) -> Callable[[Session, Any], Non
         try:
             with db.begin_nested():
                 fn(db, ev)
-        except Exception:  # noqa: BLE001 - the CRM must never break its publisher
+        except Exception as exc:  # noqa: BLE001 - the CRM must never break its publisher
             log.exception("crm_hook_failed", hook=fn.__name__, event_type=type(ev).__name__)
+            _audit_failure(db, fn.__name__, ev, exc)
 
     wrapper.__name__ = fn.__name__
     wrapper.__doc__ = fn.__doc__
@@ -38,12 +63,7 @@ def _guarded(fn: Callable[[Session, Any], None]) -> Callable[[Session, Any], Non
 
 
 def _member_actor(db: Session, member_id: int | None, by_member_id: int | None = None) -> Actor:
-    m = db.get(TeamMember, member_id) if member_id else None
-    if m is not None and by_member_id and by_member_id != m.id:
-        by = db.get(TeamMember, by_member_id)
-        if by is not None:
-            return Actor(f"{by.name} as {m.name}"[:80], m.id, by.id)
-    return Actor.of_member(m)
+    return actor_for(db, member_id, by_member_id)
 
 
 # ---------------------------------------------------------------------------- enquiry decided

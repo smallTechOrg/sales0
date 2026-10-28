@@ -11,6 +11,8 @@ import re
 from datetime import date
 from urllib.parse import urlsplit
 
+from sales0 import linkedin_url as _li
+
 NULL_TOKENS = frozenset(
     {
         "",
@@ -131,26 +133,21 @@ def _nearest_past(month: int, day: int, ref: date) -> date | None:
     return None
 
 
-def parse_date(text: str | None, *, ref: date, not_after: date | None = None) -> date | None:
-    """Parse a sheet date; a missing year is inferred as the nearest past occurrence.
-
-    ``ref`` is "today" (injected). ``not_after`` (e.g. Date Added when parsing Date Posted)
-    caps the inferred year so a post is never dated after it was added. Numeric forms are
-    day-first (Indian sheets): ``09/07/2026`` is 9 July. Explicit years are kept as written.
-    """
+def parse_date_info(text: str | None, *, ref: date, not_after: date | None = None) -> tuple[date | None, bool]:
+    """``(date, year_inferred)``: like :func:`parse_date`, also telling whether the cell had no year."""
     t = nullable(text)
     if t is None:
-        return None
+        return None, False
     t = t.strip().strip(",.")
     limit = ref if not_after is None else min(ref, not_after)
 
     if m := _ISO.match(t):
-        return _safe(int(m[1]), int(m[2]), int(m[3]))
+        return _safe(int(m[1]), int(m[2]), int(m[3])), False
     if m := _NUMERIC.match(t):
         day, mon = int(m[1]), int(m[2])
         if m[3]:
-            return _safe(_year(m[3]), mon, day)
-        return _nearest_past(mon, day, limit) if 1 <= mon <= 12 else None
+            return _safe(_year(m[3]), mon, day), False
+        return (_nearest_past(mon, day, limit) if 1 <= mon <= 12 else None), True
     for pattern, day_first in ((_DAY_MON, True), (_MON_DAY, False)):
         if m := pattern.match(t):
             name, dd, yy = (m[2], m[1], m[3]) if day_first else (m[1], m[2], m[3])
@@ -158,9 +155,21 @@ def parse_date(text: str | None, *, ref: date, not_after: date | None = None) ->
             if mon is None:
                 continue
             if yy:
-                return _safe(_year(yy), mon, int(dd))
-            return _nearest_past(mon, int(dd), limit)
-    return None
+                return _safe(_year(yy), mon, int(dd)), False
+            return _nearest_past(mon, int(dd), limit), True
+    return None, False
+
+
+def parse_date(text: str | None, *, ref: date, not_after: date | None = None) -> date | None:
+    """Parse a sheet date; a missing year is inferred as the nearest past occurrence.
+
+    ``ref`` is "today" (injected). ``not_after`` (e.g. Date Added when parsing Date Posted)
+    caps the inferred year so a post is never dated after it was added. Numeric forms are
+    day-first (Indian sheets): ``09/07/2026`` is 9 July. Explicit years are kept as written.
+    The inferred year is persisted by the sync (``year_inferred`` in the sheet fields) and reused
+    while the day and month stay the same, so a later edit of the row never moves it.
+    """
+    return parse_date_info(text, ref=ref, not_after=not_after)[0]
 
 
 # ----------------------------------------------------------------------------- emails
@@ -219,7 +228,6 @@ def parse_phones(text: str | None) -> tuple[str, ...]:
 # ----------------------------------------------------------------------------- urls / slugs
 _URL_LIKE = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
 _ACTIVITY = re.compile(r"(?:activity[-:]|ugcPost[-:]|share[-:])(\d{6,})", re.IGNORECASE)
-_LI_SLUG = re.compile(r"linkedin\.com/(?:in|company|pub)/([^/?#\s]+)", re.IGNORECASE)
 _TRACKING = re.compile(r"^(utm_|fbclid|gclid|mc_|trk|trackingid|originalsubdomain)", re.IGNORECASE)
 
 
@@ -263,14 +271,16 @@ def post_key(url: str | None) -> str | None:
 
 
 def linkedin_slug(url: str | None) -> str | None:
-    """``https://www.linkedin.com/in/some-name-123/?x=1`` -> ``some-name-123`` (lower-cased)."""
-    t = nullable(url)
-    if t is None:
-        return None
-    m = _LI_SLUG.search(t)
-    if m:
-        return m.group(1).lower()
-    return None
+    """``https://www.linkedin.com/in/Some-Name-123/?x=1`` -> ``some-name-123`` (slug only, the kind is dropped).
+
+    Delegates to the one canonicaliser, :mod:`sales0.linkedin_url`.
+    """
+    return _li.linkedin_slug(nullable(url))
+
+
+def linkedin_key(url: str | None) -> str | None:
+    """Sheet-key body of a LinkedIn link: bare slug for a person, ``<kind>/<slug>`` otherwise."""
+    return _li.key_of(nullable(url))
 
 
 def website_key(text: str | None) -> str | None:

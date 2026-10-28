@@ -7,8 +7,10 @@ flushes, never commits). Ownership contract (data.md -> "Sheet-fed tables"):
   previous overlay and is null now clears the column; null -> null leaves it alone.
 * CRM-owned data (timeline, AI columns, flags, follow-ups, tags, notes, stages a human set, ...)
   is never touched.
-* Every create / update / restore writes a timeline event (actor ``sheet-sync``) that lists
-  FIELD NAMES only, never cell values.
+* Every create / update / restore writes a timeline event (actor ``sheet-sync``) that lists the
+  FIELD NAMES; an update also keeps each written column's old -> new value (clipped) in ``data.changes``.
+* Only a field whose sheet value changed since the last overlay is written (an in-app edit of a
+  sheet-owned column survives an unrelated sheet change).
 * No reminder is ever created here.
 
 Origins: ``"sheet"`` (the sync: a ``SheetSource`` is given, stage_source ``sheet``) and
@@ -37,7 +39,7 @@ from sales0.db.models.crm import Client, Company, Lead, Prospect
 from sales0.db.models.registries import ChannelGroup, Competitor
 from sales0.db.models.sheetdata import SheetSource as SheetSourceRow
 from sales0.db.models.timeline import TimelineEvent
-from sales0.scraper.urls import profile_slug
+from sales0.linkedin_url import profile_slug
 from sales0.services._common import clip
 from sales0.services.dedupe import content_hash, normalize_text
 from sales0.services.sheetsync import values as v
@@ -132,6 +134,12 @@ def local_midnight_utc(d: date | None) -> datetime | None:
     return datetime.combine(d, time.min, tzinfo=get_settings().tz).astimezone(UTC)
 
 
+def _person_slug(url: str | None) -> str | None:
+    """``in/<slug>`` for a personal profile link; a company page is never a contact's profile."""
+    slug = profile_slug(url)
+    return slug if slug and slug.startswith("in/") else None
+
+
 def key_text(value: str | None) -> str:
     """``lower(trim(...))`` with inner whitespace collapsed (the ``*_key`` column form)."""
     return re.sub(r"\s+", " ", (value or "").strip()).lower()
@@ -145,11 +153,17 @@ def first(value: Any) -> str | None:
 
 # ----------------------------------------------------------------------------- writer
 class Writer:
-    """Applies sheet-owned fields to one ORM row, remembering which columns changed."""
+    """Applies sheet-owned fields to one ORM row, remembering which columns changed.
+
+    Only a field whose SHEET value changed since the last overlay is written (audit #7): an in-app edit
+    of a sheet-owned column survives a sheet change to a different column, and the old -> new value of
+    every written column is kept in ``diff`` (logged in the ``sheet_updated`` event data).
+    """
 
     def __init__(self, obj: Any, old: dict[str, Any], new: dict[str, Any]) -> None:
         self.obj, self.old, self.new = obj, old, new
         self.changed: list[str] = []
+        self.diff: dict[str, dict[str, Any]] = {}
 
     def pull(self, column: str, field: str | None, convert: Callable[[Any], Any] = lambda x: x, *, only_if: bool = True) -> None:
         """Set ``column`` from overlay field ``field``; clear it if the field vanished from the sheet."""
@@ -163,6 +177,8 @@ class Writer:
 
     def _apply(self, column: str, new: Any, old: Any, convert: Callable[[Any], Any]) -> None:
         if not blank(new):
+            if new == old:
+                return  # the sheet did not change this cell: whatever the app holds now stands
             value = convert(new)
             if value is None:
                 return
@@ -170,24 +186,39 @@ class Writer:
             value = None  # the cell was emptied in the sheet: clear
         else:
             return
-        if getattr(self.obj, column) != value:
+        self._write(column, value)
+
+    def _write(self, column: str, value: Any) -> None:
+        current = getattr(self.obj, column)
+        if current != value:
             setattr(self.obj, column, value)
             self.changed.append(column)
+            self.diff[column] = {"old": _logged(current), "new": _logged(value)}
 
     def set(self, column: str, value: Any) -> None:
         """Set a non-overlay column (state transitions)."""
-        if getattr(self.obj, column) != value:
-            setattr(self.obj, column, value)
-            self.changed.append(column)
+        self._write(column, value)
+
+
+def _logged(value: Any) -> Any:
+    """A column value as it is kept in an event's ``data`` (JSON-safe, clipped)."""
+    value = jsonify(value)
+    return value[:200] if isinstance(value, str) else value
 
 
 class Ctx:
     """Everything one apply call needs."""
 
-    def __init__(self, db: Session, *, origin: str, source: SheetSource | None, actor: "Actor", now: datetime) -> None:
+    def __init__(
+        self, db: Session, *, origin: str, source: SheetSource | None, actor: "Actor", now: datetime,
+        present: frozenset[tuple[str, str]] | set[tuple[str, str]] | None = None,
+        orphans: frozenset[tuple[str, str]] | set[tuple[str, str]] | None = None,
+    ) -> None:
         if origin not in ORIGINS:
             raise ValueError(f"unknown origin {origin!r}")
         self.db, self.origin, self.source, self.actor, self.now = db, origin, source, actor, ensure_utc(now)
+        self.present = present  # (entity, key) of every row of the tab being synced; None = unknown
+        self.orphans = orphans or frozenset()  # stored (entity, key) of the tab that no row has any more (edited or deleted)
 
     @property
     def is_sheet(self) -> bool:
@@ -247,6 +278,8 @@ def overlays(
         if k == this_key:
             if row.entity == record.ENTITY and row.key == record.key:
                 own_old = dict(row.fields or {})
+            elif own_old is None and (row.entity, row.key) in ctx.orphans:
+                own_old = dict(row.fields or {})  # an edited row adopted from its old key: that is its last overlay
             continue
         others.append((k, dict(row.fields or {})))
 
@@ -298,13 +331,13 @@ def contact_for(
     """Upsert the shared person through the CRM contacts service, then attach every extra address."""
     name = clip(name, 200)
     emails = [e.lower() for e in emails if e]
-    if not (name or emails or profile_slug(linkedin_url)):
+    if not (name or emails or _person_slug(linkedin_url)):
         return None
     from sales0.services.crm import contacts as crm_contacts
 
     view = crm_contacts.upsert(
         ctx.db, full_name=name, email=emails[0] if emails else None, phone=phones[0] if phones else None,
-        linkedin_url=linkedin_url if profile_slug(linkedin_url) else None, company_id=company_id,
+        linkedin_url=linkedin_url if _person_slug(linkedin_url) else None, company_id=company_id,
         origin="sheet" if ctx.is_sheet else "import", actor=ctx.actor, now=ctx.now,
     )
     contact = ctx.db.get(Contact, view.id)
@@ -348,8 +381,10 @@ def apply_record(
     actor: "Actor",
     now: datetime,
     previous_fields: dict[str, Any] | None = None,
+    present_keys: frozenset[tuple[str, str]] | set[tuple[str, str]] | None = None,
+    orphan_keys: frozenset[tuple[str, str]] | set[tuple[str, str]] | None = None,
 ) -> ApplyResult:
-    ctx = Ctx(db, origin=origin, source=source, actor=actor, now=now)
+    ctx = Ctx(db, origin=origin, source=source, actor=actor, now=now, present=present_keys, orphans=orphan_keys)
     if isinstance(record, SheetMetricRow):
         from sales0.services.sheetsync.metrics import apply_metric
 
@@ -381,7 +416,7 @@ def _owned_by_sheet(ctx: Ctx, record: SheetRecord) -> bool:
     return _target_by_key(ctx, record, _target_type_of(record), entities) is not None
 
 
-def _finish(ctx: Ctx, record: SheetRecord, obj: Any, target_type: str, created: bool, restored: bool, changed: list[str], subject: str, scopes: dict[str, Any], tab_name: str = "") -> ApplyResult:
+def _finish(ctx: Ctx, record: SheetRecord, obj: Any, target_type: str, created: bool, restored: bool, changed: list[str], subject: str, scopes: dict[str, Any], tab_name: str = "", diff: dict[str, dict[str, Any]] | None = None) -> ApplyResult:
     changed = sorted(set(changed))
     if created:
         action, kind = "created", ("sheet_created" if ctx.is_sheet else "import")
@@ -393,13 +428,79 @@ def _finish(ctx: Ctx, record: SheetRecord, obj: Any, target_type: str, created: 
         body = _event_body("Updated from the sheet" if ctx.is_sheet else "Merged by CSV import", changed)
     else:
         return ApplyResult("unchanged", (), target_type, obj.id)
-    ctx.event(subject, obj.id, kind, body, {"fields": changed} if changed else None, **scopes)
+    data: dict[str, Any] | None = {"fields": changed} if changed else None
+    if data is not None and diff and not created:
+        data["changes"] = {k: diff[k] for k in changed if k in diff}  # old -> new, so an overwrite can be traced back
+    ctx.event(subject, obj.id, kind, body, data, **scopes)
     ctx.db.flush()
     return ApplyResult(action, tuple(changed), target_type, obj.id)
 
 
 # ============================================================================ enquiries
 ENQUIRY_ENTITIES = ("enquiry", "discarded")
+
+
+def _activity_of(rec: SheetEnquiry) -> str | None:
+    """The LinkedIn activity id (digits) of the row's post link, if it has one."""
+    key = rec.key if rec.key_source == "post" else v.post_key(rec.post_url)
+    if key and key.startswith("post:"):
+        return key.split(":", 1)[1]
+    return None
+
+
+def _local_date(value: datetime | None) -> date | None:
+    return ensure_utc(value).astimezone(get_settings().tz).date() if value is not None else None
+
+
+def _md(d: date | None) -> tuple[int, int] | None:
+    return (d.month, d.day) if d else None
+
+
+def _adopt_edited_row(ctx: Ctx, rec: SheetEnquiry) -> Enquiry | None:
+    """A row whose natural key changed because the user EDITED it (a link-less row is keyed by e-mail + summary).
+
+    Among the tab's enquiry sources that are no longer in the sheet under their key (orphans), pick the one
+    with the same company + contact person + date added; failing that, the one on the same row number.
+    Orphans whose enquiry is still carried by a row that IS present are never taken.
+    """
+    if not ctx.is_sheet or ctx.source is None or ctx.present is None or not ctx.orphans:
+        return None
+    db, src = ctx.db, ctx.source
+    rows = list(
+        db.scalars(
+            select(SheetSourceRow).where(
+                SheetSourceRow.sheet_id == src.sheet_id, SheetSourceRow.gid == src.gid,
+                SheetSourceRow.entity.in_(ENQUIRY_ENTITIES), SheetSourceRow.target_type == "enquiry",
+            ).order_by(SheetSourceRow.id)
+        )
+    )
+    kept = {r.target_id for r in rows if (r.entity, r.key) in ctx.present}
+    orphans = [r for r in rows if (r.entity, r.key) in ctx.orphans and r.target_id not in kept]
+    if not orphans:
+        return None
+    company = key_text(rec.company or rec.summary_company)
+    contact = key_text(rec.contact_person)
+    added = _md(rec.date_added)
+    pool: list[tuple[SheetSourceRow, Enquiry]] = []
+    for r in orphans:
+        e = db.get(Enquiry, r.target_id)
+        if e is not None and e.origin in ("sheet", "import") and e.sheet_removed_at is None:
+            pool.append((r, e))
+    strong = [
+        e for _r, e in pool
+        if (company or contact) and added is not None and key_text(e.company) == company and key_text(e.contact_person) == contact
+        and _md(_local_date(e.date_added)) == added
+    ]
+    if len({e.id for e in strong}) == 1:
+        return strong[0]
+    weak = [
+        e for r, e in pool
+        if r.row_number == src.row_number and (added is None or _md(_local_date(e.date_added)) in (None, added))
+        and (not company or not e.company or key_text(e.company) == company)
+    ]
+    if len({e.id for e in weak}) == 1:
+        return weak[0]
+    return None
 
 
 def _find_enquiry(ctx: Ctx, rec: SheetEnquiry) -> Enquiry | None:
@@ -412,15 +513,20 @@ def _find_enquiry(ctx: Ctx, rec: SheetEnquiry) -> Enquiry | None:
     # Adoption (never a duplicate): same post, then same text.
     post = rec.post_url
     if post:
-        key = rec.key if rec.key_source == "post" else ""
-        if key.startswith("post:"):
-            act = key.split(":", 1)[1]
+        act = _activity_of(rec) if rec.key_source == "post" else None
+        if act:
+            by_id = db.scalar(select(Enquiry.id).where(Enquiry.activity_id == act).order_by(Enquiry.id).limit(1))
+            if by_id is not None:
+                return db.get(Enquiry, by_id)
             by_ref = db.scalar(
                 select(EnquirySource.enquiry_id).where(or_(EnquirySource.source_ref.contains(act), EnquirySource.source_url.contains(act))).limit(1)
             )
             if by_ref is not None:
                 return db.get(Enquiry, by_ref)
-            by_url = db.scalar(select(Enquiry.id).where(Enquiry.source_url.contains(act)).order_by(Enquiry.id).limit(1))
+            # rows not yet carrying an indexed activity id (pre-backfill) only
+            by_url = db.scalar(
+                select(Enquiry.id).where(Enquiry.activity_id.is_(None), Enquiry.source_url.contains(act)).order_by(Enquiry.id).limit(1)
+            )
             if by_url is not None:
                 return db.get(Enquiry, by_url)
         else:
@@ -429,7 +535,9 @@ def _find_enquiry(ctx: Ctx, rec: SheetEnquiry) -> Enquiry | None:
                 return db.get(Enquiry, by_url)
     digest = _hash_for(rec)
     by_hash = db.scalar(select(Enquiry.id).where(Enquiry.content_hash == digest))
-    return db.get(Enquiry, by_hash) if by_hash is not None else None
+    if by_hash is not None:
+        return db.get(Enquiry, by_hash)
+    return _adopt_edited_row(ctx, rec)
 
 
 def _hash_for(rec: SheetEnquiry) -> str:
@@ -437,6 +545,28 @@ def _hash_for(rec: SheetEnquiry) -> str:
     if text and normalize_text(text):
         return content_hash(text)
     return hashlib.sha256(f"sheet:{rec.key}".encode()).hexdigest()
+
+
+def _is_extra_source(ctx: Ctx, rec: SheetEnquiry, enquiry: Enquiry) -> bool:
+    """Another row of THIS tab (still in the sheet) already carries the enquiry: the first one wins (audit #10).
+
+    "First" = the oldest source row of the enquiry in this tab; a row without a source yet is the newest.
+    """
+    if not ctx.is_sheet or ctx.source is None or ctx.present is None:
+        return False
+    src = ctx.source
+    rows = ctx.db.scalars(
+        select(SheetSourceRow).where(
+            SheetSourceRow.target_type == "enquiry", SheetSourceRow.target_id == enquiry.id,
+            SheetSourceRow.sheet_id == src.sheet_id, SheetSourceRow.gid == src.gid, SheetSourceRow.entity.in_(ENQUIRY_ENTITIES),
+        ).order_by(SheetSourceRow.id)
+    )
+    for row in rows:
+        if (row.entity, row.key) == rec.record_id:
+            return False  # this row is the oldest source present so far
+        if (row.entity, row.key) in ctx.present:
+            return True
+    return False
 
 
 def _has_active_source(db: Session, enquiry_id: int) -> bool:
@@ -451,6 +581,8 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
     db = ctx.db
     discarded = isinstance(rec, SheetDiscarded)
     enquiry = _find_enquiry(ctx, rec)
+    if enquiry is not None and _is_extra_source(ctx, rec, enquiry):
+        return ApplyResult("unchanged", (), "enquiry", enquiry.id)  # recorded as a source by the repository, writes nothing
     created = enquiry is None
     restored = False
     old_o, new_o, _mine = overlays(ctx, rec, "enquiry", None if enquiry is None else enquiry.id, previous)
@@ -461,7 +593,7 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
             source="linkedin_post", content_hash=_hash_for(rec), raw_text=text, origin="sheet" if ctx.is_sheet else "import",
             review_status="discarded" if discarded else "accepted", triage_status="done",
             stage=None if discarded else "prospect_new", decided_at=ctx.now,
-            date_added=local_midnight_utc(rec.date_added) or ctx.now,
+            date_added=local_midnight_utc(rec.date_added) or ctx.now, activity_id=_activity_of(rec),
         )
         db.add(enquiry)
         db.flush()
@@ -469,6 +601,9 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
         restored = True
         enquiry.sheet_removed_at = None
         changed.append("sheet_removed_at")
+        on_enquiry_restored(ctx, enquiry)
+    if enquiry.activity_id is None and (act := _activity_of(rec)):
+        enquiry.activity_id = act  # the indexed lookup key (see _find_enquiry)
 
     own = enquiry.origin in ("sheet", "import")
     w = Writer(enquiry, old_o, new_o)
@@ -519,7 +654,7 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
 
     tab = ctx.source.tab_name if ctx.source else ""
     scopes = {"enquiry_id": enquiry.id, "prospect_id": enquiry.prospect_id, "company_id": enquiry.company_id}
-    result = _finish(ctx, rec, enquiry, "enquiry", created, restored, changed, "enquiry", scopes, tab)
+    result = _finish(ctx, rec, enquiry, "enquiry", created, restored, changed, "enquiry", scopes, tab, w.diff)
 
     if enquiry.review_status == "accepted" and not discarded:
         extra = _link_prospect(ctx, rec, enquiry, new_o, old_o)
@@ -530,6 +665,65 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
     elif flipped_to_discarded:
         _close_discarded_prospect(ctx, enquiry)
     return result
+
+
+# ---- a sheet row that vanished / came back ---------------------------------------------------------
+SOURCE_REMOVED_REASON = "sheet row removed"
+SOURCE_REMOVED_FLAG = "source_row_removed"
+_AUTOMATIC_ACTORS = ("sheet-sync", "system", "import")
+
+
+def _has_human_history(db: Session, p: Prospect) -> bool:
+    """Notes, a stage a person set, outreach or follow-ups: anything a team member did on this prospect."""
+    from sales0.db.models.crm import FollowUp
+    from sales0.db.models.outreach import OutreachMessage
+
+    if p.stage_source == "app" and (p.stage != "new" or p.contacted_at is not None):
+        return True
+    if db.scalar(select(TimelineEvent.id).where(TimelineEvent.prospect_id == p.id, TimelineEvent.actor.not_in(_AUTOMATIC_ACTORS)).limit(1)) is not None:
+        return True
+    if db.scalar(select(TimelineEvent.id).where(TimelineEvent.prospect_id == p.id, TimelineEvent.actor_member_id.is_not(None)).limit(1)) is not None:
+        return True
+    return (
+        db.scalar(select(OutreachMessage.id).where(OutreachMessage.prospect_id == p.id).limit(1)) is not None
+        or db.scalar(select(FollowUp.id).where(FollowUp.prospect_id == p.id).limit(1)) is not None
+    )
+
+
+def on_enquiry_removed(db: Session, enquiry: Enquiry, now: datetime) -> None:
+    """The enquiry's last sheet row is gone. Its prospect is closed when nobody worked on it, else flagged."""
+    from sales0.services.crm import flags
+    from sales0.services.crm import prospects as crm_prospects
+    from sales0.services.crm.actor import SHEET_SYNC
+
+    p = db.get(Prospect, enquiry.prospect_id) if enquiry.prospect_id else None
+    if p is None or p.sheet_removed_at is not None:
+        return
+    other = db.scalar(
+        select(func.count(Enquiry.id)).where(
+            Enquiry.prospect_id == p.id, Enquiry.id != enquiry.id, Enquiry.sheet_removed_at.is_(None), Enquiry.review_status == "accepted"
+        )
+    )
+    own_rows = db.scalar(select(func.count(SheetSourceRow.id)).where(SheetSourceRow.target_type == "prospect", SheetSourceRow.target_id == p.id))
+    if other or own_rows:
+        return  # still carried by another enquiry / a people-tab row
+    if p.status == "open" and not _has_human_history(db, p):
+        crm_prospects.close(db, p.id, SOURCE_REMOVED_REASON, actor=SHEET_SYNC, now=now)
+    elif p.status != "closed":
+        flags.set_flag(db, "prospect", p.id, SOURCE_REMOVED_FLAG, source="auto", detail={"enquiry_id": enquiry.id}, actor=SHEET_SYNC, now=now)
+
+
+def on_enquiry_restored(ctx: Ctx, enquiry: Enquiry) -> None:
+    """The row is back: undo what the removal did (reopen the prospect the sync closed, clear the flag)."""
+    from sales0.services.crm import flags
+    from sales0.services.crm import prospects as crm_prospects
+
+    p = ctx.db.get(Prospect, enquiry.prospect_id) if enquiry.prospect_id else None
+    if p is None:
+        return
+    flags.clear_flag(ctx.db, "prospect", p.id, SOURCE_REMOVED_FLAG, actor=ctx.actor, now=ctx.now)
+    if p.status == "closed" and p.closed_reason == SOURCE_REMOVED_REASON:
+        crm_prospects.reopen(ctx.db, p.id, actor=ctx.actor, now=ctx.now)
 
 
 def _close_discarded_prospect(ctx: Ctx, enquiry: Enquiry) -> None:
@@ -591,10 +785,10 @@ def _link_prospect(ctx: Ctx, rec: SheetEnquiry, enquiry: Enquiry, new_o: dict[st
                 db.add(ContactPhone(contact_id=contact.id, phone=ph[:40], digits=d))
                 have.add(d)
     link = new_o.get("contact_link")
-    if contact is not None and link and profile_slug(link) and not contact.linkedin_slug:
-        taken = db.scalar(select(Contact.id).where(Contact.linkedin_slug == profile_slug(link)))
+    if contact is not None and link and _person_slug(link) and not contact.linkedin_slug:
+        taken = db.scalar(select(Contact.id).where(Contact.linkedin_slug == _person_slug(link)))
         if taken is None:
-            contact.linkedin_slug, contact.linkedin_url = profile_slug(link), clip(link if link.startswith("http") else "https://" + link, 500)
+            contact.linkedin_slug, contact.linkedin_url = _person_slug(link), clip(link if link.startswith("http") else "https://" + link, 500)
     db.flush()
 
     # status -> stage
@@ -740,7 +934,7 @@ def _apply_lead(ctx: Ctx, prospect: Prospect, outcome: StatusOutcome, enquiry: E
             company = db.get(Company, prospect.company_id) if prospect.company_id else None
             client = Client(
                 name=(company.name if company else prospect.name)[:200], company_id=prospect.company_id, status="active", source="sheet",
-                lead_id=lead.id, prospect_id=prospect.id, started_on=proposal or ctx.now.date(),
+                lead_id=lead.id, prospect_id=prospect.id, started_on=proposal or _local_date(ctx.now),
                 actor=ctx.actor.label[:80], actor_member_id=getattr(ctx.actor, "member_id", None),
             )
             db.add(client)
@@ -753,7 +947,7 @@ def _apply_lead(ctx: Ctx, prospect: Prospect, outcome: StatusOutcome, enquiry: E
 
 # ============================================================================ prospects (people)
 def _profile_for(ctx: Ctx, rec: _Person) -> LinkedinProfile | None:
-    slug = profile_slug(rec.linkedin_url) or (f"in/{rec.linkedin_slug}" if rec.linkedin_slug else None)
+    slug = profile_slug(rec.linkedin_url)  # keeps the kind: a company page never becomes an in/<slug> person
     if not slug:
         return None
     db = ctx.db
@@ -842,7 +1036,7 @@ def _apply_person(ctx: Ctx, rec: _Person, previous: dict[str, Any] | None) -> Ap
     moved = _apply_outcome(ctx, prospect, outcome, enquiry=None, sheet_status=status)
     changed += moved
     tab = ctx.source.tab_name if ctx.source else ""
-    result = _finish(ctx, rec, prospect, "prospect", created, restored, changed, "prospect", scopes, tab)
+    result = _finish(ctx, rec, prospect, "prospect", created, restored, changed, "prospect", scopes, tab, w.diff)
     return result
 
 
@@ -893,7 +1087,7 @@ def _apply_competitor(ctx: Ctx, rec: SheetCompetitor, previous: dict[str, Any] |
         row.sheet_fields = new_o
     db.flush()
     tab = ctx.source.tab_name if ctx.source else ""
-    return _finish(ctx, rec, row, "competitor", created, restored, changed, "competitor", {}, tab)
+    return _finish(ctx, rec, row, "competitor", created, restored, changed, "competitor", {}, tab, w.diff)
 
 
 # ============================================================================ groups
@@ -948,7 +1142,7 @@ def _apply_group(ctx: Ctx, rec: SheetGroup, previous: dict[str, Any] | None) -> 
         row.sheet_fields = new_o
     db.flush()
     tab = ctx.source.tab_name if ctx.source else ""
-    return _finish(ctx, rec, row, "channel_group", created, restored, changed, "group", {}, tab)
+    return _finish(ctx, rec, row, "channel_group", created, restored, changed, "group", {}, tab, w.diff)
 
 
-__all__ = ["ApplyResult", "apply_record", "company_for", "contact_for", "jsonify", "json_fields", "overlay"]
+__all__ = ["ApplyResult", "apply_record", "company_for", "contact_for", "jsonify", "json_fields", "on_enquiry_removed", "overlay"]

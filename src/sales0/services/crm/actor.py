@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy.orm import Session
+
 from sales0.db.models import TeamMember
 
 
@@ -25,9 +27,19 @@ class Actor:
         return Actor(m.name, m.id)
 
 
+def actor_for(db: Session, member_id: int | None, by_member_id: int | None = None) -> Actor:
+    """The actor for a member id; an admin acting as another member yields "Admin as Member" (credit to the member)."""
+    m = db.get(TeamMember, member_id) if member_id else None
+    if m is not None and by_member_id and by_member_id != m.id:
+        by = db.get(TeamMember, by_member_id)
+        if by is not None:
+            return Actor(f"{by.name} as {m.name}"[:80], m.id, by.id)
+    return Actor.of_member(m)
+
+
 SYSTEM = Actor("system")
 SHEET_SYNC = Actor("sheet-sync")
 IMPORT = Actor("import")
 TEAM = Actor("team")
 
-__all__ = ["IMPORT", "SHEET_SYNC", "SYSTEM", "TEAM", "Actor"]
+__all__ = ["actor_for", "IMPORT", "SHEET_SYNC", "SYSTEM", "TEAM", "Actor"]

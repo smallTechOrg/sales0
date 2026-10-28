@@ -54,6 +54,7 @@ class SheetEnquiry(SheetRecord):
     keyword_used: str | None = None
     sheet_update: str | None = None
     contact_person: str | None = None
+    year_inferred: tuple[str, ...] = ()  # date fields whose cell had no year (the engine freezes the inferred year)
 
 
 @dataclass(frozen=True, kw_only=True)

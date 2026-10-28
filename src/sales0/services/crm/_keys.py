@@ -10,7 +10,7 @@ import re
 from collections.abc import Sequence
 from urllib.parse import urlsplit
 
-from sales0.scraper.urls import profile_slug
+from sales0.linkedin_url import profile_slug
 
 _WS = re.compile(r"\s+")
 _EMAIL = re.compile(r"[^\s,;<>()\[\]\"']+@[^\s,;<>()\[\]\"']+\.[A-Za-z]{2,}")
@@ -58,17 +58,15 @@ def search_text(full_name: str | None, emails: Sequence[str], company: str | Non
 
 
 def linkedin_slug_of(url_or_slug: str | None) -> str | None:
-    """``https://www.linkedin.com/in/x/`` / ``linkedin.com/in/x`` / ``in/x`` -> ``in/x`` (None if not a profile)."""
+    """``https://www.linkedin.com/in/x/`` / ``linkedin.com/in/x`` / ``in/x`` -> ``in/x`` (None if not a profile).
+
+    Delegates to the one canonicaliser, :mod:`sales0.linkedin_url` (percent-decoding, NFC, casefold, host check)."""
     text = (url_or_slug or "").strip()
     if not text:
         return None
     if text.lower().startswith(("in/", "company/")):
-        return text.rstrip("/").lower()
-    if "://" not in text:
-        text = "https://" + text.lstrip("/")
-    if not is_linkedin_url(text):
-        return None
-    return profile_slug(text)
+        text = "linkedin.com/" + text
+    return profile_slug(text, allow_fixture=True)
 
 
 def is_linkedin_url(url: str) -> bool:

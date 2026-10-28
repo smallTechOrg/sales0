@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,8 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db, get_sessionmaker
 from sales0.errors import DomainError
 from sales0.jobs.scheduler import SheetSyncJob, get_scheduler
-from sales0.web.acting import clear_flash, pop_flash, set_flash
+from sales0.db.models import TeamMember
+from sales0.web.acting import clear_flash, pop_flash, require_admin, set_flash
 from sales0.web.context import is_htmx, render_fragment, render_page, toast_html
 from sales0.services.sheetsync import SqlStateStore
 from sales0.web.envelope import ok
@@ -49,6 +50,7 @@ class SyncPanel:
     last_dry_run: bool = False
     runs_total: int = 0
     tabs: list[dict[str, Any]] = field(default_factory=list)
+    blocked: bool = False  # the last real run refused to hide a mass of rows (the admin can "Apply anyway")
 
 
 def _tab_rows(report: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -102,19 +104,33 @@ def build_panel(now: datetime | None = None) -> SyncPanel:
         panel.last_dry_run = bool(saved["last_dry_run"])
         panel.runs_total = saved["runs_total"] or 0
         panel.tabs = _tab_rows(saved["report"])
+        panel.blocked = not panel.last_dry_run and any(t["removal_blocked"] for t in panel.tabs)
         if panel.last_error is None and saved["last_status"] == "partial":
             panel.last_error = "One or more tabs could not be read - see the Problem column."
     return panel
 
 
-def _status_context() -> dict[str, Any]:
-    return {"panel": build_panel(), "dry": _last_dry_run, "interval": get_settings().sheet_sync_minutes}
+def _is_admin(request: Request) -> bool:
+    """The REAL user is an admin (same rule as ``require_admin``)."""
+    try:
+        with get_sessionmaker()() as db:
+            require_admin(request, db)
+        return True
+    except DomainError:
+        return False
+
+
+def _status_context(request: Request | None = None) -> dict[str, Any]:
+    return {
+        "panel": build_panel(), "dry": _last_dry_run, "interval": get_settings().sheet_sync_minutes,
+        "can_override": request is not None and _is_admin(request),
+    }
 
 
 @router.get("/sync", response_class=HTMLResponse)
 def sync_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     flash = pop_flash(request)
-    response = render_page(request, db, "sync/page.html", {**_status_context(), "flash": flash})
+    response = render_page(request, db, "sync/page.html", {**_status_context(request), "flash": flash})
     if flash:
         clear_flash(response)
     return response
@@ -122,12 +138,12 @@ def sync_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 
 @router.get("/sync/status", response_class=HTMLResponse)
 def sync_status(request: Request) -> HTMLResponse:
-    return render_fragment(request, "sync/_status.html", _status_context())
+    return render_fragment(request, "sync/_status.html", _status_context(request))
 
 
 def _respond(request: Request, message: str, kind: str = "ok") -> Response:
     if is_htmx(request):
-        html = render_fragment(request, "sync/_status.html", _status_context()).body.decode()
+        html = render_fragment(request, "sync/_status.html", _status_context(request)).body.decode()
         return HTMLResponse(html + toast_html(message, kind))
     response = RedirectResponse("/sync", status_code=303)
     set_flash(response, message, kind)
@@ -142,6 +158,19 @@ def sync_run(request: Request) -> Response:
     if not job.runner(get_scheduler().ctx).trigger_now():
         raise DomainError("sync_running", "A sync is already running.", 409)
     return _respond(request, "Sync started.")
+
+
+@router.post("/sync/run-anyway")
+def sync_run_anyway(request: Request, confirm: str = Form(""), admin: TeamMember = Depends(require_admin)) -> Response:
+    """Admin only: run a sync with the mass-removal guard lifted (rows are hidden, never deleted)."""
+    if confirm != "yes":
+        raise DomainError("confirm_required", "Confirm that you want to apply the removals the safety guard blocked.", 400)
+    job = _job()
+    if not job.available():
+        raise DomainError("sync_unavailable", "The CRM sheet repository is not installed.", 409)
+    if not job.runner(get_scheduler().ctx).trigger_now(allow_mass_removal=True):
+        raise DomainError("sync_running", "A sync is already running.", 409)
+    return _respond(request, "Sync started; the blocked removals will be applied (the rows are only hidden, not deleted).")
 
 
 @router.post("/sync/enable")
