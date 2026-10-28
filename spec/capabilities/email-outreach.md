@@ -32,4 +32,4 @@ Drafts a personalised email per prospect from the matched offering's template, a
 ## Success Criteria
 - [ ] Drafting for the P1 prospect uses the "AI corporate workshops" template, mentions Acme Logistics, and has no `{{` left.
 - [ ] Clicking Send on an unapproved draft is impossible (no control rendered), and the API route refuses it with `not_approved`.
-- [ ] Real Gmail `drafts.create` + `drafts.delete` succeed in the gate. Send is exercised against the team's own test address (`SALES0_GMAIL_TEST_RECIPIENT`).
+- [ ] Real Gmail `drafts.create` + `drafts.delete` succeed in the gate. Send is exercised only against the test account itself (admin@smalltech.in mails itself; the message is trashed afterwards). There is no recipient setting.

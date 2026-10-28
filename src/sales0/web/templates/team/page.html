@@ -45,7 +45,7 @@
                     <button class="btn btn--primary btn--sm" type="submit">{% if c.status == "connected" %}Reconnect my Gmail{% else %}Connect my Gmail{% endif %}</button>
                   </form>
                 {% elif m.active %}
-                  <span class="muted">{{ m.name }} connects their own Gmail (switch to them in the header).</span>
+                  <span class="muted">{{ m.name }} connects their own Gmail when signed in as themselves.</span>
                 {% endif %}
                 {% if c.status in ("connected", "needs_reauth", "scope_insufficient") and acting_member and (acting_member.id == m.id or acting_member.role == "admin") %}
                   <form method="post" action="/team/gmail/disconnect" data-q="Disconnect Gmail for {{ m.name }}? They will need to connect again before sending." data-confirm-submit>
@@ -69,7 +69,12 @@
       </div>
     </section>
 
-    {% if acting_member and acting_member.role == "admin" %}
+    {% if acting_member and acting_member.role == "admin" and not open_mode %}
+    <section class="card" aria-labelledby="add-member-title">
+      <div class="card__header"><h2 id="add-member-title">Add a team member</h2><span class="muted">Admins only</span></div>
+      <div class="card__body"><p>Team members sign in with their own account. Add them on the <a href="/users">Users page</a>, which gives you their set-password link.</p></div>
+    </section>
+    {% elif acting_member and acting_member.role == "admin" %}
     <section class="card" aria-labelledby="add-member-title">
       <div class="card__header"><h2 id="add-member-title">Add a team member</h2><span class="muted">Admins only</span></div>
       <div class="card__body">

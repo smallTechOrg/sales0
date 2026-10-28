@@ -41,7 +41,6 @@ from sales0.logging import get_logger
 from sales0.scraper.types import ScrapedPost
 from sales0.services import linkedin_accounts, seen_posts
 from sales0.services import runs as runs_service
-from sales0.services import session as session_service
 from sales0.services._common import clip, not_found, now_or, record_history
 from sales0.worker import protocol as p
 

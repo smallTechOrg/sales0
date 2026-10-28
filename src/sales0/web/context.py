@@ -47,7 +47,7 @@ class NavItem:
     active: bool = False
 
 
-# (label, href, phase) — phase None = real in Phase 1; otherwise the phase that builds it.
+# (label, href, phase) — phase None = a real page; a number marks a page that is not built (deferred).
 NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Inbox", "/inbox", None),
     ("Runs", "/runs", None),

@@ -196,6 +196,8 @@ def test_settings_defaults_and_tab_overrides(monkeypatch) -> None:
     monkeypatch.delenv("SALES0_SHEET_SYNC_MINUTES", raising=False)
     s = Settings(_env_file=None)
     assert s.sheet_sync_minutes == 30
+    assert tabs_from_settings(s) == ()  # sheet ids are opt-in: nothing real ships as a default
+    s = Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id")
     tabs = tabs_from_settings(s)
     assert tabs == default_tabs() and tabs[0].gid == "0" and tabs[0].name == "Active Enquiries"
     s2 = Settings(_env_file=None, sheet_sync_minutes=0, sheet_client_sourcing_id="X",
@@ -206,7 +208,7 @@ def test_settings_defaults_and_tab_overrides(monkeypatch) -> None:
 
 
 def test_cli_dry_run_prints_counts_only(capsys) -> None:
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id")
     code = sync_sheets(s, dry_run=True, tab=None, source=StaticSource(fx.all_tabs_csv()), memory=True)
     out = capsys.readouterr().out
     assert code == 0 and "DRY-RUN" in out
@@ -216,7 +218,7 @@ def test_cli_dry_run_prints_counts_only(capsys) -> None:
 
 
 def test_cli_single_tab_unknown_tab_and_failures(capsys) -> None:
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id")
     src = StaticSource({**fx.all_tabs_csv(), "Groups": RuntimeError("x")})
     assert sync_sheets(s, dry_run=True, tab="groups", source=src, memory=True) == 1
     assert "FETCH-ERROR" in capsys.readouterr().out
@@ -243,7 +245,7 @@ def test_cli_uses_registered_repository_when_present(capsys) -> None:
     repo = InMemorySheetRepository()
     register_repository_factory(lambda: repo)
     try:
-        sync_sheets(Settings(_env_file=None), dry_run=False, tab="Groups", source=StaticSource(fx.all_tabs_csv()))
+        sync_sheets(Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id"), dry_run=False, tab="Groups", source=StaticSource(fx.all_tabs_csv()))
         assert any(k[0] == "group" for k in repo.records)
         assert "in-memory" not in capsys.readouterr().out
     finally:

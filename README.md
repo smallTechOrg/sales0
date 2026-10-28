@@ -250,6 +250,22 @@ Names, profile URLs and the enquiries you keep stay until you delete them (conta
 be deleted from their pages). Logs print counts, not names or text. Treat the data directory and any
 backup as personal data (see Security notes) and honour deletion requests by deleting the rows.
 
+### First day (local)
+
+1. `cp .env.example .env`, add the Anthropic key. Set `SALES0_ADMIN_NAME`, `SALES0_ADMIN_EMAIL` and
+   `SALES0_APP_PASSWORD` **before the first start**: they only seed the first admin (drafts are signed with that name)
+   and are ignored on later starts.
+2. `uv sync`, `uv run alembic upgrade head`, `uv run python -m sales0`, then log in with that email and password.
+3. **Setup → Connect LinkedIn**: log in once in the Chrome window that opens (finish 2FA).
+4. Trim the keyword list on Setup. Set `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN=10` for a first run of about 30 minutes.
+5. **Runs → Run now**.
+6. **Inbox**: review, accept, discard or rescue.
+7. **Pipeline → Draft email** on a prospect (company research is optional).
+8. **Team → Connect my Gmail** ([Gmail OAuth](#gmail-oauth-per-person)), then Approve and Send (the prospect becomes
+   Contacted and reminders are created).
+9. **Sync → Sync now / Preview** (only if you set the sheet ids, see below) and check **Replies**.
+10. **Metrics**, **Costs** and **Schedule** show how it is going.
+
 ### One sales0 per data directory (enforced)
 
 sales0 takes an exclusive lock on `<data_dir>/.sales0.lock` at startup and refuses to boot when another
@@ -268,8 +284,13 @@ Haiku calls. Keep demo data out of your real inbox with a separate demo database
 ```bash
 # working directory: the repo root
 SALES0_DATABASE_URL=sqlite:///data/demo.db uv run alembic upgrade head
-SALES0_DATABASE_URL=sqlite:///data/demo.db SALES0_LINKEDIN_MODE=fixture uv run python -m sales0
+SALES0_DATABASE_URL=sqlite:///data/demo.db SALES0_LINKEDIN_MODE=fixture \
+  SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN=2 SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S=1 SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S=2 \
+  uv run python -m sales0
 ```
+
+The two extra limits matter: the suggested keyword list has 60 active phrases, and a default run searches 40 of them
+with 20–60 s pauses, which looks stuck in a demo. With these, **Run now** searches 2 phrases and finishes in a minute or two.
 
 Open http://127.0.0.1:8765/setup, add the keyword `ai workshop` (or the three keywords
 `corporate ai training`, `ai workshop`, `ai consulting`) and press **Connect LinkedIn**. The
@@ -311,6 +332,9 @@ scraped post) or a CSV of data that is not in your Sheets.
 the Sheet is the source of truth for the fields it holds, and everything added in sales0
 (notes, stages you move, tags, follow-ups, timeline) is kept. **sales0 never writes to Google.**
 Settings (all optional) are in the [Configuration](#configuration) table (`SALES0_SHEET_*`). The Sheets must be readable by "anyone with the link".
+**Sheet sync is opt-in**: `SALES0_SHEET_CLIENT_SOURCING_ID` and `SALES0_SHEET_METRICS_ID` are empty by default and a sheet
+with no id is simply not synced, so a fresh install or the demo never pulls anyone's real data. Put the spreadsheet ids
+(the long id in the Sheet's URL) in `.env` to turn it on. On the hosted app, set them as environment variables of the service.
 
 Open **Sync** in the navigation: it shows the last sync (status, time, per-tab counts of rows /
 added / updated / unchanged / removed / errors, counts only, never cell content) and has
@@ -461,8 +485,8 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_REPLY_MAX_THREADS_PER_POLL` | int | `300` | Max threads checked per member per cycle. |
 | `SALES0_REPLY_OWN_ALIASES` | str | empty | Comma list of extra addresses that are "us" (Send-As aliases); never counted as replies. |
 | `SALES0_SHEET_SYNC_MINUTES` | int | `30` | Minutes between Google Sheet syncs (0 disables). |
-| `SALES0_SHEET_CLIENT_SOURCING_ID` | str | `1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag` | Spreadsheet id of the client-sourcing sheet. |
-| `SALES0_SHEET_METRICS_ID` | str | `1tnwiBRMfp_QR0CmAkxZM_Chl-VAixmcWPxE1NCGED5w` | Spreadsheet id of the metrics sheet. |
+| `SALES0_SHEET_CLIENT_SOURCING_ID` | str | empty | Spreadsheet id of the client-sourcing sheet. |
+| `SALES0_SHEET_METRICS_ID` | str | empty | Spreadsheet id of the metrics sheet. |
 | `SALES0_SHEET_TABS_JSON` | str | unset | Optional JSON list replacing the default tabs: `[{"name","kind","gid","sheet_id"?}]`. |
 | `SALES0_SHEET_FETCH_TIMEOUT_S` | float | `20.0` | Sheet fetch timeout in seconds. |
 | `SALES0_SHEET_FETCH_RETRIES` | int | `3` | Sheet fetch retries. |
@@ -686,7 +710,8 @@ One-time Google Cloud setup (details and error table in [docs/gmail-setup.md](do
    only users in your domain). For personal `@gmail.com` accounts choose External + **Testing**
    and add each person under *Test users* (Testing-mode refresh tokens expire after 7 days).
 3. **Credentials -> Create OAuth client ID**, then download the JSON to
-   `SALES0_GOOGLE_CLIENT_SECRET_PATH` (default `data/google_client_secret.json`):
+   `SALES0_GOOGLE_CLIENT_SECRET_PATH` (default `data/google_client_secret.json`; a `data/...` path follows
+   `SALES0_DATA_DIR`, an absolute path is used as is):
    - **Local use:** type *Desktop app*. The JSON has an `installed` block. Google allows
      `http://127.0.0.1` / `localhost` on any port, so open sales0 on `http://127.0.0.1:<port>/team`
      and press *Connect my Gmail*.
@@ -749,14 +774,24 @@ backoff; a restarted worker resumes its run). Hosted mode has **no** Connect/Re-
 runs: those need a browser and stay on the laptop (`sales0 worker --connect`). A manual action that could outlive a request
 (reply check) stops after `SALES0_HOSTED_ACTION_BUDGET_S` seconds and says "more remaining, click again".
 
+**Single source of truth.** Once hosted, the Cloud SQL database is the one source of truth for the team: the dashboard at
+https://sales0-870371939888.us-central1.run.app reads and writes it, and the laptop only scrapes. SQLite is for local
+development and the automated tests. There is **no scheduler**: sheet sync, reply checks, the digest and the rest are buttons
+on the page, and scraping runs when someone queues a run and `sales0 worker` is running on the laptop.
+
+**Gmail on the hosted app** needs a **Web application** OAuth client with the redirect URI
+`https://sales0-870371939888.us-central1.run.app/oauth/google/callback` (a Desktop client cannot be used there). The JSON is
+the Secret Manager secret `sales0-google-client-secret`, mounted as a file; after adding a new secret version, the next new
+instance picks it up.
+
 Deploy: `deploy/deploy.sh` prints the `gcloud` commands (dry run); `deploy/deploy.sh --apply` runs them.
 
 ## Roadmap and what is not supported
 
 Not supported today (do not rely on these):
 
-- **PostgreSQL.** SQLite only. The database layer is SQLAlchemy and Alembic, so a Postgres move is
-  possible, but migrations, locking and the single-process job runner are written and tested for SQLite. Future.
+- **PostgreSQL for the local single-machine mode.** Local mode is SQLite. PostgreSQL is supported for the hosted deployment
+  (see [Hosted](#hosted-cloud-run--cloud-sql-scraping-on-a-laptop)); the local job runner is written for SQLite.
 - **More than one process / worker** on the same data directory (refused at boot by a lock file).
 - **Multi-tenant (several companies in one install).** Planned, none of it exists yet:
   a tenant/workspace id on every table (a cheap migration: the names are already tenant-neutral and data goes
@@ -813,7 +848,7 @@ Not supported today (do not rely on these):
 uv run pytest tests/unit -q          # pure unit tests: no network, no browser
 uv run pytest tests/integration -q   # real SQLite files, real headless Chromium + headless Google Chrome, real Haiku (the pipeline tests use a fake-LLM oracle; ~10-15 min)
 uv run pytest tests/e2e -q           # live servers on ports 8766 / 8792 (Phase 2 journey) + headless Chromium + real Haiku
-uv run pytest tests -q               # everything
+uv run pytest tests -q               # everything (the suites are also safe to run in one process)
 ```
 
 - Integration and E2E tests make **real** Anthropic calls with the key from `.env`. A full

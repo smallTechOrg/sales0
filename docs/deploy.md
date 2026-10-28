@@ -4,6 +4,10 @@ Audience: the person who deploys and runs sales0 for the team. Everything here i
 Cloud project `ai-agent-boilerplate0`, region `us-central1`, with the existing Cloud SQL instance `ai-agent-db`
 (PostgreSQL 17, private IP `10.110.112.7`, `db-f1-micro`).
 
+Live service: https://sales0-870371939888.us-central1.run.app . The Cloud SQL database is the team's **single source of
+truth**; SQLite is only for local development and the automated tests. There is no scheduler: every job is a button in the UI,
+and scraping happens on a laptop running `sales0 worker`.
+
 ## 1. Architecture in one picture
 
 ```
@@ -95,7 +99,8 @@ Set by the image / `deploy.sh` (nothing to do by hand):
 
 Optional: `SALES0_ADMIN_EMAIL` / `SALES0_ADMIN_NAME` (first admin; default `admin@smalltech.in`),
 `SALES0_TRUSTED_PROXIES` (see Risks), `SALES0_MONTHLY_SPEND_CAP_USD`, `SALES0_HOSTED_ACTION_BUDGET_S`,
-`SALES0_WORKER_STALE_S`, `SALES0_DB_POOL_SIZE` / `SALES0_DB_MAX_OVERFLOW`. The full table is in the README.
+`SALES0_WORKER_STALE_S`, `SALES0_DB_POOL_SIZE` / `SALES0_DB_MAX_OVERFLOW`, and (opt-in, blank by default)
+`SALES0_SHEET_CLIENT_SOURCING_ID` / `SALES0_SHEET_METRICS_ID` to enable the read-only sheet sync. The full table is in the README.
 
 The app **refuses to boot** in hosted mode (clear message, exit code 2) unless: the database is PostgreSQL, a secret key
 is set, `SALES0_PUBLIC_BASE_URL` is https, a worker token is set, `SALES0_LINKEDIN_MODE` is `live`, and a login exists
