@@ -350,6 +350,18 @@ LinkedIn account: it shares that account's overlap protection, safety cool-down 
 watch* row counts tracked profiles actually visited by the watch job that week (not manual track/untrack changes).
 Edit manual weekly figures (for example blog posts) and per-source targets on the page; export any table as CSV.
 
+## CI
+
+`.github/workflows/ci.yml` runs on every push and pull request: `ruff check`, unit tests,
+the SQLite integration suite (no real LLM calls; `llm`-marked tests are deselected and a
+placeholder API key satisfies the harness' key check), and an e2e collection smoke test.
+Unit, integration and e2e run as separate processes. The real-Anthropic jobs (e2e journeys
+and `llm`-marked integration tests) run only from a manual "Run workflow" dispatch with
+`run_llm_tests` ticked, using the repository secrets `ANTHROPIC_API_KEY` and
+`SALES0_ANTHROPIC_WORKSPACE_ID`. The PostgreSQL job (`postgres:17` service, harness variable
+`SALES0_TEST_POSTGRES_URL`) is opt-in via the repository variable `RUN_PG_TESTS=true` until the
+deploy branch's Postgres test harness is merged.
+
 ## Configuration
 
 Every setting is an environment variable with the `SALES0_` prefix, read from the process
