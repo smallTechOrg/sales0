@@ -51,13 +51,13 @@ def outcome(verdict: str = "genuine", **overrides: object) -> TriageOutcome:
         error=None,
         llm_responses=[make_response(answer)],
         fewshot_count=0,
-        prompt_version="triage-v2",
+        prompt_version="triage-v3",
     )
 
 
 def failed_outcome() -> TriageOutcome:
     return TriageOutcome(status="failed", result=None, error="bad JSON", llm_responses=[], fewshot_count=0,
-                         prompt_version="triage-v2")
+                         prompt_version="triage-v3")
 
 
 def sight(db: Session, key: str, text: str, run_id: int, **kw: object):
@@ -150,7 +150,7 @@ def test_genuine_creates_the_enquiry_and_moves_the_text(db: Session) -> None:
     assert (e.raw_text, e.review_status, e.triage_status, e.ai_verdict, e.priority) == (
         BUYER, "pending_review", "done", "genuine", "high")
     assert (e.seen_post_id, e.author_profile_id, e.posted_relative, e.prompt_version) == (
-        row.id, s.profile_id, "2d", "triage-v2")
+        row.id, s.profile_id, "2d", "triage-v3")
     assert e.company == "Acme Logistics" and e.content_hash == row.content_hash and e.date_posted is not None
     assert e.source_url == "https://www.linkedin.com/in/priya-menon-fx/"  # no permalink yet: the profile
     assert [x.source_ref for x in e.sources] == ["ck:k1"] and [h.keyword_text for h in e.keyword_hits] == [KW]

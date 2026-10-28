@@ -55,6 +55,7 @@
       {% if card.author_headline %}<span aria-hidden="true">·</span><span>{{ card.author_headline }}</span>{% endif %}
       <span aria-hidden="true">·</span><span title="Date posted">{{ date_ago(card.date_posted) }}</span>
       {% for kw in card.keywords %}<span class="chip">{{ kw }}</span>{% endfor %}
+      {% if opportunity_label(card.ai_opportunity_type) %}<span class="chip-opportunity" data-opportunity="{{ card.ai_opportunity_type }}">{{ opportunity_label(card.ai_opportunity_type) }}</span>{% endif %}
       {% if poster_label(card.ai_poster_type) %}<span aria-hidden="true">·</span><span>{{ poster_label(card.ai_poster_type) }}</span>{% endif %}
     </p>
 

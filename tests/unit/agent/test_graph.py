@@ -31,7 +31,7 @@ def test_valid_answer_gives_done_with_one_response_and_guarded_result(p1_input, 
     assert out.result is not None
     assert out.result.email == "training@acmelogistics.example"
     assert out.result.phone == "+91 98200 11111"
-    assert out.prompt_version == PROMPT_VERSION == "triage-v2"
+    assert out.prompt_version == PROMPT_VERSION == "triage-v3"
     assert out.fewshot_count == 0
 
 

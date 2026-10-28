@@ -73,11 +73,10 @@ def _tables(url: str) -> set[str]:
         engine.dispose()
 
 
-def test_head_revision_is_0003_phase1_4_seen_posts(db_url: str) -> None:
-    assert head_revision() == "0003_phase1_4_seen_posts"
+def test_database_is_at_the_head_revision(db_url: str) -> None:
     engine = build_engine(db_url)
     try:
-        assert current_revision(engine) == "0003_phase1_4_seen_posts"
+        assert current_revision(engine) == head_revision()
     finally:
         engine.dispose()
     assert PHASE1_TABLES | {"app_meta", "alembic_version"} <= _tables(db_url)
@@ -187,7 +186,7 @@ def test_alembic_cli_upgrade_and_current_print_the_head_revision(
         text=True,
     )
     assert cur.returncode == 0, cur.stderr
-    assert "0003_phase1_4_seen_posts (head)" in cur.stdout
+    assert f"{head_revision()} (head)" in cur.stdout
 
 
 def test_upgrade_fails_loudly_on_an_unknown_revision(tmp_path: Path) -> None:

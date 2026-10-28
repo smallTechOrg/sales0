@@ -29,7 +29,7 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent")
 
-PROMPT_VERSION = "triage-v2"  # bump on any prompt or schema edit
+PROMPT_VERSION = "triage-v3"  # bump on any prompt or schema edit
 TOOL_NAME = "record_triage"
 TOOL_DESCRIPTION = (
     "Record the triage of ONE post: genuine/discard verdict, one-line reason, poster type, "

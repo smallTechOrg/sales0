@@ -42,8 +42,8 @@ def _digits(s: str) -> str:
 
 def test_eval_set_shape() -> None:
     assert len(EVAL_POSTS) >= 40
-    assert sum(p.expected == "genuine" for p in EVAL_POSTS) == 16
-    assert sum(p.expected == "discard" for p in EVAL_POSTS) == 24
+    assert sum(p.expected == "genuine" for p in EVAL_POSTS) == 24
+    assert sum(p.expected == "discard" for p in EVAL_POSTS) == 20
 
 
 def test_every_eval_post_is_triaged_and_well_formed(outcomes: dict[str, TriageOutcome]) -> None:
@@ -51,7 +51,7 @@ def test_every_eval_post_is_triaged_and_well_formed(outcomes: dict[str, TriageOu
     for pid, o in outcomes.items():
         assert o.status == "done" and o.result is not None, (pid, o.error)
         assert 1 <= len(o.result.reason) <= 160
-        assert o.prompt_version == "triage-v2"
+        assert o.prompt_version == "triage-v3"
         assert all(r.cost_usd_micros > 0 for r in o.llm_responses)
 
 

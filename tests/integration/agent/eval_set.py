@@ -1,7 +1,7 @@
 """Labelled synthetic posts for the triage prompt regression (agent.md -> Eval, Phase 1.4).
 
 Every company, person, email and phone is fictional (``.example`` domains, 555-style
-numbers). 16 genuine + 24 discard. A prompt change that drops verdict accuracy below 90 %
+numbers). 24 genuine + 20 discard (Phase 1.5: concrete agency requirements are genuine). A prompt change that drops verdict accuracy below 90 %
 does not ship.
 """
 
@@ -47,13 +47,18 @@ EVAL_POSTS: list[EvalPost] = [
     _g("G14", "buyer_phone", "Urgent: need a trainer-company for a one-day prompt engineering workshop for our 40 support executives, Noida office, next week. Whatsapp 98100 55512 with your proposal and quote.", "Operations Head"),
     _g("G15", "consulting", "Considering AI consulting for our manufacturing plants (predictive maintenance + a shop-floor Q&A bot). Looking for a firm to run a discovery workshop with our leadership. Reach out via DM.", "Plant Head"),
     _g("G16", "no_contact", "Does anyone know a reliable partner who can train our 500 employees on GenAI basics in a blended format over the next two quarters? We are Lakeshore Retail's L&D team.", "L&D Lead"),
-    # ------------------------------------------------------------------ discard (24)
+    # Phase 1.5 recall-first additions: agencies / RFPs / provider-pool calls are genuine opportunities.
+    _g("G17", "agency_provider", "Greetings from Brightpath Edu. We are looking for a training PARTNER to deliver an AI Enablement Workshop for the analyst teams of one of our clients (Bengaluru, 2 days, offline, first week of Dec). Training organisations, share your profile, TOC and commercials at partners@brightpath.example.", "Business Head, Edtech"),
+    _g("G18", "provider_pool", "Calling all training providers! Orchid Auto Components is compiling its training provider pool for the 2027 calendar (AI, quality, leadership). Interested providers can register via the form linked in the comments.", "L&D Manager"),
+    _g("G19", "own_team_trainer", "Looking for an AI trainer to run a practical ChatGPT and Copilot session for our finance team of 25 at Maplewood Chemicals, Vadodara, this month. DM me with your experience and fees.", "Finance Director"),
+    _g("G20", "vendor_empanelment", "Vendor empanelment: Stonebridge Group invites AI and digital-skills training companies to submit expressions of interest for FY27 programmes. Details and EOI form at procurement@stonebridge.example, last date 10 Jan.", "Procurement Head"),
+    # ------------------------------------------------------------------ discard (21)
     _d("D01", "agency", "Hiring! TrainHub is onboarding freelance AI trainers for our corporate clients across India. 5+ years experience. Share your profile and per-day commercials."),
-    _d("D02", "agency", "Trainer requirement: GenAI for a leading bank client, Mumbai, 3 days, online. EduSpark Learning is empanelling subject-matter experts. Send your CV and daily rate to trainers@eduspark.example."),
+    _g("D02", "agency", "Trainer requirement: GenAI for a leading bank client, Mumbai, 3 days, online. EduSpark Learning is empanelling subject-matter experts. Send your CV and daily rate to trainers@eduspark.example."),
     _d("D03", "marketplace", "We are looking for freelance Corporate Trainers (Agentic AI, Prompt Engineering, LLMOps) for upcoming batches of our enterprise clients. Remote, weekdays, competitive payout per session. Apply now: careers@learnbridge.example."),
-    _d("D04", "marketplace", "URGENT requirement 📢 Freelance trainer needed for Generative AI - 5 day batch for our client in Bengaluru. Interested trainers please share profile + expected rate per day. Briltus Learning Partners.", "Associate, Briltus-style Edtech"),
+    _g("D04", "marketplace", "URGENT requirement 📢 Freelance trainer needed for Generative AI - 5 day batch for our client in Bengaluru. Interested trainers please share profile + expected rate per day. Briltus Learning Partners.", "Associate, Briltus-style Edtech"),
     _d("D05", "agency", "Greetings from SkillForge Academy. We are expanding our trainer network for Data Science and AI. Experienced trainers can register on our portal and get assignments from top corporates."),
-    _d("D06", "agency", "Looking for Azure AI and LLM trainers for a weekend corporate batch at one of our clients. Share your updated profile and commercials by Friday. Contact +91 90000 11122."),
+    _g("D06", "agency", "Looking for Azure AI and LLM trainers for a weekend corporate batch at one of our clients. Share your updated profile and commercials by Friday. Contact +91 90000 11122."),
     _d("D07", "seeker", "Looking for an individual trainer for a weekend Python + ChatGPT batch, hourly basis. Interested trainers DM me your rates."),
     _d("D08", "seeker", "Need a freelance AI trainer for my small team of 6, 2 hours daily for 5 days, budget Rs 500 per hour. Comment or DM if interested."),
     _d("D09", "trainer_ad", "10 years of corporate training, 400+ batches delivered. Available for freelance AI and Excel workshops. Open to work, ping me.", "Corporate Trainer"),
@@ -71,7 +76,7 @@ EVAL_POSTS: list[EvalPost] = [
     _d("D21", "celebration", "Thrilled to share that our team just trained its 10,000th learner on Generative AI! Thank you to all our clients and partners 🎉🙏", "CEO, Training Company"),
     _d("D22", "news", "OpenAI and Anthropic race ahead on agent frameworks. Enterprises are spending more on AI upskilling than ever, according to a new report. Read the full article here.", "Tech Journalist"),
     _d("D23", "outside", "Need SAP ABAP corporate trainer for a 10-day on-site batch in Chennai. Companies with SAP certified trainers only. Email sapteam@gearworks.example.", "SAP Practice Head"),
-    _d("D24", "hindi_agency", "हमें अपने क्लाइंट के लिए फ्रीलांस AI ट्रेनर चाहिए, दिल्ली में 3 दिन की बैच। अपनी प्रोफ़ाइल और प्रति दिन की फीस शेयर करें।", "Training Coordinator"),
+    _g("D24", "hindi_agency", "हमें अपने क्लाइंट के लिए फ्रीलांस AI ट्रेनर चाहिए, दिल्ली में 3 दिन की बैच। अपनी प्रोफ़ाइल और प्रति दिन की फीस शेयर करें।", "Training Coordinator"),
 ]
 
 assert len(EVAL_POSTS) >= 40

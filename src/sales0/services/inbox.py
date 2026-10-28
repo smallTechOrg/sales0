@@ -121,6 +121,7 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 link_kind=link_kind_of(e.source_url),
                 posted_relative=e.posted_relative,
                 author_profile_url=e.author_profile_url,
+                ai_opportunity_type=e.ai_opportunity_type,
             )
         )
     return cards
@@ -183,6 +184,7 @@ def list_enquiries(
             case((Enquiry.triage_status == "failed", 0), else_=1),
             case((Enquiry.ai_verdict == "genuine", 0), (Enquiry.ai_verdict == "discard", 1), else_=2),
             case((Enquiry.priority == "high", 0), (Enquiry.priority == "medium", 1), (Enquiry.priority == "low", 2), else_=3),
+            case((Enquiry.ai_opportunity_type == "direct_buyer", 0), else_=1),  # direct buyers first within a priority
             Enquiry.date_added.desc(),
             Enquiry.id.desc(),
         )

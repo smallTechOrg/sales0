@@ -222,6 +222,17 @@ def _check_browser() -> int:
     return check_browser(settings)
 
 
+def _eval_triage() -> int:
+    from sales0.eval_triage import format_report, meets_targets, run_eval
+    from sales0.logging import configure_logging
+    from sales0.config import get_settings
+
+    configure_logging(get_settings(), stream=sys.stderr)
+    preds, metrics = run_eval()
+    print(format_report(preds, metrics))
+    return 0 if meets_targets(metrics) else 3
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -230,7 +241,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "check-browser",
         help="Launch the configured browser headless on a throwaway profile (about:blank only) and report it",
     )
+    sub.add_parser(
+        "eval-triage",
+        help="Run the real triage over the team's real Google Sheets (fetched at runtime) and print precision/recall",
+    )
     args = parser.parse_args(argv)
+    if args.command == "eval-triage":
+        return _eval_triage()
     if args.command == "check-llm":
         return _check_llm()
     if args.command == "check-browser":

@@ -90,6 +90,7 @@ class Enquiry(Base):
     ai_verdict: Mapped[str | None] = mapped_column(String(10))
     ai_reason: Mapped[str | None] = mapped_column(String(160))
     ai_poster_type: Mapped[str | None] = mapped_column(String(40))
+    ai_opportunity_type: Mapped[str | None] = mapped_column(String(40))
     ai_priority: Mapped[str | None] = mapped_column(String(10))
     ai_offering_id: Mapped[int | None] = mapped_column(
         ForeignKey("offerings.id", ondelete="RESTRICT")

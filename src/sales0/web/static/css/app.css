@@ -289,6 +289,16 @@ a:hover { color: var(--color-primary-hover); }
   font-size: 0.8125rem;
 }
 
+.chip-opportunity {
+  display: inline-flex; align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: #e3efe6; color: #1f4d2b;
+  font-size: 0.8125rem; font-weight: 600;
+}
+.chip-opportunity[data-opportunity="agency_requirement"] { background: #e8eefb; color: #23407a; }
+.chip-opportunity[data-opportunity="individual_trainer_wanted"] { background: #f3ece0; color: #6b4a14; }
+
 /* ------------------------------------------------------------------ forms */
 .field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .field__label { font-weight: 600; font-size: var(--font-size-sm); }

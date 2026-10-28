@@ -40,11 +40,12 @@ default-groups = ["dev"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-ra"
+addopts = "-ra -m 'not eval'"
 timeout = 120
 markers = [
     "llm: makes a real Anthropic (Haiku) call using the key from .env",
     "browser: drives a real Playwright Chromium",
     "e2e: live server subprocess + headless Chromium + real Haiku",
+    "eval: ground-truth triage eval against the real sheets (network + real Haiku); excluded from the default run",
     "chrome: needs the installed Google Chrome (real headless Chrome; Phase 1.1)",
 ]

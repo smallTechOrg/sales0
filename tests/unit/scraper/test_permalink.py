@@ -320,3 +320,41 @@ def test_the_attempt_cap_counts_attempts_not_skipped_cards() -> None:
     stats, raws, _page, _log = _run(["no_trigger", "hit", "hit", "hit"], cap=2)
     assert stats == P.PermalinkStats(2, 2)
     assert "copied_url" not in raws[3]
+
+
+# ---------------------------------------------------------------- Phase 1.5: short-link resolution
+from sales0.scraper.permalink import resolve_short_link  # noqa: E402
+from sales0.scraper.urls import canonical_post_url  # noqa: E402
+
+_LOC = (
+    "https://www.linkedin.com/posts/acme-hr-share-7521020691316510724-xxup/"
+    "?highlightedUpdateUrn=urn%3Ali%3Aactivity%3A7521020692243492864&utm_source=share&rcm=SECRET"
+)
+
+
+def test_short_link_resolves_to_the_activity_permalink_without_tracking() -> None:
+    out = resolve_short_link("https://lnkd.in/p/gAbCdEf1", fetch=lambda url: _LOC)
+    assert out == "https://www.linkedin.com/feed/update/urn:li:activity:7521020692243492864/"
+    urn, url = canonical_post_url(out, "https://www.linkedin.com")
+    assert urn == "urn:li:activity:7521020692243492864" and "rcm" not in (url or "")
+
+
+def test_short_link_without_highlight_urn_keeps_the_posts_path_only() -> None:
+    loc = "https://www.linkedin.com/posts/acme-hr-activity-7521020692243492864-ab/?utm_source=share"
+    out = resolve_short_link("https://lnkd.in/p/zz", fetch=lambda url: loc)
+    assert out == "https://www.linkedin.com/posts/acme-hr-activity-7521020692243492864-ab/"
+
+
+@pytest.mark.parametrize(
+    "copied,location",
+    [
+        ("https://www.linkedin.com/feed/update/urn:li:activity:1234567890123456789/", "never called"),  # not a short link
+        ("https://evil.example/p/x", "never called"),
+        ("https://lnkd.in/other/x", "never called"),
+        ("https://lnkd.in/p/x", None),  # unresolvable
+        ("https://lnkd.in/p/x", "https://evil.example/posts/a-activity-1234567890123456789"),  # redirect off-site
+        ("https://lnkd.in/p/x", "https://www.linkedin.com/in/someone/"),  # not a post
+    ],
+)
+def test_short_link_resolution_never_trusts_other_strings(copied: str, location: str | None) -> None:
+    assert resolve_short_link(copied, fetch=lambda url: location) == copied
