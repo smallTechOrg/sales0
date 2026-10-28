@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_llm_tests:
+        description: "Also run the tests that call the real Anthropic API (needs repository secrets)"
+        type: boolean
+        default: false
+
+# Supersede older runs of the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_FROZEN: "1" # uv.lock is committed; never re-resolve in CI
+  # The test harness (tests/conftest.py) aborts the session when an integration/e2e test is
+  # collected and no key is configured. Push/PR jobs therefore set an obviously fake key so
+  # collection passes, and deselect everything marked `llm` (-m "not llm"). It is never
+  # sent anywhere: no unmarked test calls the API. The real key is used ONLY by the
+  # llm-integration job below.
+  CI_FAKE_ANTHROPIC_KEY: ci-placeholder-not-a-real-key
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run pytest tests/unit -q
+
+  # SQLite (default) integration suite, no real LLM calls: `llm`-marked tests are deselected.
+  # Playwright-driven integration tests (scraper/jobs against fixture pages) need Chromium.
+  integration-sqlite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run playwright install --with-deps chromium
+      - name: Integration tests (no real LLM)
+        env:
+          SALES0_ANTHROPIC_API_KEY: ${{ env.CI_FAKE_ANTHROPIC_KEY }}
+        run: uv run pytest tests/integration -q -m "not llm"
+
+  # Every test under tests/e2e carries the `llm` marker (tests/e2e/conftest.py) because the
+  # journeys call real Haiku. So on push/PR this job only installs Chromium and checks that the
+  # suite collects; the journeys themselves run on a manual dispatch with run_llm_tests=true.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run playwright install --with-deps chromium
+      - name: E2E collection smoke (no key, no LLM)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_llm_tests) }}
+        env:
+          SALES0_ANTHROPIC_API_KEY: ${{ env.CI_FAKE_ANTHROPIC_KEY }}
+        run: uv run pytest tests/e2e --collect-only -q
+      - name: E2E journeys (real Haiku)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_llm_tests }}
+        env:
+          SALES0_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SALES0_ANTHROPIC_WORKSPACE_ID: ${{ secrets.SALES0_ANTHROPIC_WORKSPACE_ID }}
+        run: uv run pytest tests/e2e -q
+
+  # Manual only: tests marked `llm` under tests/integration, with the real key.
+  llm-integration:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_llm_tests }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run playwright install --with-deps chromium
+      - name: Integration tests marked llm
+        env:
+          SALES0_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SALES0_ANTHROPIC_WORKSPACE_ID: ${{ secrets.SALES0_ANTHROPIC_WORKSPACE_ID }}
+        run: uv run pytest tests/integration -q -m llm
+
+  # TODO(deploy): tests/conftest.py on feature/sales0-deploy (not pushed, not in this branch)
+  # adds the per-test PostgreSQL database harness driven by SALES0_TEST_POSTGRES_URL. Until
+  # that lands on the branch under test the variable is ignored and this job would silently
+  # re-run SQLite, so it is opt-in: set the repository variable RUN_PG_TESTS=true after the
+  # deploy branch is merged. Remove the `if` then.
+  integration-postgres:
+    if: ${{ vars.RUN_PG_TESTS == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run playwright install --with-deps chromium
+      - name: Integration tests on PostgreSQL (no real LLM)
+        env:
+          SALES0_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
+          SALES0_ANTHROPIC_API_KEY: ${{ env.CI_FAKE_ANTHROPIC_KEY }}
+        run: uv run pytest tests/integration -q -m "not llm"
