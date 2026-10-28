@@ -341,7 +341,7 @@ Every variable below appears in `.env.example`, with comments, in this order (op
 | `SALES0_SCRAPE_DATE_FILTERS` | `past-week,past-month` | Phase 1.4. Comma list of `past-24h`/`past-week`/`past-month`; one search pass each, in order; the next pass runs only while the keyword's post cap is not reached. Replaces `SALES0_SCRAPE_DATE_FILTER`, which is still read as a one-item list when `…_FILTERS` is unset |
 | `SALES0_SCRAPE_EXPAND_MAX_PER_KEYWORD` | `40` | Phase 1.4. Max "see more" clicks per keyword (only truncated cards; `pacer.short` delays). Beyond it a card is read truncated |
 | `SALES0_TRIAGE_CONCURRENCY` | `4` | Phase 1.4. Concurrent Haiku triage calls (1–8) |
-| `SALES0_SEEN_RAW_RETENTION_DAYS` | `14` | Phase 1.4. Days the raw text of an AI-skipped post is kept (0 = purge at the next run start) |
+| `SALES0_SEEN_RAW_RETENTION_DAYS` | `0` | Days the raw text of a seen post is kept; 0 (default) keeps it forever, a positive value purges after that many days |
 | `SALES0_SEED_SUGGESTED_KEYWORDS` | `true` | Phase 1.4. Auto-seed the 60 suggested keywords once at startup. Tests and the E2E harness set `false` |
 | `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | `15` | Phase 1.2. Max "Copy link to post" attempts per keyword (posts without a URN). Phase 1.4: attempted only for AI-genuine posts, after triage. Integer ≥ 0; 0 disables permalink capture (cards then link to the author profile). In `.env.example` right after `SALES0_SCRAPE_MAX_SCROLLS`. |
 | `SALES0_FEWSHOT_MAX_EXAMPLES` | `6` | Few-shot cap per triage call |
@@ -1069,7 +1069,7 @@ scanned (cards parsed, repeats included)
   └─ already seen (seen_posts hit: source_ref | fingerprint | content_hash | same-author prefix)  → no LLM, no new row
   └─ new (never seen) → registered in seen_posts → triaged once (Haiku)
         ├─ genuine  → enquiry created (To review) → permalink captured → profile.relevant_count+1
-        ├─ discard  → stays in seen_posts only (Skipped by AI tab; raw text purged after 14 days)
+        ├─ discard  → stays in seen_posts only (Skipped by AI tab; raw text kept forever by default; opt-in purge)
         └─ failed   → seen_posts.triage_status=failed (retry from Skipped tab); no enquiry
 ```
 A normal run must scan ≥ 200 posts with the defaults, and the summary states scanned vs relevant honestly (never "found 200 enquiries").

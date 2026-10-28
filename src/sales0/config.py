@@ -207,7 +207,7 @@ class Settings(BaseSettings):
     triage_max_input_chars: int = Field(4000, ge=200)
     # Phase 1.4
     triage_concurrency: int = Field(4, ge=1, le=8)
-    seen_raw_retention_days: int = Field(14, ge=0)
+    seen_raw_retention_days: int = Field(0, ge=0)  # 0 = keep raw seen-post text forever (re-structure later without re-scraping)
     seed_suggested_keywords: bool = True
 
     # --- Reply tracking (read-only polling of each member's own Gmail) ---

@@ -558,12 +558,38 @@ const listRaw = (card, idx) => {
 };
 
 const found = __cards(sel);
+let cardEls = found.cards;
 let raws = found.cards.map((card, i) => (found.strategy === 'sdui' ? sduiRaw(card, i) : found.strategy === 'listitem' ? listRaw(card, i) : urnRaw(card, i)));
 // A variant that matched cards but gave no text on any of them: try the marker-free listitem tier.
 if (found.strategy !== 'listitem' && !raws.some((r) => r && r.text)) {
-  const alt = __listCards(sel, __scope()).map((c, i) => listRaw(c, i));
-  if (alt.some((r) => r.text)) raws = alt;
+  const altCards = __listCards(sel, __scope());
+  const alt = altCards.map((c, i) => listRaw(c, i));
+  if (alt.some((r) => r.text)) { raws = alt; cardEls = altCards; }
 }
+
+// Maximum raw capture (scraping is the expensive step): everything cheap to read off the card, stored verbatim.
+// Counts stay raw strings ("1,234", "1.2K"); Python parses them. Every field is best effort and may be null.
+const cardExtras = (card) => {
+  const full = card.innerText || card.textContent || '';
+  const labels = [full].concat(Array.from(card.querySelectorAll('[aria-label]')).map((e) => e.getAttribute('aria-label') || ''));
+  const count = (re) => { for (const l of labels) { const m = l.replace(/\s+/g, ' ').match(re); if (m) return m[1]; } return null; };
+  const num = '(\\d[\\d,.]*\\s?[KkMm]?)';
+  const hrefs = Array.from(card.querySelectorAll('a[href]')).map((a) => decode(a.getAttribute('href') || '')).filter(Boolean);
+  const html = card.outerHTML || '';
+  return {
+    inner_text: full.slice(0, 20000),
+    reactions: count(new RegExp(num + '\\s+(?:reactions?|likes?)', 'i')),
+    comments: count(new RegExp(num + '\\s+comments?', 'i')),
+    reposts: count(new RegExp(num + '\\s+(?:reposts?|shares?)', 'i')),
+    links: Array.from(new Set(hrefs)).slice(0, 25).map((h) => h.slice(0, 500)),
+    hashtags: Array.from(new Set((full.match(/#[\p{L}\p{N}_]+/gu) || []))).slice(0, 30),
+    images: card.querySelectorAll('img').length,
+    has_video: !!card.querySelector('video'),
+    outer_html: html.length <= 20000 ? html : null,
+    outer_html_len: html.length,
+  };
+};
+raws.forEach((r, i) => { if (r && cardEls[i]) { try { r.card = cardExtras(cardEls[i]); } catch (e) { r.card = null; } } });
 return raws;
 }"""
 )
@@ -699,6 +725,65 @@ def source_ref_of(raw: dict[str, Any], base: str) -> str | None:
     return f"{S.SOURCE_REF_KEY_PREFIX}{key}" if key else None
 
 
+_COUNT_RE = re.compile(r"^\s*(\d[\d,.]*)\s*([KkMm]?)\s*$")
+_CARD_TEXT_CAP = 20_000
+_CARD_HTML_CAP = 20_000
+
+
+def parse_count(value: Any) -> int | None:
+    """LinkedIn count text ("1,234", "1.2K", "3M") -> int; None when it is not a count."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return None
+    m = _COUNT_RE.match(value)
+    if not m:
+        return None
+    digits, suffix = m.group(1), m.group(2).lower()
+    try:
+        number = float(digits.replace(",", "")) if suffix else float(digits.replace(",", "").rstrip("."))
+    except ValueError:
+        return None
+    return int(round(number * {"": 1, "k": 1_000, "m": 1_000_000}[suffix]))
+
+
+def raw_card_of(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """The card's extra raw capture (``raw["card"]`` from the in-page JS) plus the parser's own provenance, bounded.
+
+    Everything is best effort and optional; an older page script that sends no ``card`` still yields the provenance."""
+    card = raw.get("card") if isinstance(raw.get("card"), dict) else {}
+    out: dict[str, Any] = {}
+    inner = card.get("inner_text")
+    if isinstance(inner, str) and inner:
+        out["inner_text"] = inner[:_CARD_TEXT_CAP]
+    for key in ("reactions", "comments", "reposts"):
+        count = parse_count(card.get(key))
+        if count is not None:
+            out[key] = count
+            out[f"{key}_raw"] = str(card.get(key))[:20]
+    for key, cap in (("links", 25), ("hashtags", 30)):
+        values = card.get(key)
+        if isinstance(values, list):
+            out[key] = [str(v)[:500] for v in values[:cap] if isinstance(v, str) and v]
+    if isinstance(card.get("images"), int):
+        out["images"] = card["images"]
+    if isinstance(card.get("has_video"), bool):
+        out["has_video"] = card["has_video"]
+    html = card.get("outer_html")
+    if isinstance(html, str) and html and len(html) <= _CARD_HTML_CAP:
+        out["outer_html"] = html
+    if isinstance(card.get("outer_html_len"), int):
+        out["outer_html_len"] = card["outer_html_len"]
+    for key in ("strategy", "card_index", "menu_label", "component_key", "post_href", "author_profile_url", "author_headline"):
+        value = raw.get(key)
+        if isinstance(value, (str, int)) and not isinstance(value, bool) and value != "":
+            out[key] = value[:500] if isinstance(value, str) else value
+    via = raw.get("via")
+    if isinstance(via, dict):
+        out["via"] = {str(k)[:40]: str(v)[:80] for k, v in list(via.items())[:30]}
+    return out or None
+
+
 def post_from_raw(raw: dict[str, Any], base: str, today: date, search_url: str | None = None) -> ScrapedPost:
     """One raw card → a ``ScrapedPost`` (pure).
 
@@ -738,6 +823,7 @@ def post_from_raw(raw: dict[str, Any], base: str, today: date, search_url: str |
         link_kind=link_kind_of(url) or "other",
         search_url=search_url,
         truncated=raw.get("truncated") is True,
+        raw_card=raw_card_of(raw),
     )
 
 

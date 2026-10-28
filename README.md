@@ -132,8 +132,8 @@ built-in browser". That fallback uses its own profile, `data/linkedin-profile/`.
    author and how often it was seen. Search by words, reason or author. **Rescue → enquiry**
    moves one to To review (the AI's verdict stays "Discard" so its mistake is visible);
    **Override: accept** rescues and accepts in one click. Both teach the AI. The full text is
-   kept for 14 days (`SALES0_SEEN_RAW_RETENTION_DAYS`); after that the row says "text purged"
-   and cannot be rescued. A "Triage failed" filter lists posts whose AI call failed, with **Retry triage**.
+   kept forever by default (set `SALES0_SEEN_RAW_RETENTION_DAYS` above 0 to purge it after that many days; a
+   purged row says "text purged" and cannot be rescued). A "Triage failed" filter lists posts whose AI call failed, with **Retry triage**.
 6. **Runs → a run** shows the per-keyword log and the cost. The header shows the AI spend
    for today and this month.
 
@@ -244,8 +244,10 @@ or close the account. That risk is yours; the caps, pacing and cool-downs reduce
 Scanning posts stores other people's personal data on your disk: for every post sales0 keeps the
 author's name, headline and profile URL, the post text and link, and the AI's verdict (table
 `seen_posts`, and `linkedin_profiles` / enquiries for relevant ones). The **raw post text** of a scanned
-post is dropped after `SALES0_SEEN_RAW_RETENTION_DAYS` (default 14) by the daily **purge** job
-(Schedule page; it only removes text of posts already triaged, never of ones still waiting for the AI).
+post is kept forever by default (scraping is the expensive step, so everything is stored once: text, parsed date,
+"see more" flag, link kind, search URL and a `raw_card` JSON with the card's text, reaction / comment / repost
+counts, links, hashtags and media counts). Set `SALES0_SEEN_RAW_RETENTION_DAYS` above 0 to have the daily
+**purge** job drop the text of already-triaged posts after that many days.
 Names, profile URLs and the enquiries you keep stay until you delete them (contacts and enquiries can
 be deleted from their pages). Logs print counts, not names or text. Treat the data directory and any
 backup as personal data (see Security notes) and honour deletion requests by deleting the rows.
@@ -454,7 +456,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_FEWSHOT_TEXT_CHARS` | int | `600` | Characters kept per few-shot example. |
 | `SALES0_TRIAGE_MAX_INPUT_CHARS` | int | `4000` | Characters of a post sent to triage. |
 | `SALES0_TRIAGE_CONCURRENCY` | int | `4` | Parallel triage calls. |
-| `SALES0_SEEN_RAW_RETENTION_DAYS` | int | `14` | Days raw seen-post text is kept. |
+| `SALES0_SEEN_RAW_RETENTION_DAYS` | int | `0` | Days raw seen-post text is kept before the purge job drops it; 0 (default) keeps it forever. |
 | `SALES0_SEED_SUGGESTED_KEYWORDS` | bool | `True` | Seed the suggested search phrases on first run. |
 | `SALES0_REPLY_POLL_MINUTES` | int | `10` | Minutes between Gmail reply checks (0 disables the poller). |
 | `SALES0_REPLY_LOOKBACK_DAYS` | int | `60` | Only sent messages younger than this are polled for replies. |

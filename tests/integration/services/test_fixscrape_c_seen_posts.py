@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 
+import pytest
 from sqlalchemy.orm import Session
 
 from sales0.clock import utcnow
@@ -135,3 +136,12 @@ def test_failed_row_is_requeued_on_resighting_with_same_text(db: Session) -> Non
     s = sight(db, "r", LONG, run_id)
     persist_triage(db, s.seen_post_id, failed_outcome(), run_id=run_id, keyword_id=None)
     assert sight(db, "r", LONG, run_id).triage_status == "pending"
+
+
+@pytest.fixture(autouse=True)
+def _purge_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Raw text is kept forever by default; these tests exercise the opt-in 14-day purge."""
+    from sales0.config import reset_settings
+
+    monkeypatch.setenv("SALES0_SEEN_RAW_RETENTION_DAYS", "14")
+    reset_settings()

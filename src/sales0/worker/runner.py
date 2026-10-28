@@ -57,6 +57,7 @@ def post_payload(post: Any) -> p.PostPayload:
         link_kind=getattr(post, "link_kind", "post"),
         search_url=_cap(getattr(post, "search_url", None), 2000),
         truncated=bool(getattr(post, "truncated", False)),
+        raw_card=getattr(post, "raw_card", None),
     )
 
 

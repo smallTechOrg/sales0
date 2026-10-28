@@ -168,11 +168,10 @@ uv run sales0 push-data --source ~/path/to/sales0-run/data/sales0.db            
   actor references such as "who added this keyword" are re-mapped by e-mail, or left empty), the LinkedIn account row
   and legacy session (cool-down/counter state of that machine), scheduled jobs, workers, app_meta, sheet source/sync
   state. Seeded reference rows (offerings, competitors) are overwritten by your local versions.
-* **Keep the raw text:** posts keep `raw_text` only until `raw_purge_after` (`SALES0_SEEN_RAW_RETENTION_DAYS`, default
-  14), then the purge job nulls it. To keep it effectively forever set `SALES0_SEEN_RAW_RETENTION_DAYS=36500` on the
-  hosted service (`gcloud run services update sales0 --update-env-vars SALES0_SEEN_RAW_RETENTION_DAYS=36500 ...`)
-  **before** pushing, and in the laptop `.env`. Pushed posts whose purge date is earlier than `first_seen +` that
-  retention are extended to it, so nothing is purged right after the import.
+* **Raw capture:** posts keep `raw_text` forever by default (`SALES0_SEEN_RAW_RETENTION_DAYS=0`; a value above 0
+  enables the purge job). Pushed posts have their purge date cleared under that default. The new `seen_posts` columns
+  (`posted_date`, `truncated`, `link_kind`, `search_url`, `raw_card` JSON) are copied when the source has them; a source
+  from before they existed is migrated on its copy and those columns stay empty.
 
 ## 6. Gmail OAuth (per member)
 

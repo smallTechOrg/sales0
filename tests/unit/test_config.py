@@ -192,7 +192,7 @@ def test_phase_1_4_defaults(clean_env: None) -> None:
     assert s.scrape_date_filters == ("past-week", "past-month")
     assert s.scrape_date_filter == "past-week"
     assert s.scrape_expand_max_per_keyword == 40
-    assert s.triage_concurrency == 4 and s.seen_raw_retention_days == 14
+    assert s.triage_concurrency == 4 and s.seen_raw_retention_days == 0
     assert s.seed_suggested_keywords is True
 
 
@@ -296,7 +296,7 @@ def test_env_example_documents_the_phase_1_4_defaults_and_keeps_the_permalink_ca
         "SALES0_SCRAPE_DATE_FILTERS=past-week,past-month",
         "SALES0_SCRAPE_EXPAND_MAX_PER_KEYWORD=40",
         "SALES0_TRIAGE_CONCURRENCY=4",
-        "SALES0_SEEN_RAW_RETENTION_DAYS=14",
+        "SALES0_SEEN_RAW_RETENTION_DAYS=0",
         "SALES0_SEED_SUGGESTED_KEYWORDS=true",
     ):
         assert line in text, line

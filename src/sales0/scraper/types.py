@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Literal
+from typing import Literal, Any
 
 SessionReason = Literal["ok", "no_cookie", "redirected_login", "checkpoint", "captcha", "rate_limited", "error"]
 ConnectReason = Literal["ok", "timeout", "window_closed", "cancelled", "error"]
@@ -39,6 +39,8 @@ class ScrapedPost:
     link_kind: LinkKind = "post"  # Phase 1.2: == scraper.urls.link_kind_of(url)
     search_url: str | None = None  # Phase 1.2: the keyword's search URL (provenance)
     truncated: bool = False  # audit #7: the card still had an unexpanded "see more" / ellipsis marker
+    # p11 maximum raw capture: innerText, reaction/comment/repost counts, links, media counts, capped HTML ...
+    raw_card: dict[str, Any] | None = None
 
     @property
     def urn(self) -> str | None:

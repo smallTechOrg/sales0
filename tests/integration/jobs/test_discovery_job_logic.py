@@ -749,3 +749,12 @@ def test_the_run_start_is_the_login_check_before_any_scan(db_url: str) -> None:
     assert d.run.status == "failed" and searcher.events == []
     with session_scope() as db:
         assert db.scalar(select(func.count(SeenPost.id))) == 0
+
+
+@pytest.fixture(autouse=True)
+def _purge_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Raw text is kept forever by default; these tests exercise the opt-in 14-day purge."""
+    from sales0.config import reset_settings
+
+    monkeypatch.setenv("SALES0_SEEN_RAW_RETENTION_DAYS", "14")
+    reset_settings()

@@ -187,9 +187,13 @@ def _row_values(table: Table, row: dict[str, Any], refs: _Refs, phase: str) -> d
 def _apply_raw_retention(values: dict[str, Any]) -> None:
     """Imported posts follow the HOSTED raw-text retention: a purge date earlier than first_seen + retention is extended,
     so raising ``SALES0_SEEN_RAW_RETENTION_DAYS`` before the push keeps the raw text instead of purging it next run."""
+    days = get_settings().seen_raw_retention_days
+    if days <= 0:  # the hosted policy is "keep forever"
+        values["raw_purge_after"] = None
+        return
     first, due = values.get("first_seen_at"), values.get("raw_purge_after")
     if values.get("raw_text") and isinstance(first, datetime) and isinstance(due, datetime):
-        values["raw_purge_after"] = max(due, first + timedelta(days=get_settings().seen_raw_retention_days))
+        values["raw_purge_after"] = max(due, first + timedelta(days=days))
 
 
 def _existing(db: Session, table: Table, rows: list[dict[str, Any]]) -> set[tuple[Any, ...]]:

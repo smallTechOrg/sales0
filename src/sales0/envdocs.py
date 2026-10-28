@@ -101,7 +101,7 @@ HELP: dict[str, str] = {
     "fewshot_text_chars": "Characters kept per few-shot example.",
     "triage_max_input_chars": "Characters of a post sent to triage.",
     "triage_concurrency": "Parallel triage calls.",
-    "seen_raw_retention_days": "Days raw seen-post text is kept.",
+    "seen_raw_retention_days": "Days raw seen-post text is kept before the purge job drops it; 0 (default) keeps it forever.",
     "seed_suggested_keywords": "Seed the suggested search phrases on first run.",
     "reply_poll_minutes": "Minutes between Gmail reply checks (0 disables the poller).",
     "reply_lookback_days": "Only sent messages younger than this are polled for replies.",

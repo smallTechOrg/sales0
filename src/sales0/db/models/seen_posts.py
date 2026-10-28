@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sales0.db.base import Base
@@ -54,6 +54,12 @@ class SeenPost(Base):
     raw_purged_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     post_url: Mapped[str | None] = mapped_column(String(500))
     posted_relative: Mapped[str | None] = mapped_column(String(30))
+    # p11 maximum raw capture; NULL on rows scraped before it (never captured).
+    posted_date: Mapped[date | None] = mapped_column(Date)
+    truncated: Mapped[bool | None] = mapped_column(Boolean)
+    link_kind: Mapped[str | None] = mapped_column(String(10))
+    search_url: Mapped[str | None] = mapped_column(String(2000))
+    raw_card: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     enquiry_id: Mapped[int | None] = mapped_column(
         ForeignKey("enquiries.id", ondelete="SET NULL"), index=True
     )

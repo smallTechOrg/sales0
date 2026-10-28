@@ -297,6 +297,7 @@ def _scraped(post: p.PostPayload) -> ScrapedPost:
         link_kind=post.link_kind,
         search_url=post.search_url,
         truncated=post.truncated,
+        raw_card=post.raw_card,
     )
 
 

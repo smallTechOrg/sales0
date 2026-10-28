@@ -450,3 +450,12 @@ def test_retry_triage_errors_for_missing_and_purged_posts(db_url: str) -> None:
         with pytest.raises(DomainError) as purged:
             seen_posts.retry_triage(db, s.seen_post_id)
         assert purged.value.code == "raw_purged"
+
+
+@pytest.fixture(autouse=True)
+def _purge_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Raw text is kept forever by default; these tests exercise the opt-in 14-day purge."""
+    from sales0.config import reset_settings
+
+    monkeypatch.setenv("SALES0_SEEN_RAW_RETENTION_DAYS", "14")
+    reset_settings()

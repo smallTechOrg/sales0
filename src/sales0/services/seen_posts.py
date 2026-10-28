@@ -168,6 +168,18 @@ def _refresh_from_resighting(db: Session, row: SeenPost, post: ScrapedPost, slug
     seen again with the same text is re-queued too (retry)."""
     if not row.posted_relative and post.posted_relative:
         row.posted_relative = clip(post.posted_relative, 30)
+    if row.posted_date is None and post.posted_date is not None:
+        row.posted_date = post.posted_date
+    if row.link_kind is None:
+        row.link_kind = clip(post.link_kind, 10)
+    if row.search_url is None and post.search_url:
+        row.search_url = clip(post.search_url, 2000)
+    if row.raw_card is None and post.raw_card:
+        row.raw_card = post.raw_card
+    if post.truncated is False and row.truncated:  # a later sighting expanded the text fully
+        row.truncated = False
+    elif row.truncated is None:
+        row.truncated = post.truncated
     if not row.author_headline and post.author_headline:
         row.author_headline = clip(post.author_headline, 500)
     if not row.author_name and post.author_name:
@@ -201,9 +213,15 @@ def _refresh_from_resighting(db: Session, row: SeenPost, post: ScrapedPost, slug
         row.reason = None
         row.poster_type = None
         row.ai_result = None
-        row.raw_purge_after = stamp + timedelta(days=get_settings().seen_raw_retention_days)
+        row.raw_purge_after = raw_purge_after(stamp)
     if upgraded or requeue:
         log.info("seen_post_resighting_refresh", seen_post_id=row.id, text_upgraded=upgraded, requeued=requeue)
+
+
+def raw_purge_after(stamp: datetime) -> datetime | None:
+    """When a seen post's raw text may be purged: never (None) unless SALES0_SEEN_RAW_RETENTION_DAYS > 0."""
+    days = get_settings().seen_raw_retention_days
+    return stamp + timedelta(days=days) if days > 0 else None
 
 
 def register_sighting(
@@ -268,7 +286,6 @@ def register_sighting(
             needs_permalink=_needs_permalink(db, row),
         )
 
-    settings = get_settings()
     row = SeenPost(
         fingerprint=fp,
         content_hash=_hash_for(post),
@@ -282,9 +299,14 @@ def register_sighting(
         triage_status="pending",
         snippet=snippet_of(post.text),
         raw_text=post.text,
-        raw_purge_after=stamp + timedelta(days=settings.seen_raw_retention_days),
+        raw_purge_after=raw_purge_after(stamp),
         post_url=post.url[:500] if post.link_kind == "post" else None,
         posted_relative=clip(post.posted_relative, 30),
+        posted_date=post.posted_date,
+        truncated=post.truncated,
+        link_kind=clip(post.link_kind, 10),
+        search_url=clip(post.search_url, 2000),
+        raw_card=post.raw_card,
         first_seen_at=stamp,
         last_seen_at=stamp,
         times_seen=1,

@@ -6,14 +6,16 @@ makes the caller trusted, a bug on the laptop must never be able to bloat or cor
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PROTOCOL_VERSION = 1
 MAX_POSTS_PER_UPLOAD = 200
 MAX_LINKS_PER_UPLOAD = 400
+MAX_RAW_CARD_BYTES = 120_000
 
 LinkKind = Literal["post", "profile", "search", "other"]
 LinkedInStatus = Literal["unknown", "connected", "not_connected", "needs_attention"]
@@ -103,6 +105,15 @@ class PostPayload(_Strict):
     link_kind: LinkKind = "post"
     search_url: str | None = Field(default=None, max_length=2000)
     truncated: bool = False
+    # Optional (older workers omit it): innerText, counts, links, media, capped HTML - see scraper.parsing.raw_card_of.
+    raw_card: dict[str, Any] | None = None
+
+    @field_validator("raw_card")
+    @classmethod
+    def _raw_card_bounded(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and len(json.dumps(value, default=str)) > MAX_RAW_CARD_BYTES:
+            raise ValueError("raw_card is too large")
+        return value
 
 
 class KeywordResultMeta(_Strict):

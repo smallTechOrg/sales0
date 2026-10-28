@@ -125,3 +125,12 @@ def test_purge_at_run_start_keeps_the_fingerprint_and_a_purged_post_found_again_
         assert exc.value.code == "raw_purged"
     # the purged posts were re-found by run 2 (same fixture): counted as seen, never re-triaged
     assert r2.posts_new == 0 and r2.posts_seen > 0 and llm.calls == calls_before
+
+
+@pytest.fixture(autouse=True)
+def _purge_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Raw text is kept forever by default; these tests exercise the opt-in 14-day purge."""
+    from sales0.config import reset_settings
+
+    monkeypatch.setenv("SALES0_SEEN_RAW_RETENTION_DAYS", "14")
+    reset_settings()

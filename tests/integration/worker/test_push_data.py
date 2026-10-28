@@ -41,6 +41,8 @@ def build_source(path: Path) -> None:
             id=70, fingerprint="fp1", content_hash="h1", keyword_text="ai training", profile_id=50, first_run_id=60,
             raw_text="the full raw post text " * 40, post_url="https://www.linkedin.com/feed/update/urn:li:activity:1",
             ai_result={"verdict": "genuine", "n": [1, 2]}, first_seen_at=WHEN, last_seen_at=WHEN,
+            posted_date=WHEN.date(), truncated=True, link_kind="post", search_url="https://www.linkedin.com/search/x",
+            raw_card={"inner_text": "card text", "reactions": 5},
         ))
         c.execute(insert(T["enquiries"]).values(id=80, content_hash="h1", raw_text="raw", seen_post_id=70, author_profile_id=50, actor_user_id=7))
         c.execute(T["seen_posts"].update().where(T["seen_posts"].c.id == 70).values(enquiry_id=80))  # the cycle
@@ -80,6 +82,8 @@ def test_pushes_everything_in_fk_order_and_is_idempotent(source: Path, hosted: T
         assert post.raw_text == "the full raw post text " * 40  # the raw capture survives the trip
         assert post.ai_result == {"verdict": "genuine", "n": [1, 2]}
         assert post.first_seen_at == WHEN  # timezone-aware datetime round trip
+        assert (post.posted_date, post.truncated, post.link_kind) == (WHEN.date(), True, "post")
+        assert post.search_url == "https://www.linkedin.com/search/x" and post.raw_card == {"inner_text": "card text", "reactions": 5}
         assert post.enquiry_id == 80  # the cyclic link was filled in by the second pass
         assert db.execute(select(T["contacts"].c.merged_into_id).where(T["contacts"].c.id == 91)).scalar_one() == 90
         assert db.get(LinkedinProfile, 50) is not None

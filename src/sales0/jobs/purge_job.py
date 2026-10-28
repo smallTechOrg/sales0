@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from sales0.clock import utcnow
@@ -53,6 +53,11 @@ def run_purge(db: Session, *, now: datetime | None = None, retention_days: int |
     """Backfill NULL purge dates, then purge expired text of triaged rows. Flushes, never commits."""
     stamp = now or utcnow()
     days = retention_days if retention_days is not None else get_settings().seen_raw_retention_days
+    if days <= 0:  # keep forever: also cancel purge dates stamped under an earlier, finite policy
+        db.execute(update(SeenPost).where(SeenPost.raw_purge_after.is_not(None)).values(raw_purge_after=None))
+        db.flush()
+        log.info("seen_posts_purge_run", backfilled=0, purged=0, retention="forever")
+        return PurgeResult(backfilled=0, purged=0)
     backfilled = backfill_purge_dates(db, retention_days=days, now=stamp)
     purged = seen_posts.purge_expired(db, now=stamp)
     log.info("seen_posts_purge_run", backfilled=backfilled, purged=purged)
