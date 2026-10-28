@@ -46,8 +46,8 @@ def test_missing_token_message(tmp_path):
 
 
 def test_scopes_constant():
-    assert "https://www.googleapis.com/auth/gmail.compose" in SCOPES and "openid" in SCOPES
-    assert not any("readonly" in s for s in SCOPES)
+    assert "https://www.googleapis.com/auth/gmail.modify" in SCOPES and "openid" in SCOPES
+    assert not any("readonly" in s or "mail.google.com" in s for s in SCOPES)  # no permanent-delete scope
 
 
 def test_google_auth_missing_secret_exit1(tmp_path, capsys):

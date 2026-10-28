@@ -94,6 +94,8 @@ class GmailClient(Protocol):
 
     def list_sent_since(self, since: datetime) -> list[dict[str, Any]]: ...
 
+    def trash_thread(self, thread_id: str) -> None: ...
+
 
 def prepare(
     to: list[str],
@@ -218,6 +220,11 @@ class RealGmailClient:
         body = r.json()
         return str(body["id"]), str(body["threadId"])
 
+    def trash_thread(self, thread_id: str) -> None:
+        """Move a whole thread to Trash (recoverable for 30 days; never permanent delete)."""
+        self.tokens.require_scopes("trash")
+        self._request("POST", f"{API}/threads/{thread_id}/trash")
+
     def list_sent_since(self, since: datetime) -> list[dict[str, Any]]:
         self.tokens.require_scopes("list_sent_since")
         raise NotImplementedError("list_sent_since arrives with reply tracking")
@@ -266,6 +273,10 @@ class FakeGmailClient:
         n = len(self.sent) + 1
         self.sent.append({"message_id": f"msg-{n}", "thread_id": f"thr-{n}", "raw": raw, "approved": approved})
         return f"msg-{n}", f"thr-{n}"
+
+    def trash_thread(self, thread_id: str) -> None:
+        self.calls.append(("trash_thread", (thread_id,)))
+        self.trashed = getattr(self, "trashed", []) + [thread_id]
 
     def list_sent_since(self, since: datetime) -> list[dict[str, Any]]:
         self.calls.append(("list_sent_since", (since,)))

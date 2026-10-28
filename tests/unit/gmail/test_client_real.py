@@ -53,6 +53,8 @@ class FakeGoogle:
                 return httpx.Response(404, json={"error": {"message": "Requested entity was not found."}})
             raw = base64.urlsafe_b64encode(self.drafts[did]).decode().rstrip("=")
             return httpx.Response(200, json={"id": did, "message": {"raw": raw}})
+        if req.method == "POST" and path.endswith("/trash"):
+            return httpx.Response(200, json={"id": path.split("/")[-2]})
         if req.method == "DELETE":
             self.drafts.pop(path.rsplit("/", 1)[1], None)
             return httpx.Response(204)
@@ -205,3 +207,12 @@ def test_network_error_is_transient_after_retries():
     c = RealGmailClient(TokenProvider(StoredToken("c", "s", "r", list(SCOPES)), http), http, sleep=lambda s: None)
     with pytest.raises(GmailTransientError):
         c.delete_draft("x")
+
+
+def test_trash_thread_posts_and_needs_modify_scope():
+    c, g, _ = make()
+    c.trash_thread("thr-9")
+    assert g.requests[-1].method == "POST" and g.requests[-1].url.path.endswith("/threads/thr-9/trash")
+    c2, _, _ = make(scopes=[SCOPE_COMPOSE])
+    with pytest.raises(GmailScopeError):
+        c2.trash_thread("thr-9")

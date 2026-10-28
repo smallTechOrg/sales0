@@ -96,6 +96,11 @@ def gmail_send_test(
     except GmailError as exc:
         return _err(exc)
     print(f"gmail OK sent test email to={recipient} message_id={message_id} thread_id={thread_id}")
+    try:  # clean up the test mail (Sent + Inbox copies share the thread): move it to Trash
+        client.trash_thread(thread_id)
+        print(f"gmail OK test thread {thread_id} moved to Trash")
+    except GmailError as exc:
+        print(f"gmail WARN could not trash the test thread ({exc}); delete it by hand", file=sys.stderr)
     return 0
 
 

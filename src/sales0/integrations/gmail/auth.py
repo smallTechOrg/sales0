@@ -20,12 +20,15 @@ from sales0.integrations.gmail.errors import GmailAuthError, GmailNotConfigured,
 
 SCOPE_COMPOSE = "https://www.googleapis.com/auth/gmail.compose"
 SCOPE_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
+# Superset of compose + readonly + trash (NOT permanent delete): drafts, send, reply tracking, test cleanup.
+SCOPE_MODIFY = "https://www.googleapis.com/auth/gmail.modify"
 # Scopes requested by ``google-auth`` today. Reply tracking later appends SCOPE_READONLY here
 # (and to REQUIRED_FOR["list_sent_since"]); existing tokens then fail with a re-run message.
-SCOPES: tuple[str, ...] = (SCOPE_COMPOSE, "openid", "https://www.googleapis.com/auth/userinfo.email")
+SCOPES: tuple[str, ...] = (SCOPE_MODIFY, "openid", "https://www.googleapis.com/auth/userinfo.email")
 REQUIRED_FOR: dict[str, tuple[str, ...]] = {
     "drafts": (SCOPE_COMPOSE,),
     "list_sent_since": (SCOPE_READONLY,),
+    "trash": (SCOPE_MODIFY,),
 }
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 USERINFO_URI = "https://openidconnect.googleapis.com/v1/userinfo"
@@ -129,7 +132,10 @@ class TokenProvider:
     _expires_at: float = field(default=0.0, init=False)
 
     def require_scopes(self, feature: str) -> None:
-        missing = [s for s in REQUIRED_FOR.get(feature, ()) if s not in self.token.scopes]
+        granted = set(self.token.scopes)
+        if SCOPE_MODIFY in granted:  # gmail.modify covers compose and readonly
+            granted |= {SCOPE_COMPOSE, SCOPE_READONLY}
+        missing = [s for s in REQUIRED_FOR.get(feature, ()) if s not in granted]
         if missing:
             raise GmailScopeError(
                 f"The stored Google token lacks the scope for {feature} ({', '.join(missing)}): {_REAUTH}."
