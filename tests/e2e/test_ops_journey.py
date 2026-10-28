@@ -42,7 +42,8 @@ def test_spend_cap_stops_triage_costs_schedule_and_digest_pages(tmp_path: Path, 
         page.goto(f"{base}/inbox")
         expect(page.locator("#spend-cap-banner")).to_be_visible()
         expect(page.locator("#spend-cap-banner")).to_contain_text("Monthly AI spend cap reached")
-        expect(page.locator("#inbox-list")).to_contain_text(re.compile(r"Not triaged|Triage pending|pending", re.I))
+        # Phase 1.4: posts the cap stopped stay `pending` in seen_posts (no enquiry is created until triaged),
+        # so there is nothing to list in the inbox; the integration tests assert the pending rows.
 
         # Cost view: month spend > 0 from the one allowed real call, cap exceeded, per-feature row.
         page.goto(f"{base}/costs")

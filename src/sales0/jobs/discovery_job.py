@@ -54,6 +54,7 @@ from sales0.config import Settings, get_settings
 from sales0.db.engine import get_sessionmaker
 from sales0.agent import TriageDeps, load_candidates, select_examples
 from sales0.agent.batch import BatchItem, triage_concurrently
+from sales0.services.costs_report import SpendCapReached, ensure_within_spend_cap
 from sales0.db.models import Keyword, LlmCall, ScrapeRun, ScrapeRunKeyword
 from sales0.llm import LLMClient, get_llm_client
 from sales0.logging import bind_context, get_logger, unbind_context
@@ -290,8 +291,21 @@ class _Run:
         self.db.commit()  # release the read snapshot before the pool starts
         items = [BatchItem(key=sid, inp=inp) for sid, inp in inputs]
         done = 0
+
+        def over_spend_cap() -> bool:
+            # Phase 4 hard stop, polled on this thread before each submission: nothing new is sent
+            # once the monthly cap is used up; unsent posts stay pending (not triaged, not lost).
+            try:
+                ensure_within_spend_cap(self.db)
+            except SpendCapReached as cap:
+                self.fatal_llm = cap.message if hasattr(cap, "message") else str(cap)
+                return True
+            return False
+
         try:
-            for result in triage_concurrently(items, deps, concurrency=settings.triage_concurrency):
+            for result in triage_concurrently(
+                items, deps, concurrency=settings.triage_concurrency, should_stop=over_spend_cap
+            ):
                 done += 1
                 self.step(f"Triaging new posts for '{row.keyword_text}' ({done}/{len(items)})")
                 if result.fatal is not None:

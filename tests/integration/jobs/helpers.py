@@ -62,7 +62,7 @@ class FakeSearcher:
         fields.update(self.extra.get(keyword.lower(), {}))
         return KeywordScrapeResult(keyword=keyword, posts=list(item)[:max_posts], scrolls=3, **fields)
 
-    def capture_links(self, refs: list[str]) -> LinkResult:
+    def capture_links(self, refs: list[str]) -> LinkCaptureResult:
         self.events.append(("capture", self.last_keyword, list(refs)))
         self.captured.append(list(refs))
         if self.capture_error is not None:

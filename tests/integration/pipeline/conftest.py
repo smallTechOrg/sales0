@@ -25,7 +25,7 @@ def db(db_url: str) -> Iterator[Session]:
 
 
 @pytest.fixture
-def depth(db_url: str, connected_settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Settings:
+def depth(db_url: str, connected_settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Settings:  # noqa: F811
     """Phase 1.4 depth: two date passes, 2 idle scrolls, 6 keywords per run, signed-in fixture profile."""
     monkeypatch.setenv("SALES0_SCRAPE_DATE_FILTERS", "past-week,past-month")
     monkeypatch.setenv("SALES0_SCRAPE_NO_GROWTH_SCROLLS", "2")

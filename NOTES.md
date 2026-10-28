@@ -141,3 +141,10 @@ Assumed:
 - Assumed: soft bounces (mailbox full / delay) are recorded but not suppressed; unsubscribe suppresses the replier AND the original recipients.
 - Assumed: "follow-up drafts" = outreach_messages.follow_up_of_id (new nullable column); nothing creates follow-ups yet.
 - Harness friction: structlog `event=` kwarg collision crashed the event dispatcher's error log (found by tests); concurrent builders contend for port 8766 in the e2e LiveServer (flaky LiveServerError when run in parallel).
+
+## Integration B (calib + ops + replies merged, 2026-10-28)
+- Migration chain is ONE linear chain: `... > p3_outreach_a7c41e9d > 0004_opportunity_type > p4_ops_c3d8e1f2 > p5_replies_c3d81f20` (head). Real-DB copy (at 0002) upgrades, downgrade -1 / upgrade round-trips, foreign_key_check clean; fresh DB too.
+- Spend cap: Phase 1.4's discovery triage bypasses `services.triage.triage_enquiry`, so the cap is also enforced in `jobs/discovery_job.triage_batch` via `should_stop` (checked before each submission; unsent posts stay `pending` in `seen_posts`). The ops e2e no longer expects pending cards in the inbox list.
+- `keyword_yield._load_raw` already reads `scrape_run_keywords.posts_seen` (now filled by Phase 1.4), so no change; a dedicated per-keyword stats table could still replace it.
+- `GmailClient.list_sent_since` (removed by replies) has no callers on the merged tree.
+- Scheduler adapter `jobs/scheduled_discovery.py` still matches `runs.start_run(db, actor_user_id)` / `safety_cooldown_until`.
