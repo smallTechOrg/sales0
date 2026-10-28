@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from sales0.db.base import Base
@@ -66,6 +66,11 @@ class ScrapeRun(Base):
     linkedin_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("linkedin_accounts.id", ondelete="SET NULL"), index=True
     )
+    # p10 (hosted): which laptop worker claimed the run, when, its last heartbeat, and the Stop request.
+    worker_name: Mapped[str | None] = mapped_column(String(80))
+    claimed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     keywords: Mapped[list[ScrapeRunKeyword]] = relationship(
         back_populates="run",
@@ -101,6 +106,8 @@ class ScrapeRunKeyword(Base):
     errors: Mapped[int] = _counter()
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(String(300))
+    # p10 (hosted): highest post-upload batch number applied (a retried upload is acknowledged, not re-applied)
+    upload_seq: Mapped[int] = _counter()
 
     run: Mapped[ScrapeRun] = relationship(back_populates="keywords")
 

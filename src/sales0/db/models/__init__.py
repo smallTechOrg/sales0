@@ -30,8 +30,10 @@ from sales0.db.models.sheetdata import SheetMetric, SheetMetricWeek, SheetSource
 from sales0.db.models.team import GmailConnection, MemberSession, PasswordToken, TeamMember
 from sales0.db.models.sheet_sync import SheetSyncState
 from sales0.db.models.timeline import TimelineEvent
+from sales0.db.models.workers import Worker
 
 __all__ = [
+    "Worker",
     "LINKEDIN_SESSION_ID",
     "ChannelGroup",
     "Client",
