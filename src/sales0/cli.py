@@ -230,11 +230,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         "check-browser",
         help="Launch the configured browser headless on a throwaway profile (about:blank only) and report it",
     )
+    sub.add_parser("google-auth", help="Sign in to Google (browser consent) and store the Gmail token")
+    sub.add_parser("gmail-check", help="Draft to yourself with a PDF, fetch it, delete it; never sends")
+    send = sub.add_parser("gmail-send-test", help="Send ONE labelled test email to your own address")
+    send.add_argument("--yes-send", action="store_true", help="Required: actually send the test email")
+    send.add_argument("--allow-external", action="store_true", help="dangerous")
+    send.add_argument("--to", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.command == "check-llm":
         return _check_llm()
     if args.command == "check-browser":
         return _check_browser()
+    if args.command in ("google-auth", "gmail-check", "gmail-send-test"):
+        from sales0.integrations.gmail.live import run_command
+
+        return run_command(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

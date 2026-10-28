@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///data/sales0.db"
     test_database_url: str | None = None
 
+    # --- Google / Gmail (Phase 3D) ---
+    google_client_secret_path: str = "data/google_client_secret.json"
+    google_token_path: str = "data/google_token.json"
+
     # --- Time ---
     timezone: str = "Asia/Kolkata"
 
@@ -123,6 +127,11 @@ class Settings(BaseSettings):
     def _strip_plain(cls, value: Any) -> Any:
         return _clean_enum_value(value)
 
+    @field_validator("google_client_secret_path", "google_token_path", mode="before")
+    @classmethod
+    def _strip_google_paths(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("data_dir", "database_url", "test_database_url", "log_file", mode="before")
     @classmethod
     def _strip_whitespace(cls, value: Any) -> Any:
@@ -159,6 +168,16 @@ class Settings(BaseSettings):
     def data_path(self) -> Path:
         """Absolute runtime dir; relative values resolve against the repo root."""
         path = Path(self.data_dir).expanduser()
+        return path if path.is_absolute() else REPO_ROOT / path
+
+    @property
+    def google_client_secret_file(self) -> Path:
+        path = Path(self.google_client_secret_path).expanduser()
+        return path if path.is_absolute() else REPO_ROOT / path
+
+    @property
+    def google_token_file(self) -> Path:
+        path = Path(self.google_token_path).expanduser()
         return path if path.is_absolute() else REPO_ROOT / path
 
     @property
