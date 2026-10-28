@@ -90,7 +90,8 @@ def env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
             "SALES0_LINKEDIN_MODE": "fixture", "SALES0_HOST": "127.0.0.1", "SALES0_PORT": str(port),
             "SALES0_SECRET_KEY": "e2e-secret-key-0123456789abcdef", "SALES0_ADMIN_EMAIL": ADMIN_EMAIL,
             "SALES0_ADMIN_NAME": "Ada Admin", "SALES0_GOOGLE_CLIENT_SECRET_PATH": str(secret),
-            "SALES0_RESEARCH_ALLOW_PRIVATE_HOSTS": "1", "SALES0_APP_PASSWORD": PASSWORD, **google.env(),
+            "SALES0_RESEARCH_ALLOW_PRIVATE_HOSTS": "1", "SALES0_APP_PASSWORD": PASSWORD,
+            "SALES0_SHEET_CLIENT_SOURCING_ID": "client-sourcing-sheet-id", "SALES0_SHEET_METRICS_ID": "metrics-sheet-id", **google.env(),  # sheet sync is opt-in
         }.items():  # fmt: skip
             monkeypatch.setenv(key, value)
         reset_settings()
