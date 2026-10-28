@@ -14,7 +14,6 @@ from sales0.config import get_settings
 from sales0.db.engine import session_scope
 from sales0.db.models import Enquiry, ScrapeRun, ScrapeRunKeyword, SeenPost, Worker
 from sales0.errors import DomainError
-from sales0.scraper.errors import AccountSafetyStop
 from sales0.services import keywords, runs
 from sales0.services import worker_service
 from sales0.services.session import get_session_row
@@ -22,7 +21,7 @@ from sales0.worker import protocol as p
 from sales0.worker.client import ServerUnavailable, WorkerAuthError, WorkerClient
 from sales0.worker.runner import Worker as WorkerLoop
 from tests.conftest import TEST_ENV  # noqa: F401  (documented: the suite's fast pacing applies)
-from tests.integration.jobs.helpers import FakeSearcher, permalink_for
+from tests.integration.jobs.helpers import FakeSearcher
 from tests.integration.services.helpers import post, safety, scrape_error, session_missing
 from tests.integration.worker.conftest import BASE, TOKEN, FlakyHttp
 

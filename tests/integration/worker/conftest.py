@@ -9,8 +9,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from sales0.config import get_settings, reset_settings
-from sales0.db.engine import reset_engine
+from sales0.config import reset_settings
 from sales0.jobs.runner import reset_runner
 from sales0.web.app import create_app
 from sales0.web.routes import worker_api

@@ -148,6 +148,32 @@ uv run sales0 worker             # leave running; Ctrl-C to stop
 Hosted mode has no Connect LinkedIn / Re-check buttons, no cookie paste and no prospect-watch runs (they need a
 browser on the server; the server has none by design): those actions answer "not available on the hosted app".
 
+### 5a. One-off: move existing local data to the hosted database (`push-data`)
+
+The hosted database is private-IP only, so the laptop pushes its SQLite file THROUGH the hosted app
+(`POST /api/worker/import/*`, same bearer token, hosted mode only). Use the same two env vars as the worker.
+
+```bash
+uv run sales0 push-data --source ~/path/to/sales0-run/data/sales0.db --dry-run   # counts only, sends nothing
+uv run sales0 push-data --source ~/path/to/sales0-run/data/sales0.db             # the real push
+```
+
+* The source is **never modified**: it (and its `-wal`/`-shm`) is copied to a temp dir and, if behind, only the copy is
+  migrated to the current schema.
+* Rows keep their ids and go parent-first (keywords, profiles, runs, seen posts, enquiries, hits, sources, LLM calls,
+  status history, offerings, competitors, digests, CRM tables). It is an **upsert by primary key, so re-running is
+  safe** (nothing is duplicated); the last step moves PostgreSQL id sequences past `MAX(id)` and prints
+  `local -> hosted` row counts per table.
+* **Not pushed:** team members and their sessions/password tokens/Gmail tokens (the hosted app has its own accounts;
+  actor references such as "who added this keyword" are re-mapped by e-mail, or left empty), the LinkedIn account row
+  and legacy session (cool-down/counter state of that machine), scheduled jobs, workers, app_meta, sheet source/sync
+  state. Seeded reference rows (offerings, competitors) are overwritten by your local versions.
+* **Keep the raw text:** posts keep `raw_text` only until `raw_purge_after` (`SALES0_SEEN_RAW_RETENTION_DAYS`, default
+  14), then the purge job nulls it. To keep it effectively forever set `SALES0_SEEN_RAW_RETENTION_DAYS=36500` on the
+  hosted service (`gcloud run services update sales0 --update-env-vars SALES0_SEEN_RAW_RETENTION_DAYS=36500 ...`)
+  **before** pushing, and in the laptop `.env`. Pushed posts whose purge date is earlier than `first_seen +` that
+  retention are extended to it, so nothing is purged right after the import.
+
 ## 6. Gmail OAuth (per member)
 
 Gmail needs a **Web application** OAuth client (the Desktop type only allows loopback redirects). In the Google Cloud
