@@ -9,7 +9,7 @@ from sales0.db.engine import build_engine
 from sales0.db.migrate_check import alembic_config, current_revision, head_revision
 from tests.integration.db._drift import drift
 
-P8 = "p8_liaccts_b2e5f7a9"
+P8 = "p9_lirekey_7c3e9a15"  # previous head (scrapesafe is chained after lirekey)
 P9 = "p9_scrapesafe_d3f8a1c6"
 
 

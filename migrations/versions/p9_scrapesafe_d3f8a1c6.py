@@ -5,7 +5,7 @@ added only when missing. Existing runs get 0 (their page loads were never counte
 (SQLite >= 3.35 ``DROP COLUMN``; the column has no index or constraint).
 
 Revision ID: p9_scrapesafe_d3f8a1c6
-Revises: p8_liaccts_b2e5f7a9
+Revises: p9_lirekey_7c3e9a15
 Create Date: 2026-10-28
 """
 
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "p9_scrapesafe_d3f8a1c6"
-down_revision: str | Sequence[str] | None = "p8_liaccts_b2e5f7a9"
+down_revision: str | Sequence[str] | None = "p9_lirekey_7c3e9a15"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

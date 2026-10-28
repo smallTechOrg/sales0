@@ -53,6 +53,8 @@ def prospect(db: Session, name: str, company: str | None = None, **kw: object) -
             db.add(c)
             db.flush()
         cid = c.id
+    # created_at is pinned to the fixed NOW: the wall clock moves past NOW's day and would fall outside the digest window.
+    kw.setdefault("created_at", hours_ago(1))
     p = Prospect(name=name, company_id=cid, **kw)
     db.add(p)
     db.commit()
