@@ -18,7 +18,7 @@ from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
-from sales0.web.acting import get_acting_member_optional
+from sales0.web.acting import acted_by_id, get_acting_member_optional
 from sales0.web.context import PathId
 from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
 
@@ -204,7 +204,8 @@ def decide(
         raise DomainError("decision_invalid", DECISION_INVALID, 400)
     reason = (discard_reason.strip() or None) if decision == "discard" else None
     decided = inbox_service.decide(
-        db, ids, decision, discard_reason=reason, actor_member_id=member.id if member else None
+        db, ids, decision, discard_reason=reason, actor_member_id=member.id if member else None,
+        acted_by_member_id=acted_by_id(member),
     )  # type: ignore[arg-type]
     current_tab, query, page_no = _tab(tab), _q(q), _page_number(page)
     if not is_htmx(request):
@@ -222,15 +223,22 @@ def decide(
 
 # ---------------------------------------------------------------------- Skipped by AI (Phase 1.4)
 def _skipped_action(
-    request: Request, db: Session, action: str, seen_post_id: PathId, q: str, state: str, page: str
+    request: Request, db: Session, action: str, seen_post_id: PathId, q: str, state: str, page: str,
+    member: TeamMember | None = None,
 ) -> Response:
     toast = ""
     try:
         if action == "rescue":
-            seen_posts_service.rescue(db, seen_post_id, accept=False)
+            seen_posts_service.rescue(
+                db, seen_post_id, accept=False, actor_user_id=member.id if member else None,
+                acted_by_member_id=acted_by_id(member),
+            )
             toast = toast_html("Moved to To review")
         elif action == "override":
-            seen_posts_service.rescue(db, seen_post_id, accept=True)
+            seen_posts_service.rescue(
+                db, seen_post_id, accept=True, actor_user_id=member.id if member else None,
+                acted_by_member_id=acted_by_id(member),
+            )
             toast = toast_html("Accepted as Prospect · New (overrode AI)")
         else:
             seen_posts_service.retry_triage(db, seen_post_id)
@@ -253,8 +261,9 @@ def skipped_rescue(
     state: str = Form("discard"),
     page: str = Form("1"),
     db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    return _skipped_action(request, db, "rescue", seen_post_id, q, state, page)
+    return _skipped_action(request, db, "rescue", seen_post_id, q, state, page, member)
 
 
 @router.post("/inbox/skipped/{seen_post_id}/override", response_model=None)
@@ -265,8 +274,9 @@ def skipped_override(
     state: str = Form("discard"),
     page: str = Form("1"),
     db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    return _skipped_action(request, db, "override", seen_post_id, q, state, page)
+    return _skipped_action(request, db, "override", seen_post_id, q, state, page, member)
 
 
 @router.post("/inbox/skipped/{seen_post_id}/retry", response_model=None)
@@ -277,8 +287,9 @@ def skipped_retry(
     state: str = Form("failed"),
     page: str = Form("1"),
     db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    return _skipped_action(request, db, "retry", seen_post_id, q, state, page)
+    return _skipped_action(request, db, "retry", seen_post_id, q, state, page, member)
 
 
 @router.post("/inbox/{enquiry_id}/fields", response_model=None)
@@ -291,6 +302,7 @@ def update_fields(
     q: str = Form(""),
     page: str = Form("1"),
     db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     # Each select posts only its own field. An absent offering_id keeps the offering
     # (the service's UNSET default); "none"/"" means "No match" (offering_id=None).
@@ -307,7 +319,9 @@ def update_fields(
                 raise DomainError("not_found", "That item no longer exists — refresh the page.", 404) from None
     if not kwargs:
         raise DomainError("field_invalid", "Choose a priority or an offering to change.", 400)
-    card = inbox_service.update_fields(db, enquiry_id, **kwargs)
+    card = inbox_service.update_fields(
+        db, enquiry_id, actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member), **kwargs
+    )
     if not is_htmx(request):
         return redirect("/inbox", tab=_tab(tab), q=_q(q))
     message = "Priority updated." if "priority" in kwargs else "Offering updated."

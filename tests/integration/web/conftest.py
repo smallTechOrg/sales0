@@ -18,6 +18,7 @@ import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 
+from sales0.services.session import get_session_row
 from sales0.clock import utcnow
 from sales0.config import REPO_ROOT, get_settings, reset_settings
 from sales0.db.engine import session_scope
@@ -25,7 +26,6 @@ from sales0.db.models import (
     Enquiry,
     EnquiryKeywordHit,
     EnquirySource,
-    LinkedInSession,
     LlmCall,
     ScrapeRun,
     Keyword,
@@ -54,7 +54,7 @@ def client(db_url: str) -> Iterator[TestClient]:
 # ---------------------------------------------------------------------- seeders
 def set_session(status: str, *, last_error: str | None = None, last_successful_run_at: datetime | None = None) -> None:
     with session_scope() as db:
-        row = db.get(LinkedInSession, 1)
+        row = get_session_row(db)
         assert row is not None
         row.status = status
         row.last_error = last_error

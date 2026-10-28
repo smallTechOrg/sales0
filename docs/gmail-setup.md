@@ -1,7 +1,7 @@
 # Gmail setup (one-time, about 10 minutes)
 
-sales0 talks to Gmail through your own Google Cloud OAuth client. Nothing is sent unless a
-later phase's outreach service sends a draft you approved.
+sales0 talks to Gmail through your own Google Cloud OAuth client. Nothing is sent unless the
+outreach service sends a draft a person approved.
 
 1. Open https://console.cloud.google.com/ and sign in with the Gmail account that will send mail.
 2. Project picker (top bar) -> **New project** -> name it `sales0` -> **Create**, then select it.
@@ -21,12 +21,28 @@ later phase's outreach service sends a draft you approved.
    local loopback port; approve. The token is saved to `data/google_token.json` (mode 600).
 
 Expect the **"Google hasn't verified this app"** screen (External/Testing): click **Advanced ->
-Go to sales0 (unsafe)**. It is your own app. Requested access: create and send drafts
-(`gmail.compose`) and your email address (`openid email`). sales0 cannot read your inbox.
+Go to sales0 (unsafe)**. It is your own app. Requested access: `gmail.modify` (drafts, send, trash for test cleanup, and read-only
+reply tracking of threads you sent) and your email address (`openid email`).
 
 **Testing-mode refresh tokens expire after 7 days** (External + Testing). Either re-run
 `google-auth` weekly, or publish the app to production (External; stays "unverified" but
 tokens persist), or use an Internal app on Workspace.
+
+## Hosted deployment: Web application client
+
+The Desktop client above only allows loopback redirects, so it cannot be used when sales0 runs on
+a server. For a hosted install:
+
+1. In step 5 choose Application type **Web application**.
+2. Under **Authorized redirect URIs** add exactly `<SALES0_PUBLIC_BASE_URL>/oauth/google/callback`,
+   for example `https://sales.example.com/oauth/google/callback` (scheme, host, port and path must match;
+   no trailing slash). Download the JSON (it has a `web` block) to `SALES0_GOOGLE_CLIENT_SECRET_PATH`.
+3. Set `SALES0_PUBLIC_BASE_URL=https://sales.example.com` and restart.
+4. Each person opens **Team** on that URL and presses **Connect my Gmail**. The Team page shows the exact
+   redirect URI to register. If it is not listed in the JSON's `redirect_uris`, or a Desktop client is used with
+   a public URL, Connect stops with an error naming the URI.
+
+For a Workspace domain keep the consent screen **Internal**. External users need Google's app verification.
 
 ## Verify (never sends)
 

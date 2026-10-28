@@ -23,6 +23,7 @@
         <h2 id="members-title">Members</h2>
         <span class="muted">Gmail connection per member</span>
       </div>
+      {% if gmail_hint %}<div class="card__body"><p class="muted" id="gmail-redirect-hint">{{ gmail_hint.text }}</p></div>{% endif %}
       <div class="card__body table-wrap">
         <table class="table">
           <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Gmail</th><th>Actions</th></tr></thead>

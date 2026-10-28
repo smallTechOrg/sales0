@@ -1,4 +1,8 @@
-"""LinkedIn session status (singleton row) + connect / re-check job starts."""
+"""LinkedIn session status of ONE account (default: the first active account) + connect / re-check job starts.
+
+Since p8 the state lives in ``linkedin_accounts`` (``services.linkedin_accounts``); this module keeps the
+Setup-card facade and the old function names, each taking an optional ``account_id``.
+"""
 
 from __future__ import annotations
 
@@ -8,13 +12,13 @@ from urllib.parse import urlsplit
 from sqlalchemy.orm import Session
 
 from sales0.config import get_settings
-from sales0.db.models import LinkedInSession
+from sales0.errors import DomainError
+from sales0.db.models import LinkedInAccount
 from sales0.jobs.runner import get_runner
 from sales0.logging import get_logger
-from sales0.services._common import clip, now_or, record_history
+from sales0.services import linkedin_accounts as accounts
+from sales0.services._common import clip
 from sales0.services.views import SessionStatusView
-
-SESSION_ID = 1
 
 log = get_logger("sales0.services.session")
 
@@ -44,67 +48,38 @@ def safety_message(kind: str, url: str | None) -> str:
     return clip(template.format(path=_path(url), kind=kind), 300) or ""
 
 
-def get_session_row(db: Session) -> LinkedInSession:
-    row = db.get(LinkedInSession, SESSION_ID)
-    if row is None:  # seeded by migration 0002; recreate defensively
-        row = LinkedInSession(id=SESSION_ID, status="not_connected")
-        db.add(row)
-        db.flush()
-    return row
+def get_session_row(db: Session, account_id: int | None = None) -> LinkedInAccount:
+    """The ORM row of a LinkedIn account (None = the default account). Compat name; the singleton is gone."""
+    return accounts.resolve_account(db, account_id)
 
 
-def _set_status(db: Session, row: LinkedInSession, status: str, *, note: str | None, now: datetime) -> None:
-    if row.status != status:
-        record_history(db, "linkedin_session", row.id, "status", row.status, status, note=note, now=now)
-        row.status = status
-    row.updated_at = now
+def mark_connected(
+    db: Session, *, now: datetime | None = None, connected: bool = False, account_id: int | None = None
+) -> None:
+    accounts.mark_connected(db, account_id, now=now, connected=connected)
 
 
-def mark_connected(db: Session, *, now: datetime | None = None, connected: bool = False) -> None:
-    now = now_or(now)
-    row = get_session_row(db)
-    _set_status(db, row, "connected", note="connect" if connected else "check", now=now)
-    row.last_checked_at = now
-    if connected:
-        row.last_connected_at = now
-    row.last_error = None
-    db.flush()
+def mark_not_connected(
+    db: Session, message: str | None, *, now: datetime | None = None, account_id: int | None = None
+) -> None:
+    accounts.mark_not_connected(db, message, account_id, now=now)
 
 
-def mark_not_connected(db: Session, message: str | None, *, now: datetime | None = None) -> None:
-    now = now_or(now)
-    row = get_session_row(db)
-    _set_status(db, row, "not_connected", note=message, now=now)
-    row.last_checked_at = now
-    row.last_error = clip(message, 300)
-    db.flush()
-
-
-def mark_needs_attention(db: Session, kind: str, url: str | None, *, now: datetime | None = None) -> str:
-    now = now_or(now)
+def mark_needs_attention(
+    db: Session, kind: str, url: str | None, *, now: datetime | None = None, account_id: int | None = None
+) -> str:
     message = safety_message(kind, url)
-    row = get_session_row(db)
-    _set_status(db, row, "needs_attention", note=kind, now=now)
-    row.last_checked_at = now
-    row.last_error = message
-    db.flush()
+    accounts.mark_needs_attention(db, kind, message, account_id, now=now)
     return message
 
 
-def note_error(db: Session, message: str, *, now: datetime | None = None) -> None:
+def note_error(db: Session, message: str, *, now: datetime | None = None, account_id: int | None = None) -> None:
     """Record a non-state-changing error (e.g. the check itself crashed)."""
-    now = now_or(now)
-    row = get_session_row(db)
-    row.last_checked_at = now
-    row.last_error = clip(message, 300)
-    row.updated_at = now
-    db.flush()
+    accounts.note_error(db, message, account_id, now=now)
 
 
-def mark_successful_run(db: Session, *, now: datetime | None = None) -> None:
-    row = get_session_row(db)
-    row.last_successful_run_at = now_or(now)
-    db.flush()
+def mark_successful_run(db: Session, *, now: datetime | None = None, account_id: int | None = None) -> None:
+    accounts.mark_successful_run(db, account_id, now=now)
 
 
 def browser_info() -> tuple[str, str | None, str | None]:
@@ -133,10 +108,10 @@ def browser_channel() -> str | None:
         return None
 
 
-def session_status(db: Session) -> SessionStatusView:
+def session_status(db: Session, account_id: int | None = None) -> SessionStatusView:
     from sales0.services.runs import safety_cooldown_until
 
-    row = get_session_row(db)
+    row = get_session_row(db, account_id)
     runner = get_runner()
     busy = runner.busy()
     stored = row.status if row.status in ("not_connected", "connected", "needs_attention") else "not_connected"
@@ -154,22 +129,36 @@ def session_status(db: Session) -> SessionStatusView:
         browser_label=label,
         browser_note=note,
         browser_channel=channel,  # type: ignore[arg-type]
-        cooldown_until=safety_cooldown_until(db),
+        cooldown_until=safety_cooldown_until(db, account_id=row.id),
     )
 
 
-def start_connect(db: Session) -> SessionStatusView:
+def start_connect(db: Session, account_id: int | None = None) -> SessionStatusView:
     from sales0.jobs import connect_job
 
-    get_runner().submit("connect", connect_job.execute)
-    return session_status(db)
+    row = get_session_row(db, account_id)
+    if row.disabled:
+        raise DomainError("account_disabled", "That LinkedIn account is disabled - enable it first.", 409)
+    if row.backend == "db":
+        raise DomainError(
+            "account_uses_cookie",
+            "That account logs in with a pasted li_at cookie - paste a new cookie instead of opening a window.",
+            409,
+        )
+    aid = row.id
+    get_runner().submit("connect", lambda: connect_job.execute(linkedin_account_id=aid))
+    return session_status(db, aid)
 
 
-def start_check(db: Session) -> SessionStatusView:
+def start_check(db: Session, account_id: int | None = None) -> SessionStatusView:
     from sales0.jobs import check_job
 
-    get_runner().submit("check", check_job.execute)
-    return session_status(db)
+    row = get_session_row(db, account_id)
+    if row.disabled:
+        raise DomainError("account_disabled", "That LinkedIn account is disabled - enable it first.", 409)
+    aid = row.id
+    get_runner().submit("check", lambda: check_job.execute(linkedin_account_id=aid))
+    return session_status(db, aid)
 
 
 __all__ = [

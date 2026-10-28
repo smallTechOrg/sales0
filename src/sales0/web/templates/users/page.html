@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Users</h1>
+      <p>Everyone who can log in. Admins add members, change roles, deactivate people and hand out one-time set-password links (nothing is emailed).</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% if flash %}
+      <div class="flash flash--{{ flash.kind }}" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    {% if link %}
+    <section class="card" id="set-password-link" aria-labelledby="link-title">
+      <div class="card__header"><h2 id="link-title">Set-password link for {{ link.member.name }}</h2><span class="muted">Shown once</span></div>
+      <div class="card__body">
+        <p>Send this link to {{ link.member.name }} yourself. It works once, for {{ ttl_h }} hours (until {{ link.expires|localdt }}), and cannot be shown again - generate a new one if it is lost.</p>
+        <input class="input" id="set-password-url" type="text" readonly value="{{ link.url }}" onclick="this.select()">
+        {% if link.first %}<p class="muted">{{ link.member.name }} was added without a password; opening the link lets them choose one.</p>{% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="card" aria-labelledby="users-title">
+      <div class="card__header"><h2 id="users-title">Members</h2><span class="muted">{{ rows|length }} total</span></div>
+      <div class="card__body table-wrap">
+        <table class="table" id="users-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Password</th><th>Last login</th><th>Actions</th></tr></thead>
+          <tbody>
+          {% for m in rows %}
+            <tr id="user-{{ m.id }}">
+              <td>{{ m.name }}{% if m.id == admin.id %} <span class="badge badge--info">You</span>{% endif %}{% if not m.active %} <span class="badge badge--low">Inactive</span>{% endif %}</td>
+              <td>{{ m.email }}</td>
+              <td>
+                <form method="post" action="/users/{{ m.id }}/role" class="inline-form">
+                  <select class="input" name="role" aria-label="Role for {{ m.name }}" onchange="this.form.submit()">
+                    <option value="member"{% if m.role == "member" %} selected{% endif %}>Member</option>
+                    <option value="admin"{% if m.role == "admin" %} selected{% endif %}>Admin</option>
+                  </select>
+                  <noscript><button class="btn btn--sm" type="submit">Save</button></noscript>
+                </form>
+              </td>
+              <td>{% if m.password_hash %}Set{% if m.must_reset %} <span class="badge badge--low">reset pending</span>{% endif %}{% else %}<span class="muted">Not set</span>{% endif %}</td>
+              <td>{% if m.last_login_at %}{{ m.last_login_at|localdt }}{% else %}<span class="muted">never</span>{% endif %}</td>
+              <td>
+                <form method="post" action="/users/{{ m.id }}/reset" class="inline-form">
+                  <button class="btn btn--sm" type="submit">{% if m.password_hash %}Force reset (new link){% else %}Set-password link{% endif %}</button>
+                </form>
+                {% if m.id != admin.id %}
+                <form method="post" action="/users/{{ m.id }}/active" class="inline-form">
+                  <input type="hidden" name="active" value="{{ '0' if m.active else '1' }}">
+                  <button class="btn btn--ghost btn--sm" type="submit">{{ "Deactivate" if m.active else "Reactivate" }}</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="add-user-title">
+      <div class="card__header"><h2 id="add-user-title">Add a member</h2></div>
+      <div class="card__body">
+        <form class="inline-form" method="post" action="/users" id="add-user-form">
+          <div class="field"><label class="field__label" for="user-name">Name</label>
+            <input class="input" id="user-name" name="name" type="text" maxlength="80" required autocomplete="off"></div>
+          <div class="field"><label class="field__label" for="user-email">Email</label>
+            <input class="input" id="user-email" name="email" type="email" maxlength="254" required autocomplete="off" placeholder="name@yourcompany.com"></div>
+          <div class="field"><label class="field__label" for="user-role">Role</label>
+            <select class="input" id="user-role" name="role"><option value="member">Member</option><option value="admin">Admin</option></select></div>
+          <button class="btn btn--primary" type="submit">Add member</button>
+        </form>
+        <p class="muted">The email is also the member's Gmail address for outreach. You get a one-time set-password link to hand over.</p>
+      </div>
+    </section>
+  </div>
+{% endblock %}

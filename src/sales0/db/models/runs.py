@@ -57,7 +57,12 @@ class ScrapeRun(Base):
     abort_reason: Mapped[str | None] = mapped_column(String(20))
     error_message: Mapped[str | None] = mapped_column(String(500))
     actor_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
+        ForeignKey("team_members.id", ondelete="SET NULL")
+    )
+    # p8: which LinkedIn account ran (cool-down / daily caps are per account). NULL only on rows
+    # written before p8 that the migration could not stamp.
+    linkedin_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("linkedin_accounts.id", ondelete="SET NULL"), index=True
     )
 
     keywords: Mapped[list[ScrapeRunKeyword]] = relationship(

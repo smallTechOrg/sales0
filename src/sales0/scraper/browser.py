@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
@@ -33,6 +33,9 @@ from playwright.sync_api import Error as PlaywrightError
 from sales0.config import Settings
 from sales0.logging import get_logger
 from sales0.scraper.errors import BrowserUnavailable
+
+if TYPE_CHECKING:
+    from sales0.scraper.session_store import AccountSpec
 
 log = get_logger("sales0.scraper.browser")
 
@@ -221,8 +224,17 @@ def reset_browser_cache() -> None:
 
 
 # --------------------------------------------------------------------------- profiles
-def profile_dir(settings: Settings, channel: str) -> Path:
-    """The dedicated sales0 profile for this mode and channel, under ``settings.data_path``."""
+def profile_dir(settings: Settings, channel: str, account: AccountSpec | None = None) -> Path:
+    """The dedicated sales0 profile for this mode and channel, under ``settings.data_path``.
+
+    The default account (``profile_dirname`` unset or one of the legacy ``PROFILE_DIRNAMES``) keeps the
+    pre-p8 directory. Any other folder account gets its own ``<profile_dirname>-<mode>-<channel>`` directory.
+    """
+    custom = account.profile_dirname if account is not None else None
+    if custom and custom not in PROFILE_DIRNAMES.values():
+        if channel not in ("chrome", "chromium"):
+            raise ValueError(f"Unknown browser channel {channel!r}; use 'chrome' or 'chromium'")
+        return settings.data_path / f"{custom}-{settings.linkedin_mode}-{channel}"
     try:
         name = PROFILE_DIRNAMES[(settings.linkedin_mode, channel)]
     except KeyError:
@@ -310,11 +322,16 @@ def system_locale() -> str:
 _clear_locale_cache = system_locale.cache_clear
 
 
-def launch_options(settings: Settings, choice: BrowserChoice, *, headless: bool) -> dict[str, Any]:
-    """Keyword args for ``launch_persistent_context`` (pure apart from the cached locale)."""
+def launch_options(
+    settings: Settings, choice: BrowserChoice, *, headless: bool, account: AccountSpec | None = None
+) -> dict[str, Any]:
+    """Keyword args for ``launch_persistent_context`` (pure apart from the cached locale).
+
+    ``account`` overrides the profile directory and any pinned user agent / locale / timezone / viewport.
+    """
     args = list(BASE_ARGS) if headless else [*BASE_ARGS, *HEADED_ONLY_ARGS]
     options: dict[str, Any] = {
-        "user_data_dir": str(profile_dir(settings, choice.channel)),
+        "user_data_dir": str(profile_dir(settings, choice.channel, account)),
         "headless": headless,
         "ignore_default_args": list(IGNORED_DEFAULT_ARGS),
         "args": args,
@@ -332,6 +349,20 @@ def launch_options(settings: Settings, choice: BrowserChoice, *, headless: bool)
             options["user_agent"] = user_agent_for(choice.version)
     else:
         options["no_viewport"] = True
+    if account is not None:
+        if account.user_agent:
+            options["user_agent"] = account.user_agent
+        if account.locale:
+            options["locale"] = account.locale
+        if account.timezone:
+            options["timezone_id"] = account.timezone
+        if account.viewport:
+            options.pop("no_viewport", None)
+            options["viewport"] = {"width": account.viewport[0], "height": account.viewport[1]}
+        if (account.proxy_url) and account.backend == "folder":
+            from sales0.scraper.session_store import proxy_options
+
+            options["proxy"] = proxy_options(account.proxy_url)
     return options
 
 
@@ -371,14 +402,16 @@ def launch_persistent(options: dict[str, Any], choice: BrowserChoice) -> Iterato
 
 
 @contextmanager
-def open_context(settings: Settings, *, headless: bool) -> Iterator[BrowserContext]:
+def open_context(
+    settings: Settings, *, headless: bool, account: AccountSpec | None = None
+) -> Iterator[BrowserContext]:
     """Resolve the browser, open (and always close) a persistent context on its sales0 profile.
 
     Raises ``BrowserUnavailable`` when Chrome is required but missing, when the profile is
     held by a still-open sales0 window, or when the browser fails to launch.
     """
     choice = resolve_browser(settings)
-    options = launch_options(settings, choice, headless=headless)
+    options = launch_options(settings, choice, headless=headless, account=account)
     profile = Path(options["user_data_dir"])
     profile.mkdir(parents=True, exist_ok=True)
     if profile_in_use(profile):

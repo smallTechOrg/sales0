@@ -341,6 +341,32 @@ def _eval_triage() -> int:
     return 0 if meets_targets(metrics) else 3
 
 
+def _env_docs(check: str | None, write: str | None) -> int:
+    from pathlib import Path
+
+    from sales0 import envdocs
+
+    if missing := envdocs.missing_help():
+        print(f"env-docs: no help text for {', '.join(missing)} (add to sales0/envdocs.py HELP)", file=sys.stderr)
+        return 1
+    try:
+        if check:
+            if envdocs.is_current(Path(check)):
+                print(f"{check}: env-docs block is up to date")
+                return 0
+            print(f"{check}: env-docs block is stale; run `uv run python -m sales0.cli env-docs --write {check}`", file=sys.stderr)
+            return 1
+        if write:
+            changed = envdocs.write_block(Path(write))
+            print(f"{write}: {'updated' if changed else 'already up to date'}")
+            return 0
+    except (OSError, ValueError) as exc:
+        print(f"env-docs: {exc}", file=sys.stderr)
+        return 1
+    print(envdocs.render_table())
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -368,7 +394,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "eval-triage",
         help="Run the real triage over the team's real Google Sheets (fetched at runtime) and print precision/recall",
     )
+    ed = sub.add_parser("env-docs", help="Print the Markdown table of every SALES0_* setting (or check/rewrite a README block)")
+    mode = ed.add_mutually_exclusive_group()
+    mode.add_argument("--check", metavar="FILE", default=None, help="exit 1 if FILE's env-docs block is out of date")
+    mode.add_argument("--write", metavar="FILE", default=None, help="rewrite FILE's block between the env-docs markers")
     args = parser.parse_args(argv)
+    if args.command == "env-docs":
+        return _env_docs(args.check, args.write)
     if args.command == "sync-sheets":
         return _sync_sheets(args.dry_run, args.tab, args.memory)
     if args.command == "crm-counts":

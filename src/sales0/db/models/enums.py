@@ -15,6 +15,11 @@ LINKEDIN_SESSION_STATUSES: tuple[str, ...] = (
     "needs_attention",
 )
 
+LinkedInAccountStatus = Literal["not_connected", "connected", "needs_attention", "disabled"]
+LINKEDIN_ACCOUNT_STATUSES: tuple[str, ...] = ("not_connected", "connected", "needs_attention", "disabled")
+LinkedInBackend = Literal["folder", "db"]
+LINKEDIN_BACKENDS: tuple[str, ...] = ("folder", "db")
+
 RunTrigger = Literal["manual"]
 RUN_TRIGGERS: tuple[str, ...] = ("manual",)
 

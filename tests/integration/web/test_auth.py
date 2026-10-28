@@ -1,4 +1,4 @@
-"""Shared login end to end (TestClient, real app + migrated SQLite)."""
+"""Per-user login (bootstrap admin via SALES0_APP_PASSWORD) end to end (TestClient, real app + migrated SQLite)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from sales0.web.app import create_app
 from tests.integration.web.conftest import HX
 
 PASSWORD = "s3cret-team-pass"
+ADMIN_EMAIL = "admin@smalltech.in"
 EVIL = "https://evil.example"
 
 
@@ -47,7 +48,7 @@ def locked(make_client: Callable[..., TestClient]) -> TestClient:
 
 
 def _login(c: TestClient, password: str = PASSWORD, next_: str = "", **kw):
-    return c.post("/login", data={"password": password, "next": next_}, **kw)
+    return c.post("/login", data={"email": ADMIN_EMAIL, "password": password, "next": next_}, **kw)
 
 
 # ---------------------------------------------------------------------- gate
@@ -70,7 +71,7 @@ def test_login_page_renders_without_chrome(locked: TestClient) -> None:
 
 def test_wrong_password_401_no_cookie(locked: TestClient) -> None:
     r = _login(locked, "nope", "/inbox")
-    assert r.status_code == 401 and "Wrong password." in r.text
+    assert r.status_code == 401 and "Wrong email or password." in r.text
     assert "set-cookie" not in r.headers
     assert locked.get("/inbox").status_code == 303
     assert "nope" not in r.text
@@ -79,7 +80,7 @@ def test_wrong_password_401_no_cookie(locked: TestClient) -> None:
 def test_empty_password_is_wrong(locked: TestClient) -> None:
     r = _login(locked, "")
     assert r.status_code == 401 and "set-cookie" not in r.headers
-    assert locked.post("/login", data={}).status_code == 401
+    assert locked.post("/login", data={"email": ADMIN_EMAIL}).status_code == 401
 
 
 def test_correct_password_sets_cookie_and_next_works(locked: TestClient) -> None:
@@ -139,13 +140,29 @@ def test_expired_cookie_rejected(locked: TestClient, monkeypatch: pytest.MonkeyP
     assert r.status_code == 303 and r.headers["location"].startswith("/login")
 
 
-def test_password_change_invalidates_cookie(make_client: Callable[..., TestClient]) -> None:
+def test_env_password_is_bootstrap_only(make_client: Callable[..., TestClient]) -> None:
     first = make_client("old-password")
-    _login(first, "old-password")
+    assert _login(first, "old-password").status_code == 303
     cookie = first.cookies[auth.COOKIE]
+    # the admin now has a password: a different env value is ignored for login, and the old session lives on
     second = make_client("new-password")
+    assert _login(second, "new-password").status_code == 401
+    assert _login(second, "old-password").status_code == 303
     second.cookies.set(auth.COOKIE, cookie)
-    assert second.get("/inbox").status_code == 303
+    assert second.get("/inbox").status_code == 200
+
+
+def test_changing_own_password_kills_other_sessions(make_client: Callable[..., TestClient]) -> None:
+    a = make_client("old-password-1")
+    _login(a, "old-password-1")
+    b = TestClient(a.app, follow_redirects=False)
+    _login(b, "old-password-1")
+    r = a.post("/account/password", data={"current": "old-password-1", "password": "brand-new-pass-2", "confirm": "brand-new-pass-2"})
+    assert r.status_code == 303
+    assert a.get("/inbox").status_code == 200  # the session that changed it stays
+    assert b.get("/inbox").status_code == 303  # the other is gone
+    assert _login(b, "old-password-1").status_code == 401
+    assert _login(b, "brand-new-pass-2").status_code == 303
 
 
 # ---------------------------------------------------------------------- logout
@@ -249,6 +266,13 @@ def test_x_forwarded_for_not_trusted(locked: TestClient) -> None:
     assert _login(locked, "bad", headers={"X-Forwarded-For": "10.9.9.9"}).status_code == 429
 
 
+def test_throttle_is_per_ip_and_email(locked: TestClient) -> None:
+    for _ in range(5):
+        locked.post("/login", data={"email": "someone@else.example", "password": "bad"})
+    assert locked.post("/login", data={"email": "someone@else.example", "password": "bad"}).status_code == 429
+    assert _login(locked).status_code == 303  # a different email from the same address is not locked
+
+
 def test_password_not_logged(locked: TestClient) -> None:
     import structlog
 
@@ -259,11 +283,11 @@ def test_password_not_logged(locked: TestClient) -> None:
 
 # ---------------------------------------------------------------------- CSRF
 def test_cross_origin_login_post_rejected(locked: TestClient) -> None:
-    r = locked.post("/login", data={"password": PASSWORD}, headers={"Origin": EVIL})
+    r = locked.post("/login", data={"email": ADMIN_EMAIL, "password": PASSWORD}, headers={"Origin": EVIL})
     assert r.status_code == 403 and "set-cookie" not in r.headers
-    r = locked.post("/login", data={"password": PASSWORD}, headers={"Origin": EVIL, "Accept": "application/json"})
+    r = locked.post("/login", data={"email": ADMIN_EMAIL, "password": PASSWORD}, headers={"Origin": EVIL, "Accept": "application/json"})
     assert r.status_code == 403 and r.json()["error"]["code"] == "csrf_rejected"
-    r = locked.post("/login", data={"password": PASSWORD}, headers={"Referer": f"{EVIL}/x"})
+    r = locked.post("/login", data={"email": ADMIN_EMAIL, "password": PASSWORD}, headers={"Referer": f"{EVIL}/x"})
     assert r.status_code == 403
 
 

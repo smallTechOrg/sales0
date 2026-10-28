@@ -17,6 +17,7 @@ from sales0.config import Settings
 from sales0.logging import get_logger
 from sales0.scraper.browser import first_page, open_context, resolve_browser, wait_timeout_ms
 from sales0.scraper.detection import PageVerdict, classify_page, read_signals, session_cookie_present
+from sales0.scraper.session_store import AccountHandle, open_account_context
 from sales0.scraper.types import SessionCheckResult, SessionReason
 from sales0.scraper.urls import base_url, feed_url
 
@@ -143,15 +144,21 @@ def log_session(
     )
 
 
-def check_session(settings: Settings) -> SessionCheckResult:
+def check_session(settings: Settings, account: AccountHandle | None = None) -> SessionCheckResult:
     """Re-check: open sales0's profile HEADLESS, verify the feed, close.
+
+    ``account`` picks the LinkedIn account's session store (None = the default folder profile); a db
+    account's refreshed storage_state is saved back when the context closes.
 
     ``BrowserUnavailable`` (Chrome required but missing, profile window still open, launch
     failure) propagates so the job can show its message. Any other browser failure during
     the check returns reason ``error``.
     """
     base = base_url(settings)
-    with open_context(settings, headless=True) as context:
+    opened = open_context(settings, headless=True) if account is None else open_account_context(
+        settings, account, headless=True
+    )
+    with opened as context:
         try:
             result, details = verify_with_details(context, base, wait_timeout_ms(settings))
         except PlaywrightError as exc:

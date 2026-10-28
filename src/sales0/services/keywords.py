@@ -83,11 +83,13 @@ def remove_keyword(db: Session, keyword_id: int) -> None:
     db.expire_all()
 
 
-def set_keyword_active(db: Session, keyword_id: int, active: bool) -> KeywordView:
+def set_keyword_active(db: Session, keyword_id: int, active: bool, actor_user_id: int | None = None) -> KeywordView:
     row = db.get(Keyword, keyword_id)
     if row is None:
         raise not_found()
     row.active = bool(active)
+    if actor_user_id is not None:
+        row.actor_user_id = actor_user_id  # last member to touch it
     db.flush()
     return _view(row)
 
@@ -100,7 +102,8 @@ def _validated(text: str | None) -> str:
 
 
 def update_keyword(
-    db: Session, keyword_id: int, text: str | None = None, group_name: str | None | _Unset = UNSET
+    db: Session, keyword_id: int, text: str | None = None, group_name: str | None | _Unset = UNSET,
+    actor_user_id: int | None = None,
 ) -> KeywordView:
     """Edit text and/or group in place. ``text=None`` keeps the text; ``group_name`` omitted keeps the
     group, ``None``/blank clears it. A seeded keyword keeps its ``suggested_key`` whatever the edit."""
@@ -115,6 +118,8 @@ def update_keyword(
         row.text = clean
     if group_name is not UNSET:
         row.group_name = clip(group_name, 40) if isinstance(group_name, str) else None
+    if actor_user_id is not None:
+        row.actor_user_id = actor_user_id  # last member to touch it
     db.flush()
     return _view(row)
 

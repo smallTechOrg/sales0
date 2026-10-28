@@ -18,8 +18,8 @@ from sales0.db.migrate_check import alembic_config, current_revision, head_revis
 from tests.integration.db._drift import assert_inline_fks_cascade, drift
 from sales0.db.models import AppMeta, LinkedInSession, Offering, OfferingGroup
 
+# "users" is retired by p7 (team members are the users); 0002 still creates it and 0002's downgrade drops it.
 PHASE1_TABLES = {
-    "users",
     "offering_groups",
     "offerings",
     "keywords",

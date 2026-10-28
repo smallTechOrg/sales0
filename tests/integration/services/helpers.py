@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from sales0.services.session import get_session_row
 from sales0.db.engine import session_scope
-from sales0.db.models import Enquiry, LinkedInSession, ScrapeRun
+from sales0.db.models import Enquiry, ScrapeRun
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
 from sales0.scraper.types import KeywordScrapeResult, LinkCaptureResult, ScrapedPost
 from sales0.services import dedupe
@@ -73,8 +74,7 @@ def sdui_post(
 
 def set_session_status(status: str, last_error: str | None = None) -> None:
     with session_scope() as db:
-        row = db.get(LinkedInSession, 1)
-        assert row is not None
+        row = get_session_row(db)
         row.status = status
         row.last_error = last_error
 

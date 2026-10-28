@@ -30,5 +30,5 @@ class StatusHistory(Base):
         UTCDateTime(), nullable=False, default=now_utc
     )
     actor_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
+        ForeignKey("team_members.id", ondelete="SET NULL")
     )

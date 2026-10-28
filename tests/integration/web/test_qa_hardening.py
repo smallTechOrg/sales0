@@ -181,7 +181,7 @@ def test_logout_link_has_light_text_on_the_dark_header(db_url: str, monkeypatch:
     reset_settings()
     try:
         with TestClient(create_app(), follow_redirects=False) as c:
-            c.post("/login", data={"password": "pw-pw-pw"})
+            c.post("/login", data={"email": "admin@smalltech.in", "password": "pw-pw-pw"})
             assert 'id="logout"' in c.get("/inbox").text
             css = c.get("/static/css/app.css").text
             assert ".site-header .logout-form .btn" in css and "var(--color-header-text)" in css

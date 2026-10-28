@@ -22,6 +22,7 @@ from sales0.logging import get_logger
 from sales0.scraper.browser import first_page, open_context, resolve_browser, wait_timeout_ms
 from sales0.scraper.detection import classify_url, same_site, session_cookie_present
 from sales0.scraper.errors import BrowserUnavailable
+from sales0.scraper.session_store import AccountHandle, open_account_context
 from sales0.scraper.session_check import log_session, verify_with_details
 from sales0.scraper.types import ConnectResult
 from sales0.scraper.urls import base_url, login_url
@@ -55,11 +56,13 @@ def connect_interactive(
     poll_interval_s: float = 1.0,
     timeout_s: float | None = None,
     start_url: str | None = None,
+    account: AccountHandle | None = None,
 ) -> ConnectResult:
     """Block until the profile is logged in, the timeout passes, the user cancels or closes
     the window. ``on_tick(elapsed_s)`` is called about once per ``poll_interval_s``.
 
-    ``start_url`` (default ``{base}/login``) exists for tests.
+    ``start_url`` (default ``{base}/login``) exists for tests. ``account`` selects the LinkedIn account's
+    session store (None = the default folder profile). Only folder accounts can Connect via a window.
     """
     base = base_url(settings)
     headless = settings.linkedin_mode == "fixture"
@@ -68,7 +71,12 @@ def connect_interactive(
     closed = {"value": False}
     try:
         choice = resolve_browser(settings)
-        with open_context(settings, headless=headless) as context:
+        opened = (
+            open_context(settings, headless=headless)
+            if account is None
+            else open_account_context(settings, account, headless=headless)
+        )
+        with opened as context:
             context.on("close", lambda _ctx: closed.update(value=True))
             started = time.monotonic()  # the user's time starts once the window is open
             page = first_page(context)

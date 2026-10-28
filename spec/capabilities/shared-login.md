@@ -1,4 +1,5 @@
-# Capability: Shared Login
+# Capability: Shared Login (superseded by [per-user-accounts](per-user-accounts.md) in Phase 5)
+> Phase 5 replaced the shared password by per-user accounts. What remains valid from this file: the open paths, the unauthenticated behaviour by caller, the CSRF notes and the cookie flags. The password/session/throttle rules below are historical: `SALES0_APP_PASSWORD` is now only the bootstrap password of the first admin.
 **Phase 2** · code: `web/auth.py`, `web/routes/auth.py` (S3)
 
 ## What It Does

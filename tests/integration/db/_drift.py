@@ -25,6 +25,8 @@ INLINE_FKS = {
     ("enquiries", "prospect_id"),
     ("enquiries", "company_id"),
     ("enquiries", "contact_id"),
+    # p8_liaccts_b2e5f7a9: scrape_runs is FK-referenced, so its account link is added the same way.
+    ("scrape_runs", "linkedin_account_id"),
 }
 
 

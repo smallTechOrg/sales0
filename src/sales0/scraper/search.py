@@ -72,6 +72,7 @@ from sales0.scraper.parsing import (
 )
 from sales0.scraper.permalink import ref_of_raw, capture_permalinks, eligible_refs
 from sales0.scraper.session_check import verify_in_context
+from sales0.scraper.session_store import AccountHandle, open_account_context
 from sales0.scraper.types import (
     CardStrategy,
     KeywordScrapeResult,
@@ -142,8 +143,9 @@ def see_more_buttons(page: Page, n: int) -> list[ElementHandle]:
 
 
 class LinkedInSearcher:
-    def __init__(self, settings: Settings, pacer: Pacer | None = None) -> None:
+    def __init__(self, settings: Settings, pacer: Pacer | None = None, account: AccountHandle | None = None) -> None:
         self._settings = settings
+        self._account = account  # None = the default folder profile
         self._pacer = pacer or Pacer.for_actions(settings)
         self._base = base_url(settings)
         self._stack: ExitStack | None = None
@@ -158,7 +160,12 @@ class LinkedInSearcher:
     def __enter__(self) -> LinkedInSearcher:
         stack = ExitStack()
         try:
-            context = stack.enter_context(open_context(self._settings, headless=True))
+            opened = (
+                open_context(self._settings, headless=True)
+                if self._account is None
+                else open_account_context(self._settings, self._account, headless=True)
+            )
+            context = stack.enter_context(opened)
             self._stack, self._context = stack, context
             self._latch = None
             page = first_page(context)

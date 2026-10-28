@@ -172,11 +172,19 @@ class Settings(BaseSettings):
     sheet_fetch_max_bytes: int = Field(20_000_000, ge=1000)
 
     # --- CRM / shared login (Phase 2) ---
-    # Shared password; unset (or empty) = open, loopback only. check_startup refuses a public host without it.
+    # BOOTSTRAP only: the first admin's initial password while no admin has one. Open mode (no passwords at all)
+    # is loopback only; check_startup refuses a public host without any auth.
     app_password: SecretStr | None = None
     session_days: int = Field(14, ge=1, le=90)
     login_max_attempts: int = Field(5, ge=1)
     login_lockout_s: int = Field(60, ge=1)
+    # --- Per-user accounts (Phase 5) ---
+    session_remember_days: int = Field(30, ge=1, le=365)  # "remember me" cookie lifetime
+    trusted_proxies: str = ""  # comma-separated IPs/CIDRs whose X-Forwarded-For may be trusted
+    password_reset_ttl_h: int = Field(24, ge=1, le=168)  # lifetime of an admin-issued set-password link
+    password_min_length: int = Field(10, ge=8, le=128)
+    # --- LinkedIn accounts (Phase 5) ---
+    linkedin_session_backend: Literal["folder", "db"] = "folder"  # backend for NEW accounts (default account is folder)
     followup_days_1: int = Field(3, ge=1)
     followup_days_2: int = Field(7, ge=1)
     followup_days_final: int = Field(14, ge=1)
@@ -421,14 +429,32 @@ class StartupError(RuntimeError):
     """A configuration problem that must stop the server before it binds."""
 
 
+def _accounts_have_passwords(settings: Settings) -> bool:
+    """True when some team member already has a password in the database (best effort: any error = False)."""
+    try:
+        from sqlalchemy import create_engine, text
+
+        engine = create_engine(settings.resolved_database_url)
+        try:
+            with engine.connect() as conn:
+                return bool(conn.execute(text("SELECT COUNT(*) FROM team_members WHERE password_hash IS NOT NULL")).scalar())
+        finally:
+            engine.dispose()
+    except Exception:  # noqa: BLE001 - unmigrated / unreachable DB: treat as no accounts, the check stays strict
+        return False
+
+
 def check_startup(settings: Settings) -> None:
     """Fail loudly on configuration that must never reach a running server."""
     if not settings.api_key_present:
         raise StartupError(
             "SALES0_ANTHROPIC_API_KEY is missing — add it to .env in the repo root (see .env.example)."
         )
-    if not settings.is_loopback_host and not settings.app_password_set:
-        raise StartupError("Set SALES0_APP_PASSWORD before binding to a public host")
+    if not settings.is_loopback_host and not settings.app_password_set and not _accounts_have_passwords(settings):
+        raise StartupError(
+            "Refusing to bind to a public host in open mode: set SALES0_APP_PASSWORD (the first admin's "
+            "initial password) or give an admin a password on the Users page first"
+        )
 
 
 @lru_cache(maxsize=1)

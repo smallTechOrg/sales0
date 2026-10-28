@@ -50,24 +50,42 @@ class StoredToken:
 def client_secret_missing_message(path: Path) -> str:
     return (
         f"Google OAuth client secret not found at {path}. In Google Cloud Console create an "
-        "OAuth client ID of type 'Desktop app', download its JSON and save it to that exact path "
+        "OAuth client ID of type 'Desktop app' (local use) or 'Web application' (hosted, with "
+        "SALES0_PUBLIC_BASE_URL), download its JSON and save it to that exact path "
         "(see docs/gmail-setup.md), then run `uv run python -m sales0.cli google-auth`."
     )
 
 
 def read_client_secret(path: Path) -> dict[str, Any]:
+    """The ``installed`` (Desktop) or ``web`` block of a Google client JSON; see ``client_kind``."""
+    return _read_client(path)[1]
+
+
+def client_kind(path: Path) -> str:
+    """``"installed"`` (Desktop app client) or ``"web"`` (Web application client)."""
+    return _read_client(path)[0]
+
+
+def client_redirect_uris(path: Path) -> list[str]:
+    """The ``redirect_uris`` listed in the client JSON (empty when the file has none)."""
+    uris = _read_client(path)[1].get("redirect_uris")
+    return [str(u) for u in uris] if isinstance(uris, list) else []
+
+
+def _read_client(path: Path) -> tuple[str, dict[str, Any]]:
     if not path.is_file():
         raise GmailNotConfigured(client_secret_missing_message(path))
     try:
         data = json.loads(path.read_text("utf-8"))
+        kind = "installed" if data.get("installed") else "web"
         inner = data.get("installed") or data["web"]
         inner["client_id"], inner["client_secret"]  # noqa: B018 — presence check
-    except (ValueError, KeyError, AttributeError) as exc:
+    except (ValueError, KeyError, AttributeError, TypeError) as exc:
         raise GmailNotConfigured(
-            f"{path} is not a Google OAuth client JSON (expected an 'installed' block with "
-            "client_id and client_secret). Re-download it from Credentials -> your Desktop client."
+            f"{path} is not a Google OAuth client JSON (expected an 'installed' or 'web' block with "
+            "client_id and client_secret). Re-download it from Credentials -> your OAuth client."
         ) from exc
-    return inner
+    return kind, inner
 
 
 def save_token(path: Path, token: StoredToken) -> None:

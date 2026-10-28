@@ -9,12 +9,15 @@ from sqlalchemy.orm import Session
 
 from sales0.config import get_settings
 from sales0.db.engine import get_db
+from sales0.db.models import TeamMember
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner
 from sales0.services import keywords as keywords_service
+from sales0.services import linkedin_accounts as accounts_service
 from sales0.services import offerings as offerings_service
 from sales0.services import session as session_service
 from sales0.services.views import OfferingInput, OfferingView, SessionStatusView
+from sales0.web.acting import get_acting_member_optional
 from sales0.web.context import PathId
 from sales0.web.context import is_htmx, redirect, render_html, render_page, toast_html
 from sales0.web.envelope import ok
@@ -84,6 +87,25 @@ def _linkedin_card(request: Request, session: SessionStatusView, *, changed: boo
     return _html(html, headers={"HX-Trigger": "session-changed"} if changed else None)
 
 
+def _accounts_ctx(db: Session, *, notice: str | None = None, error: str | None = None) -> dict:
+    return {
+        "accounts": accounts_service.list_accounts(db),
+        "account_busy": get_runner().busy(),
+        "accounts_notice": notice,
+        "accounts_error": error,
+        "fixture_mode": get_settings().linkedin_mode == "fixture",
+    }
+
+
+def _accounts_card(
+    request: Request, db: Session, *, notice: str | None = None, error: str | None = None, changed: bool = True
+) -> HTMLResponse:
+    """The card (+ a toast). ``changed`` sends ``session-changed`` (header light, main card); the refresh GET
+    must not, or the card's own ``session-changed`` listener would loop."""
+    html = render_html(request, "setup/_linkedin_accounts.html", _accounts_ctx(db, error=error))
+    return _html(html, toast_html(notice) if notice else "", headers={"HX-Trigger": "session-changed"} if changed else None)
+
+
 OWN_GROUP = "Your keywords"
 
 
@@ -136,6 +158,7 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         "setup/page.html",
         {
             "session": session,
+            **_accounts_ctx(db),
             **_keywords_ctx(db),
             "caps": _safety_caps(session),
             **_offerings_ctx(db),
@@ -145,8 +168,11 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 
 # ---------------------------------------------------------------------- keywords
 @router.post("/setup/keywords", response_model=None)
-def add_keyword(request: Request, text: str = Form(""), db: Session = Depends(get_db)) -> Response:
-    keyword = keywords_service.add_keyword(db, text)
+def add_keyword(
+    request: Request, text: str = Form(""), db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    keyword = keywords_service.add_keyword(db, text, actor_user_id=member.id if member else None)
     if not is_htmx(request):
         return redirect("/setup")
     return _html(_keyword_list_html(request, db), toast_html(f"Added keyword '{keyword.text}'."))
@@ -161,8 +187,13 @@ def remove_keyword(request: Request, keyword_id: PathId, db: Session = Depends(g
 
 
 @router.post("/setup/keywords/{keyword_id}/toggle", response_model=None)
-def toggle_keyword(request: Request, keyword_id: PathId, active: str = Form("true"), db: Session = Depends(get_db)) -> Response:
-    keyword = keywords_service.set_keyword_active(db, keyword_id, active.strip().lower() in {"true", "1", "on", "yes"})
+def toggle_keyword(
+    request: Request, keyword_id: PathId, active: str = Form("true"), db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    keyword = keywords_service.set_keyword_active(
+        db, keyword_id, active.strip().lower() in {"true", "1", "on", "yes"}, actor_user_id=member.id if member else None
+    )
     if not is_htmx(request):
         return redirect("/setup")
     return _html(_keyword_row_html(request, db, keyword))
@@ -185,13 +216,16 @@ def edit_keyword(
     text: str = Form(""),
     group_name: str | None = Form(None),
     db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     # An absent (or blank, which FastAPI reads as absent) group_name keeps the group (the service's
     # UNSET default); "none" = "Your keywords" (no group), as for the offering select.
     kwargs = {}
     if group_name is not None and group_name.strip():
         kwargs["group_name"] = None if group_name.strip().lower() == "none" else group_name.strip()
-    keyword = keywords_service.update_keyword(db, keyword_id, text, **kwargs)
+    keyword = keywords_service.update_keyword(
+        db, keyword_id, text, actor_user_id=member.id if member else None, **kwargs
+    )
     if not is_htmx(request):
         return redirect("/setup")
     # The group may have changed, so the whole grouped list is re-rendered.
@@ -284,6 +318,73 @@ def check_linkedin(request: Request, db: Session = Depends(get_db)) -> Response:
 def linkedin_status(request: Request, prev: str = "", db: Session = Depends(get_db)) -> HTMLResponse:
     session = session_service.session_status(db)
     return _linkedin_card(request, session, changed=bool(prev) and prev != _status_key(session))
+
+
+# ---------------------------------------------------------------------- LinkedIn accounts
+def _accounts_response(request: Request, db: Session, notice: str | None = None) -> Response:
+    if not is_htmx(request):
+        return redirect("/setup")
+    return _accounts_card(request, db, notice=notice)
+
+
+@router.get("/setup/linkedin/accounts", response_class=HTMLResponse)
+def linkedin_accounts_list(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    return _accounts_card(request, db, changed=False)
+
+
+@router.post("/setup/linkedin/accounts", response_model=None)
+def add_linkedin_account(request: Request, label: str = Form(""), db: Session = Depends(get_db)) -> Response:
+    account = accounts_service.add_account(db, label)
+    how = "press Connect to open its Chrome window" if account.backend == "folder" else "paste its li_at cookie below"
+    return _accounts_response(request, db, f"Added '{account.label}' - {how}.")
+
+
+@router.post("/setup/linkedin/accounts/{account_id}/rename", response_model=None)
+def rename_linkedin_account(
+    request: Request, account_id: PathId, label: str = Form(""), db: Session = Depends(get_db)
+) -> Response:
+    account = accounts_service.rename_account(db, account_id, label)
+    return _accounts_response(request, db, f"Renamed to '{account.label}'.")
+
+
+@router.post("/setup/linkedin/accounts/{account_id}/disable", response_model=None)
+def disable_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
+    account = accounts_service.disable_account(db, account_id)
+    return _accounts_response(request, db, f"'{account.label}' is disabled - no runs or checks use it.")
+
+
+@router.post("/setup/linkedin/accounts/{account_id}/enable", response_model=None)
+def enable_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
+    account = accounts_service.enable_account(db, account_id)
+    return _accounts_response(request, db, f"'{account.label}' is enabled.")
+
+
+@router.post("/setup/linkedin/accounts/{account_id}/connect", response_model=None)
+def connect_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
+    session_service.start_connect(db, account_id)
+    return _accounts_response(request, db, "A Chrome window is opening - log in to LinkedIn there.")
+
+
+@router.post("/setup/linkedin/accounts/{account_id}/check", response_model=None)
+def check_linkedin_account(request: Request, account_id: PathId, db: Session = Depends(get_db)) -> Response:
+    session_service.start_check(db, account_id)
+    return _accounts_response(request, db, "Checking the session in the background...")
+
+
+@router.post("/setup/linkedin/cookie", response_model=None)
+def paste_linkedin_cookie(
+    request: Request,
+    cookie: str = Form(""),
+    label: str = Form(""),
+    account_id: str = Form(""),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Store a pasted li_at (encrypted) on a db-backend account, then validate it with one feed load."""
+    target = int(account_id) if account_id.strip().isdigit() else None
+    account = accounts_service.paste_cookie(db, cookie, label=label or None, account_id=target)
+    db.commit()  # the check job reads the row from its own session
+    session_service.start_check(db, account.id)
+    return _accounts_response(request, db, f"Cookie stored encrypted for '{account.label}' - validating it with one feed load...")
 
 
 @router.get("/api/session")

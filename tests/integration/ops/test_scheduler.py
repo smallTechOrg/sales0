@@ -11,9 +11,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
+from sales0.services.session import get_session_row
 from sales0.config import reset_settings
 from sales0.db.engine import get_sessionmaker, session_scope
-from sales0.db.models import Digest, LinkedInSession, LlmCall, ScheduledJob, ScrapeRun
+from sales0.db.models import Digest, LlmCall, ScheduledJob, ScrapeRun
 from sales0.jobs import scheduled_discovery
 from sales0.jobs.scheduled_discovery import DiscoveryStart, start_scheduled_discovery
 from sales0.jobs.scheduler import (
@@ -269,7 +270,7 @@ def test_many_missed_days_never_produce_a_burst(db_url: str, starts: Starts) -> 
 # ---------------------------------------------------------------------- the REAL adapter (no fakes)
 def _set_session(status: str, last_error: str | None = None) -> None:
     with session_scope() as db:
-        r = db.get(LinkedInSession, 1)
+        r = get_session_row(db)
         r.status, r.last_error = status, last_error
 
 

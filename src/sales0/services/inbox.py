@@ -9,7 +9,9 @@ from typing import Any, Literal
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, LinkedinProfile, LlmCall, Offering, TriageDecision
+from sales0.db.models import (
+    Enquiry, EnquiryKeywordHit, EnquirySource, LinkedinProfile, LlmCall, Offering, TeamMember, TriageDecision,
+)
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.llm import LLMAuthError, LLMModelNotFound
@@ -241,6 +243,13 @@ def _latest_decision(db: Session, enquiry_id: int) -> TriageDecision | None:
     )
 
 
+def _by_note(db: Session, acted_by_member_id: int | None) -> str | None:
+    if acted_by_member_id is None:
+        return None
+    by = db.get(TeamMember, acted_by_member_id)
+    return f"by {by.name} (acting as)" if by is not None else None
+
+
 def decide(
     db: Session,
     enquiry_ids: list[int],
@@ -250,7 +259,14 @@ def decide(
     *,
     now: datetime | None = None,
     actor_member_id: int | None = None,
+    acted_by_member_id: int | None = None,
 ) -> list[EnquiryCardView]:
+    """Accept/discard. ``actor_member_id`` is the member credited (team members ARE the users, so it also
+    fills ``actor_user_id``); ``acted_by_member_id`` is the real logged-in admin when they act as that member."""
+    if actor_user_id is None:
+        actor_user_id = actor_member_id
+    if actor_member_id is None:
+        actor_member_id = actor_user_id
     ids = list(dict.fromkeys(int(i) for i in (enquiry_ids or [])))
     if not ids or decision not in ("accept", "discard"):
         raise DomainError("decision_invalid", "Choose Accept or Discard for at least one enquiry.", 400)
@@ -268,6 +284,7 @@ def decide(
 
     stamp = now_or(now)
     preset = clip(discard_reason, 200)
+    by_note = _by_note(db, acted_by_member_id)
     previous: dict[int, str] = {}
     for eid in ids:
         e = rows[eid]
@@ -281,7 +298,8 @@ def decide(
             is_override = e.ai_verdict == "genuine"
             reason = preset or clip(e.ai_reason, 200)
         record_history(
-            db, "enquiry", e.id, "review_status", e.review_status, to_status, actor_user_id=actor_user_id, now=stamp
+            db, "enquiry", e.id, "review_status", e.review_status, to_status, actor_user_id=actor_user_id, now=stamp,
+            note=by_note,
         )
         if e.stage != to_stage:
             record_history(db, "enquiry", e.id, "stage", e.stage, to_stage, actor_user_id=actor_user_id, now=stamp)
@@ -312,6 +330,7 @@ def decide(
                 previous_review_status=previous[eid],
                 actor_user_id=actor_user_id,
                 actor_member_id=actor_member_id,
+                by_member_id=acted_by_member_id,
             ),
         )
     return _cards(db, [rows[i] for i in ids])
@@ -324,6 +343,7 @@ def update_fields(
     offering_id: int | None = UNSET,
     *,
     actor_user_id: int | None = None,
+    acted_by_member_id: int | None = None,
 ) -> EnquiryCardView:
     """Edit priority / offering. ``priority=None`` keeps it; ``offering_id`` omitted keeps it,
     ``offering_id=None`` sets "No match". The AI's original values are never changed; the
@@ -359,6 +379,7 @@ def update_fields(
             None if before is None else str(before),
             None if after is None else str(after),
             actor_user_id=actor_user_id,
+            note=_by_note(db, acted_by_member_id),
         )
     if changed:
         latest = _latest_decision(db, e.id)

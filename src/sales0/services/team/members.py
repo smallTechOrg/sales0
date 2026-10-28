@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from sales0.config import Settings, get_settings
-from sales0.db.models import TeamMember
+from sales0.db.models import MemberSession, TeamMember
 from sales0.db.models.team import MEMBER_ROLES
 from sales0.errors import DomainError
 from sales0.logging import get_logger
@@ -78,12 +78,33 @@ def add_member(db: Session, name: str, email: str, role: str = "member") -> Team
     return member
 
 
-def set_active(db: Session, member_id: int, active: bool) -> TeamMember:
+def _other_active_admins(db: Session, member: TeamMember) -> list[TeamMember]:
+    return [m for m in list_members(db, include_inactive=False) if m.role == "admin" and m.id != member.id]
+
+
+def set_active(db: Session, member_id: int, active: bool, *, by: TeamMember | None = None) -> TeamMember:
+    """Activate/deactivate. Deactivating revokes the member's sessions at once. Never the last active admin,
+    and never yourself (``by``) - that would lock you out."""
     member = get_member(db, member_id)
-    if not active and member.role == "admin":
-        others = [m for m in list_members(db, include_inactive=False) if m.role == "admin" and m.id != member.id]
-        if not others:
+    if not active:
+        if by is not None and by.id == member.id:
+            raise DomainError("self_lockout", "You cannot deactivate your own account - ask another admin.", 409)
+        if member.role == "admin" and member.active and not _other_active_admins(db, member):
             raise DomainError("last_admin", "You cannot deactivate the only active admin.", 409)
     member.active = active
+    if not active:
+        db.execute(delete(MemberSession).where(MemberSession.member_id == member.id))
+    db.flush()
+    return member
+
+
+def set_role(db: Session, member_id: int, role: str, *, by: TeamMember | None = None) -> TeamMember:
+    """Change role. The last active admin cannot be demoted (the app would have no administrator)."""
+    if role not in MEMBER_ROLES:
+        raise DomainError("member_invalid", "Role must be admin or member.", 400)
+    member = get_member(db, member_id)
+    if member.role == "admin" and role != "admin" and member.active and not _other_active_admins(db, member):
+        raise DomainError("last_admin", "You cannot demote the only active admin.", 409)
+    member.role = role
     db.flush()
     return member

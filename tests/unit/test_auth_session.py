@@ -1,4 +1,4 @@
-"""Shared login units: session cookie sign/verify/expiry/password change, throttle, safe ``next``."""
+"""Login units: session cookie attributes, client IP / trusted proxies, throttle, safe ``next``."""
 
 from __future__ import annotations
 
@@ -20,98 +20,70 @@ def _settings(password: str | None = "hunter2", **extra: object) -> Settings:
     return get_settings().model_copy(update=update)
 
 
-def _cookie_value(response: Response) -> str:
-    header = response.headers["set-cookie"]
-    return header.split(";", 1)[0].split("=", 1)[1]
+def _request(headers: list[tuple[bytes, bytes]] | None = None, peer: str = "9.9.9.9") -> Request:
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": headers or [], "query_string": b"", "client": (peer, 1234)})
 
 
-def _request(cookie: str | None) -> Request:
-    headers = [(b"cookie", f"{auth.COOKIE}={cookie}".encode())] if cookie else []
-    return Request({"type": "http", "method": "GET", "path": "/", "headers": headers, "query_string": b""})
-
-
-def _issued(settings: Settings, at: datetime = T0) -> str:
+def test_cookie_attributes_and_expiry() -> None:
     response = Response()
-    auth.issue_session(response, settings, at)
-    return _cookie_value(response)
-
-
-def test_cookie_attributes() -> None:
-    response = Response()
-    auth.issue_session(response, _settings(), T0)
+    auth.set_session_cookie(response, _settings(), "sid-value", T0 + timedelta(days=14), T0)
     header = response.headers["set-cookie"].lower()
     assert header.startswith(f"{auth.COOKIE}=")
     assert "httponly" in header and "samesite=lax" in header and "path=/" in header
     assert f"max-age={14 * 86400}" in header
     assert "secure" not in header.replace("samesite", "")
+    assert "sid-value." in response.headers["set-cookie"]  # signed: value.signature
 
 
 def test_cookie_secure_on_https_public_url() -> None:
     response = Response()
-    auth.issue_session(response, _settings(public_base_url="https://crm.example.com"), T0)
+    auth.set_session_cookie(response, _settings(public_base_url="https://crm.example.com"), "x", T0 + timedelta(days=1), T0)
     assert "; secure" in response.headers["set-cookie"].lower()
 
 
-def test_valid_session_roundtrip() -> None:
-    s = _settings()
-    assert auth.session_valid(_request(_issued(s)), s, T0 + timedelta(days=1))
-
-
-def test_missing_and_garbage_cookie_rejected() -> None:
-    s = _settings()
-    for value in (None, "", "garbage", "a.b", "v1:1:2.x"):
-        assert not auth.session_valid(_request(value), s, T0)
-
-
-def test_tampered_cookie_rejected() -> None:
-    s = _settings()
-    value = _issued(s)
-    flipped = value[:-1] + ("A" if value[-1] != "A" else "B")
-    assert not auth.session_valid(_request(flipped), s, T0)
-    body, _, sig = value.rpartition(".")
-    forged = body.replace(":" + body.split(":")[1] + ":", ":9999999999:") + "." + sig
-    assert not auth.session_valid(_request(forged), s, T0)
-
-
-def test_cookie_signed_with_another_secret_or_purpose_rejected() -> None:
-    a, b = _settings(), _settings(secret_key=SecretStr("other-secret"))
-    assert not auth.session_valid(_request(_issued(a)), b, T0)
+def test_cookie_sid_rejects_tampering_and_other_purpose() -> None:
     from sales0.services.team import crypto
 
-    other_purpose = crypto.sign(f"v1:{int(T0.timestamp())}:{auth.password_fingerprint(a)}", "cookie", a)
-    assert not auth.session_valid(_request(other_purpose), a, T0)
-
-
-def test_expiry_boundary() -> None:
     s = _settings()
-    value = _issued(s)
-    assert auth.session_valid(_request(value), s, T0 + timedelta(days=14) - timedelta(seconds=1))
-    assert not auth.session_valid(_request(value), s, T0 + timedelta(days=14))
-    assert not auth.session_valid(_request(value), _settings(session_days=1), T0 + timedelta(days=2))
+    good = crypto.sign("abc", auth.SESSION_PURPOSE, s)
+    hdr = lambda v: [(b"cookie", f"{auth.COOKIE}={v}".encode())]  # noqa: E731
+    assert auth.cookie_sid(_request(hdr(good)), s) == "abc"
+    assert auth.cookie_sid(_request(hdr(good[:-2] + "xx")), s) is None
+    assert auth.cookie_sid(_request(hdr(crypto.sign("abc", "cookie", s))), s) is None
+    assert auth.cookie_sid(_request(hdr(good)), _settings(secret_key=SecretStr("other"))) is None
+    assert auth.cookie_sid(_request(), s) is None
 
 
-def test_future_dated_cookie_rejected() -> None:
-    s = _settings()
-    assert not auth.session_valid(_request(_issued(s, T0 + timedelta(hours=1))), s, T0)
+# ---------------------------------------------------------------------- client address / trusted proxies
+def _xff(value: str | list[str], peer: str, trusted: str) -> str:
+    values = [value] if isinstance(value, str) else value
+    req = _request([(b"x-forwarded-for", v.encode()) for v in values], peer)
+    return auth.client_ip(req, _settings(trusted_proxies=trusted))
 
 
-def test_changing_the_password_invalidates_sessions() -> None:
-    value = _issued(_settings("old-password"))
-    assert auth.session_valid(_request(value), _settings("old-password"), T0)
-    assert not auth.session_valid(_request(value), _settings("new-password"), T0)
+def test_xff_ignored_without_trusted_proxies_or_from_untrusted_peer() -> None:
+    assert _xff("1.2.3.4", "9.9.9.9", "") == "9.9.9.9"
+    assert _xff("1.2.3.4", "9.9.9.9", "10.0.0.0/8") == "9.9.9.9"
 
 
-def test_password_matches_constant_time_semantics() -> None:
-    s = _settings("correct horse")
-    assert auth.password_matches(s, "correct horse")
-    assert not auth.password_matches(s, "correct hors")
-    assert not auth.password_matches(s, "")
-    assert not auth.password_matches(_settings(None), "")
+def test_xff_rightmost_untrusted_entry_from_trusted_peer() -> None:
+    assert _xff("1.2.3.4", "10.0.0.5", "10.0.0.0/8") == "1.2.3.4"
+    # a client-forged left entry cannot win: the right-most untrusted hop is believed
+    assert _xff("6.6.6.6, 1.2.3.4", "10.0.0.5", "10.0.0.0/8") == "1.2.3.4"
+    assert _xff("6.6.6.6, 1.2.3.4, 10.0.0.9", "10.0.0.5", "10.0.0.0/8") == "1.2.3.4"
+    assert _xff(["6.6.6.6", "1.2.3.4"], "10.0.0.5", "10.0.0.5") == "1.2.3.4"  # several header lines
+    assert _xff("10.0.0.7, 10.0.0.9", "10.0.0.5", "10.0.0.0/8") == "10.0.0.7"  # all trusted: left-most
 
 
-def test_fingerprint_does_not_contain_password() -> None:
-    fp = auth.password_fingerprint(_settings("hunter2"))
-    assert len(fp) == 12 and "hunter2" not in fp
+def test_xff_garbage_falls_back_to_peer() -> None:
+    assert _xff("not-an-ip", "10.0.0.5", "10.0.0.0/8") == "10.0.0.5"
+    assert _xff("1.2.3.4, junk", "10.0.0.5", "10.0.0.0/8") == "10.0.0.5"
+    assert _xff("1.2.3.4", "10.0.0.5", "garbage, ,10.0.0.0/8") == "1.2.3.4"  # bad config entries are skipped
+
+
+def test_xff_ipv6_and_mapped() -> None:
+    assert _xff("2001:db8::1", "::1", "::1") == "2001:db8::1"
+    assert _xff("1.2.3.4", "::ffff:10.0.0.5", "10.0.0.0/8") == "1.2.3.4"
 
 
 @pytest.mark.parametrize(
@@ -152,3 +124,17 @@ def test_throttle_window_forgets_old_failures_and_success_resets() -> None:
     t.reset("ip")
     t.fail("ip", T0 + timedelta(seconds=92))
     assert t.check("ip", T0 + timedelta(seconds=92)) is None
+
+
+def test_login_guard_is_per_pair_with_looser_ip_bucket() -> None:
+    g = auth.LoginGuard(max_attempts=2, lockout_s=60)
+    g.fail("1.1.1.1", "a@x.example", T0)
+    g.fail("1.1.1.1", "A@x.example ", T0)  # emails are normalised
+    assert g.check("1.1.1.1", "a@x.example", T0) == 60
+    assert g.check("1.1.1.1", "b@x.example", T0) is None  # another email from the same IP is fine...
+    for i in range(6):  # ...until the per-IP bucket (2 x 4 = 8 failures) fills by spraying many emails
+        g.fail("1.1.1.1", f"u{i}@x.example", T0)
+    assert g.check("1.1.1.1", "zzz@x.example", T0) == 60
+    assert g.check("2.2.2.2", "a@x.example", T0) is None
+    g.reset("1.1.1.1", "a@x.example")
+    assert g.pair.check("1.1.1.1|a@x.example", T0) is None

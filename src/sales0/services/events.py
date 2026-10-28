@@ -51,6 +51,7 @@ class EnquiryDecided:
     previous_review_status: str
     actor_user_id: int | None = None
     actor_member_id: int | None = None
+    by_member_id: int | None = None  # the real logged-in admin when acting as ``actor_member_id``
 
 
 @dataclass(frozen=True)

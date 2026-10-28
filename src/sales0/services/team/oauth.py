@@ -1,9 +1,15 @@
 """Google OAuth (web server flow with PKCE) for connecting a member's Gmail.
 
-The client is the Desktop-app client from ``SALES0_GOOGLE_CLIENT_SECRET_PATH``. Google accepts
-``http://localhost`` / ``http://127.0.0.1`` on ANY port for Desktop clients, so the redirect URI
-is the origin the user opened sales0 on plus ``/oauth/google/callback``. Non-loopback hosts are
-refused unless ``SALES0_PUBLIC_BASE_URL`` is set (then that URL is used).
+The client JSON is read from ``SALES0_GOOGLE_CLIENT_SECRET_PATH`` and may be either type:
+
+* Desktop app (``installed`` block): Google accepts ``http://localhost`` / ``http://127.0.0.1`` on
+  ANY port, so locally the redirect URI is the origin the user opened sales0 on plus
+  ``/oauth/google/callback``. Loopback only: a hosted deployment needs a Web client.
+* Web application (``web`` block): Google only accepts redirect URIs registered in the Cloud
+  console, exactly. With ``SALES0_PUBLIC_BASE_URL`` set the URI is that URL plus the callback
+  path; it is checked against the JSON's ``redirect_uris`` (when present) before Google is called.
+
+Non-loopback hosts are refused unless ``SALES0_PUBLIC_BASE_URL`` is set.
 
 Pending authorisations (state -> PKCE verifier, bound member, expiry) live in this process's
 memory: single use, 10 minutes. A server restart mid-consent just means "try again".
@@ -24,7 +30,13 @@ import httpx
 from sales0.clock import utcnow
 from sales0.config import LOOPBACK_HOSTS, Settings, get_settings
 from sales0.errors import DomainError
-from sales0.integrations.gmail.auth import SCOPES, StoredToken, read_client_secret
+from sales0.integrations.gmail.auth import (
+    SCOPES,
+    StoredToken,
+    client_kind,
+    client_redirect_uris,
+    read_client_secret,
+)
 from sales0.services.team import crypto
 
 CALLBACK_PATH = "/oauth/google/callback"
@@ -124,11 +136,58 @@ def redirect_uri_for_request(url: str, host_header: str, settings: Settings | No
     return redirect_uri_for(parts.scheme, parts.hostname or "", parts.port, settings)
 
 
+def check_redirect_for_client(redirect_uri: str, settings: Settings | None = None) -> None:
+    """Fail early, with the exact URI, when Google would refuse the redirect for this client JSON."""
+    settings = settings or get_settings()
+    path = settings.google_client_secret_file
+    kind = client_kind(path)
+    host = (urlsplit(redirect_uri).hostname or "").lower()
+    if kind == "installed" and host not in LOOPBACK_HOSTS:
+        raise DomainError(
+            "oauth_client_type",
+            f"The Google client in {path.name} is a Desktop app client, which only allows loopback "
+            f"redirects, but the redirect would be {redirect_uri}. Create an OAuth client of type "
+            "'Web application' with that exact Authorized redirect URI and use its JSON instead.",
+            400,
+        )
+    listed = client_redirect_uris(path)
+    if kind == "web" and listed and redirect_uri not in listed:
+        raise DomainError(
+            "oauth_redirect_not_registered",
+            f"The redirect URI {redirect_uri} is not listed in the Google client JSON "
+            f"(it lists: {', '.join(listed)}). Add exactly {redirect_uri} under Authorized redirect URIs "
+            "in Google Cloud Console and download the JSON again (or fix SALES0_PUBLIC_BASE_URL).",
+            400,
+        )
+
+
+def connect_hint(settings: Settings | None = None) -> dict[str, str] | None:
+    """What the Team page tells the admin about the Google client; None when no client JSON yet."""
+    settings = settings or get_settings()
+    try:
+        kind = client_kind(settings.google_client_secret_file)
+    except Exception:  # noqa: BLE001 - a missing/bad file is reported by the Connect button itself
+        return None
+    if settings.public_base_url:
+        uri = settings.public_base_url.rstrip("/") + CALLBACK_PATH
+        text = f"Register this exact Authorized redirect URI on a Web application client: {uri}"
+        if kind == "installed":
+            text += " (the current client JSON is a Desktop app client, which Google only accepts on loopback)."
+        return {"kind": kind, "redirect_uri": uri, "text": text}
+    return {
+        "kind": kind,
+        "redirect_uri": "",
+        "text": "Local use: Google accepts this loopback address on any port for a Desktop app client. "
+        "For a hosted deployment set SALES0_PUBLIC_BASE_URL and use a Web application client.",
+    }
+
+
 def build_auth_url(
     pending: PendingAuth, login_hint: str, *, settings: Settings | None = None
 ) -> str:
     settings = settings or get_settings()
     client = read_client_secret(settings.google_client_secret_file)
+    check_redirect_for_client(pending.redirect_uri, settings)
     query = {
         "client_id": client["client_id"],
         "redirect_uri": pending.redirect_uri,
@@ -212,6 +271,8 @@ __all__ = [
     "PendingAuth",
     "StateStore",
     "build_auth_url",
+    "check_redirect_for_client",
+    "connect_hint",
     "code_challenge",
     "exchange_code",
     "redirect_uri_for",

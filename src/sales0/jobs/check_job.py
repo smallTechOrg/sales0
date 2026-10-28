@@ -22,15 +22,22 @@ _SAFETY_REASONS = {"checkpoint": "checkpoint", "captcha": "captcha", "rate_limit
 CHECK_ERROR_MESSAGE = "Re-check could not load LinkedIn — try again in a minute"
 
 
-def _default_check() -> Callable[..., Any]:
+def _default_check(account_id: int) -> Callable[..., Any]:
     from sales0.scraper.session_check import check_session
+    from sales0.services import linkedin_accounts
 
-    return check_session
+    def check(settings: Any) -> Any:
+        return check_session(settings, linkedin_accounts.build_handle(account_id))
+
+    return check
 
 
-def execute(check_fn: Callable[..., Any] | None = None) -> None:
+def execute(check_fn: Callable[..., Any] | None = None, *, linkedin_account_id: int | None = None) -> None:
+    """Re-check ONE LinkedIn account (default: the first active one)."""
     settings = get_settings()
-    check = check_fn or _default_check()
+    with session_scope() as db:
+        account_id = session_service.get_session_row(db, linkedin_account_id).id
+    check = check_fn or _default_check(account_id)
     try:
         result = check(settings)  # always headless (Phase 1.1)
     except BrowserUnavailable as exc:
@@ -38,29 +45,34 @@ def execute(check_fn: Callable[..., Any] | None = None) -> None:
         log.warning("linkedin_session_state", action="check", result="error", reason="browser_unavailable",
                     browser=None, headless=True)
         with session_scope() as db:
-            session_service.note_error(db, message)
+            session_service.note_error(db, message, account_id=account_id)
         return
     except Exception as exc:  # noqa: BLE001
         log.exception("linkedin_session_state", action="check", result="error", reason=type(exc).__name__, headless=True)
         with session_scope() as db:
-            session_service.note_error(db, f"Re-check failed ({type(exc).__name__}) — see the server log")
+            session_service.note_error(db, f"Re-check failed ({type(exc).__name__}) — see the server log", account_id=account_id)
         return
 
     with session_scope() as db:
-        row = session_service.get_session_row(db)
+        row = session_service.get_session_row(db, account_id)
         if result.logged_in:
-            session_service.mark_connected(db)
+            session_service.mark_connected(db, account_id=account_id)
             outcome = "connected"
         elif result.reason in _SAFETY_REASONS:
-            session_service.mark_needs_attention(db, _SAFETY_REASONS[result.reason], result.url)
+            session_service.mark_needs_attention(db, _SAFETY_REASONS[result.reason], result.url, account_id=account_id)
             outcome = "needs_attention"
         elif result.reason == "redirected_login" and row.status == "connected":
-            session_service.mark_needs_attention(db, "logout", result.url)
+            session_service.mark_needs_attention(db, "logout", result.url, account_id=account_id)
             outcome = "needs_attention"
         elif result.reason in ("no_cookie", "redirected_login"):
-            session_service.mark_not_connected(db, session_service.NOT_LOGGED_IN_MESSAGE)
+            session_service.mark_not_connected(db, session_service.NOT_LOGGED_IN_MESSAGE, account_id=account_id)
+            if row.backend == "db":
+                # a pasted cookie LinkedIn does not accept is not kept
+                from sales0.services import linkedin_accounts
+
+                linkedin_accounts.clear_session_state(db, account_id)
             outcome = "not_connected"
         else:
-            session_service.note_error(db, CHECK_ERROR_MESSAGE)
+            session_service.note_error(db, CHECK_ERROR_MESSAGE, account_id=account_id)
             outcome = "error"
     log_session_state("check", outcome, result.reason, headless=True)

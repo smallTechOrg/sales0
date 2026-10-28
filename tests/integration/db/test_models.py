@@ -22,8 +22,8 @@ from sales0.db.models import (
     ScrapeRun,
     ScrapeRunKeyword,
     StatusHistory,
+    TeamMember,
     TriageDecision,
-    User,
 )
 
 
@@ -463,23 +463,22 @@ def test_missing_required_fields_are_rejected(db_url: str) -> None:
     )
 
 
-# --- users ----------------------------------------------------------------------------
+# --- team members are the users --------------------------------------------------------
 
 
-def test_users_email_is_unique_but_nullable(db_url: str) -> None:
+def test_team_member_email_is_unique_and_owns_actor_fks(db_url: str) -> None:
     with session_scope() as db:
         db.add_all(
             [
-                User(display_name="A"),
-                User(display_name="B"),
-                User(display_name="C", email="c@x.example"),
+                TeamMember(name="A", email="a@x.example"),
+                TeamMember(name="C", email="c@x.example"),
             ]
         )
     _expect_integrity_error(
-        lambda db: db.add(User(display_name="D", email="c@x.example"))
+        lambda db: db.add(TeamMember(name="D", email="c@x.example"))
     )
     with session_scope() as db:
-        u = db.execute(select(User).where(User.email == "c@x.example")).scalar_one()
+        u = db.execute(select(TeamMember).where(TeamMember.email == "c@x.example")).scalar_one()
         db.add(Keyword(text="owned keyword", actor_user_id=u.id))
 
 

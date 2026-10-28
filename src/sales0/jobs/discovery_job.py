@@ -63,6 +63,8 @@ from sales0.scraper.urls import urn_from_href
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
 from sales0.services import keywords as keywords_service
 from sales0.services import seen_posts
+from sales0.services import linkedin_accounts
+from sales0.services import runs as runs_service
 from sales0.services import session as session_service
 from sales0.services._common import clip, record_history
 from sales0.services.runs import keyword_outcome, plan_keywords, posts_seen_today
@@ -89,10 +91,12 @@ class _FatalLLM(Exception):
         self.message = message
 
 
-def _default_searcher_factory(settings: Settings) -> Any:
+def _default_searcher_factory(settings: Settings, account_id: int | None = None) -> Any:
+    """A ``LinkedInSearcher`` on the run's LinkedIn account (None = the default account)."""
     from sales0.scraper.search import LinkedInSearcher
+    from sales0.services import linkedin_accounts
 
-    return LinkedInSearcher(settings)
+    return LinkedInSearcher(settings, account=linkedin_accounts.build_handle(account_id))
 
 
 def select_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
@@ -115,9 +119,11 @@ class _Run:
         llm: LLMClient | None,
         sleep: Callable[[float], None],
         rng: random.Random,
+        account_id: int | None = None,
     ) -> None:
         self.db = db
         self.run_id = run_id
+        self.account_id = account_id  # the LinkedIn account this run uses (caps and safety are per account)
         self.settings = settings
         self.llm = llm
         self.sleep = sleep
@@ -174,7 +180,7 @@ class _Run:
         started = time.monotonic()
         row.status = "running"
         self.step(f"Searching '{row.keyword_text}' ({index}/{total})", row.keyword_text)
-        remaining_today = self.settings.scrape_max_posts_per_day - posts_seen_today(self.db)
+        remaining_today = self.settings.scrape_max_posts_per_day - posts_seen_today(self.db, account_id=self.account_id)
         max_posts = max(1, min(self.settings.scrape_max_posts_per_keyword, remaining_today))
         try:
             result = searcher.scan(row.keyword_text, max_posts)
@@ -484,7 +490,7 @@ def execute(
 ) -> None:
     """Run discovery for a queued run. Never raises: every outcome is written to the run row."""
     settings = get_settings()
-    factory = searcher_factory or _default_searcher_factory
+    factory = searcher_factory  # None = the real searcher on the run's account (resolved in _execute)
     bind_context(run_id=run_id, job="run")
     started = time.monotonic()
     db = get_sessionmaker()()
@@ -520,7 +526,7 @@ def execute(
                 browser=session_service.browser_channel(),
             )
         db.close()
-        unbind_context("run_id")
+        unbind_context("run_id", "linkedin_account_id")
 
 
 def _layout_warnings(db: Session, run_id: int) -> int:
@@ -554,7 +560,7 @@ def _execute(
     run_id: int,
     settings: Settings,
     llm: LLMClient | None,
-    factory: SearcherFactory,
+    factory: SearcherFactory | None,
     sleep: Callable[[float], None],
     rng: random.Random,
     info: dict[str, int],
@@ -564,6 +570,14 @@ def _execute(
     if run is None or run.status != "queued":
         log.warning("scrape_run_not_queued", status=getattr(run, "status", None))
         return
+    if run.linkedin_account_id is None:  # queued by older code / a test: stamp the default account
+        run.linkedin_account_id = linkedin_accounts.default_account_id(db)
+        db.flush()
+    account_id = run.linkedin_account_id
+    state.account_id = account_id
+    bind_context(linkedin_account_id=account_id)
+    if factory is None:
+        factory = lambda s: _default_searcher_factory(s, account_id)  # noqa: E731
 
     info["purged"] = seen_posts.purge_expired(db)
     db.commit()
@@ -605,7 +619,7 @@ def _execute(
                 state.scrape_keyword(searcher, row, index, len(rows))
                 if state.fatal_llm is not None:
                     break
-                if posts_seen_today(db) >= settings.scrape_max_posts_per_day and index < len(rows):
+                if posts_seen_today(db, account_id=account_id) >= settings.scrape_max_posts_per_day and index < len(rows):
                     cap_hit = True
                     break
             if settings.watch_append_to_discovery and state.fatal_llm is None and not cap_hit:
@@ -638,7 +652,7 @@ def _execute(
     run = state.run
     now = utcnow()
     if abort_kind is not None:
-        message = session_service.mark_needs_attention(db, abort_kind, abort_url)
+        message = session_service.mark_needs_attention(db, abort_kind, abort_url, account_id=account_id)
         for row in rows:
             row_db = db.get(ScrapeRunKeyword, row.id)
             if row_db is not None and row_db.status == "error" and row_db.error_message is None:
@@ -659,7 +673,7 @@ def _execute(
         run.current_step = clip(f"Run stopped: {SAFETY_LABELS.get(abort_kind, abort_kind)} — {summary_text(run)}", 200)
     elif session_missing:
         message = session_service.NOT_LOGGED_IN_MESSAGE
-        session_service.mark_not_connected(db, message)
+        session_service.mark_not_connected(db, message, account_id=account_id)
         state.skip_remaining(rows, NOT_LOGGED_IN_SKIP)
         run = state.run
         run.error_message = message
@@ -680,7 +694,7 @@ def _execute(
         run.current_step = "AI triage stopped — fix the Anthropic settings in .env, then Retry triage"
     else:
         if cap_hit:
-            posts_today = posts_seen_today(db)
+            posts_today = posts_seen_today(db, account_id=account_id)
             note = f"Daily post limit reached ({posts_today}/{settings.scrape_max_posts_per_day})"
             state.skip_remaining(rows, "Not searched — daily post limit reached")
             run = state.run
@@ -689,9 +703,11 @@ def _execute(
         else:
             run.current_step = clip(f"Run finished — {summary_text(run)}", 200)
         state.set_status("succeeded")
-        session_service.mark_successful_run(db, now=now)
+        session_service.mark_successful_run(db, now=now, account_id=account_id)
     run.current_keyword = None
     run.finished_at = now
+    db.flush()
+    runs_service.sync_account_state(db, account_id, now)  # per-account counters + cool-down snapshot
     db.commit()
 
 
