@@ -9,11 +9,27 @@ from __future__ import annotations
 from sales0.config import Settings
 
 
-def cost_usd_micros(input_tokens: int, output_tokens: int, settings: Settings) -> int:
-    if input_tokens < 0 or output_tokens < 0:
+# Prompt caching (5-minute ephemeral TTL): a cache write costs 1.25x the input price,
+# a cache read 0.1x. ``input_tokens`` is the API's uncached remainder (cache tokens are
+# reported separately by Anthropic and are NOT included in it).
+CACHE_WRITE_MULTIPLIER = 1.25
+CACHE_READ_MULTIPLIER = 0.1
+
+
+def cost_usd_micros(
+    input_tokens: int,
+    output_tokens: int,
+    settings: Settings,
+    cache_creation_input_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
+) -> int:
+    if min(input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens) < 0:
         raise ValueError("token counts must be non-negative")
+    price_in = settings.llm_price_input_usd_per_mtok
     return round(
-        input_tokens * settings.llm_price_input_usd_per_mtok
+        input_tokens * price_in
+        + cache_creation_input_tokens * price_in * CACHE_WRITE_MULTIPLIER
+        + cache_read_input_tokens * price_in * CACHE_READ_MULTIPLIER
         + output_tokens * settings.llm_price_output_usd_per_mtok
     )
 

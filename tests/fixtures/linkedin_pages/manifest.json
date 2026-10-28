@@ -130,7 +130,8 @@
         "no_results": false,
         "drift": false,
         "field_misses": {
-          "author_headline": 1
+          "author_headline": 1,
+          "truncated": 6
         },
         "refs": [
           "ck:eBzEgtGNDHaa7nNrB-1xnhYPX3im2GPyKNEiLKCa1vG",

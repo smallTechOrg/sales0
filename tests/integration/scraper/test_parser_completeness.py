@@ -144,7 +144,8 @@ def test_a_reshare_keeps_the_commentary_and_never_becomes_a_second_post(page: Pa
     original = sdui("kO2", "Original Poster", "original-poster", "Buyer", "1w", "The reshared ORIGINAL text with orig@buyer.example")
     parsed = parse(page, sdui("kR1", "Re Sharer", "re-sharer", "Coach", "1d", "Interesting, see below!", inner=original))
     assert [p.author_name for p in parsed.posts] == ["Re Sharer"]
-    assert parsed.posts[0].text == "Interesting, see below!"
+    # audit #13: the original follows the commentary, clearly marked (nothing in it is lost)
+    assert parsed.posts[0].text == "Interesting, see below!\n\n[Reshared post] The reshared ORIGINAL text with orig@buyer.example"
 
 
 def test_a_reshare_without_commentary_falls_back_to_the_original_text(page: Page) -> None:

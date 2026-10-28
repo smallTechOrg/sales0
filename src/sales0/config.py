@@ -66,6 +66,8 @@ class Settings(BaseSettings):
 
     # --- Storage ---
     data_dir: str = "data"
+    # Fixscrape D: escape hatch for the one-process-per-data-dir lock (<data_dir>/.sales0.lock). Unsupported.
+    allow_multi_process: bool = False
     database_url: str = "sqlite:///data/sales0.db"
     test_database_url: str | None = None
 
@@ -117,7 +119,14 @@ class Settings(BaseSettings):
     scrape_max_keywords_per_run: int = Field(40, ge=1)
     scrape_max_posts_per_keyword: int = Field(80, ge=1)
     scrape_max_posts_per_day: int = Field(2000, ge=1)
-    scrape_max_runs_per_day: int = Field(4, ge=1)
+    # Fixscrape D: conservative defaults. 2 runs x (40 keywords x 3 passes = 120 searches) = 240 of the
+    # 600 page loads/day; one normal run still scans >= 200 posts (40 keywords x 3 passes x several cards).
+    scrape_max_runs_per_day: int = Field(2, ge=1)
+    # Search/profile page loads per LinkedIn account per local day (search passes, profile visits and
+    # permalink pages all count; scanned pages count, not only kept posts). A run stops when it is used up.
+    scrape_max_pageloads_per_day: int = Field(600, ge=1)
+    # Consecutive page errors (timeouts / failed loads) that stop a run as 'rate_limited' (cool-down).
+    scrape_max_consecutive_errors: int = Field(3, ge=1)
     scrape_delay_min_s: float = Field(3.0, ge=0)
     scrape_delay_max_s: float = Field(9.0, ge=0)
     scrape_keyword_pause_min_s: float = Field(20.0, ge=0)
@@ -139,7 +148,7 @@ class Settings(BaseSettings):
     # Phase 1.5: per-phrase search variants (other sort, quoted, hashtag, urgent/requirement/enquiry
     # suffixes, other date filters) run as extra passes in a daily rotation; capped per phrase.
     scrape_variants: bool = True
-    scrape_max_passes_per_keyword: int = Field(6, ge=1, le=12)
+    scrape_max_passes_per_keyword: int = Field(3, ge=1, le=12)
     # Phase 1.4: max "see more" clicks per keyword (truncated cards only).
     scrape_expand_max_per_keyword: int = Field(40, ge=0)
     # Phase 1.2: max "Copy link to post" attempts per keyword (posts without a URN); 0 = off.
@@ -212,6 +221,13 @@ class Settings(BaseSettings):
     watch_max_profiles_per_run: int = Field(25, ge=1)
     watch_min_days_between_checks: float = Field(3.0, ge=0)
     watch_max_posts_per_profile: int = Field(15, ge=1)
+    # Fixscrape D: profile visits per LinkedIn account per local day (counted in the page-load total too)
+    # and watch runs per account per day (watch runs do not use the discovery run allowance).
+    watch_max_visits_per_day: int = Field(30, ge=1)
+    watch_max_runs_per_day: int = Field(2, ge=1)
+    # Scheduled watch start = scheduler_watch_time + a per-day pseudo-random 0..N minute delay (0 = exact time),
+    # so the account is not opened at the same minute every day.
+    watch_start_jitter_min: int = Field(30, ge=0, le=240)
     watch_profile_pause_min_s: float = Field(20.0, ge=0)
     watch_profile_pause_max_s: float = Field(60.0, ge=0)
     watch_append_to_discovery: bool = False  # also visit due profiles at the end of each discovery run

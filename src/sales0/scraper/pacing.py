@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import time
 from collections.abc import Callable
@@ -41,6 +42,32 @@ class Pacer:
     def randint(self, low: int, high: int) -> int:
         """A random int from the same RNG (scroll distances etc.)."""
         return self._rng.randint(low, high)
+
+    def jitter_ms(self, base_ms: float) -> int:
+        """``base_ms`` randomised to 60%..160% (never the same wait twice)."""
+        return max(1, int(base_ms * self._rng.uniform(0.6, 1.6)))
+
+    def scroll_steps(self, total: int, compact: bool = False) -> list[tuple[int, int]]:
+        """A human-ish scroll: ``total`` px split into 3-6 wheel steps as ``(delta_px, wait_ms_after)``.
+
+        Step sizes follow a half-sine (slow start, faster middle, slow end) with per-step noise; the waits
+        between steps are random 25-150 ms (longer near the ends). ``compact`` (fixture mode only): exactly 3
+        steps, 8-25 ms apart, so the whole burst stays inside the fixture page's ~200 ms one-gesture debounce.. Deltas sum to ``total`` (within rounding).
+        """
+        total = max(1, int(total))
+        n = 3 if compact else self._rng.randint(3, 6)
+        weights = [math.sin(math.pi * (i + 0.5) / n) * self._rng.uniform(0.8, 1.2) for i in range(n)]
+        scale = total / sum(weights)
+        deltas = [max(1, round(w * scale)) for w in weights]
+        deltas[n // 2] += total - sum(deltas)  # absorb the rounding in the (largest) middle step
+        steps: list[tuple[int, int]] = []
+        for i, delta in enumerate(deltas):
+            edge = 1.0 + 0.6 * abs(2 * (i + 0.5) / n - 1)  # waits are longer at the start/end of the gesture
+            if compact:
+                steps.append((delta, self._rng.randint(8, 25)))
+            else:
+                steps.append((delta, max(1, int(self._rng.uniform(25, 80) * edge) + self._rng.randint(0, 20))))
+        return steps
 
     @classmethod
     def for_actions(

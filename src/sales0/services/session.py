@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
+from sales0.clock import utcnow
 from sales0.config import get_settings
 from sales0.errors import DomainError
 from sales0.db.models import LinkedInAccount
@@ -150,18 +151,42 @@ def start_connect(db: Session, account_id: int | None = None) -> SessionStatusVi
     return session_status(db, aid)
 
 
+def assert_recheck_allowed(db: Session, account_id: int | None = None) -> None:
+    """Raise ``safety_cooldown`` (429) while the account is in its safety cool-down (fixscrape D #4).
+
+    A Re-check loads linkedin.com/feed, which right after a checkpoint / captcha / rate-limit stop is exactly
+    the extra hit that makes LinkedIn dig in. Connect stays allowed: it is how the user resolves the warning.
+    """
+    from sales0.services.runs import cooldown_clock, safety_cooldown_until
+
+    row = get_session_row(db, account_id)
+    now = utcnow()
+    until = safety_cooldown_until(db, now, row.id)
+    if until is None:
+        return
+    minutes = max(1, -(-int((until - now).total_seconds()) // 60))
+    raise DomainError(
+        "safety_cooldown",
+        f"LinkedIn asked us to slow down - Re-check is paused for {minutes} more minute{'' if minutes == 1 else 's'} "
+        f"(until {cooldown_clock(until, now)}). To resolve a LinkedIn warning use Connect LinkedIn instead.",
+        429,
+    )
+
+
 def start_check(db: Session, account_id: int | None = None) -> SessionStatusView:
     from sales0.jobs import check_job
 
     row = get_session_row(db, account_id)
     if row.disabled:
         raise DomainError("account_disabled", "That LinkedIn account is disabled - enable it first.", 409)
+    assert_recheck_allowed(db, row.id)
     aid = row.id
     get_runner().submit("check", lambda: check_job.execute(linkedin_account_id=aid))
     return session_status(db, aid)
 
 
 __all__ = [
+    "assert_recheck_allowed",
     "CHROME_MISSING_LABEL",
     "NOT_LOGGED_IN_MESSAGE",
     "browser_channel",

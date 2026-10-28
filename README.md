@@ -183,10 +183,17 @@ clicks entirely.
 sales0 only uses your own logged-in session and searches gently. You can change the caps in
 `.env`. The Setup page ("Safety limits") shows the values in effect.
 
-- **Caps:** at most `SALES0_SCRAPE_MAX_RUNS_PER_DAY` runs per local day (default 4; aborted
-  runs count), `SALES0_SCRAPE_MAX_POSTS_PER_DAY` posts scanned per day (2000),
-  `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` keywords per run (40) and
-  `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` posts per keyword (80).
+- **Caps (per LinkedIn account, per local day):** at most `SALES0_SCRAPE_MAX_RUNS_PER_DAY` discovery
+  runs (default 2; aborted runs count), `SALES0_SCRAPE_MAX_POSTS_PER_DAY` posts scanned (2000),
+  `SALES0_SCRAPE_MAX_PAGELOADS_PER_DAY` LinkedIn page loads (600: search passes, profile visits and
+  permalink pages all count, scanned pages as well as kept posts), `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN`
+  keywords per run (40), `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` search passes per keyword (3) and
+  `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` posts per keyword (80). Prospect-watch runs have their own caps
+  (`SALES0_WATCH_MAX_RUNS_PER_DAY` 2, `SALES0_WATCH_MAX_VISITS_PER_DAY` 30 profile visits) but share the
+  post and page-load totals. When a run uses up the page-load or visit allowance it ends early (the run
+  detail says which limit) and the next run is refused until midnight.
+- **Error breaker:** `SALES0_SCRAPE_MAX_CONSECUTIVE_ERRORS` (3) page errors in a row (timeouts, failed
+  loads) are treated as a rate limit: the run stops and the cool-down starts.
 - **Pacing:** random 3–9 s delays between page actions and 20–60 s pauses between keywords.
 - **Safety stops:** if LinkedIn logs the session out, or shows a checkpoint, captcha or rate
   limit (including a throttled background request), the run **stops at once** and the
@@ -199,12 +206,58 @@ sales0 only uses your own logged-in session and searches gently. You can change 
   after a rate limit or captcha, and 15 minutes after a checkpoint or logout
   (`SALES0_SAFETY_COOLDOWN_MIN`, `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN`). The Runs page says
   "LinkedIn asked us to slow down — next run allowed after HH:MM". Re-check and Connect do
-  not shorten it.
+  not shorten it. A stop found by a Re-check starts the cool-down too, and during it **Re-check
+  (and the validation of a pasted cookie) is refused** with the minutes left, because that extra
+  feed load is what makes LinkedIn dig in; **Connect** stays available so you can resolve the warning.
 - **Layout warnings:** sales0 reads LinkedIn by its session cookie, URLs and stable page
   attributes (such as `data-view-name` and `data-testid`), not by styling classes. If a keyword's results still can't be read, the run
   shows a yellow "LinkedIn's page layout may have changed" alert and a "Layout warning"
   badge, and that keyword's Message in the run detail says what was missed. It is a warning,
   not a problem with your account; runs stay allowed. Please report the keyword.
+
+### Safety defaults (conservative)
+
+| Setting | Default | Notes |
+|---|---|---|
+| `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | 2 | was 4 |
+| `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` | 3 | was 6 |
+| `SALES0_SCRAPE_MAX_PAGELOADS_PER_DAY` | 600 | new, per account |
+| `SALES0_SCRAPE_MAX_CONSECUTIVE_ERRORS` | 3 | new |
+| `SALES0_WATCH_MAX_VISITS_PER_DAY` | 30 | new, per account |
+| `SALES0_WATCH_MAX_RUNS_PER_DAY` | 2 | new, per account |
+| `SALES0_WATCH_START_JITTER_MIN` | 30 | scheduled watch starts 0-30 min after its time, different each day |
+
+The arithmetic: a full run is 40 keywords x 3 passes = 120 searches, so two runs use 240 of the 600 page
+loads, leaving room for permalink pages and the watch (30 visits). A normal run still scans 200+ posts
+(that needs about two result cards per pass). Raise the caps in `.env` at your own risk.
+
+### Robots.txt, terms of service and what sales0 is
+
+sales0 does not crawl. It drives **your own logged-in browser session** (Chrome) at human pace, only
+the pages you could open yourself (search results, profiles you watch), one at a time, with caps and
+stop-on-warning. It does not fetch `robots.txt`, and it does not use LinkedIn's API. Automated access
+to LinkedIn is against LinkedIn's User Agreement even with your own account: LinkedIn may restrict
+or close the account. That risk is yours; the caps, pacing and cool-downs reduce it but cannot remove it.
+
+### Third-party personal data sales0 stores
+
+Scanning posts stores other people's personal data on your disk: for every post sales0 keeps the
+author's name, headline and profile URL, the post text and link, and the AI's verdict (table
+`seen_posts`, and `linkedin_profiles` / enquiries for relevant ones). The **raw post text** of a scanned
+post is dropped after `SALES0_SEEN_RAW_RETENTION_DAYS` (default 14) by the daily **purge** job
+(Schedule page; it only removes text of posts already triaged, never of ones still waiting for the AI).
+Names, profile URLs and the enquiries you keep stay until you delete them (contacts and enquiries can
+be deleted from their pages). Logs print counts, not names or text. Treat the data directory and any
+backup as personal data (see Security notes) and honour deletion requests by deleting the rows.
+
+### One sales0 per data directory (enforced)
+
+sales0 takes an exclusive lock on `<data_dir>/.sales0.lock` at startup and refuses to boot when another
+sales0 process already holds it ("Another sales0 process is already using the data directory ..."). Two
+processes would abort each other's live runs at startup and double the LinkedIn page loads on one
+account. Stop the other one first (or give this one its own `SALES0_DATA_DIR`). The lock dies with the
+process, so a crash leaves nothing to clean up; `SALES0_ALLOW_MULTI_PROCESS=1` skips it (unsupported).
+The lock is advisory and local: do not put the data directory on a network share used by two machines.
 
 ### Offline demo (fixture mode)
 
@@ -314,6 +367,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_HOST` | str | `127.0.0.1` | Bind address. A non-loopback host refuses to start without `SALES0_APP_PASSWORD` (or an existing user account). |
 | `SALES0_PORT` | int | `8765` | Bind port. |
 | `SALES0_DATA_DIR` | str | `data` | Runtime directory: SQLite DB, Chrome profile, secret key, uploads. Put it on a persistent volume when hosted. |
+| `SALES0_ALLOW_MULTI_PROCESS` | bool | `False` | Skip the one-process-per-data-directory lock (`<data_dir>/.sales0.lock`). Unsupported: a second process aborts the first one's live runs and doubles the LinkedIn page loads. Leave off. |
 | `SALES0_DATABASE_URL` | str | `sqlite:///data/sales0.db` | SQLAlchemy URL. SQLite only today; relative file paths resolve against the repo root. Postgres is not supported yet. |
 | `SALES0_TEST_DATABASE_URL` | str | unset | Test-suite only: database URL used by tests instead of a temp file. |
 | `SALES0_GOOGLE_CLIENT_SECRET_PATH` | str | `data/google_client_secret.json` | Google OAuth client JSON (Desktop `installed` or Web `web` type) used for Gmail. |
@@ -341,7 +395,9 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` | int | `40` | Max search phrases per discovery run. |
 | `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` | int | `80` | Max posts read per phrase. |
 | `SALES0_SCRAPE_MAX_POSTS_PER_DAY` | int | `2000` | Max posts read per day. |
-| `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | int | `4` | Max discovery runs per day. |
+| `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | int | `2` | Max discovery runs per LinkedIn account per day (default 2; was 4). Watch runs have their own cap. |
+| `SALES0_SCRAPE_MAX_PAGELOADS_PER_DAY` | int | `600` | Max LinkedIn page loads (search passes, profile visits, permalink pages) per account per day (default 600). A run ends early when it is used up. |
+| `SALES0_SCRAPE_MAX_CONSECUTIVE_ERRORS` | int | `3` | Consecutive page errors (timeouts, failed loads) that stop a run as rate-limited and start the cool-down (default 3). |
 | `SALES0_SCRAPE_DELAY_MIN_S` | float | `3.0` | Min human-like delay between actions (seconds). |
 | `SALES0_SCRAPE_DELAY_MAX_S` | float | `9.0` | Max delay between actions (seconds). |
 | `SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S` | float | `20.0` | Min pause between phrases (seconds). |
@@ -352,7 +408,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_SCRAPE_DATE_FILTERS` | list | `past-week,past-month` | Comma list of date filters, one search pass each: `past-24h`, `past-week`, `past-month`. |
 | `SALES0_SCRAPE_DATE_FILTER` | str | unset | Legacy single date filter; read only when `SALES0_SCRAPE_DATE_FILTERS` is unset. |
 | `SALES0_SCRAPE_VARIANTS` | bool | `True` | Run extra per-phrase search variants in a daily rotation. |
-| `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` | int | `6` | Cap on search passes per phrase. |
+| `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` | int | `3` | Cap on search passes per phrase (default 3; was 6). |
 | `SALES0_SCRAPE_EXPAND_MAX_PER_KEYWORD` | int | `40` | Max "see more" clicks per phrase. |
 | `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | int | `15` | Max "Copy link to post" attempts per phrase (0 = off). |
 | `SALES0_FEWSHOT_MAX_EXAMPLES` | int | `6` | Max reviewed examples shown to triage as few-shot context. |
@@ -401,6 +457,9 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_WATCH_MAX_PROFILES_PER_RUN` | int | `25` | Prospect watch: max tracked profiles visited per watch run. |
 | `SALES0_WATCH_MIN_DAYS_BETWEEN_CHECKS` | float | `3.0` | Prospect watch: minimum days before the same profile is visited again. |
 | `SALES0_WATCH_MAX_POSTS_PER_PROFILE` | int | `15` | Prospect watch: max posts read per profile visit (also bounded by the daily post cap). |
+| `SALES0_WATCH_MAX_VISITS_PER_DAY` | int | `30` | Prospect watch: max profile visits per LinkedIn account per day (default 30); visits also count in the page-load cap. |
+| `SALES0_WATCH_MAX_RUNS_PER_DAY` | int | `2` | Prospect watch: max watch runs per LinkedIn account per day (default 2). |
+| `SALES0_WATCH_START_JITTER_MIN` | int | `30` | Scheduled prospect watch starts `SALES0_SCHEDULER_WATCH_TIME` plus a per-day pseudo-random 0..N minute delay (default 30; 0 = exact time). |
 | `SALES0_WATCH_PROFILE_PAUSE_MIN_S` | float | `20.0` | Prospect watch: minimum pause between two profile visits (seconds). |
 | `SALES0_WATCH_PROFILE_PAUSE_MAX_S` | float | `60.0` | Prospect watch: maximum pause between two profile visits (seconds). |
 | `SALES0_WATCH_APPEND_TO_DISCOVERY` | bool | `False` | True = also visit due tracked profiles at the end of each discovery run (same browser session and caps). |
@@ -413,7 +472,8 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 
 sales0 is built as a single-process app (one uvicorn worker, a background scheduler thread,
 SQLite). One server, one process, one persistent data directory. Do not run two instances on
-the same data directory.
+the same data directory (now enforced: a second process refuses to boot, see "One sales0 per data
+directory").
 
 ### Layout and persistence
 
@@ -617,7 +677,7 @@ Not supported today (do not rely on these):
 
 - **PostgreSQL.** SQLite only. The database layer is SQLAlchemy and Alembic, so a Postgres move is
   possible, but migrations, locking and the single-process job runner are written and tested for SQLite. Future.
-- **More than one process / worker** on the same data directory.
+- **More than one process / worker** on the same data directory (refused at boot by a lock file).
 - **Multi-tenant (several companies in one install).** Planned, none of it exists yet:
   a tenant/workspace id on every table (a cheap migration: the names are already tenant-neutral and data goes
   through services), Postgres, object storage for decks and uploads instead of the local disk, a worker queue
@@ -647,7 +707,8 @@ Not supported today (do not rely on these):
   emails; use disk encryption and file permissions); logs and backups are plain files; `.env` / `/etc/sales0.env`
   contains the Anthropic key in clear text; anyone with shell access to the server can read everything; there is no
   audit trail beyond the CRM timeline; the research fetcher blocks private network addresses but runs on your server.
-- **Personal data.** Enquiries and contacts are personal data. Fixtures in this repo are synthetic.
+- **Personal data.** Enquiries and contacts are personal data, and so are the other people's posts sales0 scans
+  (see "Third-party personal data sales0 stores" for what is kept and the retention). Fixtures in this repo are synthetic.
 
 ## Troubleshooting
 

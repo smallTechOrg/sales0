@@ -439,7 +439,7 @@ def test_sdui_capture_shape_reads_name_headline_time_text_key_and_menu(page: Pag
     assert company.author_profile_url == f"{LIVE}/company/halvex-analytics/"
     assert [r["has_control_menu"] for r in raws] == [True, False]
     assert raws[0]["via"]["component_key"] == "inner" and raws[0]["via"]["actor_lines"] == "actor_block"
-    assert parsed.field_misses == {"author_headline": 1} and parsed.parse_errors == 0
+    assert parsed.field_misses == {"author_headline": 1, "truncated": 2} and parsed.parse_errors == 0  # audit #7
 
 
 def test_sdui_fixture_shape_reads_the_meta_actor_and_the_listitem_key(page: Page) -> None:
@@ -475,7 +475,7 @@ def test_sdui_wins_over_the_urn_layout_and_only_outermost_posts_count(page: Page
     assert len(raws) == 1 and raws[0]["strategy"] == "sdui"
     post = parsed.posts[0]
     assert (post.source_ref, post.author_name) == (f"ck:{KEY_A}", "Asha Rao")
-    assert "reshared original" not in post.text
+    assert post.text.count("The reshared original") == 1 and "[Reshared post]" in post.text  # audit #13: marked, once
     assert count_cards(page) == 1
 
 

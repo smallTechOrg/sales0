@@ -51,7 +51,7 @@ def test_settings_defaults_match_the_configuration_table(monkeypatch: pytest.Mon
     assert s.timezone == "Asia/Kolkata" and s.linkedin_mode == "live" and s.log_format == "json"
     assert s.linkedin_browser_channel == "auto" and s.scrape_date_filter == "past-week"
     assert (s.scrape_max_keywords_per_run, s.scrape_max_posts_per_keyword) == (40, 80)
-    assert (s.scrape_max_posts_per_day, s.scrape_max_runs_per_day) == (2000, 4)
+    assert (s.scrape_max_posts_per_day, s.scrape_max_runs_per_day) == (2000, 2)  # fixscrape D: conservative default (was 4)
     assert (s.fewshot_max_examples, s.fewshot_text_chars, s.triage_max_input_chars) == (6, 600, 4000)
     assert s.api_key_present is False
 

@@ -363,8 +363,9 @@ def test_purge_expired_drops_only_expired_text_and_keeps_fingerprint_and_snippet
     fp, prefix, snippet = before.fingerprint, before.text_prefix, before.snippet
     now = utcnow()
     assert purge_expired(db, now=now + timedelta(days=13)) == 0
-    # discards + the failed + the pending hold text; the genuine one's text already moved to its enquiry
-    assert purge_expired(db, now=now + timedelta(days=15)) == 4
+    # only the two triaged discards are purged (fixscrape #6: pending/failed rows keep their text so
+    # they can still be triaged/retried); the genuine one's text already moved to its enquiry
+    assert purge_expired(db, now=now + timedelta(days=15)) == 2
     row = db.get(SeenPost, ids["agency"])
     assert row is not None and row.raw_text is None and row.raw_purged_at is not None
     assert (row.fingerprint, row.text_prefix, row.snippet) == (fp, prefix, snippet)
@@ -443,7 +444,8 @@ def test_retry_triage_errors_for_missing_and_purged_posts(db_url: str) -> None:
             seen_posts.retry_triage(db, 4242)
         assert nf.value.code == "not_found"
         s = sight(db, "k1", BUYER, run_id)
-        persist_triage(db, s.seen_post_id, failed_outcome(), run_id=run_id, keyword_id=None)
+        # a triaged discard (pending/failed rows are no longer purged, fixscrape #6)
+        persist_triage(db, s.seen_post_id, outcome("discard"), run_id=run_id, keyword_id=None)
         purge_expired(db, now=utcnow() + timedelta(days=15))
         with pytest.raises(DomainError) as purged:
             seen_posts.retry_triage(db, s.seen_post_id)

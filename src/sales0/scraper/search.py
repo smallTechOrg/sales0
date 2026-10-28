@@ -30,6 +30,16 @@ Phase 1.4 (thorough discovery): ``scan`` loops one pass per ``SALES0_SCRAPE_DATE
 and never opens a menu. ``capture_links`` (after triage, same loaded page) copies permalinks for the
 refs the caller asks for, on both the ``sdui`` and ``listitem`` tiers. ``search`` = ``scan`` +
 ``capture_links`` for old callers.
+
+Audit fixes (AUDIT_SCRAPER.md): #3 ``scrape_max_consecutive_errors`` (default 3) consecutive ``ScrapeError``s
+from ``scan`` across keywords end the run as ``AccountSafetyStop('rate_limited')`` (browser closed first;
+any successful scan resets the streak), and a 403 from the same-site background API latches too (a 403 on
+the search DOCUMENT stays a keyword ``ScrapeError``); #8 ``page_load_budget`` caps the ``page.goto`` calls of
+this searcher (``page_loads``) - an exhausted budget ends ``scan`` with ``stop_reason='page_budget'`` before
+the next pass loads (the run-start feed check is the session check, not counted); #7 the "see more" budget is
+per pass; #14 one logical scroll is several eased wheel steps with randomised waits; #18 the first idle
+scroll waits up to twice the settle window, and a pass that needed a slow (> half-window) wait for growth
+makes later passes require one more idle scroll before they end.
 """
 
 from __future__ import annotations
@@ -70,7 +80,7 @@ from sales0.scraper.parsing import (
     parse_cards,
     see_more_args,
 )
-from sales0.scraper.permalink import ref_of_raw, capture_permalinks, eligible_refs
+from sales0.scraper.permalink import capture_permalinks, eligible_refs, ref_of_raw
 from sales0.scraper.session_check import verify_in_context
 from sales0.scraper.session_store import AccountHandle, open_account_context
 from sales0.scraper.types import (
@@ -143,7 +153,13 @@ def see_more_buttons(page: Page, n: int) -> list[ElementHandle]:
 
 
 class LinkedInSearcher:
-    def __init__(self, settings: Settings, pacer: Pacer | None = None, account: AccountHandle | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        pacer: Pacer | None = None,
+        account: AccountHandle | None = None,
+        page_load_budget: int | None = None,
+    ) -> None:
         self._settings = settings
         self._account = account  # None = the default folder profile
         self._pacer = pacer or Pacer.for_actions(settings)
@@ -155,6 +171,23 @@ class LinkedInSearcher:
         self._latch: tuple[SafetyKind, str] | None = None  # first safety signal seen by a listener
         self._card_raws: dict[str, dict[str, Any]] = {}  # last scan(): source_ref -> raw card
         self._last_keyword = ""
+        self._page_load_budget = page_load_budget  # max page.goto calls for this searcher (None = unlimited)
+        self._page_loads = 0
+        self._consecutive_errors = 0
+        self._slow_growth = False  # an earlier pass needed slow waits for new cards
+        self._last_wait_s = 0.0  # how long the last successful growth wait took
+
+    @property
+    def page_loads(self) -> int:
+        """``page.goto`` calls made by this searcher so far (search passes)."""
+        return self._page_loads
+
+    @property
+    def _max_consecutive_errors(self) -> int:
+        return int(getattr(self._settings, "scrape_max_consecutive_errors", 3))
+
+    def _budget_exhausted(self) -> bool:
+        return self._page_load_budget is not None and self._page_loads >= self._page_load_budget
 
     # ------------------------------------------------------------------ lifecycle
     def __enter__(self) -> LinkedInSearcher:
@@ -274,12 +307,26 @@ class LinkedInSearcher:
 
     # ------------------------------------------------------------------ search
     def scan(self, keyword: str, max_posts: int) -> KeywordScrapeResult:
+        """``_scan_keyword`` plus the consecutive-error breaker (audit #3): the Nth ``ScrapeError`` in a row
+        (any successful scan resets the count) stops the account as ``rate_limited``."""
+        try:
+            result = self._scan_keyword(keyword, max_posts)
+        except ScrapeError as exc:
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self._max_consecutive_errors:
+                log.warning("scraper_consecutive_errors", count=self._consecutive_errors, error=str(exc)[:200])
+                raise self._stop("rate_limited", self._base, stage="consecutive_errors") from exc
+            raise
+        self._consecutive_errors = 0
+        return result
+
+    def _scan_keyword(self, keyword: str, max_posts: int) -> KeywordScrapeResult:
         """Phase 1.4: read up to ``max_posts`` posts for ``keyword`` and NEVER open a post menu.
 
         One pass per configured date filter (sorted per ``scrape_sort``). A pass scrolls the results
         until the card target is met, ``scrape_max_scrolls`` is hit, or ``scrape_no_growth_scrolls``
         consecutive scrolls add no card; expands truncated cards (``scrape_expand_max_per_keyword``
-        per keyword); extracts and parses. Posts are merged across passes by ``source_ref`` (first
+        per PASS); extracts and parses. Posts are merged across passes by ``source_ref`` (first
         sighting wins). The last page stays loaded for ``capture_links``.
         """
         page = self._page
@@ -305,6 +352,8 @@ class LinkedInSearcher:
         merged: dict[str, ScrapedPost] = {}
         pass_raws: list[list[dict[str, Any]]] = []
         scrolls_total = expanded_total = passes = parse_errors = cards_max = 0
+        loads_before = self._page_loads
+        budget_hit = False
         field_misses: dict[str, int] = {}
         strategy: CardStrategy = "none"
         stop: StopReason = "no_growth"
@@ -313,9 +362,13 @@ class LinkedInSearcher:
         for date_filter, url, spec in zip(filters, urls, plan):
             if len(merged) >= cap and passes > 0:
                 break
+            if self._budget_exhausted():
+                budget_hit = True
+                log.warning("scraper_page_budget", keyword=keyword, loads=self._page_loads, budget=self._page_load_budget)
+                break
             passes += 1
             target = cap + len(merged)  # posts already merged show up again in later passes
-            outcome = self._scan_pass(page, keyword, date_filter, url, target, expanded_total, what)
+            outcome = self._scan_pass(page, keyword, date_filter, url, target, what)
             scrolls_total += outcome.scrolls
             expanded_total += outcome.expanded
             no_results = outcome.no_results
@@ -357,6 +410,8 @@ class LinkedInSearcher:
         drift = any_drift and not posts
         if drift:
             stop = "drift"
+        elif budget_hit and len(posts) < cap:
+            stop = "page_budget"
         elif not posts and no_results:
             stop = "no_results"
         elif len(posts) >= cap:
@@ -368,6 +423,9 @@ class LinkedInSearcher:
             stop_reason=stop, parse_errors=parse_errors, field_misses=field_misses, no_results=no_results,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
+        extra: dict[str, Any] = {}
+        if "page_loads" in KeywordScrapeResult.__dataclass_fields__:  # types.py field (cross-slice)
+            extra["page_loads"] = self._page_loads - loads_before
         return KeywordScrapeResult(
             keyword=keyword,
             posts=posts,
@@ -381,14 +439,14 @@ class LinkedInSearcher:
             passes=passes,
             expanded=expanded_total,
             stop_reason=stop,
+            **extra,
         )
 
-    def _scan_pass(
-        self, page: Page, keyword: str, date_filter: str, url: str, target: int, expanded_so_far: int, what: str
-    ) -> _PassOutcome:
+    def _scan_pass(self, page: Page, keyword: str, date_filter: str, url: str, target: int, what: str) -> _PassOutcome:
         settings = self._settings
         self._checkpoint(page, what=what)  # before each page load (e.g. li_at gone since the last one)
         self._pacer.delay()
+        self._page_loads += 1  # counted when attempted: a failed load still hit LinkedIn
         try:
             response = page.goto(url, wait_until="domcontentloaded")
         except PlaywrightError as exc:
@@ -404,6 +462,9 @@ class LinkedInSearcher:
 
         scrolls = idle = expanded = 0
         stop: StopReason = "no_growth"
+        required_idle = settings.scrape_no_growth_scrolls + (1 if self._slow_growth else 0)
+        settle_s = scroll_settle_ms(settings) / 1000
+        pass_slow = False
         if cards_found > 0:
             while True:
                 if cards_found >= target:
@@ -417,15 +478,20 @@ class LinkedInSearcher:
                 self._hover_scroll_column(page)
                 self._wheel(page, self._pacer.randint(700, 1400))
                 scrolls += 1
-                grew = self._wait_for_more_cards(page, before)
+                # The first idle scroll gets up to twice the settle window (slow network != end of results).
+                grew = self._wait_for_more_cards(page, before, extend=idle == 0)
                 extras = self._checkpoint(page, what=what)
                 cards_found, no_results = extras["cards_found"], extras["no_results"]
-                idle = 0 if (grew and cards_found > before) else idle + 1
-                if idle >= settings.scrape_no_growth_scrolls:
+                if grew and cards_found > before:
+                    idle = 0
+                    pass_slow = pass_slow or self._last_wait_s > settle_s / 2
+                else:
+                    idle += 1
+                if idle >= required_idle:
                     stop = "cap" if cards_found >= target else "no_growth"
                     break
-            budget = max(0, settings.scrape_expand_max_per_keyword - expanded_so_far)
-            expanded = self._expand(page, min(target, cards_found), what, budget)
+            self._slow_growth = self._slow_growth or pass_slow
+            expanded = self._expand(page, min(target, cards_found), what, settings.scrape_expand_max_per_keyword)
         try:
             raws = extract_raw_cards(page) if cards_found > 0 else []
         except PlaywrightError as exc:
@@ -465,9 +531,11 @@ class LinkedInSearcher:
             return LinkCaptureResult()
         targets = [self._card_raws[ref] for ref in chosen]
         what = " while copying post links"
+        spec = self._account.spec if self._account is not None else None
+        user_agent = spec.user_agent if spec is not None and spec.user_agent else self._page_user_agent(page)
         stats = capture_permalinks(
             page, targets, cap=cap, pacer=self._pacer, checkpoint=lambda: self._checkpoint(page, what=what),
-            keyword=self._last_keyword,
+            keyword=self._last_keyword, proxy_url=spec.proxy_url if spec is not None else None, user_agent=user_agent,
         )
         links: dict[str, str] = {}
         for ref, raw in zip(chosen, targets):
@@ -475,6 +543,15 @@ class LinkedInSearcher:
             if url:
                 links[ref] = url
         return LinkCaptureResult(links=links, attempts=stats.attempts, found=len(links))
+
+    @staticmethod
+    def _page_user_agent(page: Page) -> str | None:
+        """The browser's own User-Agent (so a short-link HEAD does not announce python-httpx)."""
+        try:
+            ua = page.evaluate("() => navigator.userAgent")
+        except PlaywrightError:
+            return None
+        return ua if isinstance(ua, str) and ua else None
 
     def search(self, keyword: str, max_posts: int) -> KeywordScrapeResult:
         """Phase 1.2/1.3 entry point: ``scan`` then ``capture_links`` for every capturable post."""
@@ -491,8 +568,14 @@ class LinkedInSearcher:
 
     # Raw page actions, kept separate so tests can observe that a paced delay precedes each.
     def _wheel(self, page: Page, delta_y: int) -> None:
+        """One logical scroll = several smaller wheel steps with eased sizes and randomised waits."""
+        steps = self._pacer.scroll_steps(delta_y, compact=self._settings.linkedin_mode == "fixture")
         try:
-            page.mouse.wheel(0, delta_y)
+            for i, (delta, wait_ms) in enumerate(steps):
+                page.mouse.wheel(0, delta)
+                if i < len(steps) - 1:
+                    page.wait_for_timeout(wait_ms)  # also pumps the safety listeners
+                    self._raise_if_latched()
         except PlaywrightError as exc:
             self._raise_if_latched()
             raise ScrapeError(f"Page closed while scrolling: {exc}") from exc
@@ -516,10 +599,14 @@ class LinkedInSearcher:
     def _click(self, button: ElementHandle) -> None:
         button.click(timeout=3_000)
 
-    def _wait_for_more_cards(self, page: Page, before: int) -> bool:
-        """Poll up to ``scroll_settle_ms`` for more cards than ``before`` (latch checked every poll).
-        False = end of results, or the page is mid-navigation (the next checkpoint decides)."""
-        deadline = time.monotonic() + scroll_settle_ms(self._settings) / 1000
+    def _wait_for_more_cards(self, page: Page, before: int, extend: bool = False) -> bool:
+        """Poll up to ``scroll_settle_ms`` (twice that when ``extend``: the first idle scroll) for more
+        cards than ``before`` (latch checked every poll). False = end of results, or the page is
+        mid-navigation (the next checkpoint decides). ``_last_wait_s`` = seconds until the growth showed."""
+        settle_s = scroll_settle_ms(self._settings) / 1000
+        start = time.monotonic()
+        deadline = start + settle_s
+        extended = False
         while True:
             try:
                 page.wait_for_timeout(_POLL_MS)  # also pumps Playwright events (the latches)
@@ -529,10 +616,15 @@ class LinkedInSearcher:
             self._raise_if_latched()
             try:
                 if count_cards(page) > before:
+                    self._last_wait_s = time.monotonic() - start
                     return True
             except PlaywrightError:
                 return False  # mid-navigation (e.g. redirected to a checkpoint)
             if time.monotonic() >= deadline:
+                if extend and not extended:
+                    extended = True
+                    deadline += settle_s
+                    continue
                 return False
 
     def _expand(self, page: Page, n: int, what: str, budget: int) -> int:

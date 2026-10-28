@@ -286,8 +286,9 @@ class WatchJob(DailyJob):
 
     def schedule_text(self, ctx: Ctx) -> str:
         s = ctx.settings
+        jitter = f" (+0-{s.watch_start_jitter_min} min)" if s.watch_start_jitter_min else ""
         return (
-            f"daily at {s.scheduler_watch_time} {s.timezone}, up to {s.watch_max_profiles_per_run} profiles, "
+            f"daily at {s.scheduler_watch_time}{jitter} {s.timezone}, up to {s.watch_max_profiles_per_run} profiles, "
             f"each at most every {s.watch_min_days_between_checks:g} days"
         )
 
@@ -298,10 +299,19 @@ class WatchJob(DailyJob):
         if retry:
             return datetime.fromisoformat(retry)
         today = local_day(ctx.settings, now)
-        slot = local_at(ctx.settings, today, self._at(ctx))
+        slot = self._slot(ctx, today)
         if state.get("last_date") == today.isoformat() or slot <= now:
-            slot = local_at(ctx.settings, today + timedelta(days=1), self._at(ctx))
+            slot = self._slot(ctx, today + timedelta(days=1))
         return slot
+
+    def _slot(self, ctx: Ctx, day: date) -> datetime:
+        """The configured time plus a jitter (0..watch_start_jitter_min minutes), derived from the date only:
+        stable across restarts and reproducible in tests, but different every day (fixscrape D #14)."""
+        slot = local_at(ctx.settings, day, self._at(ctx))
+        window = ctx.settings.watch_start_jitter_min * 60
+        if window <= 0:
+            return slot
+        return slot + timedelta(seconds=random.Random(f"{self.name}:{day.isoformat()}").randint(0, window))
 
     def _run(self, ctx: Ctx, now: datetime) -> JobResult:
         from sales0.jobs.scheduled_watch import start_scheduled_watch
@@ -345,12 +355,16 @@ def _purge_decided_suggestions(db: Session, cutoff: datetime) -> int:
 
 register_purge_hook("digests", _purge_digests)
 register_purge_hook("decided_suggestions", _purge_decided_suggestions)
+# Fixscrape D (#6 wiring): seen_posts raw text retention (backfills NULL purge dates; keeps pending/failed text).
+from sales0.jobs import purge_job  # noqa: E402  (purge_job does not import the scheduler)
+
+register_purge_hook(purge_job.HOOK_NAME, purge_job.purge_hook)
 
 
 class PurgeJob(DailyJob):
     name = "purge"
     label = "Retention purge"
-    description = "Runs the registered purge hooks (old digests, decided suggestions; more can be registered) beyond the retention period."
+    description = "Runs the registered purge hooks (old digests, decided suggestions, seen-post raw text past its retention; more can be registered) beyond the retention period."
     default_enabled = True
     time_setting = "scheduler_purge_time"
 

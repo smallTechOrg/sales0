@@ -30,9 +30,11 @@ class LLMResponse(BaseModel):
     tool_input: dict[str, Any] | None  # parsed tool_use.input (None if the model returned no tool_use)
     text: str | None  # any text block
     model: str
-    input_tokens: int
+    input_tokens: int  # uncached input tokens (the API's usage.input_tokens)
     output_tokens: int
-    cost_usd_micros: int
+    cost_usd_micros: int  # includes cache write/read tokens; no DB column for them (folded into cost)
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
     latency_ms: int
     request_id: str | None
     stop_reason: str | None

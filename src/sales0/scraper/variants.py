@@ -5,8 +5,8 @@ phrase, a scan runs several PASSES, each a different (query variant, date filter
 
 1. the baseline passes (the phrase itself, one per configured date filter, configured sort), always first;
 2. then variants in a rotation that starts at a different offset each day (and per phrase), so
-   repeated runs explore different slices: the other sort, a quote-wrapped exact match, a hashtag
-   form (``#aitrainer``), ``urgent`` / ``requirement`` / ``enquiry`` suffixes, wider/narrower date filters.
+   repeated runs explore different slices: the other sort, a quote-wrapped exact match, a curated hashtag
+   (``#aitrainer``), ``urgent`` / ``requirement`` / ``enquiry`` suffixes, wider/narrower date filters.
 
 The plan is capped at ``scrape_max_passes_per_keyword``; ``scan`` still stops early once the phrase's post
 cap is met. Pure and deterministic (no I/O), so it is unit-testable.
@@ -15,6 +15,7 @@ cap is met. Pure and deterministic (no I/O), so it is unit-testable.
 from __future__ import annotations
 
 import re
+import threading
 import zlib
 from dataclasses import dataclass
 from datetime import date
@@ -33,18 +34,66 @@ class SearchPass:
     kind: str  # baseline | other_sort | quoted | hashtag | suffix:<word> | wider | narrower
 
 
+# Curated hashtag map: (pattern on the lower-cased phrase, tag), first match wins. A hashtag is only
+# worth a search pass when real people use it, so no mechanical "first two words" tags (#lookingfor).
+_HASHTAGS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pat), tag)
+    for pat, tag in (
+        (r"claude code", "#claudecode"),
+        (r"github copilot|copilot", "#copilot"),
+        (r"langchain", "#langchain"),
+        (r"prompt engineering", "#promptengineering"),
+        (r"agentic|ai agent", "#agenticai"),
+        (r"chatgpt", "#chatgpt"),
+        (r"\bllm\b", "#llm"),
+        (r"\brag\b", "#rag"),
+        (r"genai|generative ai", "#generativeai"),
+        (r"ai literacy", "#ailiteracy"),
+        (r"ai upskilling", "#aiupskilling"),
+        (r"ai automation", "#aiautomation"),
+        (r"ai consult", "#aiconsulting"),
+        (r"chatbot", "#chatbot"),
+        (r"ai trainer", "#aitrainer"),
+        (r"ai training|ai workshop", "#aitraining"),
+    )
+)
+MAX_QUOTED_WORDS = 4
+
+
 def hashtag_form(phrase: str) -> str | None:
-    """``"ai trainer requirement"`` -> ``"#aitrainer"`` (first two words, ASCII only); None when too short."""
-    words = _WORD.findall(phrase)
-    if len(words) < 2:
-        return None
-    tag = "".join(words[:2]).lower()
-    return f"#{tag}" if len(tag) >= 4 else None
+    """A curated hashtag for the phrase (``"Claude Code trainer"`` -> ``"#claudecode"``) or None."""
+    low = " ".join(phrase.lower().split())
+    for pattern, tag in _HASHTAGS:
+        if pattern.search(low):
+            return tag
+    return None
 
 
 def quoted_form(phrase: str) -> str | None:
+    """The exact-match form; phrases of more than 4 words are not quoted (too rigid to match anything)."""
     clean = " ".join(phrase.replace('"', " ").split())
-    return f'"{clean}"' if len(clean.split()) >= 2 else None
+    n = len(clean.split())
+    return f'"{clean}"' if 2 <= n <= MAX_QUOTED_WORDS else None
+
+
+# Variant queries already planned today, by (day, query, date filter, sort) -> the phrase that owns
+# them, so two phrases that map to the same hashtag/suffix query do not both spend a search on it.
+# Baseline passes are never deduped, and re-planning the owning phrase is stable.
+_claims: dict[tuple[date, str, str, str], str] = {}
+_claims_lock = threading.Lock()
+
+
+def reset_day_claims() -> None:
+    with _claims_lock:
+        _claims.clear()
+
+
+def _claim(day: date, p: SearchPass, owner: str) -> bool:
+    key = (day, p.query.lower(), p.date_filter, p.sort)
+    with _claims_lock:
+        for k in [k for k in _claims if k[0] != day]:
+            del _claims[k]
+        return _claims.setdefault(key, owner) == owner
 
 
 def plan_passes(
@@ -86,7 +135,7 @@ def plan_passes(
     out = list(baseline)
     for p in extras:
         key = (p.query, p.date_filter, p.sort)
-        if key not in seen:
+        if key not in seen and _claim(today, p, low):
             seen.add(key)
             out.append(p)
     return out[: max(max_passes, 1)]

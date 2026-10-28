@@ -67,7 +67,7 @@ from sales0.services import linkedin_accounts
 from sales0.services import runs as runs_service
 from sales0.services import session as session_service
 from sales0.services._common import clip, record_history
-from sales0.services.runs import keyword_outcome, plan_keywords, posts_seen_today
+from sales0.services.runs import keyword_outcome, page_loads_today, plan_keywords, posts_seen_today
 from sales0.services.triage import active_offering_refs
 
 log = get_logger("sales0.jobs.discovery")
@@ -91,12 +91,19 @@ class _FatalLLM(Exception):
         self.message = message
 
 
-def _default_searcher_factory(settings: Settings, account_id: int | None = None) -> Any:
-    """A ``LinkedInSearcher`` on the run's LinkedIn account (None = the default account)."""
+def _default_searcher_factory(
+    settings: Settings, account_id: int | None = None, page_load_budget: int | None = None
+) -> Any:
+    """A ``LinkedInSearcher`` on the run's LinkedIn account (None = the default account).
+
+    ``page_load_budget``: the account's page loads left today (fixscrape D #8); the searcher stops its
+    scans with stop_reason ``page_budget`` when it is used up."""
     from sales0.scraper.search import LinkedInSearcher
     from sales0.services import linkedin_accounts
 
-    return LinkedInSearcher(settings, account=linkedin_accounts.build_handle(account_id))
+    return LinkedInSearcher(
+        settings, account=linkedin_accounts.build_handle(account_id), page_load_budget=page_load_budget
+    )
 
 
 def select_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
@@ -130,7 +137,11 @@ class _Run:
         self.rng = rng
         self.fatal_llm: str | None = None
         self.link_attempts = 0  # "Copy link to post" attempts of the current keyword
+        # seen_post id -> (keyword row id, 'relevant'|'skipped'|'failed') already counted in this run: a
+        # text upgrade can re-triage the same post later in the run, which must replace, not add.
+        self._counted: dict[int, tuple[int, str]] = {}
         self.card_link_kind: dict[int, str] = {}  # seen_post id -> link kind of its card (this keyword)
+        self.page_budget_hit = False  # a scan ended with stop_reason 'page_budget' (daily page-load cap)
 
     @property
     def run(self) -> ScrapeRun:
@@ -175,6 +186,27 @@ class _Run:
                 log.warning("keyword_deleted_mid_save", keyword=row.keyword_text, ref=getattr(post, "source_ref", None))
         raise AssertionError("unreachable")  # pragma: no cover
 
+    def note_page_loads(self, searcher: Any, result: Any | None, *, at_least: int = 0) -> None:
+        """Record the LinkedIn page loads this run used (``scrape_runs.page_loads``; feeds the daily cap).
+
+        The searcher's cumulative ``page_loads`` is authoritative; without it the result's own count (or
+        ``at_least``) is added."""
+        total = getattr(searcher, "page_loads", None)
+        if isinstance(total, int) and not isinstance(total, bool):
+            self.run.page_loads = max(self.run.page_loads, total)
+        else:
+            self.run.page_loads += max(int(getattr(result, "page_loads", 0) or 0), at_least)
+        if getattr(result, "stop_reason", None) == "page_budget":
+            self.page_budget_hit = True
+
+    def page_cap_reached(self) -> bool:
+        """The account's daily page-load cap is used up (including this run's loads)."""
+        self.db.flush()
+        return (
+            self.page_budget_hit
+            or page_loads_today(self.db, account_id=self.account_id) >= self.settings.scrape_max_pageloads_per_day
+        )
+
     def scrape_keyword(self, searcher: Any, row: ScrapeRunKeyword, index: int, total: int) -> None:
         run = self.run
         started = time.monotonic()
@@ -185,6 +217,7 @@ class _Run:
         try:
             result = searcher.scan(row.keyword_text, max_posts)
         except AccountSafetyStop:
+            self.note_page_loads(searcher, None)
             row.status = "error"
             row.duration_ms = int((time.monotonic() - started) * 1000)
             # The keyword that tripped LinkedIn counts as "just run": the next run plans it
@@ -193,6 +226,7 @@ class _Run:
             self.db.commit()
             raise
         except ScrapeError as exc:
+            self.note_page_loads(searcher, None)
             row.status = "error"
             row.errors += 1
             row.error_message = clip(f"Page error: {exc}", 300)
@@ -204,6 +238,7 @@ class _Run:
             self._log_keyword(row, "error", None)
             return
 
+        self.note_page_loads(searcher, result)
         self.link_attempts = 0
         self.card_link_kind = {}
         row.scrolls = int(getattr(result, "scrolls", 0) or 0)
@@ -370,18 +405,33 @@ class _Run:
             return
         run = self.run
         row.cost_usd_micros += int(persisted.cost_usd_micros or 0)
+        prev = self._counted.pop(seen_post_id, None)
+        if prev is not None:  # re-triage after a text upgrade: undo the earlier tally first
+            prev_row = self.db.get(ScrapeRunKeyword, prev[0]) or row
+            if prev[1] == "relevant":
+                prev_row.posts_relevant -= 1
+                run.posts_relevant -= 1
+            elif prev[1] == "skipped":
+                prev_row.posts_skipped_ai -= 1
+                run.posts_skipped_ai -= 1
+            else:
+                run.triage_failed -= 1
+        kind = "failed"
         if persisted.triage_status == "done":
             run.enquiries_triaged += 1
             if persisted.verdict == "genuine" and persisted.enquiry_id is not None:
+                kind = "relevant"
                 row.posts_relevant += 1
                 run.posts_relevant += 1
                 if self.card_link_kind.get(seen_post_id) != "post":  # a post link needs no menu click
                     link_ids.add(seen_post_id)
             else:
+                kind = "skipped"
                 row.posts_skipped_ai += 1
                 run.posts_skipped_ai += 1
         else:
             run.triage_failed += 1
+        self._counted[seen_post_id] = (row.id, kind)
         self.db.commit()
 
     # ------------------------------------------------------------------ permalinks
@@ -577,7 +627,8 @@ def _execute(
     state.account_id = account_id
     bind_context(linkedin_account_id=account_id)
     if factory is None:
-        factory = lambda s: _default_searcher_factory(s, account_id)  # noqa: E731
+        budget = max(0, settings.scrape_max_pageloads_per_day - page_loads_today(db, account_id=account_id))
+        factory = lambda s: _default_searcher_factory(s, account_id, budget)  # noqa: E731
 
     info["purged"] = seen_posts.purge_expired(db)
     db.commit()
@@ -605,6 +656,7 @@ def _execute(
     session_missing = False
     entered = False
     cap_hit = False
+    cap_kind = "post"  # which daily cap ended the run early: post | page | visit
     try:
         with factory(settings) as searcher:
             entered = True
@@ -622,6 +674,9 @@ def _execute(
                 if posts_seen_today(db, account_id=account_id) >= settings.scrape_max_posts_per_day and index < len(rows):
                     cap_hit = True
                     break
+                if index < len(rows) and state.page_cap_reached():
+                    cap_hit, cap_kind = True, "page"
+                    break
             if settings.watch_append_to_discovery and state.fatal_llm is None and not cap_hit:
                 # Prospect watch appended to this run (same browser session, same caps and cool-down).
                 from sales0.jobs import watch_job
@@ -633,6 +688,7 @@ def _execute(
                 db.commit()
                 if watch_rows:
                     cap_hit = watch_job.watch_phase(watch_state, searcher, watch_rows, sleep, rng, pause_first=True)
+                    cap_kind = watch_state.cap_kind
                     state.fatal_llm = watch_state.fatal_llm
     except SessionMissing as missing:
         db.rollback()
@@ -695,8 +751,17 @@ def _execute(
     else:
         if cap_hit:
             posts_today = posts_seen_today(db, account_id=account_id)
-            note = f"Daily post limit reached ({posts_today}/{settings.scrape_max_posts_per_day})"
-            state.skip_remaining(rows, "Not searched — daily post limit reached")
+            # abort_reason stays 'daily_post_cap' (the CHECK list is closed); the text says which cap.
+            if cap_kind == "page":
+                loads = page_loads_today(db, account_id=account_id)
+                note = f"Daily page-load limit reached ({loads}/{settings.scrape_max_pageloads_per_day})"
+                state.skip_remaining(rows, "Not searched — daily page-load limit reached")
+            elif cap_kind == "visit":
+                note = "Daily profile-visit limit reached"
+                state.skip_remaining(rows, "Not searched — daily profile-visit limit reached")
+            else:
+                note = f"Daily post limit reached ({posts_today}/{settings.scrape_max_posts_per_day})"
+                state.skip_remaining(rows, "Not searched — daily post limit reached")
             run = state.run
             run.abort_reason = "daily_post_cap"
             run.current_step = clip(f"{note} — {summary_text(run)}", 200)

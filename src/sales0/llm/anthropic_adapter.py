@@ -33,6 +33,7 @@ _RESERVED_LOG_KEYS = frozenset({"event", "timestamp", "level", "logger", "exc_in
 
 BACKOFF_BASE_S = 1.0
 BACKOFF_CAP_S = 30.0
+CACHE_CONTROL = {"type": "ephemeral"}
 PING_PROMPT = "Reply with OK"
 PING_MAX_TOKENS = 5
 
@@ -70,6 +71,29 @@ def _retry_after_s(exc: Exception) -> float | None:
     if value is None or value < 0:
         return None
     return min(value, BACKOFF_CAP_S)
+
+
+def _system_blocks(system: str) -> str | list[dict[str, Any]]:
+    """The system prompt as one cacheable text block (prompt caching, 5-min ephemeral).
+
+    Below the model's minimum cacheable length the API silently ignores the marker, so
+    this is always safe to send. An empty system stays a plain string.
+    """
+    if not system:
+        return system
+    return [{"type": "text", "text": system, "cache_control": dict(CACHE_CONTROL)}]
+
+
+def _plain_system(params: dict[str, Any]) -> dict[str, Any]:
+    system = params.get("system")
+    if isinstance(system, list):
+        return {**params, "system": "".join(str(b.get("text", "")) for b in system)}
+    return params
+
+
+def _int_field(usage: Any, name: str) -> int:
+    value = getattr(usage, name, 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
 def _summarise_output(tool_input: dict[str, Any] | None, text: str | None) -> str:
@@ -121,7 +145,7 @@ class AnthropicClient:
     def structured(self, req: StructuredRequest) -> LLMResponse:
         params: dict[str, Any] = {
             "model": self._settings.llm_model,
-            "system": req.system,
+            "system": _system_blocks(req.system),
             "messages": req.messages,
             "tools": [
                 {
@@ -206,6 +230,16 @@ class AnthropicClient:
                     self._sleep(delay)
                     attempt += 1
                     continue
+                if (
+                    isinstance(params.get("system"), list)
+                    and isinstance(exc, anthropic.APIStatusError)
+                    and exc.status_code == 400
+                    and "cache_control" in _api_error_message(exc)
+                ):
+                    # The API rejected prompt caching: fall back to the plain string system.
+                    log.warning("llm_cache_control_rejected", feature=feature, model=self._settings.llm_model)
+                    params = _plain_system(params)
+                    continue
                 mapped = self._map_error(exc)
                 self._log_call(
                     feature=feature,
@@ -233,7 +267,9 @@ class AnthropicClient:
         usage = getattr(message, "usage", None)
         input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-        cost = cost_usd_micros(input_tokens, output_tokens, self._settings)
+        cache_write = _int_field(usage, "cache_creation_input_tokens")
+        cache_read = _int_field(usage, "cache_read_input_tokens")
+        cost = cost_usd_micros(input_tokens, output_tokens, self._settings, cache_write, cache_read)
         text = "".join(texts) or None
         response = LLMResponse(
             tool_input=tool_input,
@@ -242,6 +278,8 @@ class AnthropicClient:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd_micros=cost,
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
             latency_ms=latency_ms,
             request_id=getattr(message, "_request_id", None) or getattr(message, "id", None),
             stop_reason=getattr(message, "stop_reason", None),
@@ -276,6 +314,8 @@ class AnthropicClient:
             prompt_version=prompt_version,
             input_tokens=response.input_tokens if response else 0,
             output_tokens=response.output_tokens if response else 0,
+            cache_creation_input_tokens=response.cache_creation_input_tokens if response else 0,
+            cache_read_input_tokens=response.cache_read_input_tokens if response else 0,
             cost_usd=micros_to_usd(response.cost_usd_micros) if response else 0.0,
             latency_ms=latency_ms,
             status=status,

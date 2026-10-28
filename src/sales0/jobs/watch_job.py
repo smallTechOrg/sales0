@@ -64,6 +64,8 @@ class _WatchRun(_Run):
     """``_Run`` plus the per-profile step."""
 
     hits = 0
+    cap_kind = "post"  # which daily cap ended watch_phase early: post | page | visit
+    consecutive_errors = 0  # profile page errors in a row (fixscrape D #3 breaker)
 
     def scrape_profile(self, searcher: Any, row: ScrapeRunKeyword, index: int, total: int) -> None:
         slug = row.keyword_text.removeprefix(tracked.WATCH_PREFIX)
@@ -83,6 +85,7 @@ class _WatchRun(_Run):
         try:
             result = scan(slug, max_posts)
         except AccountSafetyStop:
+            self.note_page_loads(searcher, None, at_least=1)
             row.status = "error"
             row.duration_ms = int((time.monotonic() - started) * 1000)
             tracked.record_check(self.db, profile_id, "stopped")
@@ -96,8 +99,17 @@ class _WatchRun(_Run):
             self.run.errors_count += 1
             self.run.keywords_done += 1
             tracked.record_check(self.db, profile_id, "error")
+            self.note_page_loads(searcher, None, at_least=1)
             self.db.commit()
+            # Breaker: N page errors in a row means LinkedIn is throttling us - stop like a rate limit
+            # (the caller records needs_attention + the safety cool-down) instead of visiting the rest.
+            self.consecutive_errors += 1
+            if self.consecutive_errors >= self.settings.scrape_max_consecutive_errors:
+                log.warning("watch_error_breaker", consecutive=self.consecutive_errors)
+                raise AccountSafetyStop("rate_limited", profile_url)
             return
+        self.consecutive_errors = 0
+        self.note_page_loads(searcher, result, at_least=1)
 
         posts, foreign = own_posts(list(result.posts), slug, profile_url)
         keyword_id: int | None = None
@@ -179,9 +191,15 @@ def watch_phase(
     *, pause_first: bool = False,
 ) -> bool:
     """Visit ``rows`` in order with human pacing. Returns True when the daily post cap ended it early.
-    ``AccountSafetyStop`` propagates (the caller owns the run outcome)."""
+    ``AccountSafetyStop`` propagates (the caller owns the run outcome). ``state.cap_kind`` says which cap:
+    ``post`` (daily scanned posts), ``page`` (daily page loads) or ``visit`` (daily profile visits)."""
     s = state.settings
     for index, row in enumerate(rows, start=1):
+        if index > 1 or pause_first:
+            kind = _daily_cap_reached(state)
+            if kind is not None:
+                state.cap_kind = kind
+                return True
         if index > 1 or pause_first:
             seconds = rng.uniform(s.watch_profile_pause_min_s, s.watch_profile_pause_max_s)
             state.step(f"Pausing {round(seconds)}s before next profile")
@@ -190,8 +208,19 @@ def watch_phase(
         if state.fatal_llm is not None:
             return False
         if posts_seen_today(state.db, account_id=state.account_id) >= s.scrape_max_posts_per_day and index < len(rows):
+            state.cap_kind = "post"
             return True
     return False
+
+
+def _daily_cap_reached(state: _WatchRun) -> str | None:
+    """``page`` / ``visit`` when this account's daily page-load / profile-visit cap is used up, else None."""
+    state.db.flush()
+    if state.page_cap_reached():
+        return "page"
+    if runs_service.watch_day_counts(state.db, account_id=state.account_id)[1] >= state.settings.watch_max_visits_per_day:
+        return "visit"
+    return None
 
 
 def summary_text(run: ScrapeRun, hits: int) -> str:
@@ -340,12 +369,17 @@ def _execute(
         run.current_step = "AI triage stopped"
     else:
         if cap_hit:
-            state.skip_remaining(rows, "Not checked - daily post limit reached")
+            # abort_reason stays 'daily_post_cap' (the CHECK list is closed); the text says which cap.
+            if state.cap_kind == "page":
+                note = f"Daily page-load limit reached ({runs_service.page_loads_today(db, account_id=account_id)}/{settings.scrape_max_pageloads_per_day})"
+            elif state.cap_kind == "visit":
+                note = f"Daily profile-visit limit reached ({runs_service.watch_day_counts(db, account_id=account_id)[1]}/{settings.watch_max_visits_per_day})"
+            else:
+                note = f"Daily post limit reached ({posts_seen_today(db, account_id=account_id)}/{settings.scrape_max_posts_per_day})"
+            state.skip_remaining(rows, f"Not checked - {note.split(' (')[0].lower()}")
             run = state.run
             run.abort_reason = "daily_post_cap"
-            run.current_step = clip(
-                f"Daily post limit reached ({posts_seen_today(db, account_id=account_id)}/{settings.scrape_max_posts_per_day}) - {summary_text(run, state.hits)}", 200
-            )
+            run.current_step = clip(f"{note} - {summary_text(run, state.hits)}", 200)
         else:
             run.current_step = clip(f"Watch finished - {summary_text(run, state.hits)}", 200)
         state.set_status("succeeded")

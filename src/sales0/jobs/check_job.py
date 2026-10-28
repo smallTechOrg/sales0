@@ -1,7 +1,10 @@
 """Re-check job: verify the saved session invisibly (headless), without logging in.
 
 A green Re-check clears ``needs_attention`` but never the safety cool-down (that is
-derived from the aborted run, ``services.runs.safety_cooldown_until``).
+derived from the aborted run AND from the account's ``last_stop_at``, ``services.runs.safety_cooldown_until``).
+A stop the Re-check itself detects (checkpoint / captcha / rate limit / logout) stamps the account's
+``safety_state`` / ``last_stop_at`` and starts that cool-down, during which Re-check is refused
+(``services.session.assert_recheck_allowed``) and only Connect is allowed.
 """
 
 from __future__ import annotations
@@ -32,6 +35,13 @@ def _default_check(account_id: int) -> Callable[..., Any]:
     return check
 
 
+def _snapshot_cooldown(db: Any, account_id: int) -> None:
+    """Mirror the cool-down this stop started onto the account row (display / audit)."""
+    from sales0.services import runs as runs_service
+
+    runs_service.sync_account_state(db, account_id)
+
+
 def execute(check_fn: Callable[..., Any] | None = None, *, linkedin_account_id: int | None = None) -> None:
     """Re-check ONE LinkedIn account (default: the first active one)."""
     settings = get_settings()
@@ -60,9 +70,11 @@ def execute(check_fn: Callable[..., Any] | None = None, *, linkedin_account_id: 
             outcome = "connected"
         elif result.reason in _SAFETY_REASONS:
             session_service.mark_needs_attention(db, _SAFETY_REASONS[result.reason], result.url, account_id=account_id)
+            _snapshot_cooldown(db, account_id)
             outcome = "needs_attention"
         elif result.reason == "redirected_login" and row.status == "connected":
             session_service.mark_needs_attention(db, "logout", result.url, account_id=account_id)
+            _snapshot_cooldown(db, account_id)
             outcome = "needs_attention"
         elif result.reason in ("no_cookie", "redirected_login"):
             session_service.mark_not_connected(db, session_service.NOT_LOGGED_IN_MESSAGE, account_id=account_id)

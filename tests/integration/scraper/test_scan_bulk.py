@@ -61,7 +61,7 @@ def test_scan_reads_80_distinct_posts_across_two_passes_without_opening_a_menu(
     assert [p.posted_date for p in result.posts] == sorted((p.posted_date for p in result.posts), reverse=True)
     assert all(p.author_name and p.author_headline and p.author_profile_url and p.posted_relative for p in result.posts)
     assert all(expected_verdict(p.text) is not None for p in result.posts)
-    assert result.expanded > 0 and result.expanded <= connected_settings.scrape_expand_max_per_keyword
+    assert result.expanded > 0 and result.expanded <= result.passes * connected_settings.scrape_expand_max_per_keyword  # budget is per pass
 
 
 def test_buyer_posts_are_read_in_full_including_the_see_more_tail(connected_settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
