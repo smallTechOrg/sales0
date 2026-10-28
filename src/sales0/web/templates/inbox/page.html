@@ -8,6 +8,7 @@
     </div>
     <form class="inline-form search-form" method="get" action="/inbox" role="search">
       <input type="hidden" name="tab" value="{{ tab }}">
+      {% if tab == "skipped" and state == "failed" %}<input type="hidden" name="state" value="failed">{% endif %}
       <div class="field">
         <label class="visually-hidden" for="inbox-search">Search this tab</label>
         <input class="input" id="inbox-search" name="q" type="search" value="{{ q }}" placeholder="Search text, company, author…">
@@ -20,6 +21,6 @@
 {% block content %}
   <div class="stack">
     {% include "inbox/_tabs.html" %}
-    {% include "inbox/_list.html" %}
+    {% if tab == "skipped" %}{% include "inbox/_skipped.html" %}{% else %}{% include "inbox/_list.html" %}{% endif %}
   </div>
 {% endblock %}

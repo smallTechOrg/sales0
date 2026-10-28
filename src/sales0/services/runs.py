@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from sales0.clock import ensure_utc, local_day_bounds_utc, local_now, utcnow
@@ -26,7 +26,9 @@ if TYPE_CHECKING:
 log = get_logger("sales0.services.runs")
 
 ACTIVE_STATUSES = ("queued", "running")
-INTERRUPTED_MESSAGE = "Interrupted by server restart"
+INTERRUPTED_MESSAGE = (
+    "Interrupted by server restart — the next run continues with the keywords it had not reached"
+)
 
 # Safety-stop kinds -> which cool-down setting applies (data flow step 6c).
 LONG_COOLDOWN_KINDS = ("rate_limited", "captcha")  # SALES0_SAFETY_COOLDOWN_MIN
@@ -146,6 +148,10 @@ def run_view(run: ScrapeRun, cost_usd_micros: int = 0, layout_warnings: int = 0)
         error_message=run.error_message,
         cost_usd_micros=cost_usd_micros,
         layout_warnings=layout_warnings,
+        posts_relevant=run.posts_relevant,
+        posts_skipped_ai=run.posts_skipped_ai,
+        permalinks_found=run.permalinks_found,
+        relevance_pct=round(run.posts_relevant / run.posts_new * 100, 1) if run.posts_new else None,
     )
 
 
@@ -159,6 +165,11 @@ def _keyword_view(row: ScrapeRunKeyword) -> RunKeywordView:
         errors=row.errors,
         duration_ms=row.duration_ms,
         error_message=row.error_message,
+        posts_relevant=row.posts_relevant,
+        posts_skipped_ai=row.posts_skipped_ai,
+        permalinks_found=row.permalinks_found,
+        scrolls=row.scrolls,
+        cost_usd_micros=row.cost_usd_micros,
     )
 
 
@@ -353,22 +364,67 @@ def start_run(db: Session, actor_user_id: int | None = None) -> RunView:
     return run_view(run)
 
 
+def plan_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
+    """Active keywords for the next run: first those the latest finished run had not reached
+    (keyword row pending/running/skipped and ``last_run_at`` before that run started), then never-run,
+    then least-recently-run, then by id. Queued/running runs (the run being planned) are ignored."""
+    limit = max(int(limit), 0)
+    if limit == 0:
+        return []
+    chosen: list[tuple[int, str]] = []
+    seen: set[int] = set()
+    previous = db.scalar(
+        select(ScrapeRun).where(ScrapeRun.status.not_in(ACTIVE_STATUSES)).order_by(ScrapeRun.id.desc()).limit(1)
+    )
+    if previous is not None:
+        rows = db.execute(
+            select(Keyword.id, Keyword.text, Keyword.last_run_at)
+            .join(ScrapeRunKeyword, ScrapeRunKeyword.keyword_id == Keyword.id)
+            .where(
+                ScrapeRunKeyword.run_id == previous.id,
+                ScrapeRunKeyword.status.in_(("pending", "running", "skipped")),
+                Keyword.active.is_(True),
+            )
+            .order_by(ScrapeRunKeyword.id)
+        ).all()
+        for kid, text, last_run_at in rows:
+            if previous.started_at is not None and last_run_at is not None:
+                if ensure_utc(last_run_at) >= ensure_utc(previous.started_at):
+                    continue
+            if kid not in seen:
+                seen.add(kid)
+                chosen.append((int(kid), text))
+    if len(chosen) < limit:
+        rest = db.execute(
+            select(Keyword.id, Keyword.text)
+            .where(Keyword.active.is_(True))
+            .order_by(case((Keyword.last_run_at.is_(None), 0), else_=1), Keyword.last_run_at, Keyword.id)
+        ).all()
+        for kid, text in rest:
+            if kid not in seen:
+                seen.add(kid)
+                chosen.append((int(kid), text))
+    return chosen[:limit]
+
+
 def recover_interrupted_runs(db: Session) -> int:
-    """Mark runs left queued/running by a previous process as failed. Returns the count."""
+    """Mark runs left queued/running by a previous process as ``aborted`` (no abort reason, so no
+    cool-down) and their unfinished keyword rows ``skipped``. Returns the count."""
     now = utcnow()
     runs = db.scalars(select(ScrapeRun).where(ScrapeRun.status.in_(ACTIVE_STATUSES))).all()
     for run in runs:
-        record_history(db, "scrape_run", run.id, "status", run.status, "failed", note=INTERRUPTED_MESSAGE, now=now)
-        run.status = "failed"
+        record_history(db, "scrape_run", run.id, "status", run.status, "aborted", note=INTERRUPTED_MESSAGE, now=now)
+        run.status = "aborted"
+        run.abort_reason = None
         run.error_message = INTERRUPTED_MESSAGE
         run.finished_at = now
-        run.current_step = INTERRUPTED_MESSAGE
+        run.current_step = INTERRUPTED_MESSAGE[:200]
     if runs:
         ids = [r.id for r in runs]
         db.execute(
             update(ScrapeRunKeyword)
             .where(ScrapeRunKeyword.run_id.in_(ids), ScrapeRunKeyword.status.in_(("pending", "running")))
-            .values(status="skipped", error_message=INTERRUPTED_MESSAGE)
+            .values(status="skipped", error_message=INTERRUPTED_MESSAGE[:300])
         )
     db.flush()
     return len(runs)
@@ -390,6 +446,7 @@ __all__ = [
     "get_run",
     "keyword_outcome",
     "list_runs",
+    "plan_keywords",
     "posts_seen_today",
     "recover_interrupted_runs",
     "recover_interrupted_runs_on_startup",

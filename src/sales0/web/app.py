@@ -10,9 +10,10 @@ from fastapi.staticfiles import StaticFiles
 
 from sales0 import __version__
 from sales0.config import Settings, get_settings
-from sales0.db.engine import get_engine
+from sales0.db.engine import get_engine, session_scope
 from sales0.db.migrate_check import assert_at_head
 from sales0.logging import configure_logging, get_logger
+from sales0.services.keywords import seed_suggested_once
 from sales0.services.runs import recover_interrupted_runs_on_startup
 from sales0.web.envelope import install_exception_handlers
 from sales0.web.middleware import CsrfOriginMiddleware, RequestContextMiddleware
@@ -32,7 +33,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         configure_logging(settings)
         settings.data_path.mkdir(parents=True, exist_ok=True)
         revision = assert_at_head(get_engine())
-        recover_interrupted_runs_on_startup()  # slice D: queued/running runs -> failed
+        recover_interrupted_runs_on_startup()  # Phase 1.4: queued/running runs -> aborted (restart)
+        with session_scope() as db:
+            seed_suggested_once(db)  # Phase 1.4: the 60 suggested keywords, once
         log.info(
             "app_started",
             db_revision=revision,

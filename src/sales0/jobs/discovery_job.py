@@ -26,6 +26,13 @@ Phase 1.1:
   the Phase 1.1 fields (``cards_found``, ``field_misses``, ``drift``, ``layout_warnings``,
   ``browser``).
 
+Phase 1.4 (architecture.md -> Thorough discovery): purge on run start; ``plan_keywords``;
+per keyword ``scan`` -> ``register_sighting`` (commit every 10) -> concurrent triage of the
+unseen posts only (``persist_triage`` on this thread) -> ``capture_links`` for the genuine
+posts -> ``attach_permalink`` -> ``record_yield``; one commit per keyword. The summary states
+scanned vs relevant honestly. A restart marks the run ``aborted`` (services.runs) and the next
+``plan_keywords`` resumes with the un-run keywords.
+
 Phase 1.2: ``scrape_keyword`` also logs ``strategy`` (``sdui|urn|none``), ``permalink_attempts``
 and ``permalinks_found``; posts are identified by ``source_ref`` (a URN or ``ck:<KEY>``).
 """
@@ -38,23 +45,27 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sales0.clock import utcnow
 from sales0.config import Settings, get_settings
 from sales0.db.engine import get_sessionmaker
-from sales0.db.models import Enquiry, Keyword, ScrapeRun, ScrapeRunKeyword
-from sales0.llm import LLMClient
+from sales0.agent import TriageDeps, load_candidates, select_examples
+from sales0.agent.batch import BatchItem, triage_concurrently
+from sales0.db.models import Keyword, LlmCall, ScrapeRun, ScrapeRunKeyword
+from sales0.llm import LLMClient, get_llm_client
 from sales0.logging import bind_context, get_logger, unbind_context
 from sales0.jobs.session_log import log_run_start
+from sales0.scraper.urls import urn_from_href
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
-from sales0.services import dedupe
+from sales0.services import keywords as keywords_service
+from sales0.services import seen_posts
 from sales0.services import session as session_service
 from sales0.services._common import clip, record_history
-from sales0.services.runs import keyword_outcome, posts_seen_today
-from sales0.services.triage import FATAL_LLM_ERRORS, triage_enquiry
+from sales0.services.runs import keyword_outcome, plan_keywords, posts_seen_today
+from sales0.services.triage import active_offering_refs
 
 log = get_logger("sales0.jobs.discovery")
 
@@ -84,19 +95,12 @@ def _default_searcher_factory(settings: Settings) -> Any:
 
 
 def select_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
-    """Active keywords as ``(id, text)``, never-run first, then least-recently run, then id.
+    """Active keywords as ``(id, text)`` in plan order (resume-first, never-run, least-recent).
 
-    Plain tuples, not ORM objects: a keyword can be deleted on Setup while the run is in
-    progress, and a stale identity-mapped ``Keyword`` would then fail the run's flush.
+    Kept as the job's name for ``services.runs.plan_keywords``. Plain tuples, not ORM
+    objects: a keyword can be deleted on Setup while the run is in progress.
     """
-    never_run_first = case((Keyword.last_run_at.is_(None), 0), else_=1)
-    rows = db.execute(
-        select(Keyword.id, Keyword.text)
-        .where(Keyword.active.is_(True))
-        .order_by(never_run_first, Keyword.last_run_at, Keyword.id)
-        .limit(limit)
-    ).all()
-    return [(int(kid), str(text)) for kid, text in rows]
+    return plan_keywords(db, limit)
 
 
 class _Run:
@@ -118,7 +122,8 @@ class _Run:
         self.sleep = sleep
         self.rng = rng
         self.fatal_llm: str | None = None
-        self.pending_triage: list[int] = []  # NEW enquiries of this run not yet triaged
+        self.link_attempts = 0  # "Copy link to post" attempts of the current keyword
+        self.card_link_kind: dict[int, str] = {}  # seen_post id -> link kind of its card (this keyword)
 
     @property
     def run(self) -> ScrapeRun:
@@ -139,47 +144,6 @@ class _Run:
             record_history(self.db, "scrape_run", run.id, "status", run.status, status, note=note)
             run.status = status
 
-    # ------------------------------------------------------------------ triage
-    def triage_pending(self) -> None:
-        total = len(self.pending_triage)
-        done = 0
-        while self.pending_triage and self.fatal_llm is None:
-            enquiry_id = self.pending_triage[0]
-            done += 1
-            self.step(f"Triaging {total} new enquir{'y' if total == 1 else 'ies'} ({done}/{total})")
-            bind_context(enquiry_id=enquiry_id)
-            try:
-                enquiry = self.db.get(Enquiry, enquiry_id)
-                if enquiry is None or enquiry.triage_status != "pending":
-                    self.pending_triage.pop(0)
-                    continue
-                outcome = triage_enquiry(self.db, enquiry_id, self.llm, run_id=self.run_id)
-            except FATAL_LLM_ERRORS as exc:
-                self.fatal_llm = getattr(exc, "message", str(exc))
-                self.db.commit()  # keep the llm_calls error row
-                log.error("triage_fatal", error_type=getattr(exc, "error_type", type(exc).__name__))
-                break
-            except Exception as exc:  # noqa: BLE001 — one bad enquiry must not kill the run
-                self.db.rollback()
-                log.exception("triage_crashed", error_type=type(exc).__name__)
-                enquiry = self.db.get(Enquiry, enquiry_id)
-                if enquiry is not None and enquiry.triage_status == "pending":
-                    enquiry.triage_status = "failed"
-                    enquiry.triage_error = clip(f"AI triage crashed ({type(exc).__name__}) — Retry triage", 300)
-                self.run.triage_failed += 1
-                self.pending_triage.pop(0)
-                self.db.commit()
-                continue
-            finally:
-                unbind_context("enquiry_id")
-            self.pending_triage.pop(0)
-            run = self.run
-            if outcome.status == "done":
-                run.enquiries_triaged += 1
-            else:
-                run.triage_failed += 1
-            self.db.commit()
-
     # ------------------------------------------------------------------ keywords
     def skip_remaining(self, rows: list[ScrapeRunKeyword], message: str | None = None) -> None:
         for row in rows:
@@ -189,6 +153,21 @@ class _Run:
                     row.error_message = clip(message, 300)
         self.db.commit()
 
+    def _register(self, post: Any, row: ScrapeRunKeyword, keyword_id: int | None) -> tuple[Any, int | None]:
+        """``register_sighting`` inside a savepoint; a deleted keyword retries as text-only."""
+        for attempt_id in ((keyword_id, None) if keyword_id is not None else (None,)):
+            try:
+                with self.db.begin_nested():
+                    sighting = seen_posts.register_sighting(
+                        self.db, post, self.run_id, attempt_id, row.keyword_text
+                    )
+                return sighting, attempt_id
+            except IntegrityError:
+                if attempt_id is None:
+                    raise
+                log.warning("keyword_deleted_mid_save", keyword=row.keyword_text, ref=getattr(post, "source_ref", None))
+        raise AssertionError("unreachable")  # pragma: no cover
+
     def scrape_keyword(self, searcher: Any, row: ScrapeRunKeyword, index: int, total: int) -> None:
         run = self.run
         started = time.monotonic()
@@ -197,7 +176,7 @@ class _Run:
         remaining_today = self.settings.scrape_max_posts_per_day - posts_seen_today(self.db)
         max_posts = max(1, min(self.settings.scrape_max_posts_per_keyword, remaining_today))
         try:
-            result = searcher.search(row.keyword_text, max_posts)
+            result = searcher.scan(row.keyword_text, max_posts)
         except AccountSafetyStop:
             row.status = "error"
             row.duration_ms = int((time.monotonic() - started) * 1000)
@@ -218,29 +197,23 @@ class _Run:
             self._log_keyword(row, "error", None)
             return
 
-        self.step(f"Saving {len(result.posts)} posts for '{row.keyword_text}' ({index}/{total})")
+        self.link_attempts = 0
+        self.card_link_kind = {}
+        row.scrolls = int(getattr(result, "scrolls", 0) or 0)
+        total_posts = len(result.posts)
+        self.step(f"Checking {total_posts} posts for '{row.keyword_text}' ({index}/{total})")
         # The keyword may have been deleted on Setup while it was being searched: the hit
         # then keeps only its text snapshot (keyword_id NULL) instead of failing the FK.
         keyword_id = self._live_keyword_id(row)
+        to_triage: list[int] = []  # seen_post ids needing a verdict (new, or pending from a stopped run)
+        refs: dict[int, str] = {}  # seen_post id -> source_ref (for permalink capture)
+        link_ids: set[int] = set()  # seen_post ids that want a permalink
+        since_commit = 0
         for post in result.posts:
             try:
-                try:
-                    kind, enquiry_id = dedupe.upsert_post(self.db, post, self.run_id, keyword_id, row.keyword_text)
-                except IntegrityError:
-                    if keyword_id is None:
-                        raise
-                    # Race: the keyword was deleted on Setup between posts, so the hit's FK
-                    # fails. Earlier posts are committed; retry this one once as a
-                    # text-only hit, and save the rest of this keyword's posts the same way.
-                    self.db.rollback()
-                    log.warning("keyword_deleted_mid_save", keyword=row.keyword_text, ref=getattr(post, "source_ref", None))
-                    keyword_id = None
-                    row = self.db.get(ScrapeRunKeyword, row.id) or row
-                    kind, enquiry_id = dedupe.upsert_post(self.db, post, self.run_id, None, row.keyword_text)
+                sighting, keyword_id = self._register(post, row, keyword_id)
             except Exception as exc:  # noqa: BLE001 — a malformed post must not lose the others
-                self.db.rollback()
                 log.exception("post_save_failed", ref=getattr(post, "source_ref", None), error_type=type(exc).__name__)
-                row = self.db.get(ScrapeRunKeyword, row.id) or row
                 row.errors += 1
                 self.run.errors_count += 1
                 self.db.commit()
@@ -248,14 +221,36 @@ class _Run:
             run = self.run
             row.posts_seen += 1
             run.posts_seen += 1
-            if kind == "new":
+            if sighting.kind == "new":
                 row.posts_new += 1
                 run.posts_new += 1
-                self.pending_triage.append(enquiry_id)
             else:
                 row.posts_dupe += 1
                 run.posts_dupe += 1
-            self.db.commit()
+            if sighting.kind == "new" or sighting.triage_status == "pending":
+                if sighting.seen_post_id not in refs:
+                    to_triage.append(sighting.seen_post_id)
+            if sighting.needs_permalink:
+                link_ids.add(sighting.seen_post_id)
+            refs.setdefault(sighting.seen_post_id, post.source_ref)
+            self.card_link_kind[sighting.seen_post_id] = str(getattr(post, "link_kind", "post"))
+            since_commit += 1
+            if since_commit >= 10:
+                self.db.commit()
+                since_commit = 0
+        self.db.commit()
+
+        self.triage_batch(row, to_triage, keyword_id, link_ids)
+
+        if self.fatal_llm is None and link_ids:
+            try:
+                self.capture_links(searcher, row, link_ids, refs, index, total)
+            except AccountSafetyStop:
+                # Everything scanned and triaged so far stays; the yield is still recorded.
+                keywords_service.record_yield(self.db, keyword_id, row.posts_seen, row.posts_relevant)
+                row.duration_ms = int((time.monotonic() - started) * 1000)
+                self.db.commit()
+                raise
 
         if result.parse_errors:
             row.errors += int(result.parse_errors)
@@ -267,8 +262,145 @@ class _Run:
         row.duration_ms = int((time.monotonic() - started) * 1000)
         self.run.keywords_done += 1
         self._mark_keyword_run(row)
+        keywords_service.record_yield(self.db, keyword_id, row.posts_seen, row.posts_relevant)
         self.db.commit()
         self._log_keyword(row, status, result)
+
+    # ------------------------------------------------------------------ triage
+    def triage_batch(
+        self, row: ScrapeRunKeyword, seen_post_ids: list[int], keyword_id: int | None, link_ids: set[int]
+    ) -> None:
+        """Triage unseen posts 4 at a time; persist each result on this thread (commit each)."""
+        if not seen_post_ids:
+            return
+        inputs = seen_posts.triage_inputs(self.db, seen_post_ids)
+        if not inputs:
+            return
+        settings = self.settings
+        started = time.monotonic()
+        client = self.llm or get_llm_client()
+        deps = TriageDeps(
+            llm=client,
+            offerings=active_offering_refs(self.db),
+            examples=select_examples(
+                load_candidates(self.db, exclude_enquiry_id=0), settings.fewshot_max_examples, settings.fewshot_text_chars
+            ),
+            settings=settings,
+        )
+        self.db.commit()  # release the read snapshot before the pool starts
+        items = [BatchItem(key=sid, inp=inp) for sid, inp in inputs]
+        done = 0
+        try:
+            for result in triage_concurrently(items, deps, concurrency=settings.triage_concurrency):
+                done += 1
+                self.step(f"Triaging new posts for '{row.keyword_text}' ({done}/{len(items)})")
+                if result.fatal is not None:
+                    self.fatal_llm = getattr(result.fatal, "message", str(result.fatal))
+                    self.db.add(
+                        LlmCall(
+                            feature="triage",
+                            model=settings.llm_model,
+                            prompt_version="triage-v2",
+                            seen_post_id=result.key,
+                            run_id=self.run_id,
+                            status="error",
+                            error_type=clip(getattr(result.fatal, "error_type", type(result.fatal).__name__), 100),
+                        )
+                    )
+                    self.db.commit()
+                    log.error("triage_fatal", error_type=type(result.fatal).__name__)
+                    continue  # in-flight calls still finish and are persisted
+                self._persist(row, result.key, result.outcome, keyword_id, link_ids)
+        except Exception as exc:  # noqa: BLE001 — a crashed worker must not kill the run
+            self.db.rollback()
+            log.exception("triage_crashed", error_type=type(exc).__name__)
+            self.run.triage_failed += 1
+            row.errors += 1
+            self.db.commit()
+        log.info(
+            "triage_batch", items=len(items), concurrency=settings.triage_concurrency,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+
+    def _persist(
+        self, row: ScrapeRunKeyword, seen_post_id: int, outcome: Any, keyword_id: int | None, link_ids: set[int]
+    ) -> None:
+        error = getattr(outcome, "error", None) if outcome is not None and outcome.status != "done" else None
+        try:
+            persisted = None
+            for attempt_id in ((keyword_id, None) if keyword_id is not None else (None,)):
+                try:
+                    with self.db.begin_nested():
+                        persisted = seen_posts.persist_triage(
+                            self.db, seen_post_id, outcome, error=error, run_id=self.run_id, keyword_id=attempt_id
+                        )
+                    break
+                except IntegrityError:
+                    if attempt_id is None:
+                        raise
+                    log.warning("keyword_deleted_mid_save", keyword=row.keyword_text, seen_post_id=seen_post_id)
+            assert persisted is not None
+        except Exception as exc:  # noqa: BLE001
+            self.db.rollback()
+            log.exception("persist_triage_failed", seen_post_id=seen_post_id, error_type=type(exc).__name__)
+            row = self.db.get(ScrapeRunKeyword, row.id) or row
+            self.run.triage_failed += 1
+            row.errors += 1
+            self.db.commit()
+            return
+        run = self.run
+        row.cost_usd_micros += int(persisted.cost_usd_micros or 0)
+        if persisted.triage_status == "done":
+            run.enquiries_triaged += 1
+            if persisted.verdict == "genuine" and persisted.enquiry_id is not None:
+                row.posts_relevant += 1
+                run.posts_relevant += 1
+                if self.card_link_kind.get(seen_post_id) != "post":  # a post link needs no menu click
+                    link_ids.add(seen_post_id)
+            else:
+                row.posts_skipped_ai += 1
+                run.posts_skipped_ai += 1
+        else:
+            run.triage_failed += 1
+        self.db.commit()
+
+    # ------------------------------------------------------------------ permalinks
+    def capture_links(
+        self, searcher: Any, row: ScrapeRunKeyword, link_ids: set[int], refs: dict[int, str], index: int, total: int
+    ) -> None:
+        wanted = {sid: refs[sid] for sid in sorted(link_ids) if sid in refs}
+        if not wanted or not hasattr(searcher, "capture_links"):
+            return
+        self.step(f"Copying post links for '{row.keyword_text}' ({index}/{total})")
+        try:
+            captured = searcher.capture_links(list(wanted.values()))
+        except AccountSafetyStop:
+            # Everything already persisted is kept; the handler in _execute does the rest.
+            row.status = "error"
+            self._mark_keyword_run(row, at=utcnow())
+            self.db.commit()
+            raise
+        except ScrapeError as exc:
+            log.warning("capture_links_failed", keyword=row.keyword_text, error=str(exc)[:200])
+            return
+        links: dict[str, str] = dict(getattr(captured, "links", {}) or {})
+        self.link_attempts = int(getattr(captured, "attempts", 0) or 0)
+        found = 0
+        for sid, ref in wanted.items():
+            url = links.get(ref)
+            if not url:
+                continue
+            urn = ref if ref.startswith("urn:li:") else urn_from_href(url)
+            try:
+                if seen_posts.attach_permalink(self.db, sid, url, urn=urn):
+                    found += 1
+            except Exception as exc:  # noqa: BLE001
+                self.db.rollback()
+                log.exception("attach_permalink_failed", seen_post_id=sid, error_type=type(exc).__name__)
+                row = self.db.get(ScrapeRunKeyword, row.id) or row
+        row.permalinks_found += found
+        self.run.permalinks_found += found
+        self.db.commit()
 
     def _live_keyword_id(self, row: ScrapeRunKeyword) -> int | None:
         if row.keyword_id is None:
@@ -294,6 +426,8 @@ class _Run:
             posts_seen=row.posts_seen,
             posts_new=row.posts_new,
             posts_dupe=row.posts_dupe,
+            posts_relevant=row.posts_relevant,
+            posts_skipped_ai=row.posts_skipped_ai,
             errors=row.errors,
             duration_ms=row.duration_ms,
             status=status,
@@ -303,9 +437,27 @@ class _Run:
             drift=bool(getattr(result, "drift_warning", False)),
             no_results=bool(getattr(result, "no_results", False)),
             strategy=str(getattr(result, "strategy", None) or "none"),
-            permalink_attempts=int(getattr(result, "permalink_attempts", 0) or 0),
-            permalinks_found=int(getattr(result, "permalinks_found", 0) or 0),
+            permalink_attempts=self.link_attempts,
+            permalinks_found=row.permalinks_found,
+            scrolls=row.scrolls,
+            passes=int(getattr(result, "passes", 1) or 1) if result is not None else 0,
+            expanded=int(getattr(result, "expanded", 0) or 0),
+            stop_reason=str(getattr(result, "stop_reason", None) or "cap"),
+            cost_usd=round(row.cost_usd_micros / 1_000_000, 6),
         )
+
+
+def summary_text(run: ScrapeRun) -> str:
+    """The honest funnel: scanned vs new vs relevant (never "found N enquiries")."""
+    pct = f" ({round(run.posts_relevant / run.posts_new * 100)}%)" if run.posts_new else ""
+    return (
+        f"scanned {run.posts_seen} · new {run.posts_new} · relevant {run.posts_relevant}{pct}"
+        f" · skipped by AI {run.posts_skipped_ai} · already seen {run.posts_dupe}"
+    )
+
+
+def relevance_pct(run: ScrapeRun) -> float | None:
+    return round(run.posts_relevant / run.posts_new * 100, 1) if run.posts_new else None
 
 
 def execute(
@@ -322,8 +474,9 @@ def execute(
     bind_context(run_id=run_id, job="run")
     started = time.monotonic()
     db = get_sessionmaker()()
+    info: dict[str, int] = {"purged": 0}
     try:
-        _execute(db, run_id, settings, llm, factory, sleep, rng or random.Random())
+        _execute(db, run_id, settings, llm, factory, sleep, rng or random.Random(), info)
     except Exception as exc:  # noqa: BLE001 — last-resort: the run must never stay "running"
         log.exception("scrape_run_crashed", error_type=type(exc).__name__)
         db.rollback()
@@ -339,6 +492,11 @@ def execute(
                 posts_seen=run.posts_seen,
                 posts_new=run.posts_new,
                 posts_dupe=run.posts_dupe,
+                posts_relevant=run.posts_relevant,
+                posts_skipped_ai=run.posts_skipped_ai,
+                permalinks_found=run.permalinks_found,
+                relevance_pct=relevance_pct(run),
+                purged=info['purged'],
                 enquiries_triaged=run.enquiries_triaged,
                 triage_failed=run.triage_failed,
                 errors_count=run.errors_count,
@@ -385,6 +543,7 @@ def _execute(
     factory: SearcherFactory,
     sleep: Callable[[float], None],
     rng: random.Random,
+    info: dict[str, int],
 ) -> None:
     state = _Run(db, run_id, settings, llm, sleep, rng)
     run = db.get(ScrapeRun, run_id)
@@ -392,6 +551,9 @@ def _execute(
         log.warning("scrape_run_not_queued", status=getattr(run, "status", None))
         return
 
+    info["purged"] = seen_posts.purge_expired(db)
+    db.commit()
+    log.info("seen_posts_purged", rows=info["purged"])
     keywords = select_keywords(db, settings.scrape_max_keywords_per_run)
     rows = [
         ScrapeRunKeyword(run_id=run_id, keyword_id=kid, keyword_text=text, status="pending") for kid, text in keywords
@@ -427,7 +589,6 @@ def _execute(
                     state.step(f"Pausing {round(seconds)}s before next keyword")
                     sleep(seconds)
                 state.scrape_keyword(searcher, row, index, len(rows))
-                state.triage_pending()
                 if state.fatal_llm is not None:
                     break
                 if posts_seen_today(db) >= settings.scrape_max_posts_per_day and index < len(rows):
@@ -459,8 +620,6 @@ def _execute(
                 row_db.errors += 1
                 run.errors_count += 1
         state.skip_remaining(rows, f"Not searched — run stopped ({abort_kind})")
-        # Saved-but-untriaged enquiries are still triaged: no LinkedIn request involved.
-        state.triage_pending()
         run = state.run
         run.abort_reason = abort_kind
         label = SAFETY_LABELS.get(abort_kind, abort_kind)
@@ -471,7 +630,7 @@ def _execute(
             stopped = f"Run stopped: {label}. {message}"
         run.error_message = clip(stopped, 500)
         state.set_status("aborted", note=abort_kind)
-        run.current_step = f"Run stopped: {SAFETY_LABELS.get(abort_kind, abort_kind)}"
+        run.current_step = clip(f"Run stopped: {SAFETY_LABELS.get(abort_kind, abort_kind)} — {summary_text(run)}", 200)
     elif session_missing:
         message = session_service.NOT_LOGGED_IN_MESSAGE
         session_service.mark_not_connected(db, message)
@@ -500,9 +659,9 @@ def _execute(
             state.skip_remaining(rows, "Not searched — daily post limit reached")
             run = state.run
             run.abort_reason = "daily_post_cap"
-            run.current_step = f"{note} — remaining keywords skipped"
+            run.current_step = clip(f"{note} — {summary_text(run)}", 200)
         else:
-            run.current_step = f"Run finished — {run.posts_new} new enquir{'y' if run.posts_new == 1 else 'ies'}"
+            run.current_step = clip(f"Run finished — {summary_text(run)}", 200)
         state.set_status("succeeded")
         session_service.mark_successful_run(db, now=now)
     run.current_keyword = None
@@ -510,4 +669,4 @@ def _execute(
     db.commit()
 
 
-__all__ = ["execute", "select_keywords"]
+__all__ = ["execute", "relevance_pct", "select_keywords", "summary_text"]

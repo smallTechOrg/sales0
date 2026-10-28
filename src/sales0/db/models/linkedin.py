@@ -23,10 +23,15 @@ class LinkedInSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, default=LINKEDIN_SESSION_ID)
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="not_connected", server_default="not_connected"
+        String(20),
+        nullable=False,
+        default="not_connected",
+        server_default="not_connected",
     )
     last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_connected_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_successful_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_error: Mapped[str | None] = mapped_column(String(300))
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc
+    )

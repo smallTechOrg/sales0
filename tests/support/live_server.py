@@ -55,6 +55,13 @@ PHASE11_ENV = {
     "SALES0_LINKEDIN_BROWSER_CHANNEL": "chromium",
 }
 
+# Phase 1.4: startup seeding is off (a test presses "Add suggested keywords" itself) and a run plans
+# at most 6 keywords, so a bulk E2E run scans >= 200 posts without taking an hour of paced browsing.
+PHASE14_ENV = {
+    "SALES0_SEED_SUGGESTED_KEYWORDS": "false",
+    "SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN": "6",
+}
+
 FORBIDDEN_PORT = 8765
 
 _RUNNING: set[LiveServer] = set()
@@ -104,6 +111,7 @@ class LiveServer:
                 "SALES0_LOG_LEVEL": "INFO",
                 **TEST_PACING_ENV,
                 **PHASE11_ENV,
+                **PHASE14_ENV,
                 **self.extra_env,
             }
         )
@@ -254,4 +262,4 @@ def _stop_leftovers() -> None:
         server.stop()
 
 
-__all__ = ["E2E_PORT", "FORBIDDEN_PORT", "PHASE11_ENV", "LiveServer", "LiveServerError", "live_server"]
+__all__ = ["E2E_PORT", "FORBIDDEN_PORT", "PHASE11_ENV", "PHASE14_ENV", "LiveServer", "LiveServerError", "live_server"]

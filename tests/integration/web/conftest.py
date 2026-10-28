@@ -28,7 +28,9 @@ from sales0.db.models import (
     LinkedInSession,
     LlmCall,
     ScrapeRun,
+    Keyword,
     ScrapeRunKeyword,
+    SeenPost,
 )
 from sales0.jobs.runner import reset_runner
 from sales0.services.dedupe import content_hash
@@ -123,6 +125,69 @@ def triaged(verdict: str, reason: str, *, priority: str = "high", offering_id: i
         "requirement_summary": summary,
         **extra,
     }
+
+
+_TRIAGE_AI_RESULT = {
+    "verdict": "discard", "reason": "Training agency sourcing trainers", "poster_type": "training_agency",
+    "requirement_summary": "Agency - trainers wanted", "priority": "low", "offering_id": None,
+}
+
+
+def make_seen_post(
+    text: str = "Hiring freelance AI trainers for upcoming corporate batches, rates per day, apply now.",
+    *,
+    verdict: str | None = "discard",
+    reason: str | None = "Agency recruiting freelance trainers",
+    triage_status: str = "done",
+    triage_error: str | None = None,
+    purged: bool = False,
+    author: str | None = "Agency Person",
+    post_url: str | None = None,
+    times_seen: int = 1,
+    keyword_text: str = "ai workshop",
+    run_id: int | None = None,
+    **fields: Any,
+) -> int:
+    """Insert a ``seen_posts`` row as discovery leaves it for a post the AI skipped (or failed on)."""
+    import hashlib
+
+    now = utcnow()
+    with session_scope() as db:
+        row = SeenPost(
+            fingerprint=hashlib.sha256(f"{author}|{text}".encode()).hexdigest(),
+            content_hash=hashlib.sha256(text.encode()).hexdigest(),
+            text_prefix=text[:300],
+            author_name=author,
+            author_headline="Talent partner",
+            keyword_text=keyword_text,
+            first_run_id=run_id,
+            triage_status=triage_status,
+            triage_error=triage_error,
+            verdict=verdict,
+            reason=reason,
+            poster_type="training_agency" if verdict else None,
+            ai_result={**_TRIAGE_AI_RESULT, "verdict": verdict, "reason": reason} if verdict else None,
+            snippet=" ".join(text.split())[:240],
+            raw_text=None if purged else text,
+            raw_purge_after=None if purged else now + timedelta(days=14),
+            raw_purged_at=now if purged else None,
+            post_url=post_url,
+            first_seen_at=now - timedelta(hours=3),
+            last_seen_at=now - timedelta(hours=2),
+            times_seen=times_seen,
+            **fields,
+        )
+        db.add(row)
+        db.flush()
+        return row.id
+
+
+def make_keyword(text: str, *, group_name: str | None = None, suggested_key: str | None = None, **fields: Any) -> int:
+    with session_scope() as db:
+        row = Keyword(text=text, text_key=text.lower(), group_name=group_name, suggested_key=suggested_key, **fields)
+        db.add(row)
+        db.flush()
+        return row.id
 
 
 def add_llm_call(cost_usd_micros: int, *, enquiry_id: int | None = None, input_tokens: int = 1000, output_tokens: int = 300) -> None:

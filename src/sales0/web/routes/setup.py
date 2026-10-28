@@ -33,12 +33,14 @@ def _safety_caps(session: SessionStatusView) -> list[tuple[str, str]]:
     return [
         ("Keywords per run", f"{s.scrape_max_keywords_per_run}"),
         ("Posts per keyword", f"{s.scrape_max_posts_per_keyword}"),
-        ("Posts per day", f"{s.scrape_max_posts_per_day}"),
+        ("Posts scanned per day", f"{s.scrape_max_posts_per_day}"),
         ("Runs per day", f"{s.scrape_max_runs_per_day}"),
         ("Delay between page actions", f"{s.scrape_delay_min_s:g}–{s.scrape_delay_max_s:g} s (random)"),
         ("Pause between keywords", f"{s.scrape_keyword_pause_min_s:g}–{s.scrape_keyword_pause_max_s:g} s (random)"),
         ("Scrolls per keyword", f"{s.scrape_max_scrolls}"),
-        ("Post date filter", s.scrape_date_filter),
+        ("Search order", "Latest first" if s.scrape_sort == "latest" else "Most relevant first"),
+        ("Post date filters (one pass each)", ", ".join(s.scrape_date_filters)),
+        ("Posts triaged at once", f"{s.triage_concurrency}"),
         ("Connect waits for login", f"{s.linkedin_connect_timeout_s} s"),
         ("Browser", session.browser_label),
         ("Runs", "hidden (headless)"),
@@ -81,8 +83,42 @@ def _linkedin_card(request: Request, session: SessionStatusView, *, changed: boo
     return _html(html, headers={"HX-Trigger": "session-changed"} if changed else None)
 
 
+OWN_GROUP = "Your keywords"
+
+
+def _keywords_ctx(db: Session) -> dict:
+    """Keywords grouped for the Setup card: one group per offering name (suggested phrases),
+    then any other group, then "Your keywords" (no group). Empty groups are not shown."""
+    rows = keywords_service.list_keywords(db)
+    by_group: dict[str, list] = {}
+    for keyword in rows:
+        by_group.setdefault(keyword.group_name or OWN_GROUP, []).append(keyword)
+    offering_names = [o.name for o in offerings_service.list_offerings(db)]
+    order = [n for n in offering_names if n in by_group]
+    order += [n for n in by_group if n not in order and n != OWN_GROUP]
+    if OWN_GROUP in by_group:
+        order.append(OWN_GROUP)
+    groups = [
+        {
+            "name": name,
+            "keywords": by_group[name],
+            "scanned": sum(k.scanned_total for k in by_group[name]),
+            "relevant": sum(k.relevant_total for k in by_group[name]),
+        }
+        for name in order
+    ]
+    group_choices = list(dict.fromkeys(offering_names + [g for g in by_group if g != OWN_GROUP]))
+    return {"keywords": rows, "keyword_groups": groups, "keyword_group_choices": group_choices, "own_group": OWN_GROUP}
+
+
 def _keyword_list_html(request: Request, db: Session) -> str:
-    return render_html(request, "setup/_keyword_list.html", {"keywords": keywords_service.list_keywords(db)})
+    return render_html(request, "setup/_keyword_list.html", _keywords_ctx(db))
+
+
+def _keyword_row_html(request: Request, db: Session, keyword) -> str:  # noqa: ANN001
+    return render_html(
+        request, "setup/_keyword_row.html", {"keyword": keyword, **{k: v for k, v in _keywords_ctx(db).items() if k != "keywords"}}
+    )
 
 
 def _offering_list_html(request: Request, db: Session) -> str:
@@ -99,7 +135,7 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         "setup/page.html",
         {
             "session": session,
-            "keywords": keywords_service.list_keywords(db),
+            **_keywords_ctx(db),
             "caps": _safety_caps(session),
             **_offerings_ctx(db),
         },
@@ -128,7 +164,37 @@ def toggle_keyword(request: Request, keyword_id: int, active: str = Form("true")
     keyword = keywords_service.set_keyword_active(db, keyword_id, active.strip().lower() in {"true", "1", "on", "yes"})
     if not is_htmx(request):
         return redirect("/setup")
-    return _html(render_html(request, "setup/_keyword_row.html", {"keyword": keyword}))
+    return _html(_keyword_row_html(request, db, keyword))
+
+
+@router.post("/setup/keywords/suggested", response_model=None)
+def add_suggested_keywords(request: Request, db: Session = Depends(get_db)) -> Response:
+    result = keywords_service.seed_suggested(db)
+    if not is_htmx(request):
+        return redirect("/setup")
+    return _html(
+        _keyword_list_html(request, db), toast_html(f"Added {result.added} · {result.already_present} already present")
+    )
+
+
+@router.post("/setup/keywords/{keyword_id}/edit", response_model=None)
+def edit_keyword(
+    request: Request,
+    keyword_id: int,
+    text: str = Form(""),
+    group_name: str | None = Form(None),
+    db: Session = Depends(get_db),
+) -> Response:
+    # An absent (or blank, which FastAPI reads as absent) group_name keeps the group (the service's
+    # UNSET default); "none" = "Your keywords" (no group), as for the offering select.
+    kwargs = {}
+    if group_name is not None and group_name.strip():
+        kwargs["group_name"] = None if group_name.strip().lower() == "none" else group_name.strip()
+    keyword = keywords_service.update_keyword(db, keyword_id, text, **kwargs)
+    if not is_htmx(request):
+        return redirect("/setup")
+    # The group may have changed, so the whole grouped list is re-rendered.
+    return _html(_keyword_list_html(request, db), toast_html(f"Saved keyword '{keyword.text}'."))
 
 
 # ---------------------------------------------------------------------- offerings

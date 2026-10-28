@@ -9,7 +9,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from sales0.db.base import Base
 from sales0.db.models._types import UTCDateTime, in_check
-from sales0.db.models.enums import ABORT_REASONS, RUN_KEYWORD_STATUSES, RUN_MODES, RUN_STATUSES, RUN_TRIGGERS
+from sales0.db.models.enums import (
+    ABORT_REASONS,
+    RUN_KEYWORD_STATUSES,
+    RUN_MODES,
+    RUN_STATUSES,
+    RUN_TRIGGERS,
+)
 
 
 def _counter() -> Mapped[int]:
@@ -26,9 +32,13 @@ class ScrapeRun(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    trigger: Mapped[str] = mapped_column(String(20), nullable=False, default="manual", server_default="manual")
+    trigger: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="manual", server_default="manual"
+    )
     mode: Mapped[str] = mapped_column(String(10), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", server_default="queued")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default="queued"
+    )
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     keywords_planned: Mapped[int] = _counter()
@@ -38,15 +48,23 @@ class ScrapeRun(Base):
     posts_seen: Mapped[int] = _counter()
     posts_new: Mapped[int] = _counter()
     posts_dupe: Mapped[int] = _counter()
+    posts_relevant: Mapped[int] = _counter()
+    posts_skipped_ai: Mapped[int] = _counter()
+    permalinks_found: Mapped[int] = _counter()
     enquiries_triaged: Mapped[int] = _counter()
     triage_failed: Mapped[int] = _counter()
     errors_count: Mapped[int] = _counter()
     abort_reason: Mapped[str | None] = mapped_column(String(20))
     error_message: Mapped[str | None] = mapped_column(String(500))
-    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     keywords: Mapped[list[ScrapeRunKeyword]] = relationship(
-        back_populates="run", order_by="ScrapeRunKeyword.id", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="run",
+        order_by="ScrapeRunKeyword.id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -55,13 +73,24 @@ class ScrapeRunKeyword(Base):
     __table_args__ = (in_check("status", RUN_KEYWORD_STATUSES, "status"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("scrape_runs.id", ondelete="CASCADE"), nullable=False, index=True)
-    keyword_id: Mapped[int | None] = mapped_column(ForeignKey("keywords.id", ondelete="SET NULL"))
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("scrape_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    keyword_id: Mapped[int | None] = mapped_column(
+        ForeignKey("keywords.id", ondelete="SET NULL")
+    )
     keyword_text: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", server_default="pending")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
     posts_seen: Mapped[int] = _counter()
     posts_new: Mapped[int] = _counter()
     posts_dupe: Mapped[int] = _counter()
+    posts_relevant: Mapped[int] = _counter()
+    posts_skipped_ai: Mapped[int] = _counter()
+    permalinks_found: Mapped[int] = _counter()
+    scrolls: Mapped[int] = _counter()
+    cost_usd_micros: Mapped[int] = _counter()
     errors: Mapped[int] = _counter()
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(String(300))

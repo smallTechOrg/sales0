@@ -12,8 +12,10 @@ Every request is recorded in ``fake.requests``. Costs use the real pricing formu
 
 from __future__ import annotations
 
+import re
+import threading
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import Any, Literal
 
 from sales0.config import Settings
 from sales0.llm.client import LLMResponse, StructuredRequest
@@ -71,6 +73,19 @@ def triage_answer(**overrides: Any) -> dict[str, Any]:
     return base
 
 
+_ENQUIRY_TEXT = re.compile(r"\nText:\n(.*?)\n</enquiry>", re.DOTALL)
+
+
+def enquiry_text_from_request(req: StructuredRequest) -> str:
+    """The post text found in the (first) user message of a triage request, un-escaped."""
+    content = req.messages[0]["content"]
+    if not isinstance(content, str):
+        content = " ".join(str(b.get("text", "")) for b in content if isinstance(b, dict))
+    match = _ENQUIRY_TEXT.search(content)
+    text = match.group(1) if match else content
+    return text.replace("&lt;", "<").replace("&gt;", ">")
+
+
 class FakeLLMClient:
     """Scripted or rule-based stand-in for ``AnthropicClient``."""
 
@@ -90,6 +105,36 @@ class FakeLLMClient:
         self.model = model
         self.requests: list[StructuredRequest] = []
         self.pings = 0
+        self._lock = threading.Lock()
+
+    @classmethod
+    def with_oracle(
+        cls,
+        label: Callable[[str], Literal["genuine", "discard"] | None],
+        *,
+        settings: Settings | None = None,
+        model: str = FAKE_MODEL,
+    ) -> FakeLLMClient:
+        """Answer ``record_triage`` from the enquiry text in the prompt via ``label(text)``.
+
+        ``None`` (unknown text) is answered as a discard. Answers are valid and never
+        carry an email/phone/offering, so the guards cannot alter them. Thread-safe.
+        """
+
+        def respond(req: StructuredRequest) -> dict[str, Any]:
+            verdict = label(enquiry_text_from_request(req))
+            if verdict == "genuine":
+                return triage_answer(
+                    offering_id=None, company=None, contact_person=None, city=None, email=None, phone=None,
+                    requirement_summary="Oracle buyer - AI training - Unknown",
+                )
+            return triage_answer(
+                verdict="discard", poster_type="other", priority="low", offering_id=None, company=None,
+                contact_person=None, city=None, email=None, phone=None, mode="unknown", dates_mentioned=None,
+                reason="Oracle: not a buyer", requirement_summary="Unknown - AI requirement - Unknown", topic=None,
+            )
+
+        return cls(responder=respond, settings=settings, model=model)
 
     @property
     def calls(self) -> int:
@@ -103,11 +148,12 @@ class FakeLLMClient:
         return make_response(item, settings=self._settings, model=self.model)
 
     def structured(self, req: StructuredRequest) -> LLMResponse:
-        self.requests.append(req.model_copy(deep=True))
-        if self._script is not None:
-            if not self._script:
-                raise AssertionError(f"FakeLLMClient script exhausted after {len(self.requests) - 1} call(s)")
-            return self._materialise(self._script.pop(0))
+        with self._lock:
+            self.requests.append(req.model_copy(deep=True))
+            if self._script is not None:
+                if not self._script:
+                    raise AssertionError(f"FakeLLMClient script exhausted after {len(self.requests) - 1} call(s)")
+                return self._materialise(self._script.pop(0))
         assert self._responder is not None
         return self._materialise(self._responder(req))
 
@@ -116,4 +162,4 @@ class FakeLLMClient:
         return make_response(None, input_tokens=8, output_tokens=2, text="OK", settings=self._settings, model=self.model)
 
 
-__all__ = ["FAKE_MODEL", "FakeLLMClient", "make_response", "triage_answer"]
+__all__ = ["FAKE_MODEL", "FakeLLMClient", "enquiry_text_from_request", "make_response", "triage_answer"]

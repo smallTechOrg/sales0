@@ -17,4 +17,6 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     display_name: Mapped[str] = mapped_column(String(80), nullable=False)
     email: Mapped[str | None] = mapped_column(String(254), unique=True)
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc
+    )

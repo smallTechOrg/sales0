@@ -15,13 +15,20 @@ from sales0.errors import DomainError
 from sales0.services import inbox as inbox_service
 from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
-from sales0.services.views import EnquiryCardView, InboxPage
+from sales0.services import seen_posts as seen_posts_service
+from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
 from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
 
 router = APIRouter()
 
-Tab = Literal["review", "accepted", "discarded"]
-TABS: tuple[tuple[str, str], ...] = (("review", "To review"), ("accepted", "Accepted"), ("discarded", "Discarded"))
+Tab = Literal["review", "accepted", "discarded", "skipped"]
+TABS: tuple[tuple[str, str], ...] = (
+    ("review", "To review"),
+    ("accepted", "Accepted"),
+    ("discarded", "Discarded"),
+    ("skipped", "Skipped by AI"),
+)
+SkippedState = Literal["discard", "failed"]
 PAGE_SIZE = 25
 
 # Preset discard reasons (ui.md). "" = "Other — use AI reason" (the service falls back to it).
@@ -39,7 +46,11 @@ _URN_RE = re.compile(r"urn:li:(?:activity|ugcPost|share):\d+")
 
 
 def _tab(value: str | None) -> Tab:
-    return value if value in {"review", "accepted", "discarded"} else "review"  # type: ignore[return-value]
+    return value if value in {"review", "accepted", "discarded", "skipped"} else "review"  # type: ignore[return-value]
+
+
+def _state(value: str | None) -> SkippedState:
+    return "failed" if value == "failed" else "discard"
 
 
 def _page_number(value: str | int | None) -> int:
@@ -64,6 +75,8 @@ def first_urn(card: EnquiryCardView) -> str:
 
 
 def _load_page(db: Session, tab: Tab, q: str | None, page: int) -> InboxPage:
+    if tab == "skipped":  # cards are never decided from the Skipped tab
+        tab = "review"
     result = inbox_service.list_enquiries(db, tab, q, page=page, page_size=PAGE_SIZE)
     if not result.items and page > 1 and result.total:
         # The page emptied (e.g. after deciding its last cards): show the last real page.
@@ -72,11 +85,49 @@ def _load_page(db: Session, tab: Tab, q: str | None, page: int) -> InboxPage:
     return result
 
 
+def _tab_counts(db: Session) -> dict[str, int]:
+    """The four tab counts (+ ``skipped_failed``) from the inbox service."""
+    return dict(inbox_service.list_enquiries(db, "review", None, page=1, page_size=1).counts)
+
+
+def _skipped_ctx(db: Session, q: str | None, state: SkippedState, page: int) -> dict:
+    result: SkippedPage = seen_posts_service.list_skipped(db, q=q, state=state, page=page, page_size=PAGE_SIZE)
+    if not result.items and page > 1 and result.total:
+        last = max(1, math.ceil(result.total / result.page_size))
+        result = seen_posts_service.list_skipped(db, q=q, state=state, page=last, page_size=PAGE_SIZE)
+    counts = _tab_counts(db)
+    counts["skipped"] = result.counts.get("skipped", result.counts.get("discard", counts.get("skipped", 0)))
+    counts["skipped_failed"] = result.counts.get("skipped_failed", result.counts.get("failed", counts.get("skipped_failed", 0)))
+    pages = max(1, math.ceil(result.total / result.page_size)) if result.page_size else 1
+    return {
+        "skipped": result,
+        "counts": counts,
+        "tab": "skipped",
+        "state": state,
+        "q": q or "",
+        "page": result.page,
+        "pages": pages,
+        "tabs": TABS,
+    }
+
+
+def _skipped_response(request: Request, db: Session, q: str, state: str, page: str, toast: str) -> HTMLResponse:
+    ctx = _skipped_ctx(db, _q(q), _state(state), _page_number(page))
+    body = (
+        render_html(request, "inbox/_skipped.html", ctx)
+        + render_html(request, "inbox/_tabs.html", {**ctx, "oob": True})
+        + cost_badge_oob(db)
+        + toast
+    )
+    return HTMLResponse(body)
+
+
 def _list_ctx(db: Session, inbox: InboxPage) -> dict:
     pages = max(1, math.ceil(inbox.total / inbox.page_size)) if inbox.page_size else 1
     has_runs = bool(runs_service.list_runs(db, limit=1)) if inbox.tab == "review" and not inbox.total and not inbox.q else True
     return {
         "inbox": inbox,
+        "counts": inbox.counts,
         "tab": inbox.tab,
         "q": inbox.q or "",
         "page": inbox.page,
@@ -110,8 +161,18 @@ def _card_html(request: Request, db: Session, card: EnquiryCardView, tab: str, q
 # ---------------------------------------------------------------------- page
 @router.get("/inbox", response_class=HTMLResponse)
 def inbox_page(
-    request: Request, tab: str | None = None, q: str | None = None, page: str | None = None, db: Session = Depends(get_db)
+    request: Request,
+    tab: str | None = None,
+    state: str | None = None,
+    q: str | None = None,
+    page: str | None = None,
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    if _tab(tab) == "skipped":
+        ctx = _skipped_ctx(db, _q(q), _state(state), _page_number(page))
+        if is_htmx(request) and request.headers.get("HX-Target") == "inbox-list":
+            return HTMLResponse(render_html(request, "inbox/_skipped.html", ctx))
+        return render_page(request, db, "inbox/page.html", ctx)
     inbox = _load_page(db, _tab(tab), _q(q), _page_number(page))
     return render_page(request, db, "inbox/page.html", _list_ctx(db, inbox))
 
@@ -151,6 +212,67 @@ def decide(
         + toast_html(f"{verb} {len(decided) or len(ids)}")
     )
     return HTMLResponse(body)
+
+
+# ---------------------------------------------------------------------- Skipped by AI (Phase 1.4)
+def _skipped_action(
+    request: Request, db: Session, action: str, seen_post_id: int, q: str, state: str, page: str
+) -> Response:
+    toast = ""
+    try:
+        if action == "rescue":
+            seen_posts_service.rescue(db, seen_post_id, accept=False)
+            toast = toast_html("Moved to To review")
+        elif action == "override":
+            seen_posts_service.rescue(db, seen_post_id, accept=True)
+            toast = toast_html("Accepted as Prospect · New (overrode AI)")
+        else:
+            seen_posts_service.retry_triage(db, seen_post_id)
+            toast = toast_html("AI triage finished.")
+    except DomainError as exc:
+        if exc.code == "not_found":
+            raise
+        # raw_purged / already_rescued / triage_failed: the list is re-shown with the reason.
+        toast = toast_html(exc.message, "error")
+    if not is_htmx(request):
+        return redirect("/inbox", tab="skipped", state=state if state == "failed" else None, q=_q(q))
+    return _skipped_response(request, db, q, state, page, toast)
+
+
+@router.post("/inbox/skipped/{seen_post_id}/rescue", response_model=None)
+def skipped_rescue(
+    request: Request,
+    seen_post_id: int,
+    q: str = Form(""),
+    state: str = Form("discard"),
+    page: str = Form("1"),
+    db: Session = Depends(get_db),
+) -> Response:
+    return _skipped_action(request, db, "rescue", seen_post_id, q, state, page)
+
+
+@router.post("/inbox/skipped/{seen_post_id}/override", response_model=None)
+def skipped_override(
+    request: Request,
+    seen_post_id: int,
+    q: str = Form(""),
+    state: str = Form("discard"),
+    page: str = Form("1"),
+    db: Session = Depends(get_db),
+) -> Response:
+    return _skipped_action(request, db, "override", seen_post_id, q, state, page)
+
+
+@router.post("/inbox/skipped/{seen_post_id}/retry", response_model=None)
+def skipped_retry(
+    request: Request,
+    seen_post_id: int,
+    q: str = Form(""),
+    state: str = Form("failed"),
+    page: str = Form("1"),
+    db: Session = Depends(get_db),
+) -> Response:
+    return _skipped_action(request, db, "retry", seen_post_id, q, state, page)
 
 
 @router.post("/inbox/{enquiry_id}/fields", response_model=None)

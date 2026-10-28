@@ -21,7 +21,7 @@ def test_request_shape_matches_the_contract(p1_input, make_deps) -> None:
     assert req.feature == "triage"
     assert req.tool_name == "record_triage"
     assert req.max_tokens == get_settings().llm_max_output_tokens == 900
-    assert req.prompt_version == "triage-v1"
+    assert req.prompt_version == "triage-v2"
     assert req.log_context == {
         "enquiry_id": 101,
         "fewshot_count": 0,

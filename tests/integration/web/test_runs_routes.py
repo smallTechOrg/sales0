@@ -38,7 +38,7 @@ def test_empty_runs_page_disables_run_now_until_linkedin_is_connected(client: Te
     panel = _panel(html)
     assert _run_now_disabled(panel)
     assert "Connect LinkedIn first (Setup → Connect LinkedIn)." in panel
-    assert "Today: 0/50 runs · 0/150 posts · max 10 keywords × 15 posts per run" in panel
+    assert "Today: 0/50 runs · 0/2000 posts scanned · max 40 keywords × 80 posts per run" in panel
     assert "No runs yet." in html.split('id="run-history"', 1)[1]
 
     refused = client.post("/runs", headers=HX)
@@ -62,13 +62,14 @@ def test_daily_run_cap_disables_run_now_with_the_count(client: TestClient, monke
     make_run("succeeded", posts_seen=4)
     panel = unescape(_panel(client.get("/runs").text))
     assert "Daily run limit reached (1/1)." in panel and _run_now_disabled(panel)
-    assert "Today: 1/1 runs · 4/150 posts" in panel
+    assert "Today: 1/1 runs · 4/2000 posts scanned" in panel
 
 
 def test_running_run_polls_every_second_with_counters(client: TestClient) -> None:
     run_id = make_run(
         "running", keywords_planned=3, keywords_done=1, posts_seen=4, posts_new=3, posts_dupe=1, enquiries_triaged=2,
-        current_step="Searching 'ai workshop' (2/3) — scrolling",
+        current_step="Searching 'ai workshop' (2/3) — scrolling", current_keyword="ai workshop",
+        posts_relevant=1, posts_skipped_ai=1, permalinks_found=1,
     )
     html = unescape(client.get("/runs").text)
     panel = _panel(html)
@@ -77,7 +78,11 @@ def test_running_run_polls_every_second_with_counters(client: TestClient) -> Non
     assert "Searching 'ai workshop' (2/3) — scrolling" in panel
     text = re.sub(r"<[^>]+>", "", panel)
     text = re.sub(r"\s+", " ", text)
-    assert "Seen 4 New 3 Duplicates 1 Triaged 2" in text
+    assert "Scanned 4 New to us 3 Already seen 1 Relevant 1 Skipped by AI 1 Post links 1" in text
+    assert "Keyword 2/3 · ai workshop" in text and "You can close this tab" in text
+    assert 'id="run-summary"' in panel and 'data-scanned="4"' in panel and 'data-new="3"' in panel
+    assert 'data-relevant="1"' in panel and 'data-skipped="1"' in panel
+    assert "Scanned 4 posts · 1 relevant (33% of the 3 new ones)" in text
     assert "status-light" in html
 
     progress = client.get(f"/runs/{run_id}/progress", headers=HX)
@@ -86,11 +91,13 @@ def test_running_run_polls_every_second_with_counters(client: TestClient) -> Non
 
 
 def test_finished_progress_stops_polling_and_shows_outcome(client: TestClient) -> None:
-    ok_id = make_run("succeeded", keywords_planned=3, keywords_done=3, posts_seen=9, posts_new=7, posts_dupe=2, enquiries_triaged=7)
+    ok_id = make_run("succeeded", keywords_planned=3, keywords_done=3, posts_seen=9, posts_new=7, posts_dupe=2, enquiries_triaged=7,
+                      posts_relevant=3, posts_skipped_ai=4)
     done = client.get(f"/runs/{ok_id}/progress", headers=HX)
     assert "every 1s" not in done.text.split('id="run-history"')[0]
     assert done.headers["HX-Trigger"] == "session-changed"
-    assert "Run finished — 7 new enquiries" in done.text and "Open inbox (7 new)" in done.text
+    assert "Run finished — 3 new enquiries" in done.text and "Open inbox (3 new)" in done.text
+    assert 'id="run-summary"' in done.text and "Scanned 9 posts · 3 relevant (43% of the 7 new ones)" in unescape(done.text)
     assert 'id="run-history" hx-swap-oob="true"' in done.text
 
     aborted = make_run(
@@ -207,32 +214,38 @@ def test_connect_then_run_now_shows_live_progress_and_triaged_cards(fixture_serv
                 break
             time.sleep(0.5)
         assert final, f"run did not finish; steps seen: {seen_steps}"
-        assert "Run finished — 2 new enquiries" in final and "Open inbox (2 new)" in final
+        # Phase 1.4: only the AI-genuine post (P8) becomes an enquiry; P9 is "Skipped by AI".
+        assert "Run finished — 1 new enquiry" in final and "Open inbox (1 new)" in final
         assert seen_steps, "no live progress was rendered while the run was active"
 
         data = http.get(f"/api/runs/{run_id}").json()["data"]
         assert data["run"]["status"] == "succeeded"
-        assert (data["run"]["posts_seen"], data["run"]["posts_new"], data["run"]["enquiries_triaged"]) == (2, 2, 2)
-        assert data["run"]["cost_usd_micros"] > 0
+        run = data["run"]
+        assert (run["posts_seen"], run["posts_new"], run["posts_relevant"], run["posts_skipped_ai"]) == (2, 2, 1, 1)
+        assert run["cost_usd_micros"] > 0
+        assert 'id="run-summary"' in final and 'data-scanned="2"' in final and 'data-relevant="1"' in final
 
         detail = http.get(f"/runs/{run_id}").text
         assert "ai consulting" in detail.split('id="run-keywords"', 1)[1] and "Done" in detail
+        assert 'id="run-summary"' in detail
 
         inbox = unescape(http.get("/inbox").text)
-        assert "To review (<span data-count=\"review\">2</span>)" in inbox
+        assert "To review (<span data-count=\"review\">1</span>)" in inbox
+        assert "Skipped by AI (<span data-count=\"skipped\">1</span>)" in inbox
         cards = {
             m.group(1): m.group(0)
             for m in re.finditer(r'<article id="enquiry-\d+"[^>]*data-urn="([^"]+)".*?</article>', inbox, re.S)
         }
-        # SDUI posts carry no URN in the DOM: a card's ref is the URN only when "Copy link to
-        # post" yielded it (P8), else ck:<componentkey> (P9's menu is a noop).
-        p8_ref, p9_ref = _ref_of(cards, "P8"), _ref_of(cards, "P9")
-        assert p8_ref.startswith("urn:li:activity:") and p9_ref.startswith("ck:"), (p8_ref, p9_ref)
-        p8, p9 = cards[p8_ref], cards[p9_ref]
+        p8_ref = _ref_of(cards, "P8")
+        # data-urn is the FIRST source ref (a ck: key); the permalink captured after triage only sets the link.
+        p8 = cards[p8_ref]
         assert 'data-verdict="genuine"' in p8 and 'href="mailto:it-projects@meridian.example"' in p8
         assert re.search(r"AI \$0\.\d{4} · [\d.]+k? tok", p8)
-        assert 'data-verdict="discard"' in p9
-        assert inbox.index(f'data-urn="{p8_ref}"') < inbox.index(f'data-urn="{p9_ref}"')  # genuine first
+        assert "View post ↗" in p8 and 'data-link-kind="post"' in p8
+
+        skipped = unescape(http.get("/inbox", params={"tab": "skipped"}).text)
+        assert 'id="skipped-list"' in skipped and skipped.count('class="skipped"') == 1
+        assert 'data-verdict="discard"' in skipped and "skipped__rescue" in skipped
         badge = re.search(r"AI today <strong>\$(\d+\.\d+)</strong>", inbox)
         assert badge and float(badge.group(1)) > 0
 
@@ -266,7 +279,7 @@ def test_active_progress_poll_refreshes_the_history_row_out_of_band(client: Test
 
 def test_fresh_runs_page_after_a_run_shows_the_last_outcome_without_tracking_it(client: TestClient) -> None:
     make_run("succeeded", posts_new=1)  # older run — only the latest is summarised
-    ok_id = make_run("succeeded", keywords_planned=2, keywords_done=2, posts_seen=5, posts_new=4)
+    ok_id = make_run("succeeded", keywords_planned=2, keywords_done=2, posts_seen=5, posts_new=4, posts_relevant=4, posts_skipped_ai=0)
     panel = unescape(_panel(client.get("/runs").text))
     assert "Last run finished — 4 new enquiries" in panel and "Open inbox (4 new)" in panel
     assert f'data-last-run-id="{ok_id}"' in panel and f'href="/runs/{ok_id}"' in panel
@@ -290,3 +303,36 @@ def test_fresh_runs_page_with_no_runs_or_an_active_run_has_no_last_outcome(clien
     active = make_run("running", keywords_planned=2, keywords_done=0)
     panel = _panel(client.get("/runs").text)
     assert "Last run" not in panel and f'data-run-id="{active}"' in panel and "Run in progress" in panel
+
+
+# ---------------------------------------------------------------------- Phase 1.4
+def test_server_restart_interruption_is_an_amber_outcome_not_red(client: TestClient) -> None:
+    text = "Interrupted by server restart — the next run continues with the keywords it had not reached"
+    run_id = make_run("aborted", error_message=text, keywords_planned=40, keywords_done=12, posts_seen=210, posts_new=90,
+                      posts_relevant=5, posts_skipped_ai=85, keywords=[("ai workshop", "done"), ("ai consulting", "skipped")])
+    panel = unescape(client.get(f"/runs/{run_id}/progress", headers=HX).text).split('id="run-history"')[0]
+    assert text in panel and "outcome--warn" in panel and "outcome--error" not in panel and 'role="alert"' not in panel
+    assert "Run stopped" not in panel and "Next run allowed" not in panel
+    assert 'data-scanned="210"' in panel and 'data-relevant="5"' in panel
+    detail = unescape(client.get(f"/runs/{run_id}").text)
+    assert text in detail and "outcome--warn" in detail
+
+
+def test_history_and_detail_use_the_scanned_vs_relevant_columns(client: TestClient) -> None:
+    run_id = make_run("succeeded", keywords_planned=1, keywords_done=1, posts_seen=210, posts_new=100, posts_dupe=110,
+                      posts_relevant=6, posts_skipped_ai=94, permalinks_found=5,
+                      keywords=[("ai workshop", "done")])
+    page = unescape(client.get("/runs").text)
+    head = page.split('id="run-history"', 1)[1].split("</thead>", 1)[0]
+    cols = re.findall(r'<th scope="col"[^>]*>([^<]+)</th>', head)
+    assert cols == ["Started", "Status", "Keywords", "Scanned", "New", "Relevant", "Skipped", "Cost", "Duration"]
+    assert "1/1 210 100 6 94 $0.00" in _history_row(page, run_id)
+    detail = unescape(client.get(f"/runs/{run_id}").text)
+    kw_head = detail.split('id="run-keywords"', 1)[1].split("</thead>", 1)[0]
+    kw_cols = re.findall(r'<th scope="col"[^>]*>([^<]+)</th>', kw_head)
+    assert kw_cols == ["Keyword", "Status", "Scanned", "New", "Already seen", "Relevant", "Skipped", "Links", "Cost",
+                       "Duration", "Message"]
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", detail.split('id="run-summary"', 1)[1].split("</div>", 1)[0]))
+    assert "Scanned 210 posts · 6 relevant (6.0% of the 100 new ones)" in text
+    assert "Post links 5" in text and "Relevance 6.0% of new posts" in text and "AI cost $0.00" in text
+    assert "Run now starts a long background run — you can close this tab; progress is kept." in unescape(client.get("/runs").text)

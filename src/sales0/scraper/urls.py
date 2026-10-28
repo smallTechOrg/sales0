@@ -10,6 +10,7 @@ place (architecture.md → "SDUI field extraction" / "Permalink capture"): ``urn
 from __future__ import annotations
 
 import re
+from typing import Literal
 from urllib.parse import quote, unquote, urlencode, urlsplit, urlunsplit
 
 from sales0.config import Settings
@@ -19,6 +20,8 @@ from sales0.scraper.types import LinkKind
 LIVE_BASE = "https://www.linkedin.com"
 FIXTURE_PREFIX = "/__fixtures/linkedin"
 DATE_FILTERS = frozenset({"past-24h", "past-week", "past-month"})
+# Phase 1.4: LinkedIn's sortBy facet values (latest = by date posted).
+SORT_VALUES: dict[str, str] = {"latest": '"date_posted"', "relevance": '"relevance"'}
 
 FEED_UPDATE_HREF = re.compile(S.FEED_UPDATE_HREF_RE)
 POSTS_SLUG_HREF = re.compile(S.POSTS_SLUG_HREF_RE)
@@ -43,17 +46,19 @@ def permalink(base: str, urn: str) -> str:
     return f"{base}/feed/update/{urn}/"
 
 
-def search_url(base: str, keyword: str, date_filter: str) -> str:
+def search_url(base: str, keyword: str, date_filter: str, sort: Literal["latest", "relevance"] = "latest") -> str:
     keyword = keyword.strip()
     if not keyword:
         raise ValueError("keyword must not be blank")
     if date_filter not in DATE_FILTERS:
         raise ValueError(f"Unknown date filter {date_filter!r}; use one of {sorted(DATE_FILTERS)}")
+    if sort not in SORT_VALUES:
+        raise ValueError(f"Unknown sort {sort!r}; use one of {sorted(SORT_VALUES)}")
     query = urlencode(
         {
             "keywords": keyword,
             "datePosted": f'"{date_filter}"',
-            "sortBy": '"date_posted"',
+            "sortBy": SORT_VALUES[sort],
             "origin": "FACETED_SEARCH",
         },
         quote_via=quote,

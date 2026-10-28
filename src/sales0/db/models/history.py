@@ -26,5 +26,9 @@ class StatusHistory(Base):
     from_value: Mapped[str | None] = mapped_column(String(40))
     to_value: Mapped[str | None] = mapped_column(String(40))
     note: Mapped[str | None] = mapped_column(String(500))
-    changed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
-    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    changed_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )

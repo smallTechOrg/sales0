@@ -27,6 +27,9 @@ ABORT_LABELS = {
 }
 
 
+INTERRUPTED_TEXT = (
+    "Interrupted by server restart — the next run continues with the keywords it had not reached"
+)
 NOT_LOGGED_IN_PREFIX = "Not logged in to LinkedIn"
 
 DRIFT_ALERT_TEXT = (
@@ -45,11 +48,15 @@ def outcome_view(run: RunView, *, last: bool = False, cooldown_until: datetime |
         return None
     subject = "Last run" if last else "Run"
     if run.status == "succeeded":
-        noun = "enquiry" if run.posts_new == 1 else "enquiries"
-        text = f"{subject} finished — {run.posts_new} new {noun}"
+        relevant = run.posts_relevant
+        noun = "enquiry" if relevant == 1 else "enquiries"
+        text = f"{subject} finished — {relevant} new {noun}"
         if run.abort_reason == "daily_post_cap":
             text += ". Daily post limit reached — the remaining keywords were skipped"
         return {"kind": "ok", "text": text}
+    if run.status == "aborted" and not run.abort_reason:
+        # Phase 1.4: a server restart cut the run short. Amber, not red; the next run continues.
+        return {"kind": "warn", "text": run.error_message or INTERRUPTED_TEXT}
     if run.status == "aborted":
         label = ABORT_LABELS.get(run.abort_reason or "", f"LinkedIn safety stop ({run.abort_reason or 'unknown'})")
         view = {

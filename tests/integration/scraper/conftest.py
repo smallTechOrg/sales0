@@ -51,6 +51,10 @@ def fixture_settings(fixture_linkedin_server: int, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("SALES0_LINKEDIN_MODE", "fixture")
     monkeypatch.setenv("SALES0_HOST", "127.0.0.1")
     monkeypatch.setenv("SALES0_PORT", str(fixture_linkedin_server))
+    # The Phase 1.1-1.3 scraper tests assert one pass that ends at the first scroll without growth.
+    # Phase 1.4 depth tests (test_scan_bulk.py) override these.
+    monkeypatch.setenv("SALES0_SCRAPE_DATE_FILTERS", "past-week")
+    monkeypatch.setenv("SALES0_SCRAPE_NO_GROWTH_SCROLLS", "1")
     reset_settings()
     return get_settings()
 

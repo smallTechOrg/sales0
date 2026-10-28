@@ -119,6 +119,8 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 ai_priority=e.ai_priority,
                 ai_offering_id=e.ai_offering_id,
                 link_kind=link_kind_of(e.source_url),
+                posted_relative=e.posted_relative,
+                author_profile_url=e.author_profile_url,
             )
         )
     return cards
@@ -138,11 +140,16 @@ def _like(q: str) -> str:
 
 
 def tab_counts(db: Session) -> dict[str, int]:
-    counts = {tab: 0 for tab in TAB_STATUS}
+    counts: dict[str, int] = {tab: 0 for tab in TAB_STATUS}
     by_status = {status: tab for tab, status in TAB_STATUS.items()}
     for status, n in db.execute(select(Enquiry.review_status, func.count(Enquiry.id)).group_by(Enquiry.review_status)):
         if status in by_status:
             counts[by_status[status]] = int(n)
+    from sales0.services.seen_posts import skipped_counts
+
+    skipped = skipped_counts(db)
+    counts["skipped"] = skipped["discard"]
+    counts["skipped_failed"] = skipped["failed"]
     return counts
 
 

@@ -44,9 +44,10 @@ def test_setup_page_lists_seeded_offerings_by_group_and_empty_keywords(client: T
     assert headings == ["Training", "Services", "Products"]
     names = re.findall(r"<strong>([^<]+?)(?: <span|</strong>)", offering_list)
     assert names == ["AI corporate workshops", "Technical AI training", "AI consulting & build services", "Products"]
-    assert "No keywords yet — add 10–20 phrases buyers use, e.g. 'corporate AI training'." in html
+    assert "No keywords yet — press Add suggested keywords for 60 phrases buyers use, or add your own." in html
+    assert 'id="add-suggested-keywords"' in html
     assert 'id="keyword-input"' in html and 'id="keyword-list"' in html
-    assert "Change these in .env" in html and "Posts per day" in html and "150" in html
+    assert "Change these in .env" in html and "Posts scanned per day" in html and "2000" in html
     card = html.split('id="linkedin-card"', 1)[1].split("</section>", 1)[0]
     assert "sales0 opens Google Chrome with its own sales0 profile on this computer." in card
     assert 'id="browser-note"' in card
@@ -79,7 +80,7 @@ def test_keyword_survives_reload_and_non_htmx_post_redirects(client: TestClient)
     resp = client.post("/setup/keywords", data={"text": "ai workshop"}, follow_redirects=False)
     assert resp.status_code == 303 and resp.headers["location"] == "/setup"
     html = unescape(client.get("/setup").text)
-    assert "<strong>ai workshop</strong>" in html and "Not run yet" in html
+    assert "<strong>ai workshop</strong>" in html and "not run yet" in html
 
 
 def test_toggle_and_remove_keyword(client: TestClient) -> None:
@@ -87,7 +88,7 @@ def test_toggle_and_remove_keyword(client: TestClient) -> None:
     with session_scope() as db:
         kid = db.scalar(select(Keyword.id))
     row = unescape(client.post(f"/setup/keywords/{kid}/toggle", data={"active": "false"}, headers=HX).text)
-    assert row.lstrip().startswith(f'<li id="keyword-{kid}" data-active="false"')
+    assert row.lstrip().startswith(f'<li id="keyword-{kid}" data-keyword-id="{kid}" data-active="false"')
     assert 'aria-checked="false"' in row and "Paused" in row
     assert "Remove keyword 'ai consulting'?" in row  # hx-confirm text
     with session_scope() as db:

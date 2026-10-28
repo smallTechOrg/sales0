@@ -29,7 +29,7 @@ def _alert(html: str) -> str:
 
 def _drift_run(n: int = 1) -> int:
     keywords = [(f"layout-drift-test-{i}", "warning") for i in range(n)] + [("ai workshop", "done")]
-    return make_run("succeeded", keywords=keywords, keywords_planned=n + 1, keywords_done=n + 1, posts_seen=4, posts_new=4)
+    return make_run("succeeded", keywords=keywords, keywords_planned=n + 1, keywords_done=n + 1, posts_seen=4, posts_new=4, posts_relevant=4)
 
 
 def test_finished_run_with_a_layout_warning_shows_the_drift_alert_everywhere(client: TestClient) -> None:

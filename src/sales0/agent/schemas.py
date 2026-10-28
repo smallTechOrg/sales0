@@ -54,7 +54,8 @@ class DecisionExample(BaseModel):
 class TriageInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    enquiry_id: int
+    enquiry_id: int  # for subject="seen_post" this carries the seen_posts id
+    subject: Literal["enquiry", "seen_post"] = "enquiry"
     text: str
     author_name: str | None = None
     author_headline: str | None = None

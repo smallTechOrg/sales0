@@ -50,7 +50,9 @@ def get_engine() -> Engine:
     with _lock:
         if _engine is None:
             _engine = build_engine(get_settings().resolved_database_url)
-            _sessionmaker = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
+            _sessionmaker = sessionmaker(
+                bind=_engine, expire_on_commit=False, future=True
+            )
         return _engine
 
 

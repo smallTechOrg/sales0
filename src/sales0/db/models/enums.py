@@ -9,7 +9,11 @@ from __future__ import annotations
 from typing import Literal
 
 LinkedInSessionStatus = Literal["not_connected", "connected", "needs_attention"]
-LINKEDIN_SESSION_STATUSES: tuple[str, ...] = ("not_connected", "connected", "needs_attention")
+LINKEDIN_SESSION_STATUSES: tuple[str, ...] = (
+    "not_connected",
+    "connected",
+    "needs_attention",
+)
 
 RunTrigger = Literal["manual"]
 RUN_TRIGGERS: tuple[str, ...] = ("manual",)
@@ -20,11 +24,26 @@ RUN_MODES: tuple[str, ...] = ("live", "fixture")
 RunStatus = Literal["queued", "running", "succeeded", "aborted", "failed"]
 RUN_STATUSES: tuple[str, ...] = ("queued", "running", "succeeded", "aborted", "failed")
 
-AbortReason = Literal["logout", "checkpoint", "captcha", "rate_limited", "daily_post_cap"]
-ABORT_REASONS: tuple[str, ...] = ("logout", "checkpoint", "captcha", "rate_limited", "daily_post_cap")
+AbortReason = Literal[
+    "logout", "checkpoint", "captcha", "rate_limited", "daily_post_cap"
+]
+ABORT_REASONS: tuple[str, ...] = (
+    "logout",
+    "checkpoint",
+    "captcha",
+    "rate_limited",
+    "daily_post_cap",
+)
 
 RunKeywordStatus = Literal["pending", "running", "done", "warning", "error", "skipped"]
-RUN_KEYWORD_STATUSES: tuple[str, ...] = ("pending", "running", "done", "warning", "error", "skipped")
+RUN_KEYWORD_STATUSES: tuple[str, ...] = (
+    "pending",
+    "running",
+    "done",
+    "warning",
+    "error",
+    "skipped",
+)
 
 EnquirySourceKind = Literal["linkedin_post"]
 ENQUIRY_SOURCES: tuple[str, ...] = ("linkedin_post",)
@@ -58,3 +77,10 @@ LLM_CALL_STATUSES: tuple[str, ...] = ("ok", "error")
 
 HistoryEntityType = Literal["enquiry", "scrape_run", "linkedin_session"]
 HISTORY_ENTITY_TYPES: tuple[str, ...] = ("enquiry", "scrape_run", "linkedin_session")
+
+# Phase 1.4 (migration 0003)
+SeenTriageStatus = Literal["pending", "done", "failed"]
+SEEN_TRIAGE_STATUSES: tuple[str, ...] = ("pending", "done", "failed")
+
+ProfileKind = Literal["person", "company"]
+PROFILE_KINDS: tuple[str, ...] = ("person", "company")

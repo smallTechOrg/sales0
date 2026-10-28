@@ -364,3 +364,33 @@ def test_link_href_is_escaped(client: TestClient) -> None:
     card = raw_html[raw_html.index(f'<article id="enquiry-{eid}"'):]
     card = card[: card.index("</article>")]
     assert 'onmouseover="alert(1)' not in card
+
+
+# ---------------------------------------------------------------------- Phase 1.4: post link / posted-ago
+def test_card_with_profile_link_shows_posted_ago_hint(client: TestClient) -> None:
+    eid = _enquiry_with_link("https://www.linkedin.com/in/priya-menon-acme/")
+    with session_scope() as db:
+        db.get(Enquiry, eid).posted_relative = "3h"
+    card = _card(unescape(client.get("/inbox").text), eid)
+    assert _link(card) == ("profile", "https://www.linkedin.com/in/priya-menon-acme/",
+                           "Author profile (post link unavailable) ↗")
+    assert "· posted ~3h before sales0 found it" in card
+
+
+def test_card_with_captured_post_link_shows_view_post_and_no_hint(client: TestClient) -> None:
+    eid = _enquiry_with_link("https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000077/")
+    with session_scope() as db:
+        db.get(Enquiry, eid).posted_relative = "3h"
+    card = _card(unescape(client.get("/inbox").text), eid)
+    assert _link(card)[::2] == ("post", "View post ↗")  # type: ignore[index]
+    assert "posted ~" not in card
+
+
+def test_card_without_source_url_falls_back_to_the_author_profile(client: TestClient) -> None:
+    eid = _enquiry_with_link(None, ref="ck:NoLinkKey02")
+    with session_scope() as db:
+        row = db.get(Enquiry, eid)
+        row.author_profile_url, row.posted_relative = "https://www.linkedin.com/in/asha-rao/", "2d"
+    card = _card(unescape(client.get("/inbox").text), eid)
+    assert _link(card) == ("profile", "https://www.linkedin.com/in/asha-rao/", "Author profile (post link unavailable) ↗")
+    assert "posted ~2d before sales0 found it" in card

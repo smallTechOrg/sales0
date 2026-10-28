@@ -7,9 +7,10 @@ the REAL Haiku key from ``.env``:
 setup (keywords) → Connect LinkedIn (headless fixture window walks login → 2FA →
 "remember this browser" → feed, and only then turns green) → Re-check (headless) → Run now
 (live progress) → run 1 counters
-→ inbox cards with real Haiku content + cost → accept P1 → bulk discard with a reason →
-Discarded search → server restart: state survives → run 2 on the restarted server learns
-from the decisions (few-shot) → server JSON log has llm_call + http_request lines.
+→ inbox shows ONLY the 4 genuine cards (real Haiku content + cost; Phase 1.4) → accept P1 →
+Skipped by AI tab (P2/P3/P9, searchable) → Rescue P3 → Override P9 → server restart: state
+survives → run 2 on the restarted server learns from the decisions (few-shot) and files only
+P10 (P11 is skipped) → server JSON log has llm_call + http_request lines.
 """
 
 from __future__ import annotations
@@ -36,9 +37,9 @@ from tests.e2e._flows import (
 from tests.support.live_server import LiveServer
 
 RUN1_KEYWORDS = ["corporate ai training", "ai workshop", "ai consulting"]
-RUN1_NEW = ["P1", "P2", "P3", "P5", "P6", "P8", "P9"]
-AI_DISCARDS = ["P2", "P3", "P9"]
-BULK_REASON = "Training agency / marketplace"
+RUN1_GENUINE = ["P1", "P5", "P6", "P8"]
+AI_DISCARDS = ["P2", "P3", "P9"]  # Phase 1.4: skipped by the AI, not inbox cards
+SNIPPET = {"P2": "SkillBridge", "P3": "individual freelance trainer", "P9": "certified Generative AI trainer"}
 COST_TEXT = re.compile(r"^AI \$\d+\.\d{2,} · [\d.]+k? tok$")
 
 
@@ -77,6 +78,10 @@ def _assert_connect_walked_the_2fa_flow(server: LiveServer) -> None:
     assert str(event["verdict"]).split(":", 1)[0] == "ok", event
 
 
+def _skipped(page: Page, pid: str):
+    return page.locator("#skipped-list article.skipped").filter(has_text=SNIPPET[pid])
+
+
 def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: LiveServer, ui: Page) -> None:
     page, base = ui, server.base_url
 
@@ -94,7 +99,7 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
     expect(page.locator("#run-panel")).to_contain_text("Connect LinkedIn first")
     expect(page.locator("#run-history")).to_contain_text("No runs yet.")
 
-    # --- setup: 4 default offerings, add the three corpus keywords (in this order)
+    # --- setup: 4 default offerings, add the three corpus keywords (in this order); no startup seeding in tests
     page.goto(f"{base}/setup")
     expect(page.locator("#offering-list")).to_contain_text("AI consulting & build services")
     expect(page.locator("#keyword-list")).to_contain_text("No keywords yet")
@@ -131,34 +136,31 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
     assert progress, "the run finished before any live progress was rendered"
     assert progress["title"] == "Run in progress"
     assert progress["has_progress_bar"]
-    assert all(word in progress["counters"] for word in ("Seen", "New", "Duplicates", "Triaged", "Elapsed"))
+    assert all(word in progress["counters"] for word in ("Scanned", "New to us", "Already seen", "Relevant", "Skipped by AI", "Elapsed"))
 
     panel = page.locator("#run-panel")
     expect(panel).to_have_attribute("data-status", "succeeded")
-    expect(panel).to_contain_text("Run finished — 7 new enquiries")
-    expect(panel.get_by_role("link", name="Open inbox (7 new)")).to_be_visible()
+    expect(panel).to_contain_text("Run finished — 4 new enquiries")
+    expect(panel).to_contain_text("Scanned 9 posts · 4 relevant")
+    expect(panel.get_by_role("link", name="Open inbox (4 new)")).to_be_visible()
 
     detail = server.get_json(f"/api/runs/{run_id}")
     run = detail["run"]
     assert (run["status"], run["posts_seen"], run["posts_new"], run["posts_dupe"], run["enquiries_triaged"]) == (
         "succeeded", 9, 7, 2, 7,
     ), run
+    assert (run["posts_relevant"], run["posts_skipped_ai"]) == (4, 3), run
     assert run["triage_failed"] == 0 and run["cost_usd_micros"] > 0, run
     assert [(k["keyword_text"], k["posts_seen"]) for k in detail["keywords"]] == [
         ("corporate ai training", 3), ("ai workshop", 4), ("ai consulting", 2),
     ]
 
-    # --- scrape_keyword log lines (Phase 1.2): SDUI parse + "Copy link to post" counts.
-    # Fixture menus: corporate ai training = P1 noop, P2 urn, P3 none; ai workshop = P1 noop,
-    # P5 urn, P6 noop, P7 none; ai consulting = P8 urn, P9 noop.
+    # --- scrape_keyword log lines: SDUI parse; menus are opened only for relevant posts (after triage)
     lines = {e["keyword"]: e for e in server.log_events() if e.get("event") == "scrape_keyword"}
-    assert {
-        kw: (lines[kw]["strategy"], lines[kw]["permalink_attempts"], lines[kw]["permalinks_found"]) for kw in RUN1_KEYWORDS
-    } == {
-        "corporate ai training": ("sdui", 2, 1),
-        "ai workshop": ("sdui", 3, 1),
-        "ai consulting": ("sdui", 2, 1),
-    }, lines
+    assert {kw: lines[kw]["strategy"] for kw in RUN1_KEYWORDS} == dict.fromkeys(RUN1_KEYWORDS, "sdui"), lines
+    assert sum(lines[kw]["permalinks_found"] for kw in RUN1_KEYWORDS) == run["permalinks_found"] == 2, lines  # P5, P8
+    assert sum(lines[kw]["permalink_attempts"] for kw in RUN1_KEYWORDS) <= 6, lines  # never the 9 scanned posts
+    assert all(lines[kw]["passes"] >= 1 for kw in RUN1_KEYWORDS), lines
 
     history_row = page.locator("#run-history").get_by_text("Succeeded", exact=False).first
     expect(history_row).to_be_visible()
@@ -167,98 +169,106 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
     for kw in RUN1_KEYWORDS:
         expect(keywords_table).to_contain_text(kw)
 
-    # --- inbox: 7 cards with real Haiku content
+    # --- inbox: ONLY the 4 genuine posts, with real Haiku content
     page.goto(f"{base}/inbox")
-    expect(tab_count(page, "review")).to_have_text("7")
-    expect(page.locator("#inbox-list article.card")).to_have_count(7)
-    for pid in RUN1_NEW:
+    expect(tab_count(page, "review")).to_have_text("4")
+    expect(tab_count(page, "skipped")).to_have_text("3")
+    expect(page.locator("#inbox-list article.card")).to_have_count(4)
+    for pid in RUN1_GENUINE:
         c = card(page, pid)
         expect(c).to_have_count(1)
-        expect(c).to_have_attribute("data-verdict", re.compile(r"^(genuine|discard)$"))
+        expect(c).to_have_attribute("data-verdict", "genuine")
         expect(c.locator(".enquiry__summary")).not_to_have_text(re.compile(r"^\s*(No summary yet.*)?$"))
         expect(c.locator(".enquiry__cost")).to_have_text(COST_TEXT)
         assert "$0.00 " not in c.locator(".enquiry__cost").inner_text()
-    expect(card(page, "P7")).to_have_count(0)  # content duplicate of P2, merged
+    for pid in (*AI_DISCARDS, "P7"):  # the AI's discards (and P2's content duplicate) are not cards
+        expect(card(page, pid)).to_have_count(0)
 
-    # --- Phase 1.2 card links (ui.md): no URN in the SDUI DOM, so a post link exists only when
-    # "Copy link to post" yielded it (P5); P1's menu copies nothing → the author profile.
+    # --- card links (ui.md): P5's "Copy link to post" worked -> View post; P1's menu copies nothing -> profile
     p5_link = card(page, "P5").locator("a.enquiry__link")
     expect(p5_link).to_have_attribute("data-link-kind", "post")
     expect(p5_link).to_have_text(LINK_LABELS["post"])
     expect(p5_link).to_have_attribute("href", re.compile(rf"/feed/update/{re.escape(fixture_post('P5').urn)}/$"))
     expect(p5_link).to_have_attribute("target", "_blank")
     expect(p5_link).to_have_attribute("rel", "noopener")
-    expect(card(page, "P5")).to_have_attribute("data-urn", fixture_post("P5").urn)
+    assert (card(page, "P5").get_attribute("data-urn") or "") in fixture_post("P5").possible_refs()  # ck: row first, URN row added
     p1_link = card(page, "P1").locator("a.enquiry__link")
     expect(p1_link).to_have_attribute("data-link-kind", "profile")
     expect(p1_link).to_have_text(LINK_LABELS["profile"])
     expect(p1_link).to_have_attribute("href", re.compile(r"/in/[^/?#]+/?$"))
+    expect(card(page, "P1")).to_contain_text("posted ~")
     assert (card(page, "P1").get_attribute("data-urn") or "").startswith("ck:")
 
     p1 = card(page, "P1")
-    expect(p1).to_have_attribute("data-verdict", "genuine")
     expect(p1.locator("a[href='mailto:training@acmelogistics.example']")).to_have_text("training@acmelogistics.example")
     expect(p1.locator(".enquiry__reason")).to_have_text(re.compile(r"\S{3,}"))
     expect(p1.locator(".chip")).to_have_text(["corporate ai training", "ai workshop"])
-    expect(card(page, "P2").locator(".chip")).to_have_text(["corporate ai training", "ai workshop"])
-    for pid in AI_DISCARDS:
-        c = card(page, pid)
-        expect(c).to_have_attribute("data-verdict", "discard")
-        expect(c.locator(".badge--discard")).to_have_text("Discard")
-        expect(c.locator(".enquiry__reason")).to_have_text(re.compile(r"\S{3,}"))
     expect(page.locator("#cost-badge")).to_contain_text(re.compile(r"AI today \$0\.\d{4}"))
     assert "AI today $0.00 " not in page.locator("#cost-badge").inner_text()
 
-    # --- accept P1 → Accepted as "Prospect · New"
+    # --- accept P1 -> Accepted as "Prospect · New"
     p1.get_by_role("button", name="Accept").click()
     expect(tab_count(page, "accepted")).to_have_text("1")
-    expect(tab_count(page, "review")).to_have_text("6")
+    expect(tab_count(page, "review")).to_have_text("3")
     expect(card(page, "P1")).to_have_count(0)
     settled(page)
 
-    # --- bulk discard the three AI discards with a reason
+    # --- Skipped by AI: P2/P3/P9 with the AI's reason; searchable (hit, narrow hit, no hit)
+    page.goto(f"{base}/inbox?tab=skipped")
+    expect(page.locator("#skipped-list article.skipped")).to_have_count(3)
     for pid in AI_DISCARDS:
-        card(page, pid).locator("input.js-select").check()
-    expect(page.locator("#bulk-bar")).to_contain_text("3 selected")
-    page.select_option("#bulk-discard-reason", BULK_REASON)
-    page.locator("#bulk-bar").get_by_role("button", name="Discard selected").click()
-    expect(page.locator("#toasts")).to_contain_text("Discarded 3")
-    expect(tab_count(page, "discarded")).to_have_text("3")
-    expect(tab_count(page, "review")).to_have_text("3")
-    settled(page)
-
-    # --- Discarded tab: kept, reasons shown, searchable (hit, narrow hit, no hit)
-    page.goto(f"{base}/inbox?tab=discarded")
-    expect(page.locator("#inbox-list article.card")).to_have_count(3)
-    for pid in AI_DISCARDS:
-        expect(card(page, pid)).to_contain_text(f"Discard reason: {BULK_REASON}")
+        expect(_skipped(page, pid)).to_have_count(1)
+        expect(_skipped(page, pid).locator(".skipped__reason")).to_have_text(re.compile(r"Skipped\s+\S{3,}"))
     page.fill("#inbox-search", "freelance")
     page.keyboard.press("Enter")
-    expect(page).to_have_url(re.compile(r"tab=discarded.*q=freelance"))
-    expect(page.locator("#inbox-list article.card")).to_have_count(3)
+    expect(page).to_have_url(re.compile(r"tab=skipped.*q=freelance"))
+    expect(_skipped(page, "P2")).to_have_count(1)
+    expect(_skipped(page, "P3")).to_have_count(1)
     page.fill("#inbox-search", "SkillBridge")
     page.keyboard.press("Enter")
-    expect(page.locator("#inbox-list article.card")).to_have_count(1)
-    expect(card(page, "P2")).to_have_count(1)
+    expect(page.locator("#skipped-list article.skipped")).to_have_count(1)
+    expect(_skipped(page, "P2")).to_have_count(1)
     page.fill("#inbox-search", "zzz-no-such-text")
     page.keyboard.press("Enter")
-    expect(page.locator("#inbox-list")).to_contain_text("No enquiries match 'zzz-no-such-text'.")
+    expect(page.locator("#inbox-list")).to_contain_text("No skipped posts match 'zzz-no-such-text'.")
 
-    # --- restart the server: accepted/discarded state and the connection survive
+    # --- Rescue P3 -> To review (the AI's verdict stays Discard); Override P9 -> Accepted, "Overrode AI"
+    page.goto(f"{base}/inbox?tab=skipped")
+    _skipped(page, "P3").get_by_role("button", name="Rescue → enquiry").click()
+    expect(page.locator("#skipped-list article.skipped")).to_have_count(2)
+    settled(page)
+    expect(tab_count(page, "review")).to_have_text("4")
+    expect(tab_count(page, "skipped")).to_have_text("2")
+    _skipped(page, "P9").get_by_role("button", name="Override: accept").click()
+    expect(page.locator("#skipped-list article.skipped")).to_have_count(1)
+    settled(page)
+    expect(tab_count(page, "accepted")).to_have_text("2")
+    expect(tab_count(page, "skipped")).to_have_text("1")
+    page.goto(f"{base}/inbox")
+    rescued = page.locator("#inbox-list article.card").filter(has_text="individual freelance trainer")
+    expect(rescued).to_have_count(1)
+    expect(rescued).to_have_attribute("data-verdict", "discard")
+    expect(rescued.locator(".badge--discard")).to_have_text("Discard")
+    page.goto(f"{base}/inbox?tab=accepted")
+    overridden = page.locator("#inbox-list article.card").filter(has_text="certified Generative AI trainer")
+    expect(overridden).to_contain_text("Overrode AI")
+    expect(overridden).to_contain_text("Prospect · New")
+
+    # --- restart the server: decisions, rescues and the connection survive
     calls_before_restart = len(_llm_calls(server))
     assert calls_before_restart >= 7
     server.restart()
     page.goto(f"{base}/inbox?tab=accepted")
-    expect(page.locator("#inbox-list article.card")).to_have_count(1)
+    expect(page.locator("#inbox-list article.card")).to_have_count(2)
     accepted = card(page, "P1")
     expect(accepted).to_have_attribute("data-review-status", "accepted")
     expect(accepted).to_contain_text("Prospect · New")
     expect(accepted.locator("a[href='mailto:training@acmelogistics.example']")).to_be_visible()
-    expect(tab_count(page, "discarded")).to_have_text("3")
-    expect(tab_count(page, "review")).to_have_text("3")
+    expect(tab_count(page, "review")).to_have_text("4")
+    expect(tab_count(page, "skipped")).to_have_text("1")
     expect(page.locator("#status-light")).to_have_attribute("data-status", "connected")
 
-    # --- run 2 on the restarted server: never-run keyword first, only P10/P11 new, few-shot used
+    # --- run 2 on the restarted server: never-run keyword first; only P10/P11 are new; few-shot used
     page.goto(f"{base}/setup")
     add_keyword(page, "claude code training")
     run2_id, _ = run_now(page, base)
@@ -268,12 +278,15 @@ def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: L
     assert (r2["status"], r2["posts_seen"], r2["posts_new"], r2["posts_dupe"], r2["enquiries_triaged"]) == (
         "succeeded", 11, 2, 9, 2,
     ), r2
+    assert (r2["posts_relevant"], r2["posts_skipped_ai"]) == (1, 1), r2
     run2_calls = [c for c in _llm_calls(server)[calls_before_restart:] if c.get("feature") == "triage"]
-    assert len(run2_calls) >= 2
+    assert len(run2_calls) == 2, "only the 2 new posts are triaged; seen ones never again"
     assert all(c.get("fewshot_count", 0) >= 1 for c in run2_calls), [c.get("fewshot_count") for c in run2_calls]
     page.goto(f"{base}/inbox")
     expect(tab_count(page, "review")).to_have_text("5")
-    expect(card(page, "P10")).to_have_attribute("data-verdict", re.compile(r"^(genuine|discard)$"))
+    expect(card(page, "P10")).to_have_attribute("data-verdict", "genuine")
+    expect(card(page, "P11")).to_have_count(0)
+    expect(tab_count(page, "skipped")).to_have_text("2")
 
     # --- server JSON log: llm_call + http_request lines, never the key
     log_text = server.log_text()

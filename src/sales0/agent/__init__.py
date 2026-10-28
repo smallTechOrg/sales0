@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sales0.agent.batch import BatchItem, BatchResult, triage_concurrently
 from sales0.agent.fewshot import load_candidates, select_examples
 from sales0.agent.graph import run_triage
 from sales0.agent.nodes import PROMPT_VERSION
@@ -15,6 +16,9 @@ from sales0.agent.schemas import (
 )
 
 __all__ = [
+    "BatchItem",
+    "BatchResult",
+    "triage_concurrently",
     "PROMPT_VERSION",
     "DecisionExample",
     "OfferingRef",

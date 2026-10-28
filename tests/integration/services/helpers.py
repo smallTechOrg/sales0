@@ -10,7 +10,7 @@ from typing import Any
 from sales0.db.engine import session_scope
 from sales0.db.models import Enquiry, LinkedInSession, ScrapeRun
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
-from sales0.scraper.types import KeywordScrapeResult, ScrapedPost
+from sales0.scraper.types import KeywordScrapeResult, LinkCaptureResult, ScrapedPost
 from sales0.services import dedupe
 from tests.support.fake_llm import triage_answer
 
@@ -145,6 +145,13 @@ class FakeSearcher:
         fields: dict[str, Any] = {"parse_errors": 0, "drift_warning": keyword in self.drift}
         fields.update(self.extra.get(keyword.lower(), {}))
         return KeywordScrapeResult(keyword=keyword, posts=list(item)[:max_posts], scrolls=1, **fields)
+
+    # Phase 1.4: the discovery job calls scan() then capture_links().
+    def scan(self, keyword: str, max_posts: int) -> KeywordScrapeResult:
+        return self.search(keyword, max_posts)
+
+    def capture_links(self, refs: list[str]) -> LinkCaptureResult:
+        return LinkCaptureResult(links={}, attempts=0, found=0)
 
 
 def safety(kind: str) -> AccountSafetyStop:

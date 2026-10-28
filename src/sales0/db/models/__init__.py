@@ -16,7 +16,9 @@ from sales0.db.models.linkedin import LINKEDIN_SESSION_ID, LinkedInSession
 from sales0.db.models.llm_calls import LlmCall
 from sales0.db.models.meta import AppMeta
 from sales0.db.models.offerings import Offering, OfferingGroup
+from sales0.db.models.profiles import LinkedinProfile
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
+from sales0.db.models.seen_posts import SeenPost
 from sales0.db.models.users import User
 
 __all__ = [
@@ -27,11 +29,13 @@ __all__ = [
     "EnquirySource",
     "Keyword",
     "LinkedInSession",
+    "LinkedinProfile",
     "LlmCall",
     "Offering",
     "OfferingGroup",
     "ScrapeRun",
     "ScrapeRunKeyword",
+    "SeenPost",
     "StatusHistory",
     "TriageDecision",
     "UTCDateTime",

@@ -118,7 +118,7 @@ def test_run_in_progress_and_job_busy_are_refused(db_url: str) -> None:
         get_runner().wait(5)
 
 
-def test_recover_interrupted_runs_marks_queued_and_running_failed(db_url: str) -> None:
+def test_recover_interrupted_runs_marks_queued_and_running_aborted_without_a_reason(db_url: str) -> None:
     queued, running, done = make_run("queued"), make_run("running"), make_run("succeeded")
     with session_scope() as db:
         db.add(ScrapeRunKeyword(run_id=running, keyword_text="ai workshop", status="running"))
@@ -126,7 +126,9 @@ def test_recover_interrupted_runs_marks_queued_and_running_failed(db_url: str) -
     with session_scope() as db:
         for rid in (queued, running):
             detail = runs.get_run(db, rid)
-            assert detail.run.status == "failed" and detail.run.error_message == "Interrupted by server restart"
+            assert detail.run.status == "aborted" and detail.run.abort_reason is None
+            assert detail.run.error_message == runs.INTERRUPTED_MESSAGE
+            assert detail.run.error_message.startswith("Interrupted by server restart — the next run continues")
         assert runs.get_run(db, running).keywords[0].status == "skipped"
         assert runs.get_run(db, done).run.status == "succeeded"
         assert runs.active_run(db) is None

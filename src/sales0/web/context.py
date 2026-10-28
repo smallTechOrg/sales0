@@ -190,7 +190,29 @@ def poster_label(poster_type: str | None) -> str | None:
     return POSTER_TYPE_LABELS.get(poster_type, poster_type.replace("_", " ").capitalize())
 
 
+def pct_text(part: int | None, whole: int | None) -> str:
+    """'1.5%' for part/whole (one decimal below 10%, whole numbers above); '—' when whole is 0."""
+    if not whole:
+        return "—"
+    value = (part or 0) * 100 / whole
+    return f"{value:.1f}%" if value < 10 else f"{value:.0f}%"
+
+
+def posted_hint(posted_relative: str | None) -> str | None:
+    """'posted ~3h before sales0 found it' for the scraped relative age ('3h'); None if unknown."""
+    value = (posted_relative or "").strip()
+    return f"posted ~{value} before sales0 found it" if value else None
+
+
+def interrupted(run: Any) -> bool:
+    """A run a server restart cut short (Phase 1.4: aborted, no abort reason)."""
+    return bool(run) and run.status == "aborted" and not run.abort_reason
+
+
 HELPERS: dict[str, Any] = {
+    "pct_text": pct_text,
+    "posted_hint": posted_hint,
+    "interrupted": interrupted,
     "date_ago": date_ago,
     "tokens_short": tokens_short,
     "duration_text": duration_text,

@@ -158,7 +158,7 @@ const isSkip = (l) => skipRe.test(l) || isRel(l) || /^[•·|\-\s]+$/.test(l) ||
 const degreeTail = /\s*[•·]\s*(?:1st|2nd|3rd\+?|\d+(?:st|nd|rd|th)\+?)\s*$/i;
 
 // ---------------------------------------------------------------- URN layout (Phase 1.1)
-const urnRaw = (card) => {
+const urnRaw = (card, idx) => {
   const nested = Array.from(card.querySelectorAll(sel.card_attr));
   const outside = (el) => !nested.some((n) => n.contains(el));
   const all = (css) => Array.from(card.querySelectorAll(css)).filter(outside);
@@ -247,7 +247,8 @@ const urnRaw = (card) => {
   if (!posted) { const el = first(sel.legacy_time); const t = el ? clean(el.innerText || el.textContent) : ''; if (t) { posted = t; via.posted_relative = 'legacy'; } }
 
   return { strategy: 'urn', urn, component_key: null, post_href: postHref, author_name: name, author_profile_url: profile,
-           author_headline: headline, posted_relative: posted, text, has_control_menu: false, via };
+           author_headline: headline, posted_relative: posted, text, has_control_menu: false,
+           card_index: idx, menu_label: null, via };
 };
 
 // ---------------------------------------------------------------- SDUI (Phase 1.2)
@@ -262,12 +263,24 @@ const isHidden = (el) => {
   return false;
 };
 const shown = (el) => (!el || isHidden(el) ? '' : (el.innerText !== undefined ? el.innerText : (el.textContent || '')));
+// Phase 1.4: contact links whose address is not in the visible text (a mailto:/tel: anchor labelled
+// "email me" ...) are appended, so the e-mail/phone the poster published is never lost.
+const contactTail = (el, text) => {
+  if (!el) return '';
+  const hay = (text || '').toLowerCase().replace(/[\s()-]+/g, '');
+  const extra = [];
+  for (const a of el.querySelectorAll('a[href^="mailto:" i], a[href^="tel:" i]')) {
+    const h = decode(a.getAttribute('href') || '').replace(/^(mailto:|tel:)/i, '').split('?')[0].trim();
+    if (h && !hay.includes(h.toLowerCase().replace(/[\s()-]+/g, '')) && !extra.includes(h)) extra.push(h);
+  }
+  return extra.length ? '\n' + extra.join('\n') : '';
+};
 const validKey = (v) => {
   const t = typeof v === 'string' ? v.trim() : '';
   return t && !/\s/.test(t) && t.length <= sel.key_max_len ? t : null;
 };
 
-const sduiRaw = (card) => {
+const sduiRaw = (card, idx) => {
   const via = { strategy: 'sdui' };
   const nestedPosts = Array.from(card.querySelectorAll(sel.sdui_post));
   const inNested = (el) => nestedPosts.some((n) => n.contains(el));
@@ -409,18 +422,29 @@ const sduiRaw = (card) => {
     }
     text = text.replace(/\s*(…|\.\.\.)$/, '');
     if (!clean(text)) { text = null; delete via.text; }
+    else text += contactTail(textEl, text);
+  }
+  // A reshare with no commentary of its own: the reshared original's text is the only text there is.
+  if (!text && nestedPosts.length) {
+    for (const n of nestedPosts) {
+      const el = Array.from(n.querySelectorAll(textCss)).find((e) => clean(shown(e)) && !e.closest(exclCss));
+      if (!el) continue;
+      let t = shown(el).replace(/\s+$/, '').replace(/\s*(…|\.\.\.)\s*((see|show)\s+)?more$/i, '').replace(/\s*(…|\.\.\.)$/, '');
+      if (clean(t)) { text = t + contactTail(el, t); via.text = 'reshared_original'; break; }
+    }
   }
 
   return { strategy: 'sdui', urn, component_key: key, post_href: postHref, author_name: name, author_profile_url: profile,
            author_headline: headline, posted_relative: posted, text, has_control_menu: !!card.querySelector(sel.sdui_control_menu),
+           card_index: idx, menu_label: (() => { const b = card.querySelector(sel.sdui_control_menu + ' button, ' + sel.listitem_menu); return b ? (clean(b.getAttribute('aria-label')) || null) : null; })(),
            via };
 };
 
 // ---------------------------------------------------------------- listitem variant (Phase 1.3)
 // No data-view-name needed: name from the "Open control menu for post by <Name>" label, text from the
-// expandable text box, headline/time from the text nodes BEFORE the text. No permalink capture
-// (has_control_menu=false): the card links to the author's profile instead.
-const listRaw = (card) => {
+// expandable text box, headline/time from the text nodes BEFORE the text. Phase 1.4: carries
+// has_control_menu / card_index / menu_label so permalink capture works on this tier too.
+const listRaw = (card, idx) => {
   const via = { strategy: 'listitem' };
   const menu = card.querySelector(sel.listitem_menu);
   const label = menu ? clean(menu.getAttribute('aria-label')) : '';
@@ -459,6 +483,7 @@ const listRaw = (card) => {
     }
     text = text.replace(/\s*(…|\.\.\.)$/, '');
     if (!clean(text)) { text = null; delete via.text; }
+    else text += contactTail(textEl, text);
   }
 
   // Text nodes before the post text, in DOM order: headline and relative time.
@@ -490,14 +515,14 @@ const listRaw = (card) => {
   if (key) via.component_key = 'listitem';
   return { strategy: 'listitem', urn: null, component_key: key, post_href: null, author_name: name,
            author_profile_url: profile, author_headline: headline, posted_relative: posted, text,
-           has_control_menu: false, via };
+           has_control_menu: !!menu, card_index: idx, menu_label: label || null, via };
 };
 
 const found = __cards(sel);
-let raws = found.cards.map((card) => (found.strategy === 'sdui' ? sduiRaw(card) : found.strategy === 'listitem' ? listRaw(card) : urnRaw(card)));
+let raws = found.cards.map((card, i) => (found.strategy === 'sdui' ? sduiRaw(card, i) : found.strategy === 'listitem' ? listRaw(card, i) : urnRaw(card, i)));
 // A variant that matched cards but gave no text on any of them: try the marker-free listitem tier.
 if (found.strategy !== 'listitem' && !raws.some((r) => r && r.text)) {
-  const alt = __listCards(sel, __scope()).map(listRaw);
+  const alt = __listCards(sel, __scope()).map((c, i) => listRaw(c, i));
   if (alt.some((r) => r.text)) raws = alt;
 }
 return raws;

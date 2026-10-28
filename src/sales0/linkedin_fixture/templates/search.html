@@ -5,7 +5,14 @@
 {% block title %}"{{ keyword }}" | Search | LinkedIn (fixture){% endblock %}
 {% block content %}
 <h1 class="_vh3k">Search results for {{ keyword }}</h1>
-{% if mode == "sdui" or mode == "drift" %}
+{% if mode == "bulk" %}
+<div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent" class="w8sc2">
+ <div data-testid="lazy-column" class="u5rt7 _b2xe">
+{%- include "_bulk_cards.html" %}
+ </div>
+ <div id="fx-sentinel" class="fx9sn" data-next="{{ next_start }}" aria-hidden="true"></div>
+</div>
+{% elif mode == "sdui" or mode == "drift" %}
 <div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent" class="w8sc2">
  <div data-testid="lazy-column" class="u5rt7 _b2xe">
 {%- if mode == "drift" %}
@@ -105,6 +112,121 @@
         const opening = Boolean(list && list.hidden);
         closeAll();
         if (opening) { list.hidden = false; trigger.setAttribute("aria-expanded", "true"); }
+        return;
+      }
+      closeAll();
+    });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeAll(); });
+  })();
+</script>
+{% endif %}
+{% if mode == "bulk" %}
+<script>
+  // Phase 1.4 bulk results: infinite scroll + the control menus of both markup variants.
+  // The first cards are in the page; each scroll (wheel / scroll event / sentinel in view) fetches the
+  // next 10 as the same markup (~150 ms latency) and appends them; an empty answer ends the list.
+  (() => {
+    const BASE = {{ base | tojson }};
+    const QUERY = {{ copy_query | tojson }};
+    const MORE = {{ more_url | tojson }};
+    const COLUMN = document.querySelector('[data-testid="lazy-column"]');
+    const SENTINEL = document.getElementById("fx-sentinel");
+    window.__fixture_query = {{ fixture_query | tojson }};
+    window.__fixture_menu_clicks = [];
+    window.__fixture_menu_opens = 0;
+    window.__fixture_loads = 0;
+    let loading = false, done = false;
+    const loadMore = async () => {
+      if (loading || done) return;
+      loading = true;
+      try {
+        const start = COLUMN.querySelectorAll('[role="listitem"]').length;
+        const response = await fetch(MORE + "&start=" + start, { credentials: "include" });
+        const html = response.ok ? (await response.text()).trim() : "";
+        if (!html) { done = true; SENTINEL.remove(); }
+        else { COLUMN.insertAdjacentHTML("beforeend", html); window.__fixture_loads += 1; }
+      } catch (error) { /* a failed page just ends this attempt */ }
+      loading = false;
+    };
+    let last = 0;
+    const gesture = () => { const now = Date.now(); if (now - last < 200) return; last = now; loadMore(); };
+    document.addEventListener("wheel", gesture, { passive: true });
+    if ("IntersectionObserver" in window && SENTINEL) {
+      new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: "0px" }).observe(SENTINEL);
+    }
+
+    // ---- "…more", and the "…" control menu ("Copy link to post" writes the share link).
+    let portal = null;
+    const closeAll = () => {
+      document.querySelectorAll('[data-view-name="feed-control-menu"]').forEach((menu) => {
+        const list = menu.querySelector('[role="menu"]');
+        if (list) list.hidden = true;
+        const trigger = menu.querySelector(":scope > button");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+      });
+      if (portal) { portal.remove(); portal = null; }
+    };
+    const copy = (slug) => {
+      if (!slug) return;
+      try {
+        const pending = navigator.clipboard && navigator.clipboard.writeText([BASE, "posts", slug].join("/") + "?" + QUERY);
+        if (pending && typeof pending.catch === "function") pending.catch(() => {});
+      } catch (error) { /* no clipboard, like a denied permission */ }
+      const box = document.createElement("div");
+      box.className = "tq4s5";
+      box.setAttribute("role", "status");
+      box.textContent = "Link copied to clipboard.";
+      document.body.appendChild(box);
+      setTimeout(() => box.remove(), 3000);
+    };
+    const choose = (label, slug) => {
+      window.__fixture_menu_clicks.push(label);
+      if (label.toLowerCase() === "copy link to post") copy(slug);
+      closeAll();
+    };
+    const openPortal = (trigger) => {
+      closeAll();
+      const rect = trigger.getBoundingClientRect();
+      portal = document.createElement("div");
+      portal.setAttribute("role", "menu");
+      portal.className = "m6pq3";
+      portal.style.cssText = "position:fixed;top:" + (rect.bottom + 4) + "px;left:" + Math.max(8, rect.right - 200) + "px";
+      const name = (trigger.getAttribute("aria-label") || "").replace(/^Open control menu for post by\s*/, "");
+      for (const label of ["Save", "Copy link to post", "Not interested", "Unfollow " + name, "Report post"]) {
+        const item = document.createElement("div");
+        item.setAttribute("role", "menuitem");
+        item.className = "m2it5";
+        item.textContent = label;
+        portal.appendChild(item);
+      }
+      portal.dataset.fxShare = trigger.dataset.fxShare || "";
+      document.body.appendChild(portal);
+    };
+    document.addEventListener("click", (event) => {
+      const more = event.target.closest('[data-testid="expandable-text-button"]');
+      if (more) {
+        const box = more.closest('[data-testid="expandable-text-box"]') || more.parentElement.querySelector('[data-testid="expandable-text-box"]');
+        if (box) box.querySelectorAll("[hidden]").forEach((node) => { node.hidden = false; });
+        more.remove();
+        return;
+      }
+      const item = event.target.closest('[role="menuitem"]');
+      if (item) {
+        const inline = item.closest('[data-view-name="feed-control-menu"]');
+        const holder = inline || item.closest('[role="menu"]');
+        choose(item.textContent.trim(), inline ? inline.dataset.fxShare : holder && holder.dataset.fxShare);
+        return;
+      }
+      const trigger = event.target.closest('button[aria-label^="Open control menu for post by"]');
+      if (trigger) {
+        window.__fixture_menu_opens += 1;
+        const inline = trigger.closest('[data-view-name="feed-control-menu"]');
+        if (inline) {
+          const list = inline.querySelector('[role="menu"]');
+          const opening = Boolean(list && list.hidden);
+          closeAll();
+          if (opening) { list.hidden = false; trigger.setAttribute("aria-expanded", "true"); }
+        } else { openPortal(trigger); }
         return;
       }
       closeAll();

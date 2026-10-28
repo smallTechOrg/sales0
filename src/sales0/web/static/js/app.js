@@ -99,6 +99,14 @@
     if (ok) ok.focus();
   });
 
+  // ------------------------------------------------------------------ inline edit cancel (keyword rows)
+  document.addEventListener("click", function (evt) {
+    var btn = evt.target instanceof Element ? evt.target.closest("[data-cancel-edit]") : null;
+    if (!btn) return;
+    var details = btn.closest("details");
+    if (details) details.open = false;
+  });
+
   // ------------------------------------------------------------------ form reset on success
   document.addEventListener("htmx:afterRequest", function (evt) {
     var elt = evt.detail.elt;

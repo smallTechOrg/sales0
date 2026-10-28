@@ -14,7 +14,7 @@ from structlog.testing import capture_logs
 from sales0.clock import utcnow
 from sales0.config import Settings, get_settings, reset_settings
 from sales0.db.engine import session_scope
-from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, Keyword, LlmCall, ScrapeRun
+from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, Keyword, LlmCall, ScrapeRun, SeenPost
 from sales0.jobs import discovery_job
 from sales0.jobs.runner import get_runner
 from sales0.linkedin_fixture.corpus import FixturePost, load_corpus
@@ -112,12 +112,14 @@ def test_fixture_run_dedupes_the_corpus_with_a_real_browser_and_fake_llm(connect
     # Phase 1.2: no URN in the DOM. P1's key differs per keyword -> 2 ck: rows, merged by content.
     fp1 = fixture_post(1)
     assert source_refs(p1.id) == [f"ck:{fp1.key_for('corporate ai training')}", f"ck:{fp1.key_for('ai workshop')}"]
-    # P2's URN comes from "Copy link to post"; P7 (same text, no menu) adds its ck: row.
-    assert source_refs(p2.id) == [URN.format(2), f"ck:{fixture_post(7).key_for('ai workshop')}"]
+    # P2's URN comes from "Copy link to post" (added next to its ck: row); P7 (same text) adds its own ck: row.
+    assert set(source_refs(p2.id)) == {f"ck:{fixture_post(2).key_for('corporate ai training')}", URN.format(2),
+                                       f"ck:{fixture_post(7).key_for('ai workshop')}"}
     # Links: P5 copy link -> clean permalink; P1/P6 menus copy nothing -> author profile.
     assert p5.source_url == f"{base}/feed/update/{URN.format(5)}/" and URN.format(5) in source_refs(p5.id)
-    assert p1.source_url == f"{base}/in/{fp1.profile_slug}/"
-    assert p6.source_url == f"{base}/in/{fixture_post(6).profile_slug}/"
+    # Phase 1.4: a profile fallback link is the canonical live-shaped profile URL, even in fixture mode.
+    assert p1.source_url == f"https://www.linkedin.com/in/{fp1.profile_slug}/"
+    assert p6.source_url == f"https://www.linkedin.com/in/{fixture_post(6).profile_slug}/"
     with session_scope() as db:
         cards = {n: inbox.get_card(db, e.id) for n, e in ((1, p1), (5, p5), (6, p6))}
     assert {n: c.link_kind for n, c in cards.items()} == {1: "profile", 5: "post", 6: "profile"}
@@ -187,7 +189,7 @@ def test_layout_drift_keyword_is_a_warning_and_counts_as_a_layout_warning(connec
 
 
 @pytest.mark.llm
-def test_invalid_key_run_fails_with_clear_message_and_enquiries_stay_pending(
+def test_invalid_key_run_fails_with_clear_message_and_posts_stay_pending(
     connected: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SALES0_ANTHROPIC_API_KEY", "invalid")
@@ -198,8 +200,10 @@ def test_invalid_key_run_fails_with_clear_message_and_enquiries_stay_pending(
     assert d.run.status == "failed"
     assert "Anthropic rejected the key" in (d.run.error_message or "")
     with session_scope() as db:
-        assert set(db.scalars(select(Enquiry.triage_status))) == {"pending"}
-        assert db.scalar(select(func.count(Enquiry.id))) == 4
+        # Phase 1.4: no enquiry exists before a verdict; the 4 scanned posts wait as pending seen_posts.
+        assert db.scalar(select(func.count(Enquiry.id))) == 0
+        assert set(db.scalars(select(SeenPost.triage_status))) == {"pending"}
+        assert db.scalar(select(func.count(SeenPost.id))) == 4
 
 
 @pytest.mark.llm
@@ -209,20 +213,22 @@ def test_real_haiku_run_one_then_run_two_learns_from_decisions(connected: Settin
     assert run1.run.status == "succeeded", run1.run.error_message
     r = run1.run
     assert (r.posts_seen, r.posts_new, r.posts_dupe, r.enquiries_triaged) == (9, 7, 2, 7)
+    assert (r.posts_relevant, r.posts_skipped_ai) == (4, 3)  # gate 6: the AI keeps only real buyers
     assert r.cost_usd_micros > 0
 
     p1, p6, p8 = enquiry_for(1), enquiry_for(6), enquiry_for(8)
     assert (p1.ai_verdict, p1.email) == ("genuine", "training@acmelogistics.example")
-    for n in (2, 3, 9):
-        assert enquiry_for(n).ai_verdict == "discard"
     assert p6.email is None
     with session_scope() as db:
+        assert db.scalar(select(func.count(Enquiry.id))) == 4
+        skipped = {x.snippet for x in db.scalars(select(SeenPost).where(SeenPost.verdict == "discard"))}
+        assert len(skipped) == 3 and all(x.enquiry_id is None for x in db.scalars(select(SeenPost).where(SeenPost.verdict == "discard")))
         names = {o.id: o.name for o in offerings.list_offerings(db, include_inactive=True)}
     assert names.get(p8.ai_offering_id) == "AI consulting & build services"
 
     with session_scope() as db:
         inbox.decide(db, [p1.id], "accept")
-        inbox.decide(db, [enquiry_for(2).id, enquiry_for(3).id], "discard", "Looking for individual trainers")
+        inbox.decide(db, [p6.id], "discard", "Not a real requirement")
         keywords.add_keyword(db, "claude code training")
     with session_scope() as db:
         s = runs.run_eligibility(db)
@@ -232,9 +238,11 @@ def test_real_haiku_run_one_then_run_two_learns_from_decisions(connected: Settin
     assert r2.status == "succeeded", r2.error_message
     assert run2.keywords[0].keyword_text == "claude code training"
     assert (r2.posts_seen, r2.posts_new, r2.posts_dupe, r2.enquiries_triaged) == (11, 2, 9, 2)
+    assert (r2.posts_relevant, r2.posts_skipped_ai) == (1, 1)
     with session_scope() as db:
         rows = db.scalars(select(LlmCall).where(LlmCall.run_id == r2.id, LlmCall.feature == "triage")).all()
         assert rows and all(row.fewshot_count >= 1 for row in rows)
+        assert len(rows) == 2  # the 9 already-seen posts cost nothing
 
 
 def test_fixture_run_logs_sdui_strategy_and_permalink_counts(connected: Settings) -> None:

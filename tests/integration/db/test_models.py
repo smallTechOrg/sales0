@@ -51,7 +51,9 @@ def _expect_integrity_error(obj_factory) -> None:  # type: ignore[no-untyped-def
 # --- keywords -------------------------------------------------------------------------
 
 
-def test_keyword_text_is_trimmed_collapsed_and_keyed_case_insensitively(db_url: str) -> None:
+def test_keyword_text_is_trimmed_collapsed_and_keyed_case_insensitively(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         kw = Keyword(text="  Corporate   AI\ttraining ")
         db.add(kw)
@@ -62,7 +64,9 @@ def test_keyword_text_is_trimmed_collapsed_and_keyed_case_insensitively(db_url: 
         assert kw.created_at.tzinfo is not None
 
 
-def test_duplicate_keyword_differing_only_in_case_violates_uniqueness(db_url: str) -> None:
+def test_duplicate_keyword_differing_only_in_case_violates_uniqueness(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         db.add(Keyword(text="AI Workshop"))
 
@@ -79,15 +83,24 @@ def test_duplicate_keyword_differing_only_in_case_violates_uniqueness(db_url: st
 
 def test_offering_name_key_is_unique_case_insensitively(db_url: str) -> None:
     def add_dupe(db) -> None:  # type: ignore[no-untyped-def]
-        db.add(Offering(group_id=1, name="  products ", description="dupe", sort_order=9))
+        db.add(
+            Offering(group_id=1, name="  products ", description="dupe", sort_order=9)
+        )
 
     _expect_integrity_error(add_dupe)
 
 
-def test_new_offering_in_new_group_defaults_active_and_stamps_updated_at_on_edit(db_url: str) -> None:
+def test_new_offering_in_new_group_defaults_active_and_stamps_updated_at_on_edit(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         group = OfferingGroup(name="Services+", sort_order=4)
-        off = Offering(group=group, name="AI audits", description="Audit of AI readiness.", sort_order=5)
+        off = Offering(
+            group=group,
+            name="AI audits",
+            description="Audit of AI readiness.",
+            sort_order=5,
+        )
         db.add(off)
         db.flush()
         assert group.name_key == "services+"
@@ -139,7 +152,9 @@ def test_offering_group_with_offerings_cannot_be_deleted(db_url: str) -> None:
 # --- runs + enquiries -----------------------------------------------------------------
 
 
-def test_full_discovery_graph_persists_with_defaults_and_relationships(db_url: str) -> None:
+def test_full_discovery_graph_persists_with_defaults_and_relationships(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         kw = Keyword(text="ai workshop")
         run = ScrapeRun(mode="fixture", keywords_planned=1)
@@ -160,18 +175,54 @@ def test_full_discovery_graph_persists_with_defaults_and_relationships(db_url: s
         assert enq.date_added.tzinfo is not None
 
         enq.sources.append(
-            EnquirySource(source_ref="urn:li:activity:7001", source_url="https://x/1", first_seen_run_id=run.id)
+            EnquirySource(
+                source_ref="urn:li:activity:7001",
+                source_url="https://x/1",
+                first_seen_run_id=run.id,
+            )
         )
-        enq.keyword_hits.append(EnquiryKeywordHit(run_id=run.id, keyword_id=kw.id, keyword_text=kw.text))
-        enq.ai_extraction = {"verdict": "genuine", "priority": "high", "offering_id": 1, "email": None}
+        enq.keyword_hits.append(
+            EnquiryKeywordHit(run_id=run.id, keyword_id=kw.id, keyword_text=kw.text)
+        )
+        enq.ai_extraction = {
+            "verdict": "genuine",
+            "priority": "high",
+            "offering_id": 1,
+            "email": None,
+        }
         enq.ai_verdict = "genuine"
-        db.add(LlmCall(feature="triage", model="claude-haiku-5-5", enquiry_id=enq.id, run_id=run.id,
-                       input_tokens=1200, output_tokens=180, cost_usd_micros=2100, latency_ms=900,
-                       fewshot_count=2, status="ok"))
-        db.add(TriageDecision(enquiry_id=enq.id, decision="accept", ai_verdict="genuine", is_override=False,
-                              field_overrides={"priority": ["low", "high"], "offering_id": [2, 1]}))
-        db.add(StatusHistory(entity_type="enquiry", entity_id=enq.id, field="review_status",
-                             from_value="pending_review", to_value="accepted"))
+        db.add(
+            LlmCall(
+                feature="triage",
+                model="claude-haiku-5-5",
+                enquiry_id=enq.id,
+                run_id=run.id,
+                input_tokens=1200,
+                output_tokens=180,
+                cost_usd_micros=2100,
+                latency_ms=900,
+                fewshot_count=2,
+                status="ok",
+            )
+        )
+        db.add(
+            TriageDecision(
+                enquiry_id=enq.id,
+                decision="accept",
+                ai_verdict="genuine",
+                is_override=False,
+                field_overrides={"priority": ["low", "high"], "offering_id": [2, 1]},
+            )
+        )
+        db.add(
+            StatusHistory(
+                entity_type="enquiry",
+                entity_id=enq.id,
+                field="review_status",
+                from_value="pending_review",
+                to_value="accepted",
+            )
+        )
         enq_id, run_id = enq.id, run.id
 
     with session_scope() as db:
@@ -179,14 +230,32 @@ def test_full_discovery_graph_persists_with_defaults_and_relationships(db_url: s
         assert enq is not None
         assert [s.source_ref for s in enq.sources] == ["urn:li:activity:7001"]
         assert [h.keyword_text for h in enq.keyword_hits] == ["ai workshop"]
-        assert enq.ai_extraction == {"verdict": "genuine", "priority": "high", "offering_id": 1, "email": None}
+        assert enq.ai_extraction == {
+            "verdict": "genuine",
+            "priority": "high",
+            "offering_id": 1,
+            "email": None,
+        }
         assert enq.date_posted == date(2026, 10, 25)
         run = db.get(ScrapeRun, run_id)
-        assert run is not None and [k.keyword_text for k in run.keywords] == ["ai workshop"]
-        call = db.execute(select(LlmCall).where(LlmCall.enquiry_id == enq_id)).scalar_one()
-        assert call.fewshot_count == 2 and call.cost_usd_micros == 2100 and call.created_at.tzinfo is not None
-        dec = db.execute(select(TriageDecision).where(TriageDecision.enquiry_id == enq_id)).scalar_one()
-        assert dec.field_overrides == {"priority": ["low", "high"], "offering_id": [2, 1]}
+        assert run is not None and [k.keyword_text for k in run.keywords] == [
+            "ai workshop"
+        ]
+        call = db.execute(
+            select(LlmCall).where(LlmCall.enquiry_id == enq_id)
+        ).scalar_one()
+        assert (
+            call.fewshot_count == 2
+            and call.cost_usd_micros == 2100
+            and call.created_at.tzinfo is not None
+        )
+        dec = db.execute(
+            select(TriageDecision).where(TriageDecision.enquiry_id == enq_id)
+        ).scalar_one()
+        assert dec.field_overrides == {
+            "priority": ["low", "high"],
+            "offering_id": [2, 1],
+        }
         assert dec.decided_at.tzinfo is not None
         hist = db.execute(select(StatusHistory)).scalar_one()
         assert hist.changed_at.tzinfo is not None and hist.to_value == "accepted"
@@ -214,27 +283,49 @@ def test_keyword_hit_is_unique_per_enquiry_run_and_keyword_text(db_url: str) -> 
         enq = _enquiry()
         db.add_all([run, enq])
         db.flush()
-        db.add(EnquiryKeywordHit(enquiry_id=enq.id, run_id=run.id, keyword_text="ai workshop"))
+        db.add(
+            EnquiryKeywordHit(
+                enquiry_id=enq.id, run_id=run.id, keyword_text="ai workshop"
+            )
+        )
         enq_id, run_id = enq.id, run.id
 
     _expect_integrity_error(
-        lambda db: db.add(EnquiryKeywordHit(enquiry_id=enq_id, run_id=run_id, keyword_text="ai workshop"))
+        lambda db: db.add(
+            EnquiryKeywordHit(
+                enquiry_id=enq_id, run_id=run_id, keyword_text="ai workshop"
+            )
+        )
     )
     with session_scope() as db:  # a different keyword in the same run is fine
-        db.add(EnquiryKeywordHit(enquiry_id=enq_id, run_id=run_id, keyword_text="ai consulting"))
+        db.add(
+            EnquiryKeywordHit(
+                enquiry_id=enq_id, run_id=run_id, keyword_text="ai consulting"
+            )
+        )
     with session_scope() as db:
         assert db.scalar(select(func.count()).select_from(EnquiryKeywordHit)) == 2
 
 
-def test_deleting_a_keyword_keeps_run_rows_and_hits_with_their_text_snapshot(db_url: str) -> None:
+def test_deleting_a_keyword_keeps_run_rows_and_hits_with_their_text_snapshot(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         kw = Keyword(text="ai workshop")
         run = ScrapeRun(mode="fixture")
         enq = _enquiry()
         db.add_all([kw, run, enq])
         db.flush()
-        db.add(ScrapeRunKeyword(run_id=run.id, keyword_id=kw.id, keyword_text=kw.text, status="done"))
-        db.add(EnquiryKeywordHit(enquiry_id=enq.id, run_id=run.id, keyword_id=kw.id, keyword_text=kw.text))
+        db.add(
+            ScrapeRunKeyword(
+                run_id=run.id, keyword_id=kw.id, keyword_text=kw.text, status="done"
+            )
+        )
+        db.add(
+            EnquiryKeywordHit(
+                enquiry_id=enq.id, run_id=run.id, keyword_id=kw.id, keyword_text=kw.text
+            )
+        )
         kw_id = kw.id
     with session_scope() as db:
         db.delete(db.get(Keyword, kw_id))
@@ -245,7 +336,9 @@ def test_deleting_a_keyword_keeps_run_rows_and_hits_with_their_text_snapshot(db_
         assert hit.keyword_id is None and hit.keyword_text == "ai workshop"
 
 
-def test_deleting_an_enquiry_cascades_to_sources_and_hits_at_the_database_level(db_url: str) -> None:
+def test_deleting_an_enquiry_cascades_to_sources_and_hits_at_the_database_level(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         enq = _enquiry()
         enq.sources.append(EnquirySource(source_ref="urn:li:activity:9"))
@@ -266,26 +359,61 @@ def test_deleting_an_enquiry_cascades_to_sources_and_hits_at_the_database_level(
 @pytest.mark.parametrize(
     "factory",
     [
-        pytest.param(lambda: _enquiry(review_status="maybe"), id="enquiry.review_status"),
-        pytest.param(lambda: _enquiry(triage_status="later"), id="enquiry.triage_status"),
+        pytest.param(
+            lambda: _enquiry(review_status="maybe"), id="enquiry.review_status"
+        ),
+        pytest.param(
+            lambda: _enquiry(triage_status="later"), id="enquiry.triage_status"
+        ),
         pytest.param(lambda: _enquiry(ai_verdict="spam"), id="enquiry.ai_verdict"),
         pytest.param(lambda: _enquiry(priority="urgent"), id="enquiry.priority"),
         pytest.param(lambda: _enquiry(mode="remote"), id="enquiry.mode"),
         pytest.param(lambda: _enquiry(stage="won"), id="enquiry.stage"),
         pytest.param(lambda: _enquiry(source="email"), id="enquiry.source"),
         pytest.param(lambda: ScrapeRun(mode="demo"), id="scrape_run.mode"),
-        pytest.param(lambda: ScrapeRun(mode="live", status="paused"), id="scrape_run.status"),
-        pytest.param(lambda: ScrapeRun(mode="live", trigger="cron"), id="scrape_run.trigger"),
-        pytest.param(lambda: ScrapeRun(mode="live", abort_reason="banned"), id="scrape_run.abort_reason"),
-        pytest.param(lambda: LlmCall(feature="triage", model="m", input_tokens=1, output_tokens=1,
-                                     cost_usd_micros=1, latency_ms=1, status="maybe"), id="llm_call.status"),
-        pytest.param(lambda: LlmCall(feature="chat", model="m", input_tokens=1, output_tokens=1,
-                                     cost_usd_micros=1, latency_ms=1, status="ok"), id="llm_call.feature"),
-        pytest.param(lambda: StatusHistory(entity_type="lead", entity_id=1, field="stage"),
-                     id="status_history.entity_type"),
+        pytest.param(
+            lambda: ScrapeRun(mode="live", status="paused"), id="scrape_run.status"
+        ),
+        pytest.param(
+            lambda: ScrapeRun(mode="live", trigger="cron"), id="scrape_run.trigger"
+        ),
+        pytest.param(
+            lambda: ScrapeRun(mode="live", abort_reason="banned"),
+            id="scrape_run.abort_reason",
+        ),
+        pytest.param(
+            lambda: LlmCall(
+                feature="triage",
+                model="m",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd_micros=1,
+                latency_ms=1,
+                status="maybe",
+            ),
+            id="llm_call.status",
+        ),
+        pytest.param(
+            lambda: LlmCall(
+                feature="chat",
+                model="m",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd_micros=1,
+                latency_ms=1,
+                status="ok",
+            ),
+            id="llm_call.feature",
+        ),
+        pytest.param(
+            lambda: StatusHistory(entity_type="lead", entity_id=1, field="stage"),
+            id="status_history.entity_type",
+        ),
     ],
 )
-def test_invalid_enum_values_are_rejected_by_check_constraints(db_url: str, factory) -> None:  # type: ignore[no-untyped-def]
+def test_invalid_enum_values_are_rejected_by_check_constraints(
+    db_url: str, factory
+) -> None:  # type: ignore[no-untyped-def]
     _expect_integrity_error(lambda db: db.add(factory()))
 
 
@@ -296,14 +424,24 @@ def test_invalid_decision_and_run_keyword_status_are_rejected(db_url: str) -> No
         db.add_all([enq, run])
         db.flush()
         enq_id, run_id = enq.id, run.id
-    _expect_integrity_error(lambda db: db.add(TriageDecision(enquiry_id=enq_id, decision="maybe", is_override=False)))
     _expect_integrity_error(
-        lambda db: db.add(ScrapeRunKeyword(run_id=run_id, keyword_text="x", status="lost"))
+        lambda db: db.add(
+            TriageDecision(enquiry_id=enq_id, decision="maybe", is_override=False)
+        )
+    )
+    _expect_integrity_error(
+        lambda db: db.add(
+            ScrapeRunKeyword(run_id=run_id, keyword_text="x", status="lost")
+        )
     )
 
 
-def test_linkedin_session_is_a_singleton_and_rejects_unknown_status(db_url: str) -> None:
-    _expect_integrity_error(lambda db: db.add(LinkedInSession(id=2, status="not_connected")))
+def test_linkedin_session_is_a_singleton_and_rejects_unknown_status(
+    db_url: str,
+) -> None:
+    _expect_integrity_error(
+        lambda db: db.add(LinkedInSession(id=2, status="not_connected"))
+    )
     db = get_sessionmaker()()
     try:
         row = db.get(LinkedInSession, 1)
@@ -317,8 +455,12 @@ def test_linkedin_session_is_a_singleton_and_rejects_unknown_status(db_url: str)
 
 
 def test_missing_required_fields_are_rejected(db_url: str) -> None:
-    _expect_integrity_error(lambda db: db.add(Enquiry(source="linkedin_post", raw_text="no hash")))
-    _expect_integrity_error(lambda db: db.add(Offering(name="No group", description="", sort_order=1)))
+    _expect_integrity_error(
+        lambda db: db.add(Enquiry(source="linkedin_post", raw_text="no hash"))
+    )
+    _expect_integrity_error(
+        lambda db: db.add(Offering(name="No group", description="", sort_order=1))
+    )
 
 
 # --- users ----------------------------------------------------------------------------
@@ -326,8 +468,16 @@ def test_missing_required_fields_are_rejected(db_url: str) -> None:
 
 def test_users_email_is_unique_but_nullable(db_url: str) -> None:
     with session_scope() as db:
-        db.add_all([User(display_name="A"), User(display_name="B"), User(display_name="C", email="c@x.example")])
-    _expect_integrity_error(lambda db: db.add(User(display_name="D", email="c@x.example")))
+        db.add_all(
+            [
+                User(display_name="A"),
+                User(display_name="B"),
+                User(display_name="C", email="c@x.example"),
+            ]
+        )
+    _expect_integrity_error(
+        lambda db: db.add(User(display_name="D", email="c@x.example"))
+    )
     with session_scope() as db:
         u = db.execute(select(User).where(User.email == "c@x.example")).scalar_one()
         db.add(Keyword(text="owned keyword", actor_user_id=u.id))
@@ -336,22 +486,48 @@ def test_users_email_is_unique_but_nullable(db_url: str) -> None:
 # --- datetimes ------------------------------------------------------------------------
 
 
-def test_datetimes_round_trip_as_aware_utc_and_filter_correctly_with_aware_bounds(db_url: str) -> None:
+def test_datetimes_round_trip_as_aware_utc_and_filter_correctly_with_aware_bounds(
+    db_url: str,
+) -> None:
     ist = timezone(timedelta(hours=5, minutes=30))
     base = datetime(2026, 10, 27, 6, 0, tzinfo=UTC)
     with session_scope() as db:
-        for i, ts in enumerate([base - timedelta(days=1), base, base + timedelta(hours=1)]):
-            db.add(LlmCall(feature="triage", model="m", input_tokens=1, output_tokens=1, cost_usd_micros=10 + i,
-                           latency_ms=1, status="ok", created_at=ts))
+        for i, ts in enumerate(
+            [base - timedelta(days=1), base, base + timedelta(hours=1)]
+        ):
+            db.add(
+                LlmCall(
+                    feature="triage",
+                    model="m",
+                    input_tokens=1,
+                    output_tokens=1,
+                    cost_usd_micros=10 + i,
+                    latency_ms=1,
+                    status="ok",
+                    created_at=ts,
+                )
+            )
         # A non-UTC aware value is normalised to UTC on write.
-        db.add(LlmCall(feature="ping", model="m", input_tokens=1, output_tokens=1, cost_usd_micros=100,
-                       latency_ms=1, status="ok", created_at=datetime(2026, 10, 27, 12, 0, tzinfo=ist)))
+        db.add(
+            LlmCall(
+                feature="ping",
+                model="m",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd_micros=100,
+                latency_ms=1,
+                status="ok",
+                created_at=datetime(2026, 10, 27, 12, 0, tzinfo=ist),
+            )
+        )
 
     with session_scope() as db:
         start = datetime(2026, 10, 27, 0, 0, tzinfo=ist)  # == 2026-10-26 18:30 UTC
         end = start + timedelta(days=1)
         total = db.scalar(
-            select(func.sum(LlmCall.cost_usd_micros)).where(LlmCall.created_at >= start, LlmCall.created_at < end)
+            select(func.sum(LlmCall.cost_usd_micros)).where(
+                LlmCall.created_at >= start, LlmCall.created_at < end
+            )
         )
         assert total == 11 + 12 + 100
         ping = db.execute(select(LlmCall).where(LlmCall.feature == "ping")).scalar_one()

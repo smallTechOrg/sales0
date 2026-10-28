@@ -6,8 +6,8 @@
         <thead>
           <tr>
             <th scope="col">Started</th><th scope="col">Status</th><th scope="col" class="num">Keywords</th>
-            <th scope="col" class="num">Seen</th><th scope="col" class="num">New</th><th scope="col" class="num">Dupes</th>
-            <th scope="col" class="num">Triaged</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Duration</th>
+            <th scope="col" class="num">Scanned</th><th scope="col" class="num">New</th><th scope="col" class="num">Relevant</th>
+            <th scope="col" class="num">Skipped</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Duration</th>
           </tr>
         </thead>
         <tbody>
@@ -18,8 +18,8 @@
               <td class="num">{{ run.keywords_done }}/{{ run.keywords_planned }}</td>
               <td class="num">{{ run.posts_seen }}</td>
               <td class="num">{{ run.posts_new }}</td>
-              <td class="num">{{ run.posts_dupe }}</td>
-              <td class="num">{{ run.enquiries_triaged }}{% if run.triage_failed %} <span class="muted">({{ run.triage_failed }} failed)</span>{% endif %}</td>
+              <td class="num">{{ run.posts_relevant }}</td>
+              <td class="num">{{ run.posts_skipped_ai }}{% if run.triage_failed %} <span class="muted">({{ run.triage_failed }} failed)</span>{% endif %}</td>
               <td class="num">{{ usd_precise(run.cost_usd_micros) }}</td>
               <td class="num">{{ duration_text(run.duration_ms if run.duration_ms is not none else elapsed_ms(run.started_at, run.finished_at)) }}</td>
             </tr>

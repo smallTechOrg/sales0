@@ -24,14 +24,10 @@
         {% elif outcome %}
           <div class="outcome outcome--{{ outcome.kind }}"><p><strong>{{ outcome.text }}</strong></p>{% if outcome.guidance %}<p>{{ outcome.guidance }}</p>{% endif %}{% if outcome.cooldown %}<p class="run-cooldown"><strong>{{ outcome.cooldown }}</strong></p>{% endif %}{% if outcome.setup_link %}<p><a class="btn btn--primary btn--sm" href="/setup#linkedin-card">Go to Setup</a></p>{% endif %}</div>
         {% endif %}
+        {% if run.posts_seen or not active %}{% include "runs/_summary.html" %}{% endif %}
         <dl class="kv">
           <dt>Keywords</dt><dd>{{ run.keywords_done }}/{{ run.keywords_planned }}</dd>
-          <dt>Posts seen</dt><dd>{{ run.posts_seen }}</dd>
-          <dt>New enquiries</dt><dd>{{ run.posts_new }}</dd>
-          <dt>Duplicates merged</dt><dd>{{ run.posts_dupe }}</dd>
-          <dt>Triaged by AI</dt><dd>{{ run.enquiries_triaged }}{% if run.triage_failed %} ({{ run.triage_failed }} failed){% endif %}</dd>
           <dt>Errors</dt><dd>{{ run.errors_count }}</dd>
-          <dt>AI cost</dt><dd>{{ usd_precise(run.cost_usd_micros) }}</dd>
           <dt>Duration</dt><dd>{{ duration_text(run.duration_ms if run.duration_ms is not none else elapsed_ms(run.started_at, run.finished_at)) }}</dd>
           <dt>Finished</dt><dd>{{ run.finished_at | localdt }}</dd>
         </dl>
@@ -45,8 +41,9 @@
             <table id="run-keywords" class="table">
               <thead>
                 <tr>
-                  <th scope="col">Keyword</th><th scope="col">Status</th><th scope="col" class="num">Seen</th><th scope="col" class="num">New</th>
-                  <th scope="col" class="num">Dupes</th><th scope="col" class="num">Errors</th><th scope="col" class="num">Duration</th><th scope="col">Message</th>
+                  <th scope="col">Keyword</th><th scope="col">Status</th><th scope="col" class="num">Scanned</th><th scope="col" class="num">New</th>
+                  <th scope="col" class="num">Already seen</th><th scope="col" class="num">Relevant</th><th scope="col" class="num">Skipped</th>
+                  <th scope="col" class="num">Links</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Duration</th><th scope="col">Message</th>
                 </tr>
               </thead>
               <tbody>
@@ -57,7 +54,10 @@
                     <td class="num">{{ kw.posts_seen }}</td>
                     <td class="num">{{ kw.posts_new }}</td>
                     <td class="num">{{ kw.posts_dupe }}</td>
-                    <td class="num">{{ kw.errors }}</td>
+                    <td class="num">{{ kw.posts_relevant }}</td>
+                    <td class="num">{{ kw.posts_skipped_ai }}</td>
+                    <td class="num">{{ kw.permalinks_found }}</td>
+                    <td class="num">{{ usd_precise(kw.cost_usd_micros) }}</td>
                     <td class="num">{{ duration_text(kw.duration_ms) }}</td>
                     <td>{{ kw.error_message or "" }}</td>
                   </tr>

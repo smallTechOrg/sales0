@@ -86,7 +86,9 @@ OFFERINGS = [
 ]
 
 
-def _in(column: str, values: tuple[str, ...], name: str, *, nullable: bool = False) -> sa.CheckConstraint:
+def _in(
+    column: str, values: tuple[str, ...], name: str, *, nullable: bool = False
+) -> sa.CheckConstraint:
     allowed = ", ".join(f"'{v}'" for v in values)
     expr = f"{column} IN ({allowed})"
     if nullable:
@@ -103,7 +105,12 @@ def _counter(name: str) -> sa.Column:
 
 
 def _actor() -> sa.Column:
-    return sa.Column("actor_user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    return sa.Column(
+        "actor_user_id",
+        sa.Integer(),
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 def upgrade() -> None:
@@ -157,7 +164,9 @@ def upgrade() -> None:
     linkedin_session = op.create_table(
         "linkedin_session",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("status", sa.String(20), nullable=False, server_default="not_connected"),
+        sa.Column(
+            "status", sa.String(20), nullable=False, server_default="not_connected"
+        ),
         _ts("last_checked_at"),
         _ts("last_connected_at"),
         _ts("last_successful_run_at"),
@@ -198,9 +207,18 @@ def upgrade() -> None:
         "scrape_run_keywords",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
-            "run_id", sa.Integer(), sa.ForeignKey("scrape_runs.id", ondelete="CASCADE"), nullable=False, index=True
+            "run_id",
+            sa.Integer(),
+            sa.ForeignKey("scrape_runs.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
         ),
-        sa.Column("keyword_id", sa.Integer(), sa.ForeignKey("keywords.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "keyword_id",
+            sa.Integer(),
+            sa.ForeignKey("keywords.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("keyword_text", sa.String(100), nullable=False),
         sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
         _counter("posts_seen"),
@@ -215,7 +233,9 @@ def upgrade() -> None:
     op.create_table(
         "enquiries",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("source", sa.String(20), nullable=False, server_default="linkedin_post"),
+        sa.Column(
+            "source", sa.String(20), nullable=False, server_default="linkedin_post"
+        ),
         sa.Column("content_hash", sa.String(64), nullable=False, unique=True),
         sa.Column("raw_text", sa.Text(), nullable=False),
         sa.Column("author_name", sa.String(200), nullable=True),
@@ -224,9 +244,16 @@ def upgrade() -> None:
         sa.Column("source_url", sa.String(1000), nullable=True),
         sa.Column("date_posted", sa.Date(), nullable=True),
         _ts("date_added", nullable=False, index=True),
-        sa.Column("review_status", sa.String(20), nullable=False, server_default="pending_review"),
+        sa.Column(
+            "review_status",
+            sa.String(20),
+            nullable=False,
+            server_default="pending_review",
+        ),
         sa.Column("stage", sa.String(30), nullable=True),
-        sa.Column("triage_status", sa.String(10), nullable=False, server_default="pending"),
+        sa.Column(
+            "triage_status", sa.String(10), nullable=False, server_default="pending"
+        ),
         sa.Column("triage_error", sa.String(300), nullable=True),
         _ts("triaged_at"),
         sa.Column("prompt_version", sa.String(40), nullable=True),
@@ -235,12 +262,20 @@ def upgrade() -> None:
         sa.Column("ai_poster_type", sa.String(40), nullable=True),
         sa.Column("ai_priority", sa.String(10), nullable=True),
         sa.Column(
-            "ai_offering_id", sa.Integer(), sa.ForeignKey("offerings.id", ondelete="RESTRICT"), nullable=True
+            "ai_offering_id",
+            sa.Integer(),
+            sa.ForeignKey("offerings.id", ondelete="RESTRICT"),
+            nullable=True,
         ),
         sa.Column("ai_extraction", sa.JSON(), nullable=True),
         sa.Column("requirement_summary", sa.String(140), nullable=True),
         sa.Column("priority", sa.String(10), nullable=True),
-        sa.Column("offering_id", sa.Integer(), sa.ForeignKey("offerings.id", ondelete="RESTRICT"), nullable=True),
+        sa.Column(
+            "offering_id",
+            sa.Integer(),
+            sa.ForeignKey("offerings.id", ondelete="RESTRICT"),
+            nullable=True,
+        ),
         sa.Column("company", sa.String(200), nullable=True, index=True),
         sa.Column("contact_person", sa.String(200), nullable=True),
         sa.Column("email", sa.String(254), nullable=True),
@@ -256,7 +291,13 @@ def upgrade() -> None:
         sa.Column("date_proposal_sent", sa.Date(), nullable=True),
         _ts("decided_at"),
         _actor(),
-        sa.Index("ix_enquiries_inbox", "review_status", "ai_verdict", "priority", "date_added"),
+        sa.Index(
+            "ix_enquiries_inbox",
+            "review_status",
+            "ai_verdict",
+            "priority",
+            "date_added",
+        ),
         _in("source", ENQUIRY_SOURCES, "source"),
         _in("review_status", REVIEW_STATUSES, "review_status"),
         _in("stage", ENQUIRY_STAGES, "stage", nullable=True),
@@ -270,12 +311,19 @@ def upgrade() -> None:
         "enquiry_sources",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
-            "enquiry_id", sa.Integer(), sa.ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True
+            "enquiry_id",
+            sa.Integer(),
+            sa.ForeignKey("enquiries.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
         ),
         sa.Column("source_ref", sa.String(200), nullable=False, unique=True),
         sa.Column("source_url", sa.String(1000), nullable=True),
         sa.Column(
-            "first_seen_run_id", sa.Integer(), sa.ForeignKey("scrape_runs.id", ondelete="SET NULL"), nullable=True
+            "first_seen_run_id",
+            sa.Integer(),
+            sa.ForeignKey("scrape_runs.id", ondelete="SET NULL"),
+            nullable=True,
         ),
         _ts("first_seen_at", nullable=False),
     )
@@ -284,10 +332,24 @@ def upgrade() -> None:
         "enquiry_keyword_hits",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
-            "enquiry_id", sa.Integer(), sa.ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True
+            "enquiry_id",
+            sa.Integer(),
+            sa.ForeignKey("enquiries.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
         ),
-        sa.Column("run_id", sa.Integer(), sa.ForeignKey("scrape_runs.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("keyword_id", sa.Integer(), sa.ForeignKey("keywords.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "run_id",
+            sa.Integer(),
+            sa.ForeignKey("scrape_runs.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "keyword_id",
+            sa.Integer(),
+            sa.ForeignKey("keywords.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("keyword_text", sa.String(100), nullable=False),
         _ts("seen_at", nullable=False),
         sa.UniqueConstraint("enquiry_id", "run_id", "keyword_text"),
@@ -297,7 +359,11 @@ def upgrade() -> None:
         "triage_decisions",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
-            "enquiry_id", sa.Integer(), sa.ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True
+            "enquiry_id",
+            sa.Integer(),
+            sa.ForeignKey("enquiries.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
         ),
         sa.Column("decision", sa.String(10), nullable=False),
         sa.Column("ai_verdict", sa.String(10), nullable=True),
@@ -317,10 +383,18 @@ def upgrade() -> None:
         sa.Column("model", sa.String(100), nullable=False),
         sa.Column("prompt_version", sa.String(40), nullable=True),
         sa.Column(
-            "enquiry_id", sa.Integer(), sa.ForeignKey("enquiries.id", ondelete="SET NULL"), nullable=True, index=True
+            "enquiry_id",
+            sa.Integer(),
+            sa.ForeignKey("enquiries.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
         ),
         sa.Column(
-            "run_id", sa.Integer(), sa.ForeignKey("scrape_runs.id", ondelete="SET NULL"), nullable=True, index=True
+            "run_id",
+            sa.Integer(),
+            sa.ForeignKey("scrape_runs.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
         ),
         _counter("input_tokens"),
         _counter("output_tokens"),
@@ -357,16 +431,27 @@ def upgrade() -> None:
 
     op.bulk_insert(
         offering_groups,
-        [{**g, "name_key": g["name"].strip().lower(), "created_at": stamp} for g in OFFERING_GROUPS],
+        [
+            {**g, "name_key": g["name"].strip().lower(), "created_at": stamp}
+            for g in OFFERING_GROUPS
+        ],
     )
     op.bulk_insert(
         offerings,
         [
-            {**o, "name_key": o["name"].strip().lower(), "active": True, "created_at": stamp, "updated_at": stamp}
+            {
+                **o,
+                "name_key": o["name"].strip().lower(),
+                "active": True,
+                "created_at": stamp,
+                "updated_at": stamp,
+            }
             for o in OFFERINGS
         ],
     )
-    op.bulk_insert(linkedin_session, [{"id": 1, "status": "not_connected", "updated_at": stamp}])
+    op.bulk_insert(
+        linkedin_session, [{"id": 1, "status": "not_connected", "updated_at": stamp}]
+    )
 
 
 def downgrade() -> None:

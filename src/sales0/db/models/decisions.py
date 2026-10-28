@@ -21,11 +21,17 @@ class TriageDecision(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    enquiry_id: Mapped[int] = mapped_column(ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True)
+    enquiry_id: Mapped[int] = mapped_column(
+        ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     decision: Mapped[str] = mapped_column(String(10), nullable=False)
     ai_verdict: Mapped[str | None] = mapped_column(String(10))
     is_override: Mapped[bool] = mapped_column(Boolean, nullable=False)
     reason: Mapped[str | None] = mapped_column(String(200))
     field_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    decided_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, index=True)
-    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc, index=True
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )

@@ -235,9 +235,9 @@ def test_a_missing_menu_item_still_closes_the_menu_with_escape() -> None:
     assert log.events[-3:] == ["short", "key:Escape", "checkpoint"]
 
 
-def test_a_missing_trigger_is_a_miss_without_any_click() -> None:
+def test_a_card_gone_from_the_dom_is_neither_an_attempt_nor_a_miss() -> None:
     stats, _raws, _page, log = _run(["no_trigger"])
-    assert stats == P.PermalinkStats(1, 0)
+    assert stats == P.PermalinkStats(0, 0)
     assert not [e for e in log.events if e.startswith("click:")]
 
 
@@ -276,3 +276,47 @@ def test_the_last_captured_string_wins() -> None:
     raws = [_raw(0)]
     P.capture_permalinks(page, raws, cap=15, pacer=_pacer(log), checkpoint=lambda: None)  # type: ignore[arg-type]
     assert raws[0]["copied_url"] == POST_URL
+
+
+# ----------------------------------------------------------------------- Phase 1.4: refs + tiers
+def test_eligible_refs_picks_capturable_refs_in_the_order_given_up_to_the_cap() -> None:
+    raws = [
+        _raw(0),
+        _raw(1, urn="urn:li:activity:7300000000000000001"),
+        _raw(2, has_control_menu=False),
+        _raw(3, strategy="listitem", menu_label="Open control menu for post by X", card_index=3),
+        _raw(4, component_key=None),
+        _raw(5),
+    ]
+    refs = ["ck:KEY5", "ck:KEY0", "urn:li:activity:7300000000000000001", "ck:KEY2", "ck:KEY3", "ck:nope", "ck:KEY0"]
+    assert P.eligible_refs(raws, refs, 15) == ["ck:KEY5", "ck:KEY0", "ck:KEY3"]
+    assert P.eligible_refs(raws, refs, 2) == ["ck:KEY5", "ck:KEY0"]
+    assert P.eligible_refs(raws, refs, 0) == [] and P.eligible_refs([], refs, 5) == []
+
+
+def test_the_trigger_is_located_per_tier_by_key_then_card_index_verified_by_label() -> None:
+    sdui = P._trigger_args(_raw(2), 7)
+    assert sdui["tier"] == "sdui" and sdui["key"] == "KEY2" and sdui["index"] == 7
+    li = P._trigger_args(_raw(4, strategy="listitem", card_index=9, menu_label="Open control menu for post by Jo"), 0)
+    assert li["tier"] == "listitem" and li["index"] == 9 and li["menu_label"] == "Open control menu for post by Jo"
+    assert li["listitem_menu"] == 'button[aria-label^="Open control menu for post by"]'
+    js = P.FIND_TRIGGER_JS
+    assert "a.menu_label" in js and "label(cand) === a.menu_label" in js  # a mismatch = no card
+
+
+def test_the_copy_item_search_falls_back_to_the_portal_then_the_document() -> None:
+    js = P.FIND_COPY_ITEM_JS
+    assert "a.doc_menu_sel" in js and "pick([document.body])" in js and "a.listitem_card" in js
+
+
+def test_cards_gone_from_the_dom_cost_no_attempt_and_do_not_count_toward_the_miss_streak() -> None:
+    # 3 vanished cards, then a noop, then a hit: only 2 attempts, 1 found; no 3-miss stop was triggered.
+    stats, raws, _page, log = _run(["no_trigger", "no_trigger", "no_trigger", "noop", "hit"])
+    assert stats == P.PermalinkStats(2, 1)
+    assert "copied_url" in raws[4] and log.events.count("click:menu") == 2
+
+
+def test_the_attempt_cap_counts_attempts_not_skipped_cards() -> None:
+    stats, raws, _page, _log = _run(["no_trigger", "hit", "hit", "hit"], cap=2)
+    assert stats == P.PermalinkStats(2, 2)
+    assert "copied_url" not in raws[3]

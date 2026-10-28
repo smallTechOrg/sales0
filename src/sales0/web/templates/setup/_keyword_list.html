@@ -1,12 +1,20 @@
-{# Needs: keywords (list[KeywordView]). #}
+{# Needs: keywords (list[KeywordView]), keyword_groups (name, keywords, scanned, relevant), keyword_group_choices, own_group. #}
 <div id="keyword-list">
-  {% if keywords %}
-    <ul class="item-list">
-      {% for keyword in keywords %}{% include "setup/_keyword_row.html" %}{% endfor %}
-    </ul>
+  {% if keyword_groups %}
+    {% for group in keyword_groups %}
+      <details class="keyword-group" data-group="{{ group.name }}" open>
+        <summary>
+          <strong>{{ group.name }}</strong>
+          <span class="muted">{{ group.keywords | length }} keyword{{ "" if group.keywords | length == 1 else "s" }} · scanned <span class="mono">{{ group.scanned }}</span> · relevant <span class="mono">{{ group.relevant }}</span></span>
+        </summary>
+        <ul class="item-list">
+          {% for keyword in group.keywords %}{% include "setup/_keyword_row.html" %}{% endfor %}
+        </ul>
+      </details>
+    {% endfor %}
   {% else %}
     <div class="empty-state empty-state--compact">
-      <p>No keywords yet — add 10–20 phrases buyers use, e.g. 'corporate AI training'.</p>
+      <p>No keywords yet — press Add suggested keywords for 60 phrases buyers use, or add your own.</p>
     </div>
   {% endif %}
 </div>

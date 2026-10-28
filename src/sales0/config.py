@@ -10,11 +10,11 @@ from __future__ import annotations
 import ipaddress
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 ENV_FILE: Path = REPO_ROOT / ".env"
@@ -24,6 +24,8 @@ LogFormat = Literal["json", "console"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 DateFilter = Literal["past-24h", "past-week", "past-month"]
 BrowserChannel = Literal["auto", "chrome", "chromium"]
+ScrapeSort = Literal["latest", "relevance"]
+DATE_FILTER_VALUES: tuple[str, ...] = ("past-24h", "past-week", "past-month")
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
@@ -87,30 +89,76 @@ class Settings(BaseSettings):
     safety_cooldown_checkpoint_min: int = Field(15, ge=0)  # after checkpoint / logout
 
     # --- Scrape caps and pacing ---
-    scrape_max_keywords_per_run: int = Field(10, ge=1)
-    scrape_max_posts_per_keyword: int = Field(15, ge=1)
-    scrape_max_posts_per_day: int = Field(150, ge=1)
-    scrape_max_runs_per_day: int = Field(3, ge=1)
+    scrape_max_keywords_per_run: int = Field(40, ge=1)
+    scrape_max_posts_per_keyword: int = Field(80, ge=1)
+    scrape_max_posts_per_day: int = Field(2000, ge=1)
+    scrape_max_runs_per_day: int = Field(4, ge=1)
     scrape_delay_min_s: float = Field(3.0, ge=0)
     scrape_delay_max_s: float = Field(9.0, ge=0)
     scrape_keyword_pause_min_s: float = Field(20.0, ge=0)
     scrape_keyword_pause_max_s: float = Field(60.0, ge=0)
-    scrape_max_scrolls: int = Field(4, ge=0)
+    scrape_max_scrolls: int = Field(20, ge=0)
+    # Phase 1.4: consecutive scrolls without new cards that end a search pass.
+    scrape_no_growth_scrolls: int = Field(2, ge=1)
+    # Phase 1.4: latest = LinkedIn sortBy="date_posted"; relevance = LinkedIn's default ranking.
+    scrape_sort: ScrapeSort = "latest"
+    # Phase 1.4: one search pass per date filter, in order (comma list in the env).
+    scrape_date_filters: Annotated[tuple[str, ...], NoDecode] = (
+        "past-week",
+        "past-month",
+    )
+    # Legacy single filter (Phase 1..1.3). Read only as a one-item list when ..._FILTERS is unset.
+    scrape_date_filter_legacy: str | None = Field(
+        None, validation_alias="SALES0_SCRAPE_DATE_FILTER"
+    )
+    # Phase 1.4: max "see more" clicks per keyword (truncated cards only).
+    scrape_expand_max_per_keyword: int = Field(40, ge=0)
     # Phase 1.2: max "Copy link to post" attempts per keyword (posts without a URN); 0 = off.
     scrape_permalink_max_per_keyword: int = Field(15, ge=0)
-    scrape_date_filter: DateFilter = "past-week"
 
     # --- Triage ---
     fewshot_max_examples: int = Field(6, ge=0)
     fewshot_text_chars: int = Field(600, ge=50)
     triage_max_input_chars: int = Field(4000, ge=200)
+    # Phase 1.4
+    triage_concurrency: int = Field(4, ge=1, le=8)
+    seen_raw_retention_days: int = Field(14, ge=0)
+    seed_suggested_keywords: bool = True
 
     # ------------------------------------------------------------------ validators
-    @field_validator("linkedin_mode", "linkedin_browser_channel", "log_format", "scrape_date_filter", mode="before")
+    @field_validator(
+        "linkedin_mode",
+        "linkedin_browser_channel",
+        "log_format",
+        "scrape_sort",
+        mode="before",
+    )
     @classmethod
     def _strip_enum_lower(cls, value: Any) -> Any:
         value = _clean_enum_value(value)
         return value.lower() if isinstance(value, str) else value
+
+    @field_validator("scrape_date_filters", mode="before")
+    @classmethod
+    def _parse_date_filters(cls, value: Any) -> Any:
+        if isinstance(value, str) and not _clean_enum_value(value):
+            return ("past-week", "past-month")  # blank = the default
+        if isinstance(value, str):
+            value = [part for part in _clean_enum_value(value).split(",")]
+        if isinstance(value, (list, tuple)):
+            items = tuple(str(v).strip().lower() for v in value if str(v).strip())
+            if not items:
+                raise ValueError(
+                    "SALES0_SCRAPE_DATE_FILTERS needs at least one of "
+                    + ", ".join(DATE_FILTER_VALUES)
+                )
+            bad = [v for v in items if v not in DATE_FILTER_VALUES]
+            if bad:
+                raise ValueError(
+                    f"Unknown date filter {bad[0]!r}; use {', '.join(DATE_FILTER_VALUES)}"
+                )
+            return items
+        return value
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -118,12 +166,16 @@ class Settings(BaseSettings):
         value = _clean_enum_value(value)
         return value.upper() if isinstance(value, str) else value
 
-    @field_validator("llm_model", "host", "timezone", "anthropic_workspace_id", mode="before")
+    @field_validator(
+        "llm_model", "host", "timezone", "anthropic_workspace_id", mode="before"
+    )
     @classmethod
     def _strip_plain(cls, value: Any) -> Any:
         return _clean_enum_value(value)
 
-    @field_validator("data_dir", "database_url", "test_database_url", "log_file", mode="before")
+    @field_validator(
+        "data_dir", "database_url", "test_database_url", "log_file", mode="before"
+    )
     @classmethod
     def _strip_whitespace(cls, value: Any) -> Any:
         # No comment stripping here: URLs and paths may legitimately contain '#'.
@@ -135,21 +187,42 @@ class Settings(BaseSettings):
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise ValueError(f"Unknown timezone '{value}' — use an IANA name like Asia/Kolkata") from exc
+            raise ValueError(
+                f"Unknown timezone '{value}' — use an IANA name like Asia/Kolkata"
+            ) from exc
         return value
 
     @model_validator(mode="after")
     def _ranges(self) -> Settings:
         if self.scrape_delay_min_s > self.scrape_delay_max_s:
-            raise ValueError("SALES0_SCRAPE_DELAY_MIN_S must be <= SALES0_SCRAPE_DELAY_MAX_S")
+            raise ValueError(
+                "SALES0_SCRAPE_DELAY_MIN_S must be <= SALES0_SCRAPE_DELAY_MAX_S"
+            )
         if self.scrape_keyword_pause_min_s > self.scrape_keyword_pause_max_s:
-            raise ValueError("SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S must be <= SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S")
+            raise ValueError(
+                "SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S must be <= SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S"
+            )
+        legacy = self.scrape_date_filter_legacy
+        if legacy and "scrape_date_filters" not in self.model_fields_set:
+            legacy = _clean_enum_value(legacy).lower()
+            if legacy not in DATE_FILTER_VALUES:
+                raise ValueError(
+                    f"Unknown SALES0_SCRAPE_DATE_FILTER {legacy!r}; use {', '.join(DATE_FILTER_VALUES)}"
+                )
+            object.__setattr__(self, "scrape_date_filters", (legacy,))
         return self
 
     # ------------------------------------------------------------------ derived values
     @property
+    def scrape_date_filter(self) -> str:
+        """Read-only: the first configured date filter (Phase 1..1.3 callers)."""
+        return self.scrape_date_filters[0]
+
+    @property
     def api_key_present(self) -> bool:
-        return bool(self.anthropic_api_key and self.anthropic_api_key.get_secret_value().strip())
+        return bool(
+            self.anthropic_api_key and self.anthropic_api_key.get_secret_value().strip()
+        )
 
     @property
     def tz(self) -> ZoneInfo:
@@ -204,7 +277,9 @@ def check_startup(settings: Settings) -> None:
             "SALES0_ANTHROPIC_API_KEY is missing — add it to .env in the repo root (see .env.example)."
         )
     if not settings.is_loopback_host:
-        raise StartupError("Set SALES0_APP_PASSWORD (Phase 2) before binding to a public host")
+        raise StartupError(
+            "Set SALES0_APP_PASSWORD (Phase 2) before binding to a public host"
+        )
 
 
 @lru_cache(maxsize=1)

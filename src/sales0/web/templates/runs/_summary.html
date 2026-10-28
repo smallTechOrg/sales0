@@ -1,0 +1,17 @@
+{# Run summary (Phase 1.4, ui.md). Needs: run (RunView). Same numbers while running and when finished. #}
+<div id="run-summary" class="run-summary" data-scanned="{{ run.posts_seen }}" data-new="{{ run.posts_new }}"
+     data-relevant="{{ run.posts_relevant }}" data-skipped="{{ run.posts_skipped_ai }}">
+  <p class="run-summary__line">Scanned {{ run.posts_seen }} posts · {{ run.posts_relevant }} relevant
+    {%- if run.posts_new %} ({{ pct_text(run.posts_relevant, run.posts_new) }} of the {{ run.posts_new }} new ones){% endif %}</p>
+  <p class="counters" aria-label="Run counters">
+    <span>Scanned <strong data-counter="seen">{{ run.posts_seen }}</strong></span>
+    <span>New to us <strong data-counter="new">{{ run.posts_new }}</strong></span>
+    <span>Already seen <strong data-counter="dupe">{{ run.posts_dupe }}</strong></span>
+    <span>Relevant <strong data-counter="relevant">{{ run.posts_relevant }}</strong></span>
+    <span>Skipped by AI <strong data-counter="skipped">{{ run.posts_skipped_ai }}</strong></span>
+    <span>Post links <strong data-counter="links">{{ run.permalinks_found }}</strong></span>
+    <span>Relevance <strong data-counter="relevance">{{ pct_text(run.posts_relevant, run.posts_new) }}</strong>{% if run.posts_new %} <span class="muted">of new posts</span>{% endif %}</span>
+    <span>AI cost <strong data-counter="cost">{{ usd_precise(run.cost_usd_micros) }}</strong></span>
+    {% if run.triage_failed %}<span>Triage failed <strong data-counter="failed">{{ run.triage_failed }}</strong></span>{% endif %}
+  </p>
+</div>

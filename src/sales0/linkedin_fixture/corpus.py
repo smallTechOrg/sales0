@@ -124,6 +124,10 @@ class FixturePost:
     component_key: str
     copy_link: CopyLink
     profile_kind: Literal["in", "company"] = "in"
+    # Phase 1.4 (bulk corpus only): what the post is, the verdict a correct triage gives, and its age.
+    kind: str = ""
+    expected: Literal["genuine", "discard"] | None = None
+    age_days: int = 0
 
     @property
     def shape(self) -> CardShape:

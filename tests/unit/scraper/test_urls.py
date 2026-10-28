@@ -142,3 +142,16 @@ def test_urn_from_href_and_site_rules_live_in_urls_and_are_re_exported() -> None
     assert urn_from_href("/feed/update/urn%3Ali%3Ashare%3A7322/") == "urn:li:share:7322"
     assert linkedin_path(f"{FIX}/feed/") == "/feed/" and linkedin_path("about:blank") is None
     assert same_site(f"{LIVE}/x", LIVE) and not same_site(f"{FIX}/x", LIVE)
+
+
+def test_search_url_sort_latest_is_the_default_and_relevance_is_selectable() -> None:
+    base = "https://www.linkedin.com"
+    assert parse_qs(urlsplit(search_url(base, "ai", "past-month")).query)["sortBy"] == ['"date_posted"']
+    assert parse_qs(urlsplit(search_url(base, "ai", "past-month", "latest")).query)["sortBy"] == ['"date_posted"']
+    assert parse_qs(urlsplit(search_url(base, "ai", "past-month", "relevance")).query)["sortBy"] == ['"relevance"']
+    assert parse_qs(urlsplit(search_url(base, "ai", "past-month", "relevance")).query)["datePosted"] == ['"past-month"']
+
+
+def test_search_url_rejects_an_unknown_sort() -> None:
+    with pytest.raises(ValueError):
+        search_url("https://www.linkedin.com", "ai", "past-week", "top")  # type: ignore[arg-type]

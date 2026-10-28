@@ -29,6 +29,13 @@ class KeywordView(_View):
     active: bool
     last_run_at: datetime | None
     created_at: datetime
+    # Phase 1.4
+    group_name: str | None = None
+    suggested: bool = False
+    scanned_total: int = 0
+    relevant_total: int = 0
+    last_scanned: int = 0
+    last_relevant: int = 0
 
 
 class OfferingView(_View):
@@ -101,6 +108,12 @@ class RunKeywordView(_View):
     errors: int
     duration_ms: int | None
     error_message: str | None
+    # Phase 1.4
+    posts_relevant: int = 0
+    posts_skipped_ai: int = 0
+    permalinks_found: int = 0
+    scrolls: int = 0
+    cost_usd_micros: int = 0
 
 
 class RunView(_View):
@@ -126,6 +139,12 @@ class RunView(_View):
     cost_usd_micros: int
     # Phase 1.1: number of this run's keyword rows with status "warning" (computed on read)
     layout_warnings: int = 0
+    # Phase 1.4
+    posts_relevant: int = 0
+    posts_skipped_ai: int = 0
+    permalinks_found: int = 0
+    # relevant / new x 100; None when no post was new
+    relevance_pct: float | None = None
 
     @property
     def is_active(self) -> bool:
@@ -177,6 +196,64 @@ class EnquiryCardView(_View):
     # Phase 1.2: scraper.urls.link_kind_of(source_url), derived on read (never stored);
     # None when source_url is null. Drives the card's link label (ui.md).
     link_kind: LinkKind | None = None
+    # Phase 1.4
+    posted_relative: str | None = None
+    author_profile_url: str | None = None
+
+
+class SkippedPostView(_View):
+    """A post the AI skipped (or whose triage failed): one line, never a card."""
+
+    id: int
+    snippet: str
+    reason: str | None
+    poster_type: str | None
+    author_name: str | None
+    author_headline: str | None
+    profile_url: str | None
+    keyword_text: str
+    post_url: str | None
+    link_kind: LinkKind | None
+    posted_relative: str | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    times_seen: int
+    triage_status: Literal["pending", "done", "failed"]
+    triage_error: str | None
+    raw_text: str | None
+    can_rescue: bool
+
+
+class SkippedPage(_View):
+    items: list[SkippedPostView]
+    total: int
+    page: int
+    page_size: int
+    state: Literal["discard", "failed"]
+    q: str | None
+    counts: dict[str, int]  # keys: discard, failed
+
+    @property
+    def has_prev(self) -> bool:
+        return self.page > 1
+
+    @property
+    def has_next(self) -> bool:
+        return self.page * self.page_size < self.total
+
+
+class ProfileView(_View):
+    id: int
+    slug: str
+    kind: Literal["person", "company"]
+    profile_url: str
+    display_name: str | None
+    headline: str | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    posts_seen: int
+    relevant_count: int
+    tracked: bool | None
 
 
 class InboxPage(_View):
@@ -186,7 +263,7 @@ class InboxPage(_View):
     total: int
     page: int
     page_size: int
-    counts: dict[str, int]  # keys: review, accepted, discarded
+    counts: dict[str, int]  # keys: review, accepted, discarded, skipped, skipped_failed
 
     @property
     def has_prev(self) -> bool:
@@ -214,9 +291,12 @@ __all__ = [
     "KeywordView",
     "OfferingInput",
     "OfferingView",
+    "ProfileView",
     "RunDetailView",
     "RunKeywordView",
     "RunView",
     "SessionStatus",
     "SessionStatusView",
+    "SkippedPage",
+    "SkippedPostView",
 ]

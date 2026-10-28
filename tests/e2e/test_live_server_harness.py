@@ -35,6 +35,12 @@ def test_harness_env_pins_port_8766_and_phase11_defaults(tmp_path: Path, monkeyp
     assert str(tmp_path) in env["SALES0_DATA_DIR"]
     assert "SALES0_ANTHROPIC_API_KEY" not in env  # the child reads .env itself
     assert "SALES0_LINKEDIN_HEADLESS" not in env  # removed in Phase 1.1
+    assert env["SALES0_SEED_SUGGESTED_KEYWORDS"] == "false"  # Phase 1.4: the test presses the button itself
+    assert env["SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN"] == "6"
+
+
+def test_harness_can_run_on_another_8766_plus_port_but_never_8765(tmp_path: Path) -> None:
+    assert LiveServer(tmp_path, port=8767).env()["SALES0_PORT"] == "8767"
 
 
 def test_harness_extra_env_overrides_phase11_defaults(tmp_path: Path) -> None:

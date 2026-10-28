@@ -24,7 +24,13 @@ from sales0.db.models.enums import (
 class Enquiry(Base):
     __tablename__ = "enquiries"
     __table_args__ = (
-        Index("ix_enquiries_inbox", "review_status", "ai_verdict", "priority", "date_added"),
+        Index(
+            "ix_enquiries_inbox",
+            "review_status",
+            "ai_verdict",
+            "priority",
+            "date_added",
+        ),
         in_check("source", ENQUIRY_SOURCES, "source"),
         in_check("review_status", REVIEW_STATUSES, "review_status"),
         in_check("stage", ENQUIRY_STAGES, "stage", nullable=True),
@@ -35,7 +41,12 @@ class Enquiry(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    source: Mapped[str] = mapped_column(String(20), nullable=False, default="linkedin_post", server_default="linkedin_post")
+    source: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="linkedin_post",
+        server_default="linkedin_post",
+    )
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     author_name: Mapped[str | None] = mapped_column(String(200))
@@ -43,14 +54,34 @@ class Enquiry(Base):
     author_profile_url: Mapped[str | None] = mapped_column(String(1000))
     source_url: Mapped[str | None] = mapped_column(String(1000))
     date_posted: Mapped[date | None] = mapped_column(Date)
-    date_added: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, index=True)
+    date_added: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc, index=True
+    )
+
+    posted_relative: Mapped[str | None] = mapped_column(String(30))
+    author_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("linkedin_profiles.id", ondelete="SET NULL")
+    )
+    seen_post_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "seen_posts.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_enquiries_seen_post_id",
+        )
+    )
 
     review_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending_review", server_default="pending_review"
+        String(20),
+        nullable=False,
+        default="pending_review",
+        server_default="pending_review",
     )
     stage: Mapped[str | None] = mapped_column(String(30))
 
-    triage_status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending", server_default="pending")
+    triage_status: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="pending", server_default="pending"
+    )
     triage_error: Mapped[str | None] = mapped_column(String(300))
     triaged_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     prompt_version: Mapped[str | None] = mapped_column(String(40))
@@ -60,13 +91,17 @@ class Enquiry(Base):
     ai_reason: Mapped[str | None] = mapped_column(String(160))
     ai_poster_type: Mapped[str | None] = mapped_column(String(40))
     ai_priority: Mapped[str | None] = mapped_column(String(10))
-    ai_offering_id: Mapped[int | None] = mapped_column(ForeignKey("offerings.id", ondelete="RESTRICT"))
+    ai_offering_id: Mapped[int | None] = mapped_column(
+        ForeignKey("offerings.id", ondelete="RESTRICT")
+    )
     ai_extraction: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     # Team-editable values (initialised from the AI output).
     requirement_summary: Mapped[str | None] = mapped_column(String(140))
     priority: Mapped[str | None] = mapped_column(String(10))
-    offering_id: Mapped[int | None] = mapped_column(ForeignKey("offerings.id", ondelete="RESTRICT"))
+    offering_id: Mapped[int | None] = mapped_column(
+        ForeignKey("offerings.id", ondelete="RESTRICT")
+    )
     company: Mapped[str | None] = mapped_column(String(200), index=True)
     contact_person: Mapped[str | None] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(254))
@@ -81,13 +116,21 @@ class Enquiry(Base):
     date_email_sent: Mapped[date | None] = mapped_column(Date)
     date_proposal_sent: Mapped[date | None] = mapped_column(Date)
     decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
-    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     sources: Mapped[list[EnquirySource]] = relationship(
-        back_populates="enquiry", order_by="EnquirySource.id", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="enquiry",
+        order_by="EnquirySource.id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     keyword_hits: Mapped[list[EnquiryKeywordHit]] = relationship(
-        back_populates="enquiry", order_by="EnquiryKeywordHit.id", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="enquiry",
+        order_by="EnquiryKeywordHit.id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -95,11 +138,17 @@ class EnquirySource(Base):
     __tablename__ = "enquiry_sources"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    enquiry_id: Mapped[int] = mapped_column(ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True)
+    enquiry_id: Mapped[int] = mapped_column(
+        ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     source_ref: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     source_url: Mapped[str | None] = mapped_column(String(1000))
-    first_seen_run_id: Mapped[int | None] = mapped_column(ForeignKey("scrape_runs.id", ondelete="SET NULL"))
-    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
+    first_seen_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("scrape_runs.id", ondelete="SET NULL")
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc
+    )
 
     enquiry: Mapped[Enquiry] = relationship(back_populates="sources")
 
@@ -109,10 +158,18 @@ class EnquiryKeywordHit(Base):
     __table_args__ = (UniqueConstraint("enquiry_id", "run_id", "keyword_text"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    enquiry_id: Mapped[int] = mapped_column(ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True)
-    run_id: Mapped[int | None] = mapped_column(ForeignKey("scrape_runs.id", ondelete="SET NULL"))
-    keyword_id: Mapped[int | None] = mapped_column(ForeignKey("keywords.id", ondelete="SET NULL"))
+    enquiry_id: Mapped[int] = mapped_column(
+        ForeignKey("enquiries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("scrape_runs.id", ondelete="SET NULL")
+    )
+    keyword_id: Mapped[int | None] = mapped_column(
+        ForeignKey("keywords.id", ondelete="SET NULL")
+    )
     keyword_text: Mapped[str] = mapped_column(String(100), nullable=False)
-    seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
+    seen_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc
+    )
 
     enquiry: Mapped[Enquiry] = relationship(back_populates="keyword_hits")

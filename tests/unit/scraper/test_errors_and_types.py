@@ -72,3 +72,12 @@ def test_keyword_scrape_result_phase_1_2_counters_default_to_none_and_zero() -> 
     sdui = KeywordScrapeResult(keyword="k", posts=[], scrolls=1, parse_errors=0, drift_warning=False,
                                field_misses={"text": 2}, strategy="sdui", permalink_attempts=3, permalinks_found=1)
     assert (sdui.strategy, sdui.permalink_attempts, sdui.permalinks_found, sdui.field_misses) == ("sdui", 3, 1, {"text": 2})
+
+
+def test_phase_1_4_result_fields_have_backward_compatible_defaults() -> None:
+    from sales0.scraper.types import KeywordScrapeResult, LinkCaptureResult
+
+    result = KeywordScrapeResult(keyword="k", posts=[], scrolls=0, parse_errors=0, drift_warning=False)
+    assert (result.passes, result.expanded, result.stop_reason) == (1, 0, "cap")
+    empty = LinkCaptureResult()
+    assert empty.links == {} and empty.attempts == 0 and empty.found == 0

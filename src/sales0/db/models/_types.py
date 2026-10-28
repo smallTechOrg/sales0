@@ -24,7 +24,9 @@ class UTCDateTime(TypeDecorator[datetime]):
     impl = DateTime(timezone=True)
     cache_ok = True
 
-    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+    def process_bind_param(
+        self, value: datetime | None, dialect: Dialect
+    ) -> datetime | None:
         if value is None:
             return None
         value = ensure_utc(value)
@@ -43,7 +45,9 @@ def now_utc() -> datetime:
     return utcnow()
 
 
-def in_check(column: str, values: tuple[str, ...], name: str, *, nullable: bool = False) -> CheckConstraint:
+def in_check(
+    column: str, values: tuple[str, ...], name: str, *, nullable: bool = False
+) -> CheckConstraint:
     """A named CHECK constraint restricting an enum-like string column to ``values``."""
     allowed = ", ".join(f"'{v}'" for v in values)
     expr = f"{column} IN ({allowed})"

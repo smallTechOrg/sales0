@@ -11,14 +11,17 @@ Phase 1.2 (slice S4): results pages render in LinkedIn's SDUI markup (``_sdui_ca
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from sales0.linkedin_fixture.bulk import PAGE_SIZE, results_for, variant_for
 from sales0.linkedin_fixture.corpus import (
     CAPTCHA_KEYWORD,
     CHECKPOINT_KEYWORD,
@@ -40,6 +43,8 @@ from sales0.linkedin_fixture.corpus import (
     post_by_urn,
     posts_for,
 )
+
+BULK_LATENCY_S = 0.15  # like LinkedIn's XHR paging
 
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
@@ -168,8 +173,33 @@ def authwall(request: Request) -> Response:
     return _page(request, "authwall.html")
 
 
+def _bulk_cards(keyword: str, posts: list[FixturePost]) -> list[SduiCard]:
+    return sdui_cards(posts, keyword)
+
+
+@router.get("/search/results/content/more/", name="fixture_search_more")
+def search_more(
+    request: Request, keywords: str = "", datePosted: str = "", sortBy: str = "", start: int = 0
+) -> Response:
+    """Phase 1.4 infinite scroll: the next ``PAGE_SIZE`` bulk cards as markup (empty = end of list)."""
+    if not _logged_in(request):
+        return Response("", status_code=401)
+    posts = results_for(keywords, datePosted, sortBy)
+    if posts is None or start >= len(posts):
+        return HTMLResponse("")
+    time.sleep(BULK_LATENCY_S)
+    page = posts[max(0, start) : start + PAGE_SIZE]
+    return templates.TemplateResponse(
+        request,
+        "_bulk_cards.html",
+        {"base": _base(request), "cards": _bulk_cards(normalize_keyword(keywords), page), "variant": variant_for(keywords)},
+    )
+
+
 @router.get("/search/results/content/", name="fixture_search")
-def search(request: Request, keywords: str = "", page: int = 1) -> Response:
+def search(
+    request: Request, keywords: str = "", page: int = 1, datePosted: str = "", sortBy: str = ""
+) -> Response:
     if not _logged_in(request):
         return _to(request, "fixture_authwall")
     key = normalize_keyword(keywords)
@@ -195,6 +225,22 @@ def search(request: Request, keywords: str = "", page: int = 1) -> Response:
         return _page(request, "search.html", keyword=keywords, mode="legacy", posts=list(load_corpus()))
     if key == PERMALINK_MISS_KEYWORD:
         return _sdui_page(request, keywords, sdui_cards(permalink_miss_posts(), key, force_copy_link="noop"))
+    bulk = results_for(keywords, datePosted, sortBy)
+    if bulk is not None:
+        first = bulk[:PAGE_SIZE]
+        more_query = urlencode({"keywords": keywords, "datePosted": datePosted, "sortBy": sortBy})
+        return _page(
+            request,
+            "search.html",
+            keyword=keywords,
+            mode="bulk" if bulk else "empty",
+            variant=variant_for(keywords),
+            cards=_bulk_cards(key, first),
+            next_start=len(first),
+            copy_query=COPY_LINK_QUERY,
+            more_url=f"{_base(request)}/search/results/content/more/?{more_query}",
+            fixture_query={"keywords": keywords, "datePosted": datePosted, "sortBy": sortBy},
+        )
     plan = LAZY_PLANS.get(key)
     if plan is not None:
         if plan.checkpoint_at_scroll is not None and page >= 2:

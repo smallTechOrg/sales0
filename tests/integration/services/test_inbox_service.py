@@ -43,7 +43,7 @@ def test_review_tab_pins_failed_then_genuine_then_priority_with_counts(seeded: d
         page = inbox.list_enquiries(db, "review", None)
     order = [c.id for c in page.items]
     assert order[0] == seeded["FAIL"] and order[1] == seeded["P1"]
-    assert page.counts == {"review": 6, "accepted": 0, "discarded": 0} and page.total == 6
+    assert page.counts == {"review": 6, "accepted": 0, "discarded": 0, "skipped": 0, "skipped_failed": 0} and page.total == 6
     p1 = next(c for c in page.items if c.id == seeded["P1"])
     assert p1.ai_verdict == "genuine" and p1.offering_name == "AI corporate workshops"
     assert p1.keywords == ["ai workshop"] and p1.source_ref == "urn:li:activity:7300000000000000001"
@@ -56,7 +56,7 @@ def test_accept_then_discard_instead_appends_two_decisions_and_history(seeded: d
         [card] = inbox.decide(db, [p1], "accept")
         assert (card.review_status, card.stage, card.is_override) == ("accepted", "prospect_new", False)
     with session_scope() as db:
-        assert inbox.list_enquiries(db, "accepted", None).counts == {"review": 5, "accepted": 1, "discarded": 0}
+        assert inbox.list_enquiries(db, "accepted", None).counts == {"review": 5, "accepted": 1, "discarded": 0, "skipped": 0, "skipped_failed": 0}
         [card] = inbox.decide(db, [p1], "discard", "Not a requirement")
         assert (card.review_status, card.stage, card.discard_reason) == ("discarded", None, "Not a requirement")
         assert card.is_override is True  # AI said genuine
@@ -148,7 +148,7 @@ def test_empty_db_inbox_has_zero_counts_and_clamps_page(db_url: str) -> None:
     with session_scope() as db:
         page = inbox.list_enquiries(db, "review", "  ", page=0)
     assert (page.items, page.total, page.page, page.q) == ([], 0, 1, None)
-    assert page.counts == {"review": 0, "accepted": 0, "discarded": 0}
+    assert page.counts == {"review": 0, "accepted": 0, "discarded": 0, "skipped": 0, "skipped_failed": 0}
 
 
 def test_decisions_survive_an_engine_restart(seeded: dict[str, int]) -> None:

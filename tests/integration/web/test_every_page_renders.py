@@ -24,7 +24,7 @@ from sales0.db.engine import session_scope
 from sales0.jobs.runner import get_runner, reset_runner
 from sales0.services import inbox as inbox_service
 from sales0.web.app import create_app
-from tests.integration.web.conftest import make_enquiry, make_run, set_session, triaged
+from tests.integration.web.conftest import make_enquiry, make_keyword, make_run, make_seen_post, set_session, triaged
 
 # (path, key text) — full pages. "/" follows its redirect to the inbox.
 STUB_PAGES = {
@@ -36,7 +36,8 @@ STUB_PAGES = {
     "/metrics": 4,
     "/whatsapp": 5,
 }
-INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz")
+INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
+               "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status"}
 
@@ -64,6 +65,11 @@ def _seed_inbox() -> None:
     accepted = make_enquiry("P8", **triaged("genuine", "Insurer wants an AI assistant built", offering_id=3))
     discarded = make_enquiry("P2", **triaged("discard", "Training agency sourcing trainers", priority="low", offering_id=None))
     assert review
+    # Phase 1.4: one skipped and one failed post so the Skipped tab renders real rows, and a grouped keyword.
+    make_seen_post()
+    make_seen_post("Another post that failed triage", verdict=None, reason=None, triage_status="failed",
+                   triage_error="Rate limited", author="Other Author")
+    make_keyword("grouped phrase", group_name="Training", suggested_key="grouped-phrase", scanned_total=90)
     with session_scope() as db:
         inbox_service.decide(db, [accepted], "accept")
         inbox_service.decide(db, [discarded], "discard", discard_reason="Agency")
@@ -258,11 +264,16 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
     assert 'data-verdict="genuine"' in review, where("/inbox?tab=review")
     assert 'data-review-status="accepted"' in _get(client, "/inbox?tab=accepted"), where("accepted")
     assert 'data-review-status="discarded"' in _get(client, "/inbox?tab=discarded"), where("discarded")
+    assert 'article id="skipped-' in _get(client, "/inbox?tab=skipped"), where("skipped")
+    assert "AI triage failed — Rate limited" in _get(client, "/inbox?tab=skipped&state=failed"), where("skipped failed")
 
     setup = page("/setup", state.setup_key, ['id="browser-note"', "Cool-down after rate limit / captcha", *state.extra_setup])
     assert "Browser window during runs" not in setup, where("/setup")
+    _assert_contains(setup, ['id="add-suggested-keywords"', 'data-group="Training"', "No yield"], where("/setup"))
     page("/runs", state.runs_key, ['id="run-panel"', 'id="run-history"', *state.extra_runs])
-    page(f"/runs/{state.run_id}", f"Run #{state.run_id}", ['id="run-keywords"', *state.extra_detail])
+    if state.name == "active_run":
+        _assert_contains(_get(client, "/runs"), ['id="run-summary"', "Keyword 2/2"], where("/runs summary"))
+    page(f"/runs/{state.run_id}", f"Run #{state.run_id}", ['id="run-keywords"', 'id="run-summary"', *state.extra_detail])
     for path, phase in STUB_PAGES.items():
         page(path, f"Coming in Phase {phase}")
 

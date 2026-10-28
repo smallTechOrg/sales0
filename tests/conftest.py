@@ -63,6 +63,9 @@ TEST_ENV = {
     # Phase 1.1: the bundled Chromium, so the suite never depends on an installed Chrome.
     # Real-Chrome tests (marker ``chrome``) set ``chrome`` explicitly.
     "SALES0_LINKEDIN_BROWSER_CHANNEL": "chromium",
+    # Phase 1.4: tests seed their own keywords; concurrency pinned to the documented default.
+    "SALES0_SEED_SUGGESTED_KEYWORDS": "false",
+    "SALES0_TRIAGE_CONCURRENCY": "4",
 }
 _CLEARED_ENV = ("SALES0_LOG_FILE", "SALES0_HOST")
 

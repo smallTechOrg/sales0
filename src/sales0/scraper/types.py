@@ -13,6 +13,8 @@ BrowserChannel = Literal["chrome", "chromium"]
 LinkKind = Literal["post", "profile", "search", "other"]
 # Phase 1.2: which card-discovery strategy won on a results page.
 CardStrategy = Literal["sdui", "urn", "listitem", "none"]
+# Phase 1.4: why ``LinkedInSearcher.scan`` ended.
+StopReason = Literal["cap", "no_growth", "max_scrolls", "no_results", "drift"]
 URN_REF_PREFIX = "urn:li:"
 
 # The optional post fields whose absence is counted into ``KeywordScrapeResult.field_misses``.
@@ -56,6 +58,9 @@ class KeywordScrapeResult:
     strategy: CardStrategy = "none"  # Phase 1.2: which card strategy won on this page
     permalink_attempts: int = 0  # Phase 1.2: "Copy link to post" attempts
     permalinks_found: int = 0  # Phase 1.2: attempts that yielded a post URL
+    passes: int = 1  # Phase 1.4: search passes run (one per date filter)
+    expanded: int = 0  # Phase 1.4: "see more" clicks made
+    stop_reason: StopReason = "cap"  # Phase 1.4: why the scan ended
 
 
 @dataclass(frozen=True)
@@ -72,3 +77,12 @@ class ConnectResult:
     reason: ConnectReason
     detail: str | None
     browser: BrowserChannel | None = None  # Phase 1.1
+
+
+@dataclass(frozen=True)
+class LinkCaptureResult:
+    """Phase 1.4: what ``LinkedInSearcher.capture_links`` achieved."""
+
+    links: dict[str, str] = field(default_factory=dict)  # source_ref -> canonical permalink URL (hits only)
+    attempts: int = 0  # "Copy link to post" attempts (cards whose menu was opened)
+    found: int = 0  # attempts that yielded a post link

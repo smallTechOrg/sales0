@@ -156,3 +156,10 @@ def test_browser_profile_dir_is_under_the_test_tmp_path(tmp_path: Path) -> None:
     profile = browser.profile_dir(get_settings(), "chromium")
     assert Path(profile).is_relative_to(tmp_path)
     assert not Path(profile).is_relative_to(REPO_ROOT / "data")
+
+
+def test_phase_1_4_harness_defaults_seeding_off_and_concurrency_4() -> None:
+    settings = get_settings()
+    assert settings.seed_suggested_keywords is False
+    assert settings.triage_concurrency == 4
+    assert os.environ["SALES0_SEED_SUGGESTED_KEYWORDS"] == "false"

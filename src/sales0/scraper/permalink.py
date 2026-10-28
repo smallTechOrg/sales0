@@ -14,13 +14,15 @@ what was parsed); it only adds ``raw["copied_url"]`` on a hit. Safety:
   ever clicked; the menu is closed with Escape.
 - Every click is paced (``pacer.delay`` before the trigger, ``pacer.short`` before the item
   and before Escape) and followed by a safety ``checkpoint`` (a stop propagates).
+- Phase 1.4: both card tiers (``sdui`` and ``listitem``); a card no longer in the DOM ("no_card") is
+  skipped and counts neither as an attempt nor a miss; ``eligible_refs`` picks cards by ref.
 - At most ``cap`` attempts per keyword (0 = no hook, no clicks); 3 consecutive misses end
   capture for the keyword; leaving the search page ends it too.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -35,7 +37,7 @@ from sales0.scraper.parsing import URN_RE, urn_from_href
 
 log = get_logger("sales0.scraper.permalink")
 
-Outcome = Literal["hit", "no_menu_item", "no_copy", "click_error"]
+Outcome = Literal["hit", "no_menu_item", "no_copy", "click_error", "no_card"]
 
 MAX_CONSECUTIVE_MISSES = 3
 MENU_ITEM_TIMEOUT_MS = 2_000  # wait for "Copy link to post" to become visible
@@ -73,6 +75,29 @@ TAKE_COPIED_JS = r"""() => {
 # value, no CSS escaping needed), else the n-th outermost post; then the first button /
 # [role=button] inside its control menu (or the menu element itself if it is one). null = none.
 FIND_TRIGGER_JS = r"""(a) => {
+  if (a.tier === "listitem") {
+    const stripRe = new RegExp(a.key_prefix_re);
+    const outermost = (els) => els.filter((p) => !(p.parentElement && p.parentElement.closest(a.listitem_card)));
+    const label = (card) => { const b = card.querySelector(a.listitem_menu); return b ? (b.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim() : null; };
+    let card = null;
+    if (a.key) {
+      for (const el of document.querySelectorAll("[" + a.key_attr + "]")) {
+        const v = (el.getAttribute(a.key_attr) || "").trim();
+        if (v !== a.key && v.replace(stripRe, "") !== a.key) continue;
+        card = el.closest(a.listitem_card);
+        if (card && card.querySelector(a.listitem_menu)) break;
+        card = null;
+      }
+    }
+    if (!card) {
+      const cards = outermost(Array.from(document.querySelectorAll(a.listitem_card)))
+        .filter((li) => a.listitem_markers.some((m) => li.querySelector(m)));
+      const cand = cards[a.index] || null;
+      // The index fallback is trusted only when the card's menu label matches what was extracted.
+      if (cand && a.menu_label && label(cand) === a.menu_label) card = cand;
+    }
+    return card ? card.querySelector(a.listitem_menu) : null;
+  }
   const outermost = (els) => els.filter((p) => !(p.parentElement && p.parentElement.closest(a.post_sel)));
   let post = null;
   if (a.key) {
@@ -109,9 +134,12 @@ FIND_COPY_ITEM_JS = r"""([trigger, a]) => {
     const innermost = hits.filter((e) => !hits.some((o) => o !== e && e.contains(o)));
     return innermost[0] || null;
   };
-  const post = trigger && trigger.isConnected ? trigger.closest(a.post_sel) : null;
+  const post = trigger && trigger.isConnected ? (trigger.closest(a.post_sel) || trigger.closest(a.listitem_card)) : null;
   const menus = post ? Array.from(post.querySelectorAll(a.menu_sel)) : [];
-  return pick(menus) || pick(Array.from(document.querySelectorAll(a.doc_menu_sel)).filter(visible)) || null;
+  // Phase 1.4 (listitem tier): the menu is usually a portal; last resort, any visible innermost
+  // element of the document whose text is exactly the label.
+  return pick(menus) || pick(Array.from(document.querySelectorAll(a.doc_menu_sel)).filter(visible))
+    || pick([document.body]) || null;
 }"""
 
 
@@ -144,14 +172,50 @@ def eligible_indices(raws: list[dict[str, Any]], cap: int) -> list[int]:
     return out
 
 
+def ref_of_raw(raw: dict[str, Any]) -> str | None:
+    """The ref ScrapedPost.source_ref will carry for ``raw`` before any capture: URN, else ck:<KEY>."""
+    urn = raw.get("urn")
+    if isinstance(urn, str) and URN_RE.match(urn.strip()):
+        return urn.strip()
+    urn = urn_from_href(raw.get("post_href"))
+    if urn:
+        return urn
+    key = raw.get("component_key")
+    return f"{S.SOURCE_REF_KEY_PREFIX}{key.strip()}" if isinstance(key, str) and key.strip() else None
+
+
+def eligible_refs(raws: list[dict[str, Any]], refs: Sequence[str], cap: int) -> list[str]:
+    """The first ``cap`` of ``refs`` (in the order given, each once) whose card can be captured: a
+    raw with that ref, no URN yet, a component key and a control menu (``sdui`` and ``listitem`` tiers)."""
+    out: list[str] = []
+    if cap <= 0:
+        return out
+    by_ref = {ref: raw for raw in raws if (ref := ref_of_raw(raw)) is not None}
+    for ref in refs:
+        if len(out) >= cap:
+            break
+        raw = by_ref.get(ref)
+        if raw is None or ref in out or _has_urn(raw) or not raw.get("has_control_menu"):
+            continue
+        out.append(ref)
+    return out
+
+
 def _trigger_args(raw: dict[str, Any], index: int) -> dict[str, Any]:
+    pos = raw.get("card_index")
     return {
+        "tier": "listitem" if raw.get("strategy") == "listitem" else "sdui",
         "key": (raw.get("component_key") or "").strip(),
-        "index": index,
+        "index": pos if isinstance(pos, int) else index,
+        "menu_label": (raw.get("menu_label") or "").strip(),
         "key_attr": S.SDUI_KEY_ATTR,
+        "key_prefix_re": S.LISTITEM_KEY_PREFIX_RE,
         "post_sel": S.SDUI_POST,
         "menu_sel": S.SDUI_CONTROL_MENU,
         "trigger_sel": _TRIGGER,
+        "listitem_card": S.LISTITEM_CARD,
+        "listitem_markers": list(S.LISTITEM_POST_MARKERS),
+        "listitem_menu": S.LISTITEM_MENU,
     }
 
 
@@ -159,6 +223,7 @@ def _item_args() -> dict[str, Any]:
     return {
         "text": S.COPY_LINK_TEXT.strip().lower(),
         "post_sel": S.SDUI_POST,
+        "listitem_card": S.LISTITEM_CARD,
         "menu_sel": S.SDUI_CONTROL_MENU,
         "doc_menu_sel": _DOC_MENU,
     }
@@ -167,6 +232,19 @@ def _item_args() -> dict[str, Any]:
 # Raw page actions, module-level so tests can observe them.
 def _click(element: ElementHandle) -> None:
     element.click(timeout=CLICK_TIMEOUT_MS)
+
+
+def _center(page: Page, element: ElementHandle) -> None:
+    """Scroll the trigger to the middle of the viewport, let the card settle, then hover it.
+    After a deep results scroll the first cards sit far above the viewport (and under LinkedIn's
+    sticky header); a click without settling opened no menu live (Phase 1.4 live check)."""
+    try:
+        element.evaluate("(e) => e.scrollIntoView({block: 'center', inline: 'nearest'})")
+        page.wait_for_timeout(700)
+        element.hover(timeout=CLICK_TIMEOUT_MS)
+        page.wait_for_timeout(250)
+    except Exception:  # noqa: BLE001 - best-effort; the click that follows decides
+        pass
 
 
 def _press_escape(page: Page) -> None:
@@ -211,7 +289,8 @@ def _attempt(
         trigger = _find_trigger(page, raw, index)
         if trigger is None:
             checkpoint()
-            return "click_error", None
+            return "no_card", None  # the card is no longer in the DOM: neither an attempt nor a miss
+        _center(page, trigger)
         _click(trigger)
     except PlaywrightError:
         checkpoint()
@@ -261,7 +340,7 @@ def capture_permalinks(
     ``checkpoint`` is the searcher's safety checkpoint: it raises ``AccountSafetyStop`` (browser
     already closed), which propagates unchanged.
     """
-    targets = eligible_indices(raws, cap)
+    targets = eligible_indices(raws, len(raws)) if cap > 0 else []
     if not targets:
         return PermalinkStats()
     search_path = urlsplit(page.url).path
@@ -274,12 +353,16 @@ def capture_permalinks(
 
     attempts = found = misses = 0
     for index in targets:
+        if attempts >= cap:
+            break
         if urlsplit(page.url).path != search_path:
             log.debug("scraper_permalink_stopped", keyword=keyword, reason="left_search_page", index=index)
             break
-        attempts += 1
         outcome, copied = _attempt(page, raws[index], index, pacer, checkpoint)
         log.debug("scraper_permalink", keyword=keyword, index=index, outcome=outcome)
+        if outcome == "no_card":
+            continue
+        attempts += 1
         if copied:
             raws[index]["copied_url"] = copied
             found += 1

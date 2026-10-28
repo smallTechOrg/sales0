@@ -9,15 +9,13 @@ from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.autogenerate import compare_metadata
-from alembic.runtime.migration import MigrationContext
 from alembic.util.exc import CommandError
 from sqlalchemy import inspect, select
 
 from sales0.config import REPO_ROOT
-from sales0.db.base import metadata
 from sales0.db.engine import build_engine, session_scope
 from sales0.db.migrate_check import alembic_config, current_revision, head_revision
+from tests.integration.db._drift import assert_inline_fks_cascade, drift
 from sales0.db.models import AppMeta, LinkedInSession, Offering, OfferingGroup
 
 PHASE1_TABLES = {
@@ -58,7 +56,12 @@ EXPECTED_OFFERINGS = [
         "Consulting, design and build of AI solutions: assistants/chatbots, agents, automation, RAG "
         "over company documents.",
     ),
-    (4, "Products", "Products", "smallTech's AI products and tools offered to companies."),
+    (
+        4,
+        "Products",
+        "Products",
+        "smallTech's AI products and tools offered to companies.",
+    ),
 ]
 
 
@@ -70,26 +73,32 @@ def _tables(url: str) -> set[str]:
         engine.dispose()
 
 
-def test_head_revision_is_0002_phase1_discovery(db_url: str) -> None:
-    assert head_revision() == "0002_phase1_discovery"
+def test_head_revision_is_0003_phase1_4_seen_posts(db_url: str) -> None:
+    assert head_revision() == "0003_phase1_4_seen_posts"
     engine = build_engine(db_url)
     try:
-        assert current_revision(engine) == "0002_phase1_discovery"
+        assert current_revision(engine) == "0003_phase1_4_seen_posts"
     finally:
         engine.dispose()
     assert PHASE1_TABLES | {"app_meta", "alembic_version"} <= _tables(db_url)
 
 
-def test_migration_seeds_exactly_the_four_default_offerings_in_three_groups(db_url: str) -> None:
+def test_migration_seeds_exactly_the_four_default_offerings_in_three_groups(
+    db_url: str,
+) -> None:
     with session_scope() as db:
-        groups = db.execute(select(OfferingGroup).order_by(OfferingGroup.id)).scalars().all()
+        groups = (
+            db.execute(select(OfferingGroup).order_by(OfferingGroup.id)).scalars().all()
+        )
         assert [(g.id, g.name, g.name_key, g.sort_order) for g in groups] == [
             (1, "Training", "training", 1),
             (2, "Services", "services", 2),
             (3, "Products", "products", 3),
         ]
         offerings = db.execute(select(Offering).order_by(Offering.id)).scalars().all()
-        assert [(o.id, o.group.name, o.name, o.description) for o in offerings] == EXPECTED_OFFERINGS
+        assert [
+            (o.id, o.group.name, o.name, o.description) for o in offerings
+        ] == EXPECTED_OFFERINGS
         assert all(o.active for o in offerings)
         assert [o.sort_order for o in offerings] == [1, 2, 3, 4]
         assert [o.name_key for o in offerings] == [
@@ -98,10 +107,14 @@ def test_migration_seeds_exactly_the_four_default_offerings_in_three_groups(db_u
             "ai consulting & build services",
             "products",
         ]
-        assert all(o.created_at is not None and o.updated_at is not None for o in offerings)
+        assert all(
+            o.created_at is not None and o.updated_at is not None for o in offerings
+        )
 
 
-def test_migration_seeds_the_linkedin_session_singleton_as_not_connected(db_url: str) -> None:
+def test_migration_seeds_the_linkedin_session_singleton_as_not_connected(
+    db_url: str,
+) -> None:
     with session_scope() as db:
         rows = db.execute(select(LinkedInSession)).scalars().all()
         assert len(rows) == 1
@@ -115,15 +128,15 @@ def test_migration_seeds_the_linkedin_session_singleton_as_not_connected(db_url:
 def test_migrated_schema_matches_the_orm_models_with_no_drift(db_url: str) -> None:
     engine = build_engine(db_url)
     try:
-        with engine.connect() as conn:
-            ctx = MigrationContext.configure(conn, opts={"compare_type": True})
-            diffs = compare_metadata(ctx, metadata)
+        assert drift(engine) == []
+        assert_inline_fks_cascade(engine)
     finally:
         engine.dispose()
-    assert diffs == []
 
 
-def test_downgrade_to_baseline_drops_phase1_tables_and_upgrade_reseeds_once(db_url: str) -> None:
+def test_downgrade_to_baseline_drops_phase1_tables_and_upgrade_reseeds_once(
+    db_url: str,
+) -> None:
     cfg = alembic_config(db_url)
     command.downgrade(cfg, "0001_baseline")
     remaining = _tables(db_url)
@@ -139,7 +152,9 @@ def test_downgrade_to_baseline_drops_phase1_tables_and_upgrade_reseeds_once(db_u
         assert db.get(AppMeta, "schema_note") is not None
 
 
-def test_downgrade_to_base_removes_everything_but_the_version_table(db_url: str) -> None:
+def test_downgrade_to_base_removes_everything_but_the_version_table(
+    db_url: str,
+) -> None:
     command.downgrade(alembic_config(db_url), "base")
     assert _tables(db_url) <= {"alembic_version"}
 
@@ -150,19 +165,29 @@ def test_upgrade_head_is_idempotent_when_already_at_head(db_url: str) -> None:
         assert len(db.execute(select(Offering)).scalars().all()) == 4
 
 
-def test_alembic_cli_upgrade_and_current_print_the_head_revision(tmp_path: Path) -> None:
+def test_alembic_cli_upgrade_and_current_print_the_head_revision(
+    tmp_path: Path,
+) -> None:
     """The documented commands, run as the user runs them, against a fresh SQLite file."""
     url = f"sqlite:///{(tmp_path / 'cli.db').as_posix()}"
     full_env = {**os.environ, "SALES0_DATABASE_URL": url}
     up = subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"], cwd=REPO_ROOT, env=full_env, capture_output=True, text=True
+        ["uv", "run", "alembic", "upgrade", "head"],
+        cwd=REPO_ROOT,
+        env=full_env,
+        capture_output=True,
+        text=True,
     )
     assert up.returncode == 0, up.stderr
     cur = subprocess.run(
-        ["uv", "run", "alembic", "current"], cwd=REPO_ROOT, env=full_env, capture_output=True, text=True
+        ["uv", "run", "alembic", "current"],
+        cwd=REPO_ROOT,
+        env=full_env,
+        capture_output=True,
+        text=True,
     )
     assert cur.returncode == 0, cur.stderr
-    assert "0002_phase1_discovery (head)" in cur.stdout
+    assert "0003_phase1_4_seen_posts (head)" in cur.stdout
 
 
 def test_upgrade_fails_loudly_on_an_unknown_revision(tmp_path: Path) -> None:

@@ -29,7 +29,7 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent")
 
-PROMPT_VERSION = "triage-v1"  # bump on any prompt or schema edit
+PROMPT_VERSION = "triage-v2"  # bump on any prompt or schema edit
 TOOL_NAME = "record_triage"
 TOOL_DESCRIPTION = (
     "Record the triage of ONE post: genuine/discard verdict, one-line reason, poster type, "
@@ -101,7 +101,7 @@ def build_prompt(state: TriageState, deps: TriageDeps) -> TriageState:
         max_tokens=settings.llm_max_output_tokens,
         prompt_version=state.prompt_version,
         log_context={
-            "enquiry_id": state.inp.enquiry_id,
+            ("seen_post_id" if state.inp.subject == "seen_post" else "enquiry_id"): state.inp.enquiry_id,
             "fewshot_count": len(state.examples),
             "input_summary": " ".join(state.inp.text.split())[:80],
         },

@@ -87,8 +87,8 @@ def test_checkpoint_stop_stamps_keyword_recheck_clears_then_rerun_logout_and_cap
 
     # The tripping keyword is stamped with the stop time; the skipped one is not.
     page.goto(f"{base}/setup")
-    expect(keyword_row(page, "checkpoint-test")).to_contain_text("Last run")
-    expect(keyword_row(page, "ai consulting")).to_contain_text("Not run yet")
+    expect(keyword_row(page, "checkpoint-test")).to_contain_text("last run")
+    expect(keyword_row(page, "ai consulting")).to_contain_text("not run yet")
 
     # --- a headless Re-check clears needs_attention (cool-down 0 in tests → Run now allowed)
     check = recheck_linkedin(page, server)
@@ -123,7 +123,7 @@ def test_checkpoint_stop_stamps_keyword_recheck_clears_then_rerun_logout_and_cap
     assert run3["run"]["abort_reason"] == "logout", run3["run"]
     _assert_needs_attention_everywhere(page, base)
     page.goto(f"{base}/setup")
-    expect(keyword_row(page, "logout-test")).to_contain_text("Last run")
+    expect(keyword_row(page, "logout-test")).to_contain_text("last run")
 
     # --- captcha-test: a captcha page aborts the next run as well
     recheck_linkedin(page, server)

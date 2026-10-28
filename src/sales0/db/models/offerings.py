@@ -17,8 +17,12 @@ class OfferingGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(60), nullable=False)
     name_key: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc
+    )
 
     offerings: Mapped[list[Offering]] = relationship(
         back_populates="group", order_by="Offering.sort_order", passive_deletes="all"
@@ -36,15 +40,27 @@ class Offering(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     group_id: Mapped[int] = mapped_column(
-        ForeignKey("offering_groups.id", ondelete="RESTRICT"), nullable=False, index=True
+        ForeignKey("offering_groups.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     name_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
-    description: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
+    description: Mapped[str] = mapped_column(
+        String(500), nullable=False, default="", server_default=""
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc
+    )
 
     group: Mapped[OfferingGroup] = relationship(back_populates="offerings")
 

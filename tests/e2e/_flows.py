@@ -97,7 +97,7 @@ def keyword_row(page: Page, text: str) -> Locator:
     return page.locator("#keyword-list li").filter(has=page.locator("strong", has_text=text)).first
 
 
-def run_now(page: Page, base_url: str) -> tuple[int, dict[str, Any]]:
+def run_now(page: Page, base_url: str, *, timeout_ms: int = RUN_TIMEOUT_MS) -> tuple[int, dict[str, Any]]:
     """Runs → Run now; observe live progress; wait for the outcome.
 
     Returns (run_id, the in-progress observation)."""
@@ -116,13 +116,13 @@ def run_now(page: Page, base_url: str) -> tuple[int, dict[str, Any]]:
         progress = {
             "title": panel.locator("#run-panel-title").inner_text(),
             "has_progress_bar": panel.locator("progress#run-progress").count() == 1,
-            "counters": panel.locator(".counters").inner_text(),
+            "counters": " ".join(panel.locator(".counters").all_inner_texts()),
         }
     page.wait_for_function(
         "(statuses) => { const p = document.querySelector('#run-panel');"
         " return p && statuses.includes(p.dataset.status) && !p.hasAttribute('hx-get'); }",
         arg=list(TERMINAL_RUN_STATUSES),
-        timeout=RUN_TIMEOUT_MS,
+        timeout=timeout_ms,
     )
     return run_id, progress
 

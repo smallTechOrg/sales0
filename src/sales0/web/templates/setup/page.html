@@ -16,7 +16,7 @@
       <section class="card" aria-labelledby="keywords-title">
         <div class="card__header">
           <h2 id="keywords-title">Keywords</h2>
-          <span class="muted">Searched least-recently-run first</span>
+          <span class="muted">Unfinished keywords first, then least-recently-run</span>
         </div>
         <div class="card__body">
           <form class="inline-form" method="post" action="/setup/keywords"
@@ -27,6 +27,10 @@
                      placeholder="e.g. corporate AI training" autocomplete="off">
             </div>
             <button class="btn btn--primary" type="submit">Add keyword</button>
+          </form>
+          <form method="post" action="/setup/keywords/suggested" hx-post="/setup/keywords/suggested" hx-target="#keyword-list" hx-disabled-elt="find button">
+            <button id="add-suggested-keywords" class="btn" type="submit">Add suggested keywords</button>
+            <span class="muted">60 buyer-intent phrases, never changes keywords you already have.</span>
           </form>
           {% include "setup/_keyword_list.html" %}
         </div>

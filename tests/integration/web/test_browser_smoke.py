@@ -9,7 +9,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.integration.web.conftest import make_enquiry, make_run, triaged
+from tests.integration.web.conftest import make_enquiry, make_run, make_seen_post, triaged
 
 pytestmark = pytest.mark.browser
 
@@ -79,3 +79,40 @@ def test_inbox_bulk_select_discard_and_priority_change(fixture_server: str, page
     page.fill("#inbox-search", "freelance")
     page.keyboard.press("Enter")
     expect(page.locator("#inbox-list article")).to_have_count(2)
+
+
+def test_setup_add_suggested_keywords_then_edit_one_inline(fixture_server: str, page: Page) -> None:
+    page.goto(f"{fixture_server}/setup")
+    page.locator("#add-suggested-keywords").click()
+    expect(page.locator("#toasts .toast--ok")).to_contain_text("Added 60 · 0 already present")
+    expect(page.locator("#keyword-list details.keyword-group")).to_have_count(4)
+    expect(page.locator("#keyword-list [data-keyword-id]")).to_have_count(60)
+    page.locator("#add-suggested-keywords").click()
+    expect(page.locator("#toasts")).to_contain_text("Added 0 · 60 already present")
+
+    row = page.locator("#keyword-list [data-keyword-id]").first
+    row.locator("summary", has_text="Edit").click()
+    row.locator("input[name=text]").fill("my edited buyer phrase")
+    row.get_by_role("button", name="Save").click()
+    expect(page.locator("#keyword-list")).to_contain_text("my edited buyer phrase")
+    expect(page.locator("#toasts")).to_contain_text("Saved keyword 'my edited buyer phrase'.")
+
+
+def test_skipped_tab_search_rescue_and_override(fixture_server: str, page: Page) -> None:
+    make_seen_post("Agency recruiting freelance trainers for Pune batches", author="Zed Agency")
+    make_seen_post("Thought leadership on the future of AI at work", author="Amy Writer", reason="Opinion piece")
+    page.goto(f"{fixture_server}/inbox")
+    page.locator("#inbox-tab-skipped").click()
+    expect(page.locator("#skipped-list article.skipped")).to_have_count(2)
+    page.fill("#inbox-search", "zed")
+    page.keyboard.press("Enter")
+    expect(page.locator("#skipped-list article.skipped")).to_have_count(1)
+    page.locator(".skipped__rescue").click()
+    expect(page.locator("#toasts")).to_contain_text("Moved to To review")
+    expect(page.locator("#inbox-tabs")).to_contain_text("To review (1)")
+    expect(page.locator("#inbox-tabs")).to_contain_text("Skipped by AI (1)")
+    page.goto(f"{fixture_server}/inbox?tab=skipped")
+    page.locator(".skipped__override").click()
+    expect(page.locator("#toasts")).to_contain_text("Accepted as Prospect · New (overrode AI)")
+    expect(page.locator("#inbox-tabs")).to_contain_text("Accepted (1)")
+    expect(page.locator("#skipped-list")).to_contain_text("Nothing skipped yet")
