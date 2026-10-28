@@ -45,6 +45,7 @@ from sales0.integrations.gmail.errors import (
 from sales0.integrations.gmail.mime import DraftContent, validate_address
 from sales0.logging import get_logger
 from sales0.services._common import clip, not_found, now_or
+from sales0.services import suppressions
 from sales0.services.outreach import decks, templates
 from sales0.services.outreach._shared import add_event, join_addrs, split_addrs
 from sales0.services.team import connections
@@ -192,6 +193,8 @@ def update_message(
         new_deck = deck_id
         if deck_id is not None and not decks.get_deck(db, deck_id).active:
             raise DomainError("deck_missing", "That deck was deleted - pick another.", 409)
+    if new_to != msg.to_addrs or new_cc != msg.cc_addrs:
+        suppressions.assert_not_suppressed(db, new_to, new_cc)
     changed = [
         name
         for name, old, new in (
@@ -241,6 +244,7 @@ def approve(db: Session, msg_id: int, member: TeamMember, *, now: datetime | Non
             validate_address(addr)
         except InvalidMessage as exc:
             raise DomainError("invalid_address", f"{exc}", 409) from exc
+    suppressions.assert_not_suppressed(db, to, msg.cc_addrs)
     if not msg.subject.strip() or not msg.body.strip():
         raise DomainError("empty_message", "The subject and body must not be empty.", 409)
     content = _build_content(db, msg)
@@ -347,6 +351,7 @@ def _preflight(db: Session, msg: OutreachMessage, member: TeamMember, now: datet
     """Checks that need no state change: active member, usable connection, the Gmail account is the sender, cap."""
     if not member.active:
         raise DomainError("member_inactive", "This team member is deactivated and cannot send.", 403)
+    suppressions.assert_not_suppressed(db, msg.to_addrs, msg.cc_addrs)  # final guard, before any Gmail call
     view = connections.connection_status(db, member.id)
     if not view.usable:
         raise DomainError(

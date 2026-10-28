@@ -1,0 +1,8 @@
+{# Needs: section. Replies sub-navigation + flash. #}
+<nav class="tabs" aria-label="Reply sections" id="replies-subnav">
+  <a class="tabs__tab{% if section == 'replies' %} tabs__tab--active{% endif %}" href="/replies"{% if section == 'replies' %} aria-current="page"{% endif %}>Replies</a>
+  <a class="tabs__tab{% if section == 'suppressions' %} tabs__tab--active{% endif %}" href="/replies/suppressions"{% if section == 'suppressions' %} aria-current="page"{% endif %}>Suppressions</a>
+</nav>
+{% if flash %}
+  <div class="flash flash--{{ flash.kind }}" id="replies-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+{% endif %}

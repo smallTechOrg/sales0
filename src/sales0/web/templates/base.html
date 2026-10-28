@@ -19,7 +19,7 @@
           {% for item in nav %}
             <li>
               <a href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>
-                {{ item.label }}{% if item.phase %} <span class="badge badge--stub">Phase {{ item.phase }}</span>{% endif %}
+                {{ item.label }}{% if item.phase %} <span class="badge badge--stub">Phase {{ item.phase }}</span>{% endif %}{% if item.href == "/replies" and shell and shell.replies_unread %} <span class="nav-count" id="replies-unread" title="Replies waiting for you">{{ shell.replies_unread }}</span>{% endif %}
               </a>
             </li>
           {% else %}
@@ -32,6 +32,7 @@
       {% if shell %}
         <div class="site-header__status">
           {% if shell.mode == "fixture" %}<span class="fixture-badge" title="Demo data from the built-in fake LinkedIn — not live">FIXTURE MODE</span>{% endif %}
+          <a id="replies-status" href="/replies" class="replies-status replies-status--{{ shell.replies.level }}" title="{{ shell.replies.detail }}"><span class="replies-status__dot" aria-hidden="true"></span><span>{{ shell.replies.label }}</span></a>
           {% with session=shell.session, light=shell.light %}{% include "_shell/status_light.html" %}{% endwith %}
           {% with cost=shell.cost %}{% include "_shell/cost_badge.html" %}{% endwith %}
           {% include "team/_acting.html" %}

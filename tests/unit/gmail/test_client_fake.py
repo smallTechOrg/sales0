@@ -55,6 +55,10 @@ def test_delete_and_missing():
     assert [c[0] for c in g.calls][:2] == ["create_draft", "delete_draft"]
 
 
-def test_list_sent_stub():
-    with pytest.raises(NotImplementedError):
-        FakeGmailClient().list_sent_since(datetime.now(UTC))
+def test_threads_listing_and_reply_helper():
+    g = FakeGmailClient()
+    g.add_reply("t1", "Ann@Acme.example")
+    assert g.list_threads_with_new_messages(datetime(2020, 1, 1, tzinfo=UTC)) == ["t1"]
+    assert g.get_thread("t1")[0].from_addr == "ann@acme.example"
+    with pytest.raises(GmailNotFound):
+        g.get_thread("nope")

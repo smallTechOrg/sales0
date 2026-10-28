@@ -154,6 +154,13 @@ class Settings(BaseSettings):
     seen_raw_retention_days: int = Field(14, ge=0)
     seed_suggested_keywords: bool = True
 
+    # --- Reply tracking (read-only polling of each member's own Gmail) ---
+    reply_poll_minutes: int = Field(10, ge=0)  # 0 disables the background poller
+    reply_lookback_days: int = Field(60, ge=1)  # only sent messages younger than this are polled
+    reply_max_threads_per_poll: int = Field(300, ge=1)  # per member per cycle
+    # Extra addresses that are "us" (Send-As aliases), comma separated; never counted as replies.
+    reply_own_aliases: str = ""
+
     # --- Google Sheet sync (read-only; Phase 2) ---
     sheet_sync_minutes: int = Field(30, ge=0)  # 0 disables the interval scheduler
     sheet_client_sourcing_id: str = "1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag"

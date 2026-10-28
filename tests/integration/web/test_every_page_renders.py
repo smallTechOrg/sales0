@@ -40,7 +40,7 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/replies", "/replies/suppressions"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 
@@ -279,7 +279,7 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
         page(path, f"Coming in Phase {phase}")
 
     # Phase 3 outreach pages (the acting member is the seeded admin).
-    page("/outreach", "Outreach", ['id="cap-usage"', "0 of 40</strong> sent today", 'id="outbox-filters"', "Coming later"])
+    page("/outreach", "Outreach", ['id="cap-usage"', "0 of 40</strong> sent today", 'id="outbox-filters"', "Replies column fills in"])
     page("/outreach/compose", "Compose outreach", ['id="compose-form"', 'id="research-btn"', 'id="draft-btn"'])
     page("/outreach/templates", "Message templates", ['id="template-form"', 'id="variable-help"'])
     page("/outreach/decks", "Decks", ['id="deck-upload-form"', "up to 10 MB"])

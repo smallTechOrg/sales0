@@ -543,3 +543,24 @@ progress.progress::-moz-progress-bar { background: var(--color-primary); border-
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .timeline li { padding-left: var(--space-3); border-left: 3px solid var(--color-border-strong); }
 .brief { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3); }
+
+/* ------------------------------------------------------------------ replies */
+.replies-status { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--color-header-muted); font-size: var(--font-size-sm); padding: 0.25rem 0.5rem; border-radius: 999px; text-decoration: none; }
+.replies-status:hover { color: #ffffff; background: rgba(255, 255, 255, 0.14); }
+.replies-status__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #8b95a1; }
+.replies-status--ok .replies-status__dot { background: #3ccb6c; }
+.replies-status--idle .replies-status__dot { background: #8b95a1; }
+.replies-status--warn .replies-status__dot { background: #ffb020; }
+.replies-status--off .replies-status__dot { background: transparent; border: 1px solid #8b95a1; }
+.nav-count { display: inline-block; min-width: 1.25rem; padding: 0 0.375rem; border-radius: 999px; background: #ff5a4e; color: #ffffff; font-size: 0.6875rem; font-weight: 700; text-align: center; line-height: 1.25rem; }
+.conn--ok .conn__dot { background: #2fa857; }
+.conn--warn .conn__dot { background: #e0a100; }
+.conn--idle .conn__dot, .conn--off .conn__dot { background: #8b95a1; }
+.reply-snippet { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 48ch; }
+.reply-item { padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
+.reply-kind--human, .reply-badge--replied { background: var(--color-ok-soft); color: var(--color-ok); border-color: #a8d5b5; }
+.reply-kind--bounce, .reply-badge--bounced { background: var(--color-danger-soft); color: var(--color-danger); border-color: #f0b8b2; }
+.reply-kind--auto_reply, .reply-badge--auto { background: #eef1f4; color: #3d4652; }
+.reply-intent--interested { background: var(--color-ok-soft); color: var(--color-ok); }
+.reply-intent--unsubscribe { background: var(--color-danger-soft); color: var(--color-danger); }
+.reply-intent--question, .reply-intent--not_now { background: var(--color-warn-soft); color: var(--color-warn); }

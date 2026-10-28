@@ -47,6 +47,8 @@ _RESET_SEAMS = [
     ("sales0.scraper.browser", "reset_browser_cache"),
     ("sales0.services.team.connections", "reset_client_factory"),
     ("sales0.services.team.oauth", "reset_state_store"),
+    ("sales0.jobs.reply_poller", "reset_poller"),
+    ("sales0.services.events", "reset"),
 ]
 
 # Fast, deterministic pacing + caps for tests (architecture.md → Conventions → Tests).
@@ -71,6 +73,8 @@ TEST_ENV = {
     # Phase 1.4: tests seed their own keywords; concurrency pinned to the documented default.
     "SALES0_SEED_SUGGESTED_KEYWORDS": "false",
     "SALES0_TRIAGE_CONCURRENCY": "4",
+    # Phase 5: no background reply poller in tests; they call poll_all()/run_cycle() explicitly.
+    "SALES0_REPLY_POLL_MINUTES": "0",
 }
 _CLEARED_ENV = ("SALES0_LOG_FILE", "SALES0_HOST")
 

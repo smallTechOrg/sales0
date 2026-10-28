@@ -131,3 +131,13 @@ Assumed:
 - Assumed: keyword yield (suggestions) is derived from `scrape_run_keywords.posts_seen` + genuine enquiries linked through `enquiry_keyword_hits`, isolated in `services/keyword_yield.py::_load_raw` so Phase 1.4's per-keyword stats can replace it.
 - Tests: the e2e `tests/e2e/test_ops_journey.py` runs its live server on port 8791 (other suites use 8766).
 - Not built here (needs Phase 2 tables): weekly/secondary metrics, funnel, follow-ups-due/stale-leads/tracked-profile digest sections (the registry is ready), re-engage-old-prospects suggestions.
+
+## Reply tracking (branch feature/sales0-replies)
+- Assumed: poll interval 10 min (spec said 15), 0 = off; lookback 60 days; per-member 300 threads/cycle.
+- Assumed: gmail.modify already covers reads; no scope change, no re-auth needed. Mailbox is only read (format=metadata, snippet only).
+- Assumed: "own" addresses include every team member, so a colleague replying in a thread is not a prospect reply.
+- Assumed: LLM feature `triage` + prompt_version `reply-v1` reused (llm_calls CHECK has no reply feature; avoided another CHECK migration).
+- Assumed: transient LLM failure defers a message (retried next cycle); an unusable answer stores human/other with classified_by=fallback.
+- Assumed: soft bounces (mailbox full / delay) are recorded but not suppressed; unsubscribe suppresses the replier AND the original recipients.
+- Assumed: "follow-up drafts" = outreach_messages.follow_up_of_id (new nullable column); nothing creates follow-ups yet.
+- Harness friction: structlog `event=` kwarg collision crashed the event dispatcher's error log (found by tests); concurrent builders contend for port 8766 in the e2e LiveServer (flaky LiveServerError when run in parallel).

@@ -153,7 +153,7 @@ def test_missing_scope_in_token_fails_before_network():
     assert g.requests == []
     c2, _, _ = make(scopes=[SCOPE_COMPOSE])
     with pytest.raises(GmailScopeError):
-        c2.list_sent_since(datetime.now(UTC))
+        c2.get_thread('t1')
 
 
 def test_429_and_5xx_retry_with_backoff():

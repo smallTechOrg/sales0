@@ -19,6 +19,7 @@ from sales0.db.models.offerings import Offering, OfferingGroup
 from sales0.db.models.profiles import LinkedinProfile
 from sales0.db.models.ops import Digest, ScheduledJob, Suggestion
 from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
+from sales0.db.models.replies import OutreachReply, ReplyPollState, Suppression
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
 from sales0.db.models.seen_posts import SeenPost
 from sales0.db.models.team import GmailConnection, TeamMember
@@ -45,12 +46,15 @@ __all__ = [
     "OutreachEvent",
     "OutreachMessage",
     "ScheduledJob",
+    "OutreachReply",
+    "ReplyPollState",
     "ScrapeRun",
     "ScrapeRunKeyword",
     "SeenPost",
     "SheetSyncState",
     "StatusHistory",
     "Suggestion",
+    "Suppression",
     "TeamMember",
     "TriageDecision",
     "UTCDateTime",

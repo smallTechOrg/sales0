@@ -30,6 +30,8 @@ from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMClient, LLMError, LLMModelNotFound, get_llm_client
 from sales0.logging import get_logger
 from sales0.services import offerings as offerings_service
+from sales0.services import replies as replies_service
+from sales0.services import suppressions as suppressions_service
 from sales0.services.outreach import decks as decks_service
 from sales0.services.outreach import drafting, messages, templates
 from sales0.services.outreach import research as research_service
@@ -195,6 +197,7 @@ def outbox(
     return _page(
         request, db, "outreach/outbox.html",
         {
+            "reply_counts": replies_service.reply_counts_by_message(db, [m.id for m in rows]),
             "items": items, "state": state, "scope": "all" if everyone else "mine", "state_filters": STATE_FILTERS,
             "state_labels": STATE_LABELS, "cap": _cap_info(db, member), "stuck_count": sum(1 for i in items if i["stuck"]),
             "is_admin": member.role == "admin", "connection": connections_service.connection_status(db, member.id),
@@ -384,6 +387,10 @@ def _message_ctx(db: Session, msg: OutreachMessage, member: TeamMember) -> dict[
         "can_approve": owner and msg.state in ("draft", "edited"),
         "can_reject": owner and msg.state in messages.EDITABLE_STATES and not (msg.state == "failed" and msg.send_outcome_unknown),
         "section": "outbox",
+        "replies": [
+            v for v in replies_service.list_replies(db, member, everyone=True) if v.message.id == msg.id
+        ],
+        "suppressed_to": suppressions_service.suppressed_among(db, msg.to_addrs, msg.cc_addrs),
     }  # fmt: skip
 
 

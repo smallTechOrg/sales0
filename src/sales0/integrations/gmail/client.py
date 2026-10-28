@@ -27,6 +27,7 @@ from sales0.integrations.gmail.errors import (
     GmailScopeError,
     GmailTransientError,
 )
+from sales0.integrations.gmail.threads import METADATA_HEADERS, ThreadMessage, parse_message
 from sales0.integrations.gmail.mime import (
     Attachment,
     DraftContent,
@@ -92,7 +93,9 @@ class GmailClient(Protocol):
 
     def send_draft(self, approved: ApprovedMessage) -> tuple[str, str]: ...
 
-    def list_sent_since(self, since: datetime) -> list[dict[str, Any]]: ...
+    def get_thread(self, thread_id: str) -> list[ThreadMessage]: ...
+
+    def list_threads_with_new_messages(self, since: datetime, *, limit: int = 100) -> list[str]: ...
 
     def trash_thread(self, thread_id: str) -> None: ...
 
@@ -225,9 +228,33 @@ class RealGmailClient:
         self.tokens.require_scopes("trash")
         self._request("POST", f"{API}/threads/{thread_id}/trash")
 
-    def list_sent_since(self, since: datetime) -> list[dict[str, Any]]:
-        self.tokens.require_scopes("list_sent_since")
-        raise NotImplementedError("list_sent_since arrives with reply tracking")
+    # -- reply tracking (READ-ONLY: gmail.modify covers read; nothing here mutates the mailbox) --
+    def get_thread(self, thread_id: str) -> list[ThreadMessage]:
+        """Every message of a thread, oldest first: headers + snippet + labels only (no body)."""
+        self.tokens.require_scopes("read")
+        r = self._request(
+            "GET",
+            f"{API}/threads/{thread_id}",
+            params=[("format", "metadata"), *[("metadataHeaders", h) for h in METADATA_HEADERS]],
+        )
+        msgs = [parse_message({**m, "threadId": m.get("threadId", thread_id)}) for m in r.json().get("messages") or []]
+        return sorted(msgs, key=lambda m: m.date)
+
+    def list_threads_with_new_messages(self, since: datetime, *, limit: int = 100) -> list[str]:
+        """Ids of threads that received a message after ``since`` (any label except spam/trash)."""
+        self.tokens.require_scopes("read")
+        ids: list[str] = []
+        page: str | None = None
+        while len(ids) < limit:
+            params: dict[str, Any] = {"q": f"after:{int(since.timestamp())}", "maxResults": min(100, limit - len(ids))}
+            if page:
+                params["pageToken"] = page
+            body = self._request("GET", f"{API}/threads", params=params).json()
+            ids += [str(t["id"]) for t in body.get("threads") or []]
+            page = body.get("nextPageToken")
+            if not page:
+                break
+        return ids[:limit]
 
 
 # --------------------------------------------------------------------------- fake client
@@ -239,6 +266,7 @@ class FakeGmailClient:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.raw_drafts: dict[str, bytes] = {}
         self.sent: list[dict[str, Any]] = []
+        self.threads: dict[str, list[ThreadMessage]] = {}
         self._n = 0
 
     def profile_email(self) -> str:
@@ -272,15 +300,50 @@ class FakeGmailClient:
         raw = self.raw_drafts.pop(approved.draft_id)
         n = len(self.sent) + 1
         self.sent.append({"message_id": f"msg-{n}", "thread_id": f"thr-{n}", "raw": raw, "approved": approved})
+        from datetime import UTC
+
+        c = parse_raw(raw)
+        self.threads[f"thr-{n}"] = [
+            ThreadMessage(
+                id=f"msg-{n}", thread_id=f"thr-{n}", from_addr=self.email.lower(), from_name="",
+                to_addrs=tuple(a.lower() for a in c.to), cc_addrs=tuple(a.lower() for a in c.cc), subject=c.subject,
+                date=datetime.now(UTC), snippet=c.text_body[:100], labels=("SENT",),
+            )
+        ]
         return f"msg-{n}", f"thr-{n}"
 
     def trash_thread(self, thread_id: str) -> None:
         self.calls.append(("trash_thread", (thread_id,)))
         self.trashed = getattr(self, "trashed", []) + [thread_id]
 
-    def list_sent_since(self, since: datetime) -> list[dict[str, Any]]:
-        self.calls.append(("list_sent_since", (since,)))
-        raise NotImplementedError("list_sent_since arrives with reply tracking")
+    def get_thread(self, thread_id: str) -> list[ThreadMessage]:
+        self.calls.append(("get_thread", (thread_id,)))
+        if thread_id not in self.threads:
+            raise GmailNotFound(f"thread {thread_id} not found")
+        return sorted(self.threads[thread_id], key=lambda m: m.date)
+
+    def list_threads_with_new_messages(self, since: datetime, *, limit: int = 100) -> list[str]:
+        self.calls.append(("list_threads_with_new_messages", (since,)))
+        found = [t for t, ms in self.threads.items() if any(m.date > since for m in ms)]
+        return found[:limit]
+
+    def add_reply(
+        self, thread_id: str, from_addr: str, *, snippet: str = "Thanks, interested.", subject: str = "Re: hello",
+        date: datetime | None = None, labels: tuple[str, ...] = ("INBOX", "UNREAD"), **headers: str,
+    ) -> ThreadMessage:
+        """Test helper: an inbound message appears in ``thread_id``. ``headers`` are the lowercase
+        ThreadMessage fields (auto_submitted, precedence, content_type, ...)."""
+        from datetime import UTC
+
+        self._n += 1
+        known = {"auto_submitted", "x_autoreply", "precedence", "content_type", "x_failed_recipients", "in_reply_to", "references", "return_path"}
+        extra = {k: v for k, v in headers.items() if k in known}
+        msg = ThreadMessage(
+            id=f"in-{self._n}", thread_id=thread_id, from_addr=from_addr.lower(), from_name="", to_addrs=(self.email,),
+            cc_addrs=(), subject=subject, date=date or datetime.now(UTC), snippet=snippet, labels=labels, **extra,
+        )  # fmt: skip
+        self.threads.setdefault(thread_id, []).append(msg)
+        return msg
 
     # test helper: simulate someone editing the draft in Gmail after approval
     def edit_draft_body(self, draft_id: str, text_body: str) -> None:

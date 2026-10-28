@@ -22,12 +22,11 @@ SCOPE_COMPOSE = "https://www.googleapis.com/auth/gmail.compose"
 SCOPE_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
 # Superset of compose + readonly + trash (NOT permanent delete): drafts, send, reply tracking, test cleanup.
 SCOPE_MODIFY = "https://www.googleapis.com/auth/gmail.modify"
-# Scopes requested by ``google-auth`` today. Reply tracking later appends SCOPE_READONLY here
-# (and to REQUIRED_FOR["list_sent_since"]); existing tokens then fail with a re-run message.
+# Scopes requested by ``google-auth``. gmail.modify already covers reply-tracking reads.
 SCOPES: tuple[str, ...] = (SCOPE_MODIFY, "openid", "https://www.googleapis.com/auth/userinfo.email")
 REQUIRED_FOR: dict[str, tuple[str, ...]] = {
     "drafts": (SCOPE_COMPOSE,),
-    "list_sent_since": (SCOPE_READONLY,),
+    "read": (SCOPE_READONLY,),  # reply tracking (read-only); gmail.modify covers it
     "trash": (SCOPE_MODIFY,),
 }
 TOKEN_URI = "https://oauth2.googleapis.com/token"
