@@ -199,6 +199,8 @@ class EnquiryCardView(_View):
     # Phase 1.4
     posted_relative: str | None = None
     author_profile_url: str | None = None
+    # Phase 1.5
+    ai_opportunity_type: str | None = None
 
 
 class SkippedPostView(_View):

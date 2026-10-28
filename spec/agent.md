@@ -162,3 +162,15 @@ The tool is `record_draft(subject, body_markdown, deck_id | null)`. Guards: it m
 ## Phase 5
 
 WhatsApp ingestion reuses Capability 1 unchanged: `source="whatsapp_group"`, with the same dedupe and the same triage. Reply tracking is deterministic (Gmail thread polling), with no LLM.
+
+
+## Phase 1.5 - recall-first triage (`PROMPT_VERSION = "triage-v3"`)
+
+Evidence: a live mini-run scanned 94 buyer-intent posts and discarded all of them, because rule 1 discarded every agency / edtech "trainer requirement". The team's own Active Enquiries sheet shows the opposite practice: it responds when a company or institute (even via an agency) asks a training PROVIDER / partner / organisation to deliver a programme.
+
+- New field `opportunity_type` (`direct_buyer | agency_requirement | individual_trainer_wanted | other`), stored in `enquiries.ai_opportunity_type` (migration `0004_opportunity_type`, backfilled from `ai_extraction`). `poster_type` is unchanged. The inbox card shows a chip (not for `other`); within a priority, `direct_buyer` sorts first.
+- Verdict rules: `genuine` for direct buyers, for agency/edtech/recruiter posts with a CONCRETE requirement (client or programme, topic, dates/city, batch) that invite providers / trainers / organisations to respond, for RFP / vendor-empanelment / provider-pool calls, and for concrete freelance-trainer requirements for a corporate programme (priority `low`). `discard` only for payroll job posts, a single cheap hourly tutor, trainer/company self-promotion, event/course promotion, thought leadership/news/spam, trainer-network building with no concrete requirement, and clearly out-of-scope topics.
+- Few-shot examples are synthetic rewrites (A-N). Hallucination guards are unchanged.
+- Ground-truth eval: `uv run python -m sales0.cli eval-triage` fetches the real Active / Discarded sheets as public CSV at runtime (never stored), labels Active rows `genuine`, Discarded rows `discard` except "No Response"/"Rejected"/"not replying" (genuine-but-lost), runs real Haiku, and prints confusion counts, recall, discard-correct rate, and miss row numbers with scrubbed one-line reasons (no post text or contact data). Targets: recall >= 0.85 on Active rows, discard-correct >= 0.75. Discarded rows without `Full Enquiry` text fall back to the one-line Requirement Summary (low fidelity). `tests/eval/` wraps it under the `eval` marker (excluded from the default run).
+- Search diversification: `scraper/variants.py` plans up to `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` passes per phrase (baseline date-filter passes, then a daily-rotating mix of other sort, quote-wrapped, #hashtag, `urgent`/`requirement`/`enquiry` suffixes, `past-24h`); live mode only.
+- Permalinks: LinkedIn now copies `https://lnkd.in/p/<code>`; `permalink.resolve_short_link` follows that single redirect anonymously (HEAD, no cookies) and stores `/feed/update/urn:li:activity:N/`.

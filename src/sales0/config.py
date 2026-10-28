@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     scrape_date_filter_legacy: str | None = Field(
         None, validation_alias="SALES0_SCRAPE_DATE_FILTER"
     )
+    # Phase 1.5: per-phrase search variants (other sort, quoted, hashtag, urgent/requirement/enquiry
+    # suffixes, other date filters) run as extra passes in a daily rotation; capped per phrase.
+    scrape_variants: bool = True
+    scrape_max_passes_per_keyword: int = Field(6, ge=1, le=12)
     # Phase 1.4: max "see more" clicks per keyword (truncated cards only).
     scrape_expand_max_per_keyword: int = Field(40, ge=0)
     # Phase 1.2: max "Copy link to post" attempts per keyword (posts without a URN); 0 = off.

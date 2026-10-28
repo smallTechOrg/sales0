@@ -80,6 +80,7 @@ from sales0.scraper.types import (
     SessionCheckResult,
     StopReason,
 )
+from sales0.scraper.variants import plan_passes
 from sales0.scraper.urls import base_url, canonical_post_url, link_kind_of, search_url, urn_from_href
 
 log = get_logger("sales0.scraper.search")
@@ -279,12 +280,20 @@ class LinkedInSearcher:
             raise ScrapeError("LinkedInSearcher is not open (use it as a context manager)")
         settings = self._settings
         cap = max(0, min(max_posts, settings.scrape_max_posts_per_keyword))
-        filters = tuple(settings.scrape_date_filters)
-        urls = [search_url(self._base, keyword, f, settings.scrape_sort) for f in filters]  # ValueError on blank
         self._last_keyword = keyword
         started = time.monotonic()
         what = f" for '{keyword}'"
         today = local_today(settings.tz)
+        plan = plan_passes(
+            keyword,
+            tuple(settings.scrape_date_filters),
+            settings.scrape_sort,
+            variants=settings.scrape_variants and settings.linkedin_mode == "live",
+            max_passes=settings.scrape_max_passes_per_keyword,
+            today=today,
+        )
+        filters = tuple(p.date_filter for p in plan)
+        urls = [search_url(self._base, p.query, p.date_filter, p.sort) for p in plan]  # ValueError on blank
 
         merged: dict[str, ScrapedPost] = {}
         pass_raws: list[list[dict[str, Any]]] = []
@@ -294,7 +303,7 @@ class LinkedInSearcher:
         stop: StopReason = "no_growth"
         any_drift = False
         no_results = False
-        for date_filter, url in zip(filters, urls):
+        for date_filter, url, spec in zip(filters, urls, plan):
             if len(merged) >= cap and passes > 0:
                 break
             passes += 1
@@ -326,7 +335,7 @@ class LinkedInSearcher:
             stop = outcome.stop
             drift = drift_detected(len(parsed.posts), outcome.cards_found, outcome.no_results)
             log.debug(
-                "scraper_pass", keyword=keyword, date_filter=date_filter, sort=settings.scrape_sort,
+                "scraper_pass", keyword=keyword, date_filter=date_filter, sort=spec.sort, variant=spec.kind,
                 scrolls=outcome.scrolls, cards=outcome.cards_found, posts=len(parsed.posts), new=new_posts,
                 stop=outcome.stop,
             )

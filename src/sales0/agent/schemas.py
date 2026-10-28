@@ -24,6 +24,7 @@ PosterType = Literal[
     "job_seeker_or_self_promo",
     "other",
 ]
+OpportunityType = Literal["direct_buyer", "agency_requirement", "individual_trainer_wanted", "other"]
 Priority = Literal["high", "medium", "low"]
 Mode = Literal["online", "offline", "hybrid", "unknown"]
 
@@ -74,13 +75,20 @@ class TriageResult(BaseModel):
 
     verdict: Verdict = Field(
         description="genuine = a company/team wants to BUY training, a workshop, consulting/build or a product; "
-        "discard = agency/marketplace recruiting freelance trainers, individual-trainer seeker at hourly/per-day "
-        "rates, trainer self-promotion/open to work, far outside the offerings, or not a requirement."
+        "discard = payroll job post, individual cheap hourly tutor, trainer self-promotion/open to work, event/"
+        "course promo, thought leadership, trainer-network building with no concrete requirement, far outside the "
+        "offerings. Agencies inviting providers/trainers for a CONCRETE client programme are genuine (medium/low)."
     )
     reason: str = Field(
         description="ONE line, max 160 characters, starting with the decisive fact.",
     )
     poster_type: PosterType = Field(description="Who posted it.")
+    opportunity_type: OpportunityType = Field(
+        default="other",
+        description="direct_buyer = the poster's own organisation is the buyer; agency_requirement = agency/edtech/"
+        "recruiter/company inviting providers, partners or organisations to respond for a concrete programme or "
+        "empanelment; individual_trainer_wanted = one or a few freelance trainers wanted; other = anything else.",
+    )
     requirement_summary: str = Field(
         default="",
         description='Format "Company - Topic - City/Mode", max 140 characters, one line.',
@@ -106,7 +114,7 @@ class TriageResult(BaseModel):
     topic: str | None = Field(default=None, description="Short topic, or null.")
     language: str = Field(default="und", description="ISO 639-1 code of the post's main language (en, hi, ...).")
 
-    @field_validator("verdict", "poster_type", "priority", "mode", mode="before")
+    @field_validator("verdict", "poster_type", "opportunity_type", "priority", "mode", mode="before")
     @classmethod
     def _normalise_enum(cls, value: Any) -> Any:
         return _lower_strip(value)

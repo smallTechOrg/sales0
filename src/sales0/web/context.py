@@ -49,6 +49,12 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("WhatsApp", "/whatsapp", 5),
 )
 
+OPPORTUNITY_LABELS = {
+    "direct_buyer": "Direct buyer",
+    "agency_requirement": "Agency requirement",
+    "individual_trainer_wanted": "Trainer wanted",
+}
+
 POSTER_TYPE_LABELS = {
     "buyer_company": "Buyer company",
     "training_agency": "Training agency",
@@ -189,6 +195,11 @@ def usd_precise(micros: int | None) -> str:
     return f"${value:,.2f}"
 
 
+def opportunity_label(opportunity_type: str | None) -> str | None:
+    """Chip text for the inbox card; ``other`` / unknown values show no chip."""
+    return OPPORTUNITY_LABELS.get(opportunity_type or "")
+
+
 def poster_label(poster_type: str | None) -> str | None:
     if not poster_type:
         return None
@@ -224,6 +235,7 @@ HELPERS: dict[str, Any] = {
     "elapsed_ms": elapsed_ms,
     "clock_text": clock_text,
     "poster_label": poster_label,
+    "opportunity_label": opportunity_label,
     "usd_precise": usd_precise,
     "ago_text": ago_text,
     "cooldown_clock": cooldown_clock,

@@ -82,8 +82,9 @@ def test_suggested_keywords_then_a_deep_run_files_only_relevant_posts_and_run_tw
     relevant = run["posts_relevant"]
     expect(tab_count(page, "review")).to_have_text(str(relevant))
     expect(tab_count(page, "skipped")).to_have_text(str(run["posts_skipped_ai"]))
-    expect(page.locator("#inbox-list article.card")).to_have_count(relevant)
-    expect(page.locator("#inbox-list article.card[data-verdict='genuine']")).to_have_count(relevant)
+    shown = min(relevant, 25)  # one inbox page; the recall-first prompt files many more genuine posts
+    expect(page.locator("#inbox-list article.card")).to_have_count(shown)
+    expect(page.locator("#inbox-list article.card[data-verdict='genuine']")).to_have_count(shown)
     expect(page.locator("#inbox-list a.enquiry__link[data-link-kind='post']").first).to_have_text("View post ↗")
     assert page.locator("#inbox-list a.enquiry__link[data-link-kind='post']").count() >= 1
 

@@ -278,6 +278,17 @@ def _sync_sheets(dry_run: bool, tab: str | None) -> int:
     return sync_sheets(settings, dry_run=dry_run, tab=tab)
 
 
+def _eval_triage() -> int:
+    from sales0.eval_triage import format_report, meets_targets, run_eval
+    from sales0.logging import configure_logging
+    from sales0.config import get_settings
+
+    configure_logging(get_settings(), stream=sys.stderr)
+    preds, metrics = run_eval()
+    print(format_report(preds, metrics))
+    return 0 if meets_targets(metrics) else 3
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -299,9 +310,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     ss = sub.add_parser("sync-sheets", help="Read-only sync of the Google Sheets (prints per-tab counts only)")
     ss.add_argument("--dry-run", action="store_true", help="compute the diff report without applying it")
     ss.add_argument("--tab", default=None, help="sync only this tab (e.g. 'Active Enquiries')")
+    sub.add_parser(
+        "eval-triage",
+        help="Run the real triage over the team's real Google Sheets (fetched at runtime) and print precision/recall",
+    )
     args = parser.parse_args(argv)
     if args.command == "sync-sheets":
         return _sync_sheets(args.dry_run, args.tab)
+    if args.command == "eval-triage":
+        return _eval_triage()
     if args.command == "check-llm":
         return _check_llm()
     if args.command == "check-browser":

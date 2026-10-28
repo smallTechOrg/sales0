@@ -328,6 +328,7 @@ def _create_enquiry(
         ai_verdict=row.verdict,
         ai_reason=row.reason or clip(result.reason, 160) or "No reason given",
         ai_poster_type=row.poster_type or result.poster_type,
+        ai_opportunity_type=result.opportunity_type,
         ai_priority=result.priority,
         ai_offering_id=offering_id,
         ai_extraction=result.model_dump(mode="json"),

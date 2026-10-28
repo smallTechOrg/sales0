@@ -25,8 +25,9 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
+import httpx
 from playwright.sync_api import ElementHandle, Page
 from playwright.sync_api import Error as PlaywrightError
 
@@ -141,6 +142,59 @@ FIND_COPY_ITEM_JS = r"""([trigger, a]) => {
   return pick(menus) || pick(Array.from(document.querySelectorAll(a.doc_menu_sel)).filter(visible))
     || pick([document.body]) || null;
 }"""
+
+
+# Phase 1.5 (live finding): LinkedIn's "Copy link to post" now copies a SHORT link
+# (``https://lnkd.in/p/<code>``), which is not a same-site post URL, so every successful capture was
+# discarded. A short link is resolved with ONE anonymous, cookie-less HEAD to lnkd.in (no LinkedIn
+# session, not a scraper action on the account); its 301 ``Location`` is the real post URL.
+SHORT_LINK_HOSTS = frozenset({"lnkd.in", "www.lnkd.in"})
+SHORT_LINK_TIMEOUT_S = 8.0
+_HIGHLIGHT_URN = "highlightedUpdateUrn"
+_POST_URN_RE = r"^urn:li:(activity|ugcPost|share):\d+$"
+
+
+def _fetch_location(url: str) -> str | None:
+    """The ``Location`` of the short link's first redirect (no cookies, no following)."""
+    try:
+        resp = httpx.head(url, follow_redirects=False, timeout=SHORT_LINK_TIMEOUT_S, headers={"Accept": "*/*"})
+    except httpx.HTTPError:
+        return None
+    return resp.headers.get("location") if resp.status_code in (301, 302, 303, 307, 308) else None
+
+
+def resolve_short_link(copied: str, fetch: Callable[[str], str | None] | None = None) -> str:
+    """``lnkd.in/p/<code>`` -> the post URL it points at; any other string is returned unchanged.
+
+    The result is ``https://www.linkedin.com/feed/update/urn:li:activity:N/`` when the redirect names
+    the activity (``highlightedUpdateUrn``), else the ``/posts/...`` path without its query. When the
+    short link cannot be resolved the original string is returned (the caller then drops it).
+    """
+    import re
+
+    try:
+        parts = urlsplit(copied.strip())
+    except ValueError:
+        return copied
+    if parts.scheme != "https" or (parts.hostname or "").lower() not in SHORT_LINK_HOSTS or not parts.path.startswith("/p/"):
+        return copied
+    location = (fetch or _fetch_location)(copied.strip())
+    if not location:
+        return copied
+    try:
+        target = urlsplit(location)
+    except ValueError:
+        return copied
+    host = (target.hostname or "").lower()
+    if target.scheme != "https" or not (host == "linkedin.com" or host.endswith(".linkedin.com")):
+        return copied
+    urn = (parse_qs(target.query).get(_HIGHLIGHT_URN) or [""])[0]
+    urn = unquote(urn)
+    if re.match(_POST_URN_RE, urn):
+        return f"{target.scheme}://{target.netloc}/feed/update/{urn}/"
+    if target.path.startswith("/posts/") or "/feed/update/" in target.path:
+        return f"{target.scheme}://{target.netloc}{target.path}"
+    return copied
 
 
 @dataclass(frozen=True)
@@ -318,6 +372,7 @@ def _attempt(
         if outcome == "no_copy":
             copied = _poll_copied(page)
             if copied:
+                copied = resolve_short_link(copied)
                 outcome = "hit"
 
     pacer.short()

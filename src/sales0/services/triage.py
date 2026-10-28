@@ -146,6 +146,7 @@ def triage_enquiry(
         enquiry.ai_verdict = r.verdict
         enquiry.ai_reason = clip(r.reason, 160) or "No reason given"
         enquiry.ai_poster_type = r.poster_type
+        enquiry.ai_opportunity_type = r.opportunity_type
         enquiry.ai_priority = r.priority
         enquiry.ai_offering_id = r.offering_id
         enquiry.ai_extraction = r.model_dump(mode="json")
