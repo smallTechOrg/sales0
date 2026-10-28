@@ -19,7 +19,7 @@ from sales0.db.engine import get_db
 from sales0.errors import DomainError
 from sales0.llm import LLMClient, get_llm_client
 from sales0.logging import get_logger
-from sales0.services import worker_service
+from sales0.services import data_import, worker_service
 from sales0.web.envelope import ok
 from sales0.worker import protocol as p
 
@@ -79,3 +79,19 @@ def upload_links(run_id: int, row_id: int, body: p.UploadLinksRequest, db: Sessi
 @router.post("/runs/{run_id}/complete", dependencies=[Depends(require_worker)])
 def complete(run_id: int, body: p.CompleteRequest, db: Session = Depends(get_db), llm: LLMClient = Depends(get_llm)) -> JSONResponse:
     return _reply(worker_service.complete(db, run_id, body, llm=llm))
+
+
+def _require_hosted() -> None:
+    if get_settings().mode != "hosted":
+        raise DomainError("not_found", "That item no longer exists - refresh the page.", 404)
+
+
+@router.post("/import/batch", dependencies=[Depends(require_worker), Depends(_require_hosted)])
+def import_batch(body: p.ImportBatchRequest, db: Session = Depends(get_db)) -> JSONResponse:
+    stats = data_import.import_batch(db, body.table, body.phase, body.rows, body.member_emails)
+    return _reply(p.ImportBatchResponse(**stats))
+
+
+@router.post("/import/finalize", dependencies=[Depends(require_worker), Depends(_require_hosted)])
+def import_finalize(body: p.ImportFinalizeRequest, db: Session = Depends(get_db)) -> JSONResponse:
+    return _reply(p.ImportFinalizeResponse.model_validate(data_import.finalize(db, body.counts)))

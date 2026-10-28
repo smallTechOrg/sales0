@@ -396,6 +396,36 @@ def _worker(connect: bool) -> int:
     return run_worker(settings)
 
 
+def _push_data(source: str, dry_run: bool) -> int:
+    """``sales0 push-data``: copy a local SQLite database into the hosted app through the worker API (idempotent)."""
+    from pathlib import Path
+    from urllib.parse import urlsplit
+
+    from sales0.config import get_settings
+    from sales0.worker.client import WorkerApiError
+
+    settings = get_settings()
+    client = None
+    if not dry_run:
+        if not settings.worker_server_url or settings.worker_token is None:
+            print("sales0 push-data: set SALES0_WORKER_SERVER_URL and SALES0_WORKER_TOKEN (see docs/deploy.md), or use --dry-run.", file=sys.stderr)
+            return 2
+        parts = urlsplit(settings.worker_server_url)
+        if parts.scheme != "https" and (parts.hostname or "") not in ("127.0.0.1", "localhost", "::1"):
+            print("sales0 push-data: SALES0_WORKER_SERVER_URL must be https:// (the bearer token would travel in clear text).", file=sys.stderr)
+            return 2
+        from sales0.worker.client import WorkerClient
+
+        client = WorkerClient(settings.worker_server_url, settings.worker_token_value or "")
+    from sales0.worker.push_data import push
+
+    try:
+        return 0 if push(Path(source).expanduser(), client, dry_run=dry_run) else 1
+    except (FileNotFoundError, WorkerApiError) as exc:
+        print(f"sales0 push-data: {exc}", file=sys.stderr)
+        return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -429,6 +459,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     wk = sub.add_parser("worker", help="Hosted mode: run the laptop worker that scrapes LinkedIn for the hosted app")
     wk.add_argument("--connect", action="store_true", help="log in to LinkedIn in this laptop's sales0 Chrome profile, then exit")
+    pd = sub.add_parser("push-data", help="Hosted mode: copy a local SQLite database (read-only) into the hosted app's database")
+    pd.add_argument("--source", required=True, metavar="SQLITE_FILE", help="e.g. data/sales0.db (copied first; never modified)")
+    pd.add_argument("--dry-run", action="store_true", help="print the per-table row counts and send nothing")
     ed = sub.add_parser("env-docs", help="Print the Markdown table of every SALES0_* setting (or check/rewrite a README block)")
     mode = ed.add_mutually_exclusive_group()
     mode.add_argument("--check", metavar="FILE", default=None, help="exit 1 if FILE's env-docs block is out of date")
@@ -436,6 +469,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "worker":
         return _worker(args.connect)
+    if args.command == "push-data":
+        return _push_data(args.source, args.dry_run)
     if args.command == "env-docs":
         return _env_docs(args.check, args.write)
     if args.command == "sync-sheets":

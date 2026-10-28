@@ -128,3 +128,9 @@ class WorkerClient:
 
     def complete(self, run_id: int, request: p.CompleteRequest) -> p.CompleteResponse:
         return self._call("POST", f"/api/worker/runs/{run_id}/complete", request, p.CompleteResponse)
+
+    def import_batch(self, request: p.ImportBatchRequest) -> p.ImportBatchResponse:
+        return self._call("POST", "/api/worker/import/batch", request, p.ImportBatchResponse)
+
+    def import_finalize(self, request: p.ImportFinalizeRequest) -> p.ImportFinalizeResponse:
+        return self._call("POST", "/api/worker/import/finalize", request, p.ImportFinalizeResponse)

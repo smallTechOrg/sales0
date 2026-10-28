@@ -7,7 +7,7 @@ makes the caller trusted, a bug on the laptop must never be able to bloat or cor
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -166,3 +166,32 @@ class CompleteRequest(_Strict):
 class CompleteResponse(_Strict):
     status: str
     summary: str | None = None
+
+
+# --------------------------------------------------------------------------- bulk data import (sales0 push-data)
+class ImportBatchRequest(_Strict):
+    table: str = Field(min_length=1, max_length=64)
+    phase: Literal["insert", "link"] = "insert"
+    rows: list[dict[str, Any]] = Field(max_length=1000)
+    member_emails: dict[str, str] = {}  # local team_members.id -> e-mail, to re-map actor references
+
+
+class ImportBatchResponse(_Strict):
+    received: int
+    inserted: int
+    updated: int
+
+
+class ImportFinalizeRequest(_Strict):
+    counts: dict[str, int]  # table -> rows the laptop read
+
+
+class ImportTableReport(_Strict):
+    local: int
+    remote: int
+    ok: bool
+
+
+class ImportFinalizeResponse(_Strict):
+    tables: dict[str, ImportTableReport]
+    ok: bool
