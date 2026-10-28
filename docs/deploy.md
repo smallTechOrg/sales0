@@ -118,6 +118,20 @@ is set, `SALES0_PUBLIC_BASE_URL` is https, a worker token is set, `SALES0_LINKED
 
 ## 5. Running the worker (laptop)
 
+**Quickstart (any teammate's laptop).** Clone the sales0 repository, then in its folder:
+
+```bash
+uv sync                                   # needs Python 3.12, uv and Google Chrome
+export SALES0_WORKER_SERVER_URL=https://sales0-870371939888.us-central1.run.app
+export SALES0_WORKER_TOKEN=...            # an admin reads it from Secret Manager (sales0-worker-token) and shares it securely
+# optional: SALES0_DATA_DIR=<folder for this laptop's LinkedIn Chrome profile>; SALES0_WORKER_NAME=<your name>
+uv run sales0 worker --connect            # once: Chrome opens on LinkedIn; log in and finish 2FA
+uv run sales0 worker                      # leave running; then Runs -> Queue a run in the hosted app
+```
+
+Run **one worker at a time per LinkedIn account**. The account-safety caps (runs, posts, page loads per day, cool-downs)
+are enforced by the hosted app for the whole team. Details below.
+
 The worker needs the sales0 checkout, Google Chrome and a one-time LinkedIn login. In the laptop's `.env` (never the
 hosted one):
 

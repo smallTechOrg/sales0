@@ -786,6 +786,22 @@ instance picks it up.
 
 Deploy: `deploy/deploy.sh` prints the `gcloud` commands (dry run); `deploy/deploy.sh --apply` runs them.
 
+### Run a scraper worker (any teammate's laptop)
+
+```bash
+# clone the sales0 repository, then in its folder:
+uv sync                                   # needs Python 3.12, uv and Google Chrome
+export SALES0_WORKER_SERVER_URL=https://sales0-870371939888.us-central1.run.app
+export SALES0_WORKER_TOKEN=...            # an admin reads it from Secret Manager (sales0-worker-token) and shares it securely
+# optional: SALES0_DATA_DIR=<folder for this laptop's LinkedIn Chrome profile>; SALES0_WORKER_NAME=<your name>
+uv run sales0 worker --connect            # once: Chrome opens on LinkedIn; log in and finish 2FA (your everyday Chrome is untouched)
+uv run sales0 worker                      # leave running; then Runs -> Queue a run in the hosted app
+```
+
+Run **one worker at a time per LinkedIn account**: two laptops on the same account double its page loads. The usual
+account-safety caps (runs, posts and page loads per day, cool-downs after a warning) are enforced by the hosted app, so the
+whole team shares them. The token and the LinkedIn session stay on that laptop; keep them in a local `.env`, not a shared shell.
+
 ## Roadmap and what is not supported
 
 Not supported today (do not rely on these):
