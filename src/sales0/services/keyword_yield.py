@@ -61,7 +61,9 @@ def _load_raw(db: Session, since: datetime | None) -> RawYield:
     run_q = select(
         ScrapeRunKeyword.keyword_id, ScrapeRunKeyword.keyword_text, ScrapeRunKeyword.posts_seen,
         ScrapeRunKeyword.run_id, ScrapeRun.started_at,
-    ).join(ScrapeRun, ScrapeRun.id == ScrapeRunKeyword.run_id)  # fmt: skip
+    ).join(ScrapeRun, ScrapeRun.id == ScrapeRunKeyword.run_id).where(
+        ~ScrapeRunKeyword.keyword_text.like("watch:%")  # prospect-watch profile visits are not keywords
+    )  # fmt: skip
     hit_q = (
         select(
             EnquiryKeywordHit.keyword_id,
@@ -69,7 +71,7 @@ def _load_raw(db: Session, since: datetime | None) -> RawYield:
             EnquiryKeywordHit.enquiry_id,
         )
         .join(Enquiry, Enquiry.id == EnquiryKeywordHit.enquiry_id)
-        .where(Enquiry.ai_verdict == "genuine")
+        .where(Enquiry.ai_verdict == "genuine", ~EnquiryKeywordHit.keyword_text.like("watch:%"))
         .distinct()
     )
     if since is not None:

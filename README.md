@@ -15,9 +15,10 @@ in a small CRM, and drafts and sends outreach email from each person's own Gmail
 | **Outreach email** | Company research, a drafted email, human approval, send through **each person's own Gmail** (OAuth), deck attachment, follow-ups at +3 / +7 / +14 days. |
 | **Reply tracking** | Read-only polling of each member's Gmail detects replies to sent outreach, classifies them and moves the prospect (for example to Lead). |
 | **Digest, suggestions, costs** | Daily digest, proactive suggestions, AI spend view with an optional monthly cap. |
-| **Scheduler** | Background jobs (nightly discovery window, sheet sync, digest, purge) switched on/off on the **Schedule** page; sheet sync is opt-in. |
+| **Scheduler** | Background jobs (nightly discovery window, daily digest, purge, sheet sync, profile watch) switched on/off on the **Schedule** page; sheet sync and profile watch are opt-in (disabled by default). |
 | **Accounts and login** | Per-user email + password accounts with admin/member roles (see [Accounts and login](#accounts-and-login)), multiple LinkedIn accounts with per-account safety state. |
-| **Metrics** | **Stub page** ("Coming in Phase 4"): not built. |
+| **Prospect watch** | Track a LinkedIn profile (button on an inbox card or the **Tracked** page) and the watch job visits its recent-activity page for new posts, triages them like any other post and creates enquiries linked to the profile. Runs on the same LinkedIn account caps, pacing and cool-down as discovery; manual (**Run watch now**), scheduled (`profile_watch`, disabled until enabled on Schedule) or appended to discovery (`SALES0_WATCH_APPEND_TO_DISCOVERY`). A hit adds a note (and, for a prospect we had given up on, a follow-up) on the prospect's timeline. |
+| **Metrics** | **Metrics** page: weekly and secondary tables computed from the CRM merged with the Sheet's figures (greater of app and sheet per cell, with sheet-first / app-first toggles), funnel, keyword and group yield, AI cost per relevant enquiry, manual weekly figures and target overrides, CSV export of every table. |
 | **WhatsApp** | **Deferred by decision, not built.** The page is a labelled stub; no WhatsApp automation exists or is planned for now. |
 
 Status of what is *planned only* (not in the code) is listed under [Roadmap](#roadmap-and-what-is-not-supported).
@@ -277,6 +278,20 @@ enquiries are turned into prospects (one per LinkedIn author) with a timeline, s
 Pipeline is not empty after the upgrade. Back up `data/sales0.db` (with its `-wal`/`-shm`)
 first if you want a way back: `uv run alembic downgrade -1` also works.
 
+## Prospect watch and Metrics
+
+**Tracked** lists the profiles being watched (last check, checks, hits, pause/untrack) and has **Run watch now** with
+live progress. Profiles become tracked from an inbox card (Track), from the Tracked page, or automatically when a
+prospect is created; closing a prospect as lost / no response / not interested untracks it. A profile is visited at
+most every `SALES0_WATCH_MIN_DAYS_BETWEEN_CHECKS` days, at most `SALES0_WATCH_MAX_PROFILES_PER_RUN` per run, with a
+pause between visits. Only the profile's own recent posts are triaged. A watch run is a normal run on the run's
+LinkedIn account: it shares that account's overlap protection, safety cool-down and daily post cap with discovery
+(it does not use up the daily run allowance), and a safety stop (checkpoint, captcha, logout, 429) stops it.
+
+**Metrics** shows the same weekly numbers the team keeps in its Sheet, computed from the CRM. The *LinkedIn profile
+watch* row counts tracked profiles actually visited by the watch job that week (not manual track/untrack changes).
+Edit manual weekly figures (for example blog posts) and per-source targets on the page; export any table as CSV.
+
 ## Configuration
 
 Every setting is an environment variable with the `SALES0_` prefix, read from the process
@@ -382,6 +397,13 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_SCHEDULER_DISCOVERY_MAX_RUNS_PER_DAY` | int | `1` | Scheduled discovery runs per day (also bounded by `SALES0_SCRAPE_MAX_RUNS_PER_DAY`). |
 | `SALES0_SCHEDULER_DIGEST_TIME` | str | `07:30` | Local time the daily digest is built. |
 | `SALES0_SCHEDULER_PURGE_TIME` | str | `04:15` | Local time of the nightly purge. |
+| `SALES0_SCHEDULER_WATCH_TIME` | str | `05:30` | Local time the `profile_watch` job (visit tracked profiles) runs; the job is disabled until enabled on /schedule. |
+| `SALES0_WATCH_MAX_PROFILES_PER_RUN` | int | `25` | Prospect watch: max tracked profiles visited per watch run. |
+| `SALES0_WATCH_MIN_DAYS_BETWEEN_CHECKS` | float | `3.0` | Prospect watch: minimum days before the same profile is visited again. |
+| `SALES0_WATCH_MAX_POSTS_PER_PROFILE` | int | `15` | Prospect watch: max posts read per profile visit (also bounded by the daily post cap). |
+| `SALES0_WATCH_PROFILE_PAUSE_MIN_S` | float | `20.0` | Prospect watch: minimum pause between two profile visits (seconds). |
+| `SALES0_WATCH_PROFILE_PAUSE_MAX_S` | float | `60.0` | Prospect watch: maximum pause between two profile visits (seconds). |
+| `SALES0_WATCH_APPEND_TO_DISCOVERY` | bool | `False` | True = also visit due tracked profiles at the end of each discovery run (same browser session and caps). |
 | `SALES0_PURGE_RETENTION_DAYS` | int | `90` | Days of raw data kept before purge. |
 | `SALES0_DIGEST_AI_SUMMARY` | bool | `True` | One LLM call adds a short summary to the digest. |
 
@@ -601,7 +623,9 @@ Not supported today (do not rely on these):
   through services), Postgres, object storage for decks and uploads instead of the local disk, a worker queue
   instead of the in-process scheduler thread, per-tenant proxies and Gmail/LinkedIn accounts, and **Google OAuth app
   verification** (including the restricted-scope security assessment for `gmail.modify`) for external domains.
-- **WhatsApp** ingestion: deferred by decision. **Metrics** page: stub.
+- **WhatsApp** ingestion: deferred by decision. The WhatsApp row on **Metrics** reads "not enabled" and the page is a labelled stub.
+- **Account picker for runs:** Run now, the scheduler and the watch use the default (first enabled) LinkedIn account; the services accept an account id but the UI has no picker yet. Only one browser job runs at a time across all accounts.
+- **Watch limits:** no `posted` date for watch-found posts (the activity page renders ages differently), no permalink capture on watch visits.
 - **Remote-browser LinkedIn login:** future (use the paste-`li_at` fallback).
 
 ## Security notes

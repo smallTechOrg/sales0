@@ -114,6 +114,13 @@ HELP: dict[str, str] = {
     "scheduler_discovery_max_runs_per_day": "Scheduled discovery runs per day (also bounded by `SALES0_SCRAPE_MAX_RUNS_PER_DAY`).",
     "scheduler_digest_time": "Local time the daily digest is built.",
     "scheduler_purge_time": "Local time of the nightly purge.",
+    "scheduler_watch_time": "Local time the `profile_watch` job (visit tracked profiles) runs; the job is disabled until enabled on /schedule.",
+    "watch_max_profiles_per_run": "Prospect watch: max tracked profiles visited per watch run.",
+    "watch_min_days_between_checks": "Prospect watch: minimum days before the same profile is visited again.",
+    "watch_max_posts_per_profile": "Prospect watch: max posts read per profile visit (also bounded by the daily post cap).",
+    "watch_profile_pause_min_s": "Prospect watch: minimum pause between two profile visits (seconds).",
+    "watch_profile_pause_max_s": "Prospect watch: maximum pause between two profile visits (seconds).",
+    "watch_append_to_discovery": "True = also visit due tracked profiles at the end of each discovery run (same browser session and caps).",
     "purge_retention_days": "Days of raw data kept before purge.",
     "digest_ai_summary": "One LLM call adds a short summary to the digest.",
 }

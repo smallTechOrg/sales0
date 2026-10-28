@@ -626,7 +626,7 @@ def _execute(
                 # Prospect watch appended to this run (same browser session, same caps and cool-down).
                 from sales0.jobs import watch_job
 
-                watch_state = watch_job._WatchRun(db, run_id, settings, llm, sleep, rng)
+                watch_state = watch_job._WatchRun(db, run_id, settings, llm, sleep, rng, account_id)
                 watch_rows = watch_job.plan_rows(db, run_id)
                 rows.extend(watch_rows)
                 run.keywords_planned += len(watch_rows)

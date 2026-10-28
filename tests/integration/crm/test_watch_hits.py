@@ -91,3 +91,23 @@ def test_toggle_without_prospect_just_sets_flag(db, installed) -> None:
     prof = h.profile(db, slug="in/lonely")
     tracked_profiles.track(db, prof.id)
     assert db.get(h.LinkedinProfile, prof.id).tracked is True
+
+
+def test_toggle_credits_the_team_member_and_system_actors_stay_system(db, installed) -> None:
+    from sales0.db.models import TeamMember
+
+    v, prof = _prospect(db)
+    admin = TeamMember(name="Asha Admin", email="asha-admin@example.test", role="admin", active=True)
+    member = TeamMember(name="Ravi Member", email="ravi@example.test", role="member", active=True)
+    db.add_all([admin, member])
+    db.flush()
+    tracked_profiles.untrack(db, prof.id, actor_user_id=member.id)
+    tracked_profiles.track(db, prof.id, actor_user_id=member.id, acted_by_member_id=admin.id)
+    tracked_profiles.untrack(db, prof.id)  # no member known
+    rows = db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == v.id, TimelineEvent.kind == "tracked_changed").order_by(TimelineEvent.id)).all()
+    assert [(t.actor, t.actor_member_id) for t in rows] == [
+        ("Ravi Member", member.id), ("Asha Admin as Ravi Member", member.id), ("team", None)]
+    tracked_profiles.track(db, prof.id)
+    _hit(db, prof)
+    note = _notes(db, v.id)[0]
+    assert (note.actor, note.actor_member_id) == ("system", None)  # automated hit note is a system actor

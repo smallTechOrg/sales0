@@ -47,7 +47,7 @@ class SourceDef:
 SOURCES: tuple[SourceDef, ...] = (
     SourceDef("linkedin_keyword", "LinkedIn keyword scraping", "src_linkedin_keyword", 15, ("linkedin", "scrap"),
               note="relevant enquiries found by keyword runs"),
-    SourceDef("profile_watch", "LinkedIn profile watch", "profile_watch", None, None, note="tracked-profile changes"),
+    SourceDef("profile_watch", "LinkedIn profile watch", "profile_watch", None, None, note="tracked profiles checked by the watch job"),
     SourceDef("manual_paste", "Manual / paste", "src_manual", None, None, note="enquiries pasted or added by hand"),
     SourceDef("whatsapp", "WhatsApp group scraping", None, 5, ("whatsapp",), enabled=False, note="not enabled"),
     SourceDef("linkedin_outreach", "LinkedIn outreach", "linkedin_outreach", 5, ("linkedin", "outreach"),

@@ -14,7 +14,9 @@ Mapping decisions (also in spec/capabilities/metrics-dashboard.md):
 * messages sent      = sent outreach emails + manual contact records whose channel is not email.
 * LinkedIn outreach  = contact records on a prospect whose channel starts with ``linkedin``.
 * first follow-up    = distinct prospects moved to Follow-up 1 that week.
-* profile watch      = tracked_changed timeline events that week.
+* profile watch      = tracked profiles actually visited by the watch job that week (``watch:<slug>`` log rows of
+                       runs started that week with status done/warning, from a watch run or one appended to
+                       discovery). Manual track/untrack timeline events are not watch activity.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from sales0.db.models import (
     OutreachMessage,
     Prospect,
     ScrapeRun,
+    ScrapeRunKeyword,
     SeenPost,
     TimelineEvent,
 )
@@ -125,15 +128,23 @@ def compute_counters(db: Session, weeks: list[Week]) -> dict[str, list[int]]:
         )
     ).all()
     pairs = []
-    watch: list = []
     for pid, kind, at, created in old_rows:
         i = b.index(at)
         if i is not None and created is not None and created < weeks[i].start_utc:
             pairs.append((pid, at))
-        if kind == "tracked_changed":
-            watch.append(at)
     out["old_prospects"] = b.distinct(pairs)
-    out["profile_watch"] = b.count(watch)
+    out["profile_watch"] = b.count(
+        db.scalars(
+            select(ScrapeRun.started_at)
+            .join(ScrapeRunKeyword, ScrapeRunKeyword.run_id == ScrapeRun.id)
+            .where(
+                ScrapeRunKeyword.keyword_text.like("watch:%"),
+                ScrapeRunKeyword.status.in_(("done", "warning")),
+                ScrapeRun.started_at >= lo,
+                ScrapeRun.started_at < hi,
+            )
+        )
+    )
     return out
 
 

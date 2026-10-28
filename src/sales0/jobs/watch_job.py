@@ -35,7 +35,8 @@ from sales0.llm import LLMClient
 from sales0.logging import bind_context, get_logger, unbind_context
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
 from sales0.scraper.profile_watch import own_posts, scan_profile
-from sales0.services import events, seen_posts
+from sales0.services import events, linkedin_accounts, seen_posts
+from sales0.services import runs as runs_service
 from sales0.services import session as session_service
 from sales0.services import tracked_profiles as tracked
 from sales0.services._common import clip
@@ -76,7 +77,7 @@ class _WatchRun(_Run):
         started = time.monotonic()
         row.status = "running"
         self.step(f"Checking {profile.display_name or slug} ({index}/{total})", slug)
-        remaining = self.settings.scrape_max_posts_per_day - posts_seen_today(self.db)
+        remaining = self.settings.scrape_max_posts_per_day - posts_seen_today(self.db, account_id=self.account_id)
         max_posts = max(1, min(self.settings.watch_max_posts_per_profile, remaining))
         scan = getattr(searcher, "scan_profile", None) or partial(scan_profile, searcher)
         try:
@@ -188,7 +189,7 @@ def watch_phase(
         state.scrape_profile(searcher, row, index, len(rows))
         if state.fatal_llm is not None:
             return False
-        if posts_seen_today(state.db) >= s.scrape_max_posts_per_day and index < len(rows):
+        if posts_seen_today(state.db, account_id=state.account_id) >= s.scrape_max_posts_per_day and index < len(rows):
             return True
     return False
 
@@ -210,7 +211,7 @@ def execute(
 ) -> None:
     """Run a queued watch run. Never raises: every outcome is written to the run row."""
     settings = get_settings()
-    factory = searcher_factory or _default_factory
+    factory = searcher_factory
     bind_context(run_id=run_id, job="watch")
     started = time.monotonic()
     db = get_sessionmaker()()
@@ -230,17 +231,18 @@ def execute(
                 duration_ms=int((time.monotonic() - started) * 1000),
             )
         db.close()
-        unbind_context("run_id")
+        unbind_context("run_id", "linkedin_account_id")
 
 
-def _default_factory(settings: Settings) -> Any:
+def _default_factory(settings: Settings, account_id: int | None = None) -> Any:
+    """A ``LinkedInSearcher`` on the run's LinkedIn account (None = the default account)."""
     from sales0.scraper.search import LinkedInSearcher
 
-    return LinkedInSearcher(settings)
+    return LinkedInSearcher(settings, account=linkedin_accounts.build_handle(account_id))
 
 
 def _execute(
-    db: Session, run_id: int, settings: Settings, llm: LLMClient | None, factory: SearcherFactory,
+    db: Session, run_id: int, settings: Settings, llm: LLMClient | None, factory: SearcherFactory | None,
     sleep: Callable[[float], None], rng: random.Random,
 ) -> None:
     state = _WatchRun(db, run_id, settings, llm, sleep, rng)
@@ -248,6 +250,14 @@ def _execute(
     if run is None or run.status != "queued":
         log.warning("watch_run_not_queued", status=getattr(run, "status", None))
         return
+    if run.linkedin_account_id is None:  # queued by older code / a test: stamp the default account
+        run.linkedin_account_id = linkedin_accounts.default_account_id(db)
+        db.flush()
+    account_id = run.linkedin_account_id
+    state.account_id = account_id
+    bind_context(linkedin_account_id=account_id)
+    if factory is None:
+        factory = lambda s: _default_factory(s, account_id)  # noqa: E731
     seen_posts.purge_expired(db)
     rows = plan_rows(db, run_id)
     run.keywords_planned = len(rows)
@@ -293,7 +303,7 @@ def _execute(
     run = state.run
     now = utcnow()
     if abort_kind is not None:
-        message = session_service.mark_needs_attention(db, abort_kind, abort_url)
+        message = session_service.mark_needs_attention(db, abort_kind, abort_url, account_id=account_id)
         for r in rows:
             row_db = db.get(ScrapeRunKeyword, r.id)
             if row_db is not None and row_db.status == "error" and row_db.error_message is None:
@@ -309,7 +319,7 @@ def _execute(
         run.current_step = clip(f"Run stopped: {label} - {summary_text(run, state.hits)}", 200)
     elif session_missing:
         message = session_service.NOT_LOGGED_IN_MESSAGE
-        session_service.mark_not_connected(db, message)
+        session_service.mark_not_connected(db, message, account_id=account_id)
         state.skip_remaining(rows, "Not checked - not logged in")
         run = state.run
         run.error_message = message
@@ -334,14 +344,16 @@ def _execute(
             run = state.run
             run.abort_reason = "daily_post_cap"
             run.current_step = clip(
-                f"Daily post limit reached ({posts_seen_today(db)}/{settings.scrape_max_posts_per_day}) - {summary_text(run, state.hits)}", 200
+                f"Daily post limit reached ({posts_seen_today(db, account_id=account_id)}/{settings.scrape_max_posts_per_day}) - {summary_text(run, state.hits)}", 200
             )
         else:
             run.current_step = clip(f"Watch finished - {summary_text(run, state.hits)}", 200)
         state.set_status("succeeded")
-        session_service.mark_successful_run(db, now=now)
+        session_service.mark_successful_run(db, now=now, account_id=account_id)
     run.current_keyword = None
     run.finished_at = now
+    db.flush()
+    runs_service.sync_account_state(db, account_id, now)  # per-account counters + cool-down snapshot
     db.commit()
 
 

@@ -154,7 +154,7 @@ def test_upgrade_is_retry_safe_after_a_failure_mid_remap(p6_db) -> None:  # type
         c.execute(text("CREATE TRIGGER boom BEFORE UPDATE OF actor_user_id ON status_history BEGIN SELECT RAISE(ABORT, 'boom'); END"))
     with pytest.raises(Exception, match="boom"):
         command.upgrade(cfg, P7)
-    assert current_revision(engine) == P6
+    assert current_revision(engine) == "p7_metrics_9a4f61c3"  # the revision just below p7_accounts (the failed one rolled back)
     with engine.begin() as c:
         c.execute(text("DROP TRIGGER boom"))
     command.upgrade(cfg, P7)

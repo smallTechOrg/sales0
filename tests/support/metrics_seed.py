@@ -25,6 +25,7 @@ from sales0.db.models import (
     SheetMetricWeek,
     TeamMember,
     TimelineEvent,
+    WatchRun,
 )
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -183,8 +184,14 @@ def seed(db: Session) -> dict[str, int]:
         for k in range(OLD[w]):
             for kind in ("research", "research"):
                 db.add(TimelineEvent(subject_type="prospect", subject_id=legacy[k].id, prospect_id=legacy[k].id, kind=kind, occurred_at=later))
+        # profile watch = profile pages the watch job visited that week (a failed visit is not)
+        wrun = ScrapeRun(trigger="manual", mode="live", status="succeeded", started_at=later, finished_at=later)
+        db.add(wrun)
+        db.flush()
+        db.add(WatchRun(run_id=wrun.id, origin="manual"))
         for k in range(WATCH[w]):
-            db.add(TimelineEvent(subject_type="prospect", subject_id=legacy[k].id, prospect_id=legacy[k].id, kind="tracked_changed", occurred_at=later))
+            db.add(ScrapeRunKeyword(run_id=wrun.id, keyword_id=None, keyword_text=f"watch:in/seed-{w}-{k}", status="done"))
+        db.add(ScrapeRunKeyword(run_id=wrun.id, keyword_id=None, keyword_text=f"watch:in/seed-err-{w}", status="error"))
         # a research event on a prospect created this very week is not an "old" prospect
         fresh = db.query(Prospect).filter(Prospect.name == f"P{w}-0").one()
         db.add(TimelineEvent(subject_type="prospect", subject_id=fresh.id, prospect_id=fresh.id, kind="research", occurred_at=later))

@@ -11,7 +11,8 @@ from sales0.db.engine import get_db
 from sales0.services import inbox as inbox_service
 from sales0.services import tracked_profiles as tracked
 from sales0.services.runs import ACTIVE_STATUSES, get_run
-from sales0.web.acting import clear_flash, pop_flash, set_flash
+from sales0.db.models import TeamMember
+from sales0.web.acting import acted_by_id, clear_flash, get_acting_member_optional, pop_flash, set_flash
 from sales0.web.context import is_htmx, render_html, render_page
 
 router = APIRouter()
@@ -44,8 +45,10 @@ def tracked_page(request: Request, db: Session = Depends(get_db)) -> HTMLRespons
 
 
 @router.post("/tracked/run", response_model=None)
-def run_watch(request: Request, db: Session = Depends(get_db)) -> Response:
-    run = tracked.start_watch_run(db)
+def run_watch(
+    request: Request, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+) -> Response:
+    run = tracked.start_watch_run(db, actor_user_id=member.id if member else None)
     if not is_htmx(request):
         return RedirectResponse("/tracked", status_code=303)
     return HTMLResponse(render_html(request, "tracked/_panel.html", _panel_ctx(db, run)))
@@ -65,15 +68,19 @@ def _back(message: str) -> RedirectResponse:
 
 
 @router.post("/tracked/{profile_id}/untrack")
-def untrack(profile_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
-    tracked.untrack(db, profile_id)
+def untrack(
+    profile_id: int, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+) -> RedirectResponse:
+    tracked.untrack(db, profile_id, actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member))
     db.commit()
     return _back("Profile untracked.")
 
 
 @router.post("/tracked/{profile_id}/track")
-def track(profile_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
-    tracked.track(db, profile_id)
+def track(
+    profile_id: int, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+) -> RedirectResponse:
+    tracked.track(db, profile_id, actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member))
     db.commit()
     return _back("Profile tracked.")
 
@@ -85,25 +92,32 @@ def pause(profile_id: int, paused: str = Form("1"), db: Session = Depends(get_db
     return _back("Profile paused." if paused == "1" else "Profile resumed.")
 
 
-def _toggle(request: Request, db: Session, enquiry_id: int, on: bool) -> HTMLResponse:
+def _toggle(request: Request, db: Session, enquiry_id: int, on: bool, member: TeamMember | None) -> HTMLResponse:
+    who = {"actor_user_id": member.id if member else None, "acted_by_member_id": acted_by_id(member)}
     if on:
-        tracked.track_author_of_enquiry(db, enquiry_id)
+        tracked.track_author_of_enquiry(db, enquiry_id, **who)
     else:
         card = inbox_service.get_card(db, enquiry_id)
         if card.author_profile_id is not None:
-            tracked.untrack(db, card.author_profile_id)
+            tracked.untrack(db, card.author_profile_id, **who)
     db.commit()
     return HTMLResponse(render_html(request, "tracked/_track_button.html", {"card": inbox_service.get_card(db, enquiry_id)}))
 
 
 @router.post("/tracked/enquiry/{enquiry_id}/track", response_class=HTMLResponse)
-def track_enquiry_author(request: Request, enquiry_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
-    return _toggle(request, db, enquiry_id, True)
+def track_enquiry_author(
+    request: Request, enquiry_id: int, db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> HTMLResponse:
+    return _toggle(request, db, enquiry_id, True, member)
 
 
 @router.post("/tracked/enquiry/{enquiry_id}/untrack", response_class=HTMLResponse)
-def untrack_enquiry_author(request: Request, enquiry_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
-    return _toggle(request, db, enquiry_id, False)
+def untrack_enquiry_author(
+    request: Request, enquiry_id: int, db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> HTMLResponse:
+    return _toggle(request, db, enquiry_id, False, member)
 
 
 __all__ = ["router"]

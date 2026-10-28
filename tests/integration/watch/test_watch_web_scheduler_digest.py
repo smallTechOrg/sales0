@@ -80,7 +80,7 @@ def test_run_watch_now_htmx_shows_progress_then_the_log(web: TestClient, monkeyp
     add_profile("in/asha-rao")
     set_session_status("connected")
     set_llm_client(FakeLLMClient.with_oracle(lambda t: "genuine"))
-    monkeypatch.setattr(watch_job, "_default_factory", lambda _s: WatchSearcher({"in/asha-rao": [profile_post("in/asha-rao", "k", REQ)]}))
+    monkeypatch.setattr(watch_job, "_default_factory", lambda _s, _a=None: WatchSearcher({"in/asha-rao": [profile_post("in/asha-rao", "k", REQ)]}))
     r = web.post("/tracked/run", headers=HX)
     assert r.status_code == 200 and 'id="watch-panel"' in r.text
     assert get_runner().wait(60)

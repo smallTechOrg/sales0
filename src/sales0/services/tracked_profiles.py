@@ -97,29 +97,41 @@ def is_tracked(db: Session, profile_id: int | None) -> bool:
     return bool(db.scalar(select(LinkedinProfile.tracked).where(LinkedinProfile.id == profile_id)))
 
 
-def _set_via_crm(db: Session, row: LinkedinProfile, tracked: bool, actor_user_id: int | None) -> None:
-    """Set the flag through the CRM when a prospect owns the profile (timeline 'tracked_changed'); else directly."""
+def _set_via_crm(
+    db: Session, row: LinkedinProfile, tracked: bool, actor_user_id: int | None, acted_by_member_id: int | None = None
+) -> None:
+    """Set the flag through the CRM when a prospect owns the profile (timeline 'tracked_changed'); else directly.
+
+    The timeline credits the team member (``team`` when unknown); an admin acting as them reads "Admin as Member"."""
     from sales0.db.models import Prospect
     from sales0.services.crm import prospects
+    from sales0.services.crm.actor import TEAM
+    from sales0.services.crm.hooks import _member_actor
 
     pid = db.scalar(select(Prospect.id).where(Prospect.linkedin_profile_id == row.id))
     if pid is not None:
-        prospects.set_tracked(db, pid, tracked)
+        prospects.set_tracked(
+            db, pid, tracked, actor=_member_actor(db, actor_user_id, acted_by_member_id) if actor_user_id else TEAM
+        )
     row.tracked = tracked
 
 
-def track(db: Session, profile_id: int, *, actor_user_id: int | None = None) -> TrackedView:
+def track(
+    db: Session, profile_id: int, *, actor_user_id: int | None = None, acted_by_member_id: int | None = None
+) -> TrackedView:
     row = _get(db, profile_id)
     row.watch_disabled_until = None
-    _set_via_crm(db, row, True, actor_user_id)
+    _set_via_crm(db, row, True, actor_user_id, acted_by_member_id)
     db.flush()
     return _view(row, utcnow())
 
 
-def untrack(db: Session, profile_id: int, *, actor_user_id: int | None = None) -> TrackedView:
+def untrack(
+    db: Session, profile_id: int, *, actor_user_id: int | None = None, acted_by_member_id: int | None = None
+) -> TrackedView:
     """Stop watching. ``tracked`` becomes False (not NULL), so it is clear it was a decision."""
     row = _get(db, profile_id)
-    _set_via_crm(db, row, False, actor_user_id)
+    _set_via_crm(db, row, False, actor_user_id, acted_by_member_id)
     db.flush()
     return _view(row, utcnow())
 
@@ -131,14 +143,16 @@ def set_paused(db: Session, profile_id: int, paused: bool) -> TrackedView:
     return _view(row, utcnow())
 
 
-def track_author_of_enquiry(db: Session, enquiry_id: int, *, actor_user_id: int | None = None) -> TrackedView:
+def track_author_of_enquiry(
+    db: Session, enquiry_id: int, *, actor_user_id: int | None = None, acted_by_member_id: int | None = None
+) -> TrackedView:
     """The inbox 'Track' button: track the enquiry's author profile."""
     from sales0.db.models import Enquiry
 
     pid = db.scalar(select(Enquiry.author_profile_id).where(Enquiry.id == enquiry_id))
     if pid is None:
         raise DomainError("no_profile", "This enquiry has no author profile link to track.", 409)
-    return track(db, pid, actor_user_id=actor_user_id)
+    return track(db, pid, actor_user_id=actor_user_id, acted_by_member_id=acted_by_member_id)
 
 
 # ---------------------------------------------------------------------- planning
@@ -194,27 +208,37 @@ def is_watch_run(db: Session, run_id: int) -> bool:
     return db.get(WatchRun, run_id) is not None
 
 
-def watch_eligibility(db: Session, now: datetime | None = None) -> tuple[DomainError | None, int]:
-    """``(why a watch run cannot start now | None, profiles due)``."""
+def watch_eligibility(
+    db: Session, now: datetime | None = None, account_id: int | None = None
+) -> tuple[DomainError | None, int]:
+    """``(why a watch run cannot start now | None, profiles due)`` for ONE LinkedIn account (None = default).
+
+    The account's own cool-down, session state and daily post cap apply (as for discovery)."""
     stamp = now_or(now)
-    error, _, _ = runs_service._check(db, stamp, watch=True)
+    error, _, _ = runs_service._check(db, stamp, account_id, watch=True)
     due = due_count(db, now=stamp)
     if error is None and due == 0:
         error = DomainError("nothing_due", "No tracked profile is due for a check.", 409)
     return error, due
 
 
-def start_watch_run(db: Session, origin: str = "manual", actor_user_id: int | None = None) -> RunView:
-    """Queue a watch run and hand it to the job runner (the one browser slot, same as discovery)."""
+def start_watch_run(
+    db: Session, origin: str = "manual", actor_user_id: int | None = None, linkedin_account_id: int | None = None
+) -> RunView:
+    """Queue a watch run on one LinkedIn account (None = the default) and hand it to the job runner
+    (the one browser slot, same as discovery)."""
     from sales0.jobs import watch_job
+    from sales0.services import linkedin_accounts
 
     now = utcnow()
-    error, _ = watch_eligibility(db, now)
+    account_id = linkedin_accounts.default_account_id(db) if linkedin_account_id is None else linkedin_account_id
+    error, _ = watch_eligibility(db, now, account_id)
     if error is not None:
         raise error
     run = ScrapeRun(
         trigger="manual", mode=get_settings().linkedin_mode, status="queued", started_at=now,
         current_step="Queued - starting the browser", actor_user_id=actor_user_id,
+        linkedin_account_id=account_id,
     )
     db.add(run)
     db.flush()

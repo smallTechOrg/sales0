@@ -246,7 +246,7 @@ def test_start_watch_run_goes_through_the_single_browser_slot(monkeypatch: pytes
     add_profile("in/a")
     set_llm_client(oracle())
     searcher = WatchSearcher({"in/a": [profile_post("in/a", "k1", REQ)]})
-    monkeypatch.setattr(watch_job, "_default_factory", lambda _s: searcher)
+    monkeypatch.setattr(watch_job, "_default_factory", lambda _s, _a=None: searcher)
     monkeypatch.setattr(watch_job.time, "sleep", lambda _s: None)
     with session_scope() as db:
         view = tracked_profiles.start_watch_run(db)
