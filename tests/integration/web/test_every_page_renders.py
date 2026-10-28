@@ -330,7 +330,7 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
         _assert_contains(_get(client, "/runs"), ['id="run-summary"', "Keyword 2/2"], where("/runs summary"))
     page(f"/runs/{state.run_id}", f"Run #{state.run_id}", ['id="run-keywords"', 'id="run-summary"', *state.extra_detail])
     for path, phase in STUB_PAGES.items():
-        page(path, f"Coming in Phase {phase}")
+        page(path, "Not built — deferred by decision")
     for path, key in CRM_PAGES.items():
         html = page(path, key)
         assert "Coming in Phase" not in _main_of(html), where(path)

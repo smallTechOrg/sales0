@@ -1,4 +1,4 @@
-"""Which sheets/tabs to read: defaults from PHASE2, overridable through settings."""
+"""Which sheets/tabs to read: tab layout from PHASE2, sheet ids opt-in through settings."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sales0.config import Settings
 
-CLIENT_SOURCING_ID = "1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag"
-METRICS_ID = "1tnwiBRMfp_QR0CmAkxZM_Chl-VAixmcWPxE1NCGED5w"
+CLIENT_SOURCING_ID = "client-sourcing-sheet-id"  # placeholder; the real ids come from SALES0_SHEET_*_ID
+METRICS_ID = "metrics-sheet-id"
 
 TAB_KINDS = ("enquiries", "discarded", "outreach", "prospects", "working", "competitors", "groups", "weekly", "secondary")
 
@@ -55,7 +55,8 @@ def tabs_from_settings(settings: Settings) -> tuple[TabSpec, ...]:
             TabSpec(i["name"], i["kind"], i.get("sheet_id") or settings.sheet_client_sourcing_id, str(i["gid"]))
             for i in items
         )
-    return default_tabs(settings.sheet_client_sourcing_id, settings.sheet_metrics_id)
+    # Opt-in: a sheet whose id is blank is not synced (no real sheet ids ship as defaults).
+    return tuple(t for t in default_tabs(settings.sheet_client_sourcing_id, settings.sheet_metrics_id) if t.sheet_id)
 
 
 def select_tab(tabs: tuple[TabSpec, ...], name: str) -> tuple[TabSpec, ...]:

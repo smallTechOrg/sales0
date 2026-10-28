@@ -1,6 +1,5 @@
 """Shell routes (slice E): ``/`` → ``/inbox``, header fragments, and the labelled
-"Coming in Phase N" stub pages for features that later phases build (Phase 2 built the
-Pipeline, Contacts, Competitors & Groups and Import pages; only WhatsApp remains)."""
+stub page for the one feature that was deferred by decision (WhatsApp ingest)."""
 
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ class StubPage:
 STUBS: dict[str, StubPage] = {
     "/whatsapp": StubPage(
         "WhatsApp groups", 5,
-        "Ingest requirement messages from the team's WhatsApp groups into the same review inbox.",
+        "Ingesting requirement messages from the team's WhatsApp groups into the review inbox. Not built: WhatsApp automation was deferred by decision.",
     ),
 }
 

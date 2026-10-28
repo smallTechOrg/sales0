@@ -19,9 +19,9 @@ def clean_registry() -> Iterator[None]:
 
 
 def test_builtin_sections_are_in_display_order() -> None:
-    assert [s.key for s in dg.sections()] == [
-        "new_relevant_enquiries", "awaiting_review", "outreach", "scrape_health", "tracked_profile_hits", "cost_today",
-    ]  # fmt: skip
+    builtin = ["new_relevant_enquiries", "awaiting_review", "outreach", "scrape_health", "tracked_profile_hits", "cost_today"]
+    # Other suites (the app boot in a shared process) may have registered more sections: only the built-ins' order is pinned.
+    assert [s.key for s in dg.sections() if s.key in builtin] == builtin
 
 
 def test_a_registered_section_slots_in_by_order_then_key(clean_registry: None) -> None:

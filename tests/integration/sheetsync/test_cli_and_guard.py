@@ -45,11 +45,11 @@ def test_cli_dry_run_and_tab_and_memory(db_url: str, capsys) -> None:  # type: i
 @pytest.mark.unmigrated
 def test_cli_unmigrated_database_exits_3(capsys) -> None:  # type: ignore[no-untyped-def]
     src = StaticSource(fx.all_tabs_csv())
-    assert sync_sheets(Settings(_env_file=None), dry_run=False, tab=None, source=src) == 3
+    assert sync_sheets(Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id"), dry_run=False, tab=None, source=src) == 3
     assert "alembic upgrade head" in capsys.readouterr().err
     assert crm_counts() == 3
     # --memory needs no database at all
-    assert sync_sheets(Settings(_env_file=None), dry_run=True, tab=None, source=src, memory=True) == 0
+    assert sync_sheets(Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id"), dry_run=True, tab=None, source=src, memory=True) == 0
 
 
 def test_cli_entry_points_parse(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -85,7 +85,7 @@ def test_the_crm_code_path_cannot_issue_a_write_even_if_asked(db_url: str) -> No
     for method in ("POST", "PUT", "PATCH", "DELETE"):
         with pytest.raises(SheetWriteBlocked):
             client.request(method, "https://sheets.googleapis.com/v4/spreadsheets/x/values/A1:append", content=b"x")
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None, sheet_client_sourcing_id="client-sourcing-sheet-id", sheet_metrics_id="metrics-sheet-id")
     assert tabs_from_settings(settings)  # building the tab list needs no credentials
 
 

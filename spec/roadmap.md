@@ -57,8 +57,8 @@ Each phase ends at a human testing gate. All paths below are from `spec/architec
 - `src/sales0/db/__init__.py`, `db/engine.py`, `db/base.py`, `db/migrate_check.py`, `db/models/__init__.py` (placeholder exporting `AppMeta` only; Phase-1 slice A replaces it)
 - `src/sales0/llm/**`: the complete LLM abstraction layer (`client.py`, `anthropic_adapter.py`, `pricing.py`, `errors.py`)
 - `src/sales0/web/__init__.py`, `web/app.py`, `web/envelope.py`, `web/middleware.py`, `web/templating.py`, `web/routes/__init__.py`, `web/routes/health.py`
-- Placeholder router modules, each exporting `router = APIRouter()` and already registered in `web/app.py`: `web/routes/setup.py`, `web/routes/runs.py`, `web/routes/inbox.py` (all three empty), `web/routes/stubs.py` (holds only `GET /` → `home.html`), `src/sales0/linkedin_fixture/__init__.py`, `src/sales0/linkedin_fixture/routes.py`. The fixture router is mounted only when `SALES0_LINKEDIN_MODE=fixture`.
-- Placeholder `web/templates/base.html`, `web/templates/error.html` (used by the envelope's full-page error handler) and `web/templates/home.html` ("sales0 is running") and `web/static/css/app.css` (one rule) + `web/static/vendor/htmx.min.js` (vendored htmx 2.x)
+- Placeholder router modules, each exporting `router = APIRouter()` and already registered in `web/app.py`: `web/routes/setup.py`, `web/routes/runs.py`, `web/routes/inbox.py` (all three empty), `web/routes/stubs.py` (at the time held only `GET /`; now `GET /` redirects to `/inbox` and the WhatsApp stub lives here), `src/sales0/linkedin_fixture/__init__.py`, `src/sales0/linkedin_fixture/routes.py`. The fixture router is mounted only when `SALES0_LINKEDIN_MODE=fixture`.
+- Placeholder `web/templates/base.html`, `web/templates/error.html` (used by the envelope's full-page error handler) and a placeholder home template ("sales0 is running", since deleted) and `web/static/css/app.css` (one rule) + `web/static/vendor/htmx.min.js` (vendored htmx 2.x)
 - `tests/__init__.py`, `tests/conftest.py` (temp SQLite DB + migrations + settings reset), `tests/unit/test_smoke.py`, `tests/integration/test_llm_ping.py`, `tests/integration/test_boot.py`
 
 **Gate (run in order; all must pass):**
@@ -457,7 +457,7 @@ SALES0_DATABASE_URL=sqlite:///<scratch>/live.db SALES0_DATA_DIR=<scratch>/live u
 
 **Capabilities (3):** [profile-outreach-discovery](capabilities/profile-outreach-discovery.md), [company-research](capabilities/company-research.md), [email-outreach](capabilities/email-outreach.md).
 
-**Slices:** 3A data + migration `0005_phase3_outreach` (`db/models/outreach.py`); 3B profile scraper (`src/sales0/scraper/profiles.py`, `linkedin_fixture/profiles/**`); 3C research ReAct agent (`src/sales0/agent/research/**`, `prompts/research_*.md`); 3D Gmail adapter + OAuth (`src/sales0/integrations/gmail/**`); 3E templates/decks/approval services (`src/sales0/services/outreach/**`); 3F Outreach UI (`web/routes/outreach.py`, `web/templates/outreach/**`); 3G E2E + README. Dependencies: 3B, 3C and 3D are independent. 3E depends on 3A and 3D. 3F depends on 3E. 3G depends on all.
+**Slices:** 3A data + migration `0005_phase3_outreach` (`db/models/outreach.py`); 3B profile scraper (built as `src/sales0/scraper/profile_watch.py` and `services/profiles.py`); 3C research ReAct agent (`src/sales0/agent/research/**`, `prompts/research_*.md`); 3D Gmail adapter + OAuth (`src/sales0/integrations/gmail/**`); 3E templates/decks/approval services (`src/sales0/services/outreach/**`); 3F Outreach UI (`web/routes/outreach.py`, `web/templates/outreach/**`); 3G E2E + README. Dependencies: 3B, 3C and 3D are independent. 3E depends on 3A and 3D. 3F depends on 3E. 3G depends on all.
 
 **Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0005_phase3_outreach (head)`), then `uv run pytest tests -q`. The suite includes:
 
@@ -490,7 +490,7 @@ SALES0_DATABASE_URL=sqlite:///<scratch>/live.db SALES0_DATA_DIR=<scratch>/live u
 
 **Capabilities (3):** [whatsapp-ingest](capabilities/whatsapp-ingest.md), [per-user-accounts](capabilities/per-user-accounts.md), [reply-tracking](capabilities/reply-tracking.md).
 
-**Slices:** 5A WhatsApp bridge, a Node sidecar under `whatsapp-bridge/` that posts to `/api/ingest/whatsapp` (assumed in architecture); 5B ingest endpoint + group config (`src/sales0/services/ingest_whatsapp.py`, `web/routes/ingest.py`); 5C accounts (built as `src/sales0/services/team/accounts.py`, `web/routes/users.py`, migration `p7_accounts_a1d4c6e8`); 5D Gmail reply poller (`src/sales0/jobs/reply_poller.py`); 5E E2E + README. 5A and 5B share the HTTP contract only.
+**Slices:** 5A WhatsApp bridge, a Node sidecar under `whatsapp-bridge/` that posts to `/api/ingest/whatsapp` (assumed in architecture); 5B ingest endpoint + group config (not built, WhatsApp was deferred); 5C accounts (built as `src/sales0/services/team/accounts.py`, `web/routes/users.py`, migration `p7_accounts_a1d4c6e8`); 5D Gmail reply poller (`src/sales0/jobs/reply_poller.py`); 5E E2E + README. 5A and 5B share the HTTP contract only.
 
 **Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0007_phase5_users (head)`), then `uv run pytest tests -q` and `npm --prefix whatsapp-bridge test`.
 

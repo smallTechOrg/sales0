@@ -20,7 +20,7 @@
           {% for item in nav %}
             <li>
               <a href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>
-                {{ item.label }}{% if item.phase %} <span class="badge badge--stub">Phase {{ item.phase }}</span>{% endif %}{% if item.href == "/replies" and shell and shell.replies_unread %} <span class="nav-count" id="replies-unread" title="Replies waiting for you">{{ shell.replies_unread }}</span>{% endif %}
+                {{ item.label }}{% if item.phase %} <span class="badge badge--stub" title="Not built — deferred by decision">Not built</span>{% endif %}{% if item.href == "/replies" and shell and shell.replies_unread %} <span class="nav-count" id="replies-unread" title="Replies waiting for you">{{ shell.replies_unread }}</span>{% endif %}
               </a>
             </li>
           {% else %}

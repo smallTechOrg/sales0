@@ -301,3 +301,12 @@ def test_env_example_documents_the_phase_1_4_defaults_and_keeps_the_permalink_ca
     ):
         assert line in text, line
     assert not re.search(r"^SALES0_SCRAPE_DATE_FILTER=", text, flags=re.MULTILINE)
+
+
+def test_google_paths_follow_the_data_dir_and_sheet_ids_are_opt_in(tmp_path) -> None:
+    s = Settings(_env_file=None, data_dir=str(tmp_path))
+    assert s.google_client_secret_file == tmp_path / "google_client_secret.json"
+    assert s.google_token_file == tmp_path / "google_token.json"
+    abs_client = tmp_path / "elsewhere" / "c.json"
+    assert Settings(_env_file=None, google_client_secret_path=str(abs_client)).google_client_secret_file == abs_client
+    assert s.sheet_client_sourcing_id == "" and s.sheet_metrics_id == ""

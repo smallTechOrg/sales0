@@ -219,8 +219,8 @@ class Settings(BaseSettings):
 
     # --- Google Sheet sync (read-only; Phase 2) ---
     sheet_sync_minutes: int = Field(30, ge=0)  # 0 disables the interval scheduler
-    sheet_client_sourcing_id: str = "1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag"
-    sheet_metrics_id: str = "1tnwiBRMfp_QR0CmAkxZM_Chl-VAixmcWPxE1NCGED5w"
+    sheet_client_sourcing_id: str = ""  # opt-in: blank = that sheet is not synced
+    sheet_metrics_id: str = ""  # opt-in: blank = that sheet is not synced
     # Optional JSON list replacing the default tabs: [{"name","kind","gid","sheet_id"?}, ...]
     sheet_tabs_json: str | None = None
     sheet_fetch_timeout_s: float = Field(20.0, gt=0)
@@ -481,15 +481,22 @@ class Settings(BaseSettings):
             return ["127.0.0.1", "localhost"]
         return [h.strip().lower() for h in raw.split(",") if h.strip()]
 
+    def _under_data_dir(self, value: str) -> Path:
+        """Absolute paths stay; the default ``data/<file>`` follows SALES0_DATA_DIR; other relative paths use the repo root."""
+        path = Path(value).expanduser()
+        if path.is_absolute():
+            return path
+        if path.parts[:1] == ("data",):
+            return self.data_path.joinpath(*path.parts[1:])
+        return REPO_ROOT / path
+
     @property
     def google_client_secret_file(self) -> Path:
-        path = Path(self.google_client_secret_path).expanduser()
-        return path if path.is_absolute() else REPO_ROOT / path
+        return self._under_data_dir(self.google_client_secret_path)
 
     @property
     def google_token_file(self) -> Path:
-        path = Path(self.google_token_path).expanduser()
-        return path if path.is_absolute() else REPO_ROOT / path
+        return self._under_data_dir(self.google_token_path)
 
     @property
     def log_file_path(self) -> Path | None:

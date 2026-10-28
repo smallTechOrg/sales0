@@ -121,11 +121,11 @@ def test_cost_badge_sums_todays_ai_calls(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(("path", "title", "phase"), STUBS)
-def test_stub_pages_are_labelled_coming_in_phase_n_with_no_controls(client: TestClient, path: str, title: str, phase: int) -> None:
+def test_stub_pages_are_labelled_not_built_with_no_controls(client: TestClient, path: str, title: str, phase: int) -> None:
     resp = client.get(path)
     assert resp.status_code == 200
     main = _main(resp.text)
-    assert f"Coming in Phase {phase}" in main
+    assert "Not built — deferred by decision" in main
     assert f"<h1 id=\"stub-title\">{title}</h1>" in main
     assert 'class="badge badge--stub"' in main
     assert "<form" not in main and "<button" not in main and "<input" not in main

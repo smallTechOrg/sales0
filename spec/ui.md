@@ -12,7 +12,7 @@ The UI bar is `ui-ux.md`. Every view designs its empty, loading, error and popul
     - amber with spinner "Connecting… / Checking… / Run in progress"
     - In fixture mode it adds a `FIXTURE MODE` badge, so demo data is never mistaken for live data.
   - Cost badge (`#cost-badge`): "AI today $0.0123 · month $0.4567".
-- **Nav (in order)**: Inbox · Runs · Setup · Pipeline · Contacts · Competitors & Groups · Import · Sync · Outreach · Replies (all real); then Metrics (P4 stub) · Digest · Suggestions · Costs · Schedule (real) · WhatsApp (P5 stub). Only the two remaining stub items (Metrics, WhatsApp) carry a `.badge--stub` "Phase N". Pipeline shows a count badge (`#due-badge`) while follow-ups are due or overdue. (Phase 2: the four former Phase-2 stubs are real pages and "Sync" is new; the nav tests are updated accordingly.)
+- **Nav (in order)**: Inbox · Runs · Tracked · Setup · Pipeline · Contacts · Competitors & Groups · Import · Sync · Outreach · Replies · Metrics · Digest · Suggestions · Costs · Schedule · Users (all real); then WhatsApp, the only stub (not built, deferred by decision), with a `.badge--stub` "Not built". On narrow screens the nav is one horizontally scrolling row. Pipeline shows a count badge (`#due-badge`) while follow-ups are due or overdue. (Phase 2: the four former Phase-2 stubs are real pages and "Sync" is new; the nav tests are updated accordingly.)
 - **Header, right side (Phase 2):** when a password is configured a "Log out" button (`#logout`, a POST form) sits after the acting-as selector.
 - **Alert banner** (`#alert-banner`, `role="alert"`, under the header). It shows on every page while the session is `needs_attention`: "LinkedIn needs attention — <last_error>. Runs are paused to protect your account." It has a [Go to Setup] button and cannot be dismissed while the condition holds.
 - **Toasts** region (`#toasts`, `aria-live="polite"`), bottom-right.
@@ -110,12 +110,12 @@ Two cards: **Paste a post** (`#paste-form`: textarea ≥ 40 chars, optional link
 ## Sync (`/sync`) — Phase 2
 Heading "Google Sheet sync", a `.badge` "Read-only: sales0 never writes to your sheets". Panel `#sync-status`: state (Idle / Running… with spinner / Disabled — "SALES0_SHEET_SYNC_MINUTES is 0"), "Last sync 12 min ago (ok|partial|failed) · took 8s", "Next sync in ~18 min", last error in the error style. Button **Sync now** (`#sync-now`; disabled while running). Table `#sync-tabs`: Tab · Rows · Added · Updated · Unchanged · Removed · Errors · Warnings · Problem (fetch error / "removal blocked 6-of-10") — counts only. Empty: "No sync has run yet." Links: Schedule page (opt-in toggle for the interval job), Pipeline.
 
-## Login (`/login`) — Phase 2
-Centered card: wordmark, **Password** field (`#login-password`, autofocus, `autocomplete="current-password"`), [Log in] (`#login-submit`); error in the error style above the field ("Wrong password." / "Too many attempts - try again in 42 seconds."); no nav, no header status; same CSS. Keyboard: Enter submits.
+## Login (`/login`)
+Centered card: wordmark, **Email** field (`#login-email`) and **Password** field (`#login-password`, `autocomplete="current-password"`), Remember me, [Log in] (`#login-submit`), a hint saying which email to use (the admin email on a fresh install) and that an admin supplies set-password links; error in the error style above the field ("Wrong email or password." / "Too many attempts - try again in 42 seconds."); no nav, no header status; same CSS. Keyboard: Enter submits.
 
 ## Stub pages
 
-A heading, a `.badge--stub` "Coming in Phase N", one sentence on what it will do, and no controls. The text includes "Coming in Phase N". After Phase 2 only **Metrics** (4) and **WhatsApp** (5) remain stubs.
+A heading, a `.badge--stub` "Not built — deferred by decision", one sentence on what it would do, and no controls. **WhatsApp** is the only stub.
 
 ## Test hooks (stable ids used by E2E)
 

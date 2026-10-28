@@ -26,6 +26,18 @@ def matrix_csv() -> str:
 
 
 @pytest.fixture(autouse=True)
+def _sheet_ids(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    """Sheet ids are opt-in (blank by default); these tests sync the synthetic fixture sheets, so opt in."""
+    from sales0.config import reset_settings
+
+    monkeypatch.setenv("SALES0_SHEET_CLIENT_SOURCING_ID", "client-sourcing-sheet-id")
+    monkeypatch.setenv("SALES0_SHEET_METRICS_ID", "metrics-sheet-id")
+    reset_settings()
+    yield
+    reset_settings()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_registry():  # type: ignore[no-untyped-def]
     """The repository registry is process-global (the app lifespan installs into it): start and end clean."""
     from sales0.services.sheetsync import register_repository_factory
