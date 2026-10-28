@@ -12,7 +12,7 @@ sales0 is an AI sales and marketing agent for smallTech. smallTech sells AI corp
 | Sales person | Daily/weekly | Follow up accepted prospects and leads (Phase 2+) |
 | Founder | Weekly | Weekly metrics against targets, cost view (Phase 4) |
 
-Phases 1–4 use one shared login. Per-user accounts come in Phase 5. Every actor-bearing record has a nullable `actor_user_id` from Phase 1 onward, so attribution can be added without reshaping data.
+Phases 1–4 use one shared login. Per-user accounts arrive in Phase 5 (built: `capabilities/per-user-accounts.md`). Every actor-bearing record has a nullable `actor_user_id` from Phase 1 onward, so attribution can be added without reshaping data.
 
 ## Success Criteria (product level)
 
@@ -484,11 +484,13 @@ SALES0_DATABASE_URL=sqlite:///<scratch>/live.db SALES0_DATA_DIR=<scratch>/live u
 
 ### Phase 5 — WhatsApp Ingestion + Per-User Accounts + Reply Tracking
 
+> **Status (Phase 5 build):** per-user accounts and reply tracking are BUILT; **WhatsApp ingestion is DEFERRED by the user** (slices 5A/5B are not part of this build; the nav stub stays). Accounts differ from the plan below: team members ARE the users (no separate `users` service), migration `p7_accounts_a1d4c6e8`, code in `services/team/accounts.py` and `web/routes/users.py`.
+
 **Goal:** enquiries arrive from 10–30 WhatsApp groups through a linked-device bot and go through the same dedupe and triage. Each team member has their own login and is credited on the records they act on. Email replies are detected and move Leads forward.
 
 **Capabilities (3):** [whatsapp-ingest](capabilities/whatsapp-ingest.md), [per-user-accounts](capabilities/per-user-accounts.md), [reply-tracking](capabilities/reply-tracking.md).
 
-**Slices:** 5A WhatsApp bridge, a Node sidecar under `whatsapp-bridge/` that posts to `/api/ingest/whatsapp` (assumed in architecture); 5B ingest endpoint + group config (`src/sales0/services/ingest_whatsapp.py`, `web/routes/ingest.py`); 5C accounts (`src/sales0/services/users.py`, `web/routes/users.py`, migration `0007_phase5_users`); 5D Gmail reply poller (`src/sales0/jobs/reply_poller.py`); 5E E2E + README. 5A and 5B share the HTTP contract only.
+**Slices:** 5A WhatsApp bridge, a Node sidecar under `whatsapp-bridge/` that posts to `/api/ingest/whatsapp` (assumed in architecture); 5B ingest endpoint + group config (`src/sales0/services/ingest_whatsapp.py`, `web/routes/ingest.py`); 5C accounts (built as `src/sales0/services/team/accounts.py`, `web/routes/users.py`, migration `p7_accounts_a1d4c6e8`); 5D Gmail reply poller (`src/sales0/jobs/reply_poller.py`); 5E E2E + README. 5A and 5B share the HTTP contract only.
 
 **Gate:** `uv run alembic upgrade head && uv run alembic current` (shows `0007_phase5_users (head)`), then `uv run pytest tests -q` and `npm --prefix whatsapp-bridge test`.
 

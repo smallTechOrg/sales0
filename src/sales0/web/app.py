@@ -19,6 +19,7 @@ from sales0.services.crm import digest_sections as crm_digest_sections
 from sales0.services.keywords import seed_suggested_once
 from sales0.services.runs import recover_interrupted_runs_on_startup
 from sales0.services.sheetsync import sql_repository
+from sales0.services.team import accounts
 from sales0.services.team.members import seed_admin
 from sales0.web import auth as web_auth
 from sales0.web.envelope import install_exception_handlers
@@ -41,6 +42,7 @@ from sales0.web.routes import (
     stubs,
     suggestions,
     sync,
+    users,
 )
 from sales0.web.templating import STATIC_DIR
 
@@ -66,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with session_scope() as db:
             seed_suggested_once(db)  # Phase 1.4: the 60 suggested keywords, once
             seed_admin(db, settings)  # Phase 3: first admin from SALES0_ADMIN_EMAIL (idempotent)
+            accounts.bootstrap_admin(db, settings)  # Phase 5: SALES0_APP_PASSWORD = first admin's initial password
         crm.install()  # Phase 2: CRM event hooks, SQL sheet repository, CRM digest sections
         sql_repository.install()
         crm_digest_sections.register()
@@ -109,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(digest.router)
     app.include_router(suggestions.router)
     app.include_router(replies.router)
+    app.include_router(users.router)  # Phase 5: admin Users page
     for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router):
         app.include_router(r)
 

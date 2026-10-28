@@ -130,7 +130,7 @@ class Enquiry(Base):
     date_proposal_sent: Mapped[date | None] = mapped_column(Date)
     decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     actor_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
+        ForeignKey("team_members.id", ondelete="SET NULL")
     )
 
     sources: Mapped[list[EnquirySource]] = relationship(

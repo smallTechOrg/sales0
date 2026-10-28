@@ -11,11 +11,17 @@ from sales0.db.models import TeamMember
 class Actor:
     label: str
     member_id: int | None = None
+    by_member_id: int | None = None  # the real logged-in user when an admin acts as someone else
 
     @staticmethod
     def of_member(m: TeamMember | None) -> Actor:
+        """The member's actor. An admin acting as another member (``m.acted_by``) yields "Admin as Member":
+        credit goes to the member (``member_id``), the real user is kept in ``by_member_id`` and the label."""
         if m is None:
             return TEAM
+        by = getattr(m, "acted_by", None)
+        if by is not None and by.id != m.id:
+            return Actor(f"{by.name} as {m.name}"[:80], m.id, by.id)
         return Actor(m.name, m.id)
 
 

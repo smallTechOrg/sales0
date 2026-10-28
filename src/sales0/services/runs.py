@@ -17,7 +17,7 @@ from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.logging import get_logger
 from sales0.services._common import not_found, now_or, record_history
-from sales0.services.session import get_session_row
+from sales0.services import linkedin_accounts
 from sales0.services.views import Eligibility, RunDetailView, RunKeywordView, RunView
 
 if TYPE_CHECKING:
@@ -203,28 +203,38 @@ def active_run(db: Session) -> RunView | None:
 
 
 # ---------------------------------------------------------------------- eligibility
-def _day_counts(db: Session, now: datetime) -> tuple[int, int]:
+def _account(db: Session, account_id: int | None) -> int:
+    """The account a query is about: ``account_id`` or the default (first active) account."""
+    return linkedin_accounts.default_account_id(db) if account_id is None else account_id
+
+
+def _day_counts(db: Session, now: datetime, account_id: int | None = None) -> tuple[int, int]:
+    """(runs, posts seen) started today (local day) by ONE LinkedIn account."""
     start, end = local_day_bounds_utc(get_settings().tz, now)
+    mine = linkedin_accounts.account_runs_clause(db, _account(db, account_id))
     runs_today, posts_today = db.execute(
         select(func.count(ScrapeRun.id), func.coalesce(func.sum(ScrapeRun.posts_seen), 0)).where(
-            ScrapeRun.started_at >= start, ScrapeRun.started_at < end
+            ScrapeRun.started_at >= start, ScrapeRun.started_at < end, mine
         )
     ).one()
     return int(runs_today or 0), int(posts_today or 0)
 
 
-def posts_seen_today(db: Session, now: datetime | None = None) -> int:
-    return _day_counts(db, now_or(now))[1]
+def posts_seen_today(db: Session, now: datetime | None = None, account_id: int | None = None) -> int:
+    return _day_counts(db, now_or(now), account_id)[1]
 
 
 def _active_keyword_count(db: Session) -> int:
     return int(db.scalar(select(func.count(Keyword.id)).where(Keyword.active.is_(True))) or 0)
 
 
-def safety_cooldown_until(db: Session, now: datetime | None = None) -> datetime | None:
-    """When Run now is allowed again after the latest LinkedIn safety stop (UTC), or None.
+def safety_cooldown_until(
+    db: Session, now: datetime | None = None, account_id: int | None = None
+) -> datetime | None:
+    """When Run now is allowed again after the latest LinkedIn safety stop of ONE account (UTC), or None.
 
-    Reads the latest ``aborted`` run (by ``finished_at``) whose ``abort_reason`` is a safety
+    ``account_id`` None = the default account. Cool-downs are per account: one account being cooled down
+    never blocks another. Reads the latest ``aborted`` run of that account (by ``finished_at``) whose ``abort_reason`` is a safety
     kind. rate_limited / captcha -> ``SALES0_SAFETY_COOLDOWN_MIN``; checkpoint / logout ->
     ``SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN``. None when that instant is not in the future
     or the applicable setting is 0. Derived from stored columns only (no migration).
@@ -237,6 +247,7 @@ def safety_cooldown_until(db: Session, now: datetime | None = None) -> datetime 
             ScrapeRun.status == "aborted",
             ScrapeRun.abort_reason.in_(LONG_COOLDOWN_KINDS + SHORT_COOLDOWN_KINDS),
             ScrapeRun.finished_at.is_not(None),
+            linkedin_accounts.account_runs_clause(db, _account(db, account_id)),
         )
         .order_by(ScrapeRun.finished_at.desc(), ScrapeRun.id.desc())
         .limit(1)
@@ -271,16 +282,19 @@ def cooldown_reason(until: datetime, now: datetime | None = None) -> str:
     return f"{COOLDOWN_REASON_PREFIX}{cooldown_clock(until, now)}"
 
 
-def _check(db: Session, now: datetime) -> tuple[DomainError | None, int, int]:
-    """The first reason a run cannot start (api.md order), plus today's counts."""
+def _check(db: Session, now: datetime, account_id: int | None = None) -> tuple[DomainError | None, int, int]:
+    """The first reason a run cannot start (api.md order), plus today's counts (all for ONE account)."""
     settings = get_settings()
-    runs_today, posts_today = _day_counts(db, now)
+    account_id = _account(db, account_id)
+    runs_today, posts_today = _day_counts(db, now, account_id)
     error: DomainError | None = None
-    session = get_session_row(db)
+    session = linkedin_accounts.get_account(db, account_id)
     busy = get_runner().busy()
     has_active = db.scalar(select(ScrapeRun.id).where(ScrapeRun.status.in_(ACTIVE_STATUSES)).limit(1)) is not None
     if has_active or busy == "run":
         error = DomainError("run_in_progress", "A run is already in progress.", 409)
+    elif session.disabled:
+        error = DomainError("account_disabled", f"LinkedIn account '{session.label}' is disabled - enable it in Setup.", 409)
     elif session.status == "needs_attention":
         detail = (session.last_error or "resolve the LinkedIn warning").rstrip(". ")
         error = DomainError(
@@ -289,7 +303,7 @@ def _check(db: Session, now: datetime) -> tuple[DomainError | None, int, int]:
             "opens on LinkedIn so you can resolve it.",
             409,
         )
-    elif (cooldown := safety_cooldown_until(db, now)) is not None:
+    elif (cooldown := safety_cooldown_until(db, now, account_id)) is not None:
         error = DomainError("safety_cooldown", cooldown_reason(cooldown, now), 429)
     elif session.status != "connected":
         error = DomainError("not_connected", "Connect LinkedIn first (Setup → Connect LinkedIn).", 409)
@@ -314,9 +328,9 @@ def _check(db: Session, now: datetime) -> tuple[DomainError | None, int, int]:
     return error, runs_today, posts_today
 
 
-def run_eligibility(db: Session, now: datetime | None = None) -> Eligibility:
+def run_eligibility(db: Session, now: datetime | None = None, account_id: int | None = None) -> Eligibility:
     settings = get_settings()
-    error, runs_today, posts_today = _check(db, now_or(now))
+    error, runs_today, posts_today = _check(db, now_or(now), account_id)
     return Eligibility(
         can_run=error is None,
         reason=error.message if error else None,
@@ -329,12 +343,14 @@ def run_eligibility(db: Session, now: datetime | None = None) -> Eligibility:
 
 
 # ---------------------------------------------------------------------- start / recover
-def start_run(db: Session, actor_user_id: int | None = None) -> RunView:
-    """Queue a run and hand it to the job runner. Commits so the job thread can see the row."""
+def start_run(db: Session, actor_user_id: int | None = None, linkedin_account_id: int | None = None) -> RunView:
+    """Queue a run for one LinkedIn account (default: the first active) and hand it to the job runner.
+    Commits so the job thread can see the row."""
     from sales0.jobs import discovery_job
 
     now = utcnow()
-    error, _, _ = _check(db, now)
+    account_id = _account(db, linkedin_account_id)
+    error, _, _ = _check(db, now, account_id)
     if error is not None:
         raise error
     settings = get_settings()
@@ -345,6 +361,7 @@ def start_run(db: Session, actor_user_id: int | None = None) -> RunView:
         started_at=now,
         current_step="Queued — starting the browser",
         actor_user_id=actor_user_id,
+        linkedin_account_id=account_id,
     )
     db.add(run)
     db.flush()
@@ -362,6 +379,25 @@ def start_run(db: Session, actor_user_id: int | None = None) -> RunView:
         db.commit()
         raise
     return run_view(run)
+
+
+def sync_account_state(db: Session, account_id: int | None = None, now: datetime | None = None) -> None:
+    """Snapshot one account's derived daily counters and cool-down onto its ``linkedin_accounts`` row.
+
+    The runs stay authoritative (eligibility always recomputes from them); the row mirrors them so the
+    Setup list and exports can show per-account state without a query per account.
+    """
+    now = now_or(now)
+    account_id = _account(db, account_id)
+    runs_today, posts_today = _day_counts(db, now, account_id)
+    linkedin_accounts.store_counters(
+        db,
+        account_id,
+        day=local_now(get_settings().tz, now).date().isoformat(),
+        runs_today=runs_today,
+        posts_today=posts_today,
+        cooldown_until=safety_cooldown_until(db, now, account_id),
+    )
 
 
 def plan_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
@@ -454,4 +490,5 @@ __all__ = [
     "run_view",
     "safety_cooldown_until",
     "start_run",
+    "sync_account_state",
 ]

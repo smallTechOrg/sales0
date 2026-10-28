@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Client, Enquiry, Lead, Prospect, StatusHistory, TimelineEvent, User
+from sales0.db.models import Client, Enquiry, Lead, Prospect, StatusHistory, TimelineEvent, TeamMember
 from sales0.db.models.enums_crm import TIMELINE_KINDS, TIMELINE_SUBJECTS
 from sales0.errors import DomainError
 from sales0.services._common import now_or, not_found
@@ -110,6 +110,8 @@ def add_event(
     explicit = {"prospect_id": prospect_id, "enquiry_id": enquiry_id, "company_id": company_id, "contact_id": contact_id}
     scopes.update({k: v for k, v in explicit.items() if v is not None})
     stamp = now_or(occurred_at)
+    if actor.by_member_id is not None:  # an admin acting as another member: keep the real user too
+        data = {**(data or {}), "by_member_id": actor.by_member_id}
     row = TimelineEvent(
         subject_type=subject_type,
         subject_id=subject_id,
@@ -170,8 +172,8 @@ def _history_items(db: Session, enquiry_ids: list[int], before: datetime | None,
     if not enquiry_ids:
         return []
     stmt = (
-        select(StatusHistory, User.display_name)
-        .outerjoin(User, User.id == StatusHistory.actor_user_id)
+        select(StatusHistory, TeamMember.name)
+        .outerjoin(TeamMember, TeamMember.id == StatusHistory.actor_user_id)
         .where(StatusHistory.entity_type == "enquiry", StatusHistory.entity_id.in_(enquiry_ids))
         .order_by(StatusHistory.changed_at.desc(), StatusHistory.id.desc())
         .limit(limit)

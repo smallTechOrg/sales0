@@ -125,10 +125,12 @@ def timeline_kinds(page: Page) -> list[str]:
 def log_in(page: Page, env: Env, *, target: str = "/pipeline") -> None:
     page.goto(f"{env.base}{target}")
     expect(page).to_have_url(re.compile(r"/login\?next="))
+    page.fill("#login-email", ADMIN_EMAIL)
     page.fill("#login-password", "not-the-password")
     page.click("#login-submit")
-    expect(page.locator("#login-error")).to_have_text("Wrong password.")
+    expect(page.locator("#login-error")).to_have_text("Wrong email or password.")
     expect(page).to_have_url(re.compile(r"/login"))
+    page.fill("#login-email", ADMIN_EMAIL)
     page.fill("#login-password", PASSWORD)
     page.click("#login-submit")
     expect(page).to_have_url(re.compile(re.escape(target) + r"$"))
@@ -143,9 +145,9 @@ def test_login_gate_is_enforced_before_anything_else(env: Env) -> None:
         assert c.get("/login").status_code == 200
         assert c.get("/static/css/app.css").status_code == 200
         assert c.get("/api/pipeline/summary", headers={"Accept": "application/json"}).status_code == 401
-        bad = c.post("/login", data={"password": "nope", "next": "/pipeline"})
+        bad = c.post("/login", data={"email": ADMIN_EMAIL, "password": "nope", "next": "/pipeline"})
         assert bad.status_code == 401 and "set-cookie" not in bad.headers
-        good = c.post("/login", data={"password": PASSWORD, "next": "/pipeline"})
+        good = c.post("/login", data={"email": ADMIN_EMAIL, "password": PASSWORD, "next": "/pipeline"})
         assert good.status_code == 303 and good.headers["location"] == "/pipeline" and "set-cookie" in good.headers
         assert c.get("/pipeline").status_code == 200  # the cookie jar now carries the session
 

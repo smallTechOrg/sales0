@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}My account{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>My account</h1>
+    <p>{% if me %}{{ me.name }} · {{ me.email }} · {{ me.role|capitalize }}{% else %}Open mode - no one is logged in.{% endif %}</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% if flash %}<div class="flash flash--{{ flash.kind }}" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>{% endif %}
+    {% if me %}
+    <section class="card" aria-labelledby="pw-title">
+      <div class="card__header"><h2 id="pw-title">Change password</h2></div>
+      <div class="card__body">
+        <form class="stack" method="post" action="/account/password" id="change-password-form">
+          <div class="field"><label class="field__label" for="pw-current">Current password</label>
+            <input class="input" id="pw-current" name="current" type="password" autocomplete="current-password" required></div>
+          <div class="field"><label class="field__label" for="pw-new">New password (at least {{ min_length }} characters)</label>
+            <input class="input" id="pw-new" name="password" type="password" autocomplete="new-password" minlength="{{ min_length }}" required></div>
+          <div class="field"><label class="field__label" for="pw-confirm">Repeat the new password</label>
+            <input class="input" id="pw-confirm" name="confirm" type="password" autocomplete="new-password" minlength="{{ min_length }}" required></div>
+          <button class="btn btn--primary" type="submit">Change password</button>
+        </form>
+        <p class="muted">Changing it signs you out of your other devices.</p>
+      </div>
+    </section>
+    {% else %}
+    <section class="card"><div class="card__body"><p>Passwords are not enabled yet. An admin can add one on the <a href="/users">Users page</a>.</p></div></section>
+    {% endif %}
+  </div>
+{% endblock %}

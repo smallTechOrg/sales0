@@ -1,38 +1,40 @@
-"""Shared-password login: signed session cookie, throttle, and the gate middleware.
+"""Per-user login: signed session cookie bound to a server-side session, throttle, client IP, gate middleware.
 
-``SALES0_APP_PASSWORD`` unset (or empty) = the app is open (loopback use). When set, every
-path except ``OPEN_PATHS`` needs a valid ``sales0_session`` cookie. See
-``spec/capabilities/shared-login.md``.
+Open mode (no member has a password and ``SALES0_APP_PASSWORD`` is unset) = no login, loopback use.
+Otherwise every path except ``OPEN_PATHS`` needs a live ``sales0_session``. See
+``spec/capabilities/per-user-accounts.md``.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
+import ipaddress
 import math
 import threading
 from datetime import datetime
 from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
 from sales0 import clock
 from sales0.config import Settings
+from sales0.db.engine import session_scope
 from sales0.logging import get_logger
-from sales0.services.team import crypto
+from sales0.services.team import accounts, crypto
 from sales0.web.envelope import err, is_htmx, wants_json
 
 log = get_logger("sales0.auth")
 
 COOKIE = "sales0_session"
 SESSION_PURPOSE = "session"
-OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/")  # plus "/__fixtures/" in fixture mode
+OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/", "/set-password/")  # plus "/__fixtures/" in fixture mode
 FIXTURE_PREFIX = "/__fixtures/"
 DEFAULT_NEXT = "/inbox"
 THROTTLE_WINDOW_S = 60
+IP_BUCKET_FACTOR = 4  # one address may fail this many times more than one (ip, email) pair before it is locked
 UNAUTHORIZED_MESSAGE = "Please log in."
 
 
@@ -41,31 +43,13 @@ def now() -> datetime:
     return clock.utcnow()
 
 
-# ---------------------------------------------------------------------- password + session
-def _password(settings: Settings) -> str:
-    return settings.app_password.get_secret_value() if settings.app_password is not None else ""
-
-
-def password_matches(settings: Settings, candidate: str) -> bool:
-    """Constant-time comparison (SHA-256 digests, so lengths never leak)."""
-    expected = hashlib.sha256(_password(settings).encode("utf-8")).digest()
-    given = hashlib.sha256(candidate.encode("utf-8")).digest()
-    return hmac.compare_digest(expected, given) and settings.app_password_set
-
-
-def password_fingerprint(settings: Settings) -> str:
-    """Changing the password changes this, which invalidates every existing session."""
-    mac = hmac.new(crypto.master_secret(settings), b"pw:" + _password(settings).encode("utf-8"), hashlib.sha256)
-    return mac.hexdigest()[:12]
-
-
-def issue_session(response: Response, settings: Settings, now_: datetime | None = None) -> None:
-    issued_at = int((now_ or now()).timestamp())
-    value = crypto.sign(f"v1:{issued_at}:{password_fingerprint(settings)}", SESSION_PURPOSE, settings)
+# ---------------------------------------------------------------------- session cookie
+def set_session_cookie(response: Response, settings: Settings, sid: str, expires_at: datetime, now_: datetime | None = None) -> None:
+    max_age = max(1, int((expires_at - (now_ or now())).total_seconds()))
     response.set_cookie(
         COOKIE,
-        value,
-        max_age=settings.session_days * 86400,
+        crypto.sign(sid, SESSION_PURPOSE, settings),
+        max_age=max_age,
         path="/",
         httponly=True,
         samesite="lax",
@@ -77,21 +61,9 @@ def clear_session(response: Response, settings: Settings) -> None:
     response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax", secure=settings.session_cookie_secure)
 
 
-def session_valid(request: Request, settings: Settings, now_: datetime | None = None) -> bool:
-    value = crypto.unsign(request.cookies.get(COOKIE), SESSION_PURPOSE, settings)
-    if value is None:
-        return False
-    parts = value.split(":")
-    if len(parts) != 3 or parts[0] != "v1":
-        return False
-    try:
-        issued_at = int(parts[1])
-    except ValueError:
-        return False
-    age = (now_ or now()).timestamp() - issued_at
-    if age < -60 or age >= settings.session_days * 86400:
-        return False
-    return hmac.compare_digest(parts[2], password_fingerprint(settings))
+def cookie_sid(request: Request, settings: Settings) -> str | None:
+    """The raw session id from a validly signed cookie, else None."""
+    return crypto.unsign(request.cookies.get(COOKIE), SESSION_PURPOSE, settings)
 
 
 # ---------------------------------------------------------------------- redirects
@@ -153,12 +125,81 @@ class LoginThrottle:
             self._locked_until.pop(ip, None)
 
 
-def client_ip(request: Request) -> str:
-    """The raw TCP peer. X-Forwarded-For is deliberately NOT trusted (spoofable), which only holds
-    because uvicorn runs with ``proxy_headers=False`` (see ``UVICORN_OPTIONS`` in ``web/app.py``).
-    Behind a reverse proxy every client therefore shares the proxy's address (one shared throttle
-    bucket); that is the safe default for a small team. Do not enable proxy_headers casually."""
-    return request.client.host if request.client else "unknown"
+class LoginGuard:
+    """Failed-login limiter per (client IP, email) plus a looser per-IP bucket (stops spraying many emails)."""
+
+    def __init__(self, max_attempts: int, lockout_s: int, window_s: int = THROTTLE_WINDOW_S) -> None:
+        self.pair = LoginThrottle(max_attempts, lockout_s, window_s)
+        self.by_ip = LoginThrottle(max_attempts * IP_BUCKET_FACTOR, lockout_s, window_s)
+
+    @staticmethod
+    def _key(ip: str, email: str) -> str:
+        return f"{ip}|{email.strip().lower()}"
+
+    def check(self, ip: str, email: str, now_: datetime) -> int | None:
+        waits = [w for w in (self.pair.check(self._key(ip, email), now_), self.by_ip.check(ip, now_)) if w is not None]
+        return max(waits) if waits else None
+
+    def fail(self, ip: str, email: str, now_: datetime) -> None:
+        self.pair.fail(self._key(ip, email), now_)
+        self.by_ip.fail(ip, now_)
+
+    def reset(self, ip: str, email: str) -> None:
+        self.pair.reset(self._key(ip, email))  # the per-IP bucket decays on its own
+
+
+# ---------------------------------------------------------------------- client address
+def _parse_networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    nets = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            log.warning("trusted_proxy_ignored", value=part)
+    return nets
+
+
+def _in(nets: list, value: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return False
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return any((ip in n) or (mapped is not None and mapped in n) for n in nets)
+
+
+def client_ip(request: Request, settings: Settings | None = None) -> str:
+    """The real client address.
+
+    Default: the TCP peer (uvicorn runs with ``proxy_headers=False``; X-Forwarded-For is spoofable and is
+    ignored). Only when the peer is listed in ``SALES0_TRUSTED_PROXIES`` do we read X-Forwarded-For, and then
+    take the RIGHT-MOST entry that is not itself a trusted proxy - entries to its left are client-supplied and
+    cannot be believed. An unparsable entry is not believed either (the peer is returned)."""
+    peer = request.client.host if request.client else "unknown"
+    settings = settings or getattr(request.app.state, "auth_settings", None)
+    nets = _parse_networks(settings.trusted_proxies) if settings is not None else []
+    if not nets or not _in(nets, peer):
+        return peer
+    entries = [e.strip() for h in request.headers.getlist("x-forwarded-for") for e in h.split(",") if e.strip()]
+    for entry in reversed(entries):
+        try:
+            ipaddress.ip_address(entry)
+        except ValueError:
+            return peer
+        if not _in(nets, entry):
+            return entry
+    return entries[0] if entries and _is_ip(entries[0]) else peer
+
+
+def _is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------- middleware
@@ -187,18 +228,49 @@ def unauthenticated_response(request: Request) -> Response:
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
+    """Sets ``request.state.auth_enabled`` / ``login_member_id`` / ``login_session_id`` and gates closed paths."""
+
     def __init__(self, app, settings: Settings) -> None:  # noqa: ANN001
         super().__init__(app)
         self.settings = settings
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        enabled = self.settings.app_password_set
+        settings = self.settings
+        request.state.login_member_id = None
+        request.state.login_session_id = None
+        path = request.url.path
+        if path.startswith("/static/") or path == "/api/health":
+            request.state.auth_enabled = True
+            return await call_next(request)
+        rotated: tuple[str, datetime] | None = None
+        enabled = settings.app_password_set
+        try:
+            with session_scope() as db:
+                enabled = accounts.auth_enabled(db, settings)
+                if enabled:
+                    sid = cookie_sid(request, settings)
+                    info = accounts.resolve_session(db, sid, settings, ip=client_ip(request, settings), now=now()) if sid else None
+                    if info is not None:
+                        request.state.login_member_id = info.member.id
+                        request.state.login_session_id = info.session_id
+                        if info.new_sid:
+                            rotated = (info.new_sid, info.expires_at)
+        except SQLAlchemyError:
+            # No readable accounts table (an unmigrated DB: startup refuses that, tests may build a bare app).
+            # Fall back to the bootstrap variable alone; with it set nobody can be logged in, so the gate holds.
+            log.warning("auth_state_unavailable", exc_info=True)
         request.state.auth_enabled = enabled
-        if not enabled or is_open_path(request.url.path, self.settings):
+        if not enabled:
             return await call_next(request)
-        if session_valid(request, self.settings):
-            return await call_next(request)
-        return unauthenticated_response(request)
+        if request.state.login_member_id is None and not is_open_path(path, settings):
+            response = unauthenticated_response(request)
+            if request.cookies.get(COOKIE):
+                clear_session(response, settings)  # a dead cookie: stop sending it
+            return response
+        response = await call_next(request)
+        if rotated is not None and not any(c.startswith(f"{COOKIE}=") for c in response.headers.getlist("set-cookie")):
+            set_session_cookie(response, settings, rotated[0], rotated[1])
+        return response
 
 
 def install(app: FastAPI, settings: Settings) -> None:
@@ -206,6 +278,6 @@ def install(app: FastAPI, settings: Settings) -> None:
     from sales0.web.routes import auth as auth_routes
 
     app.state.auth_settings = settings
-    app.state.login_throttle = LoginThrottle(settings.login_max_attempts, settings.login_lockout_s)
+    app.state.login_throttle = LoginGuard(settings.login_max_attempts, settings.login_lockout_s)
     app.add_middleware(AuthMiddleware, settings=settings)
     app.include_router(auth_routes.router)

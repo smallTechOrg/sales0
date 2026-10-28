@@ -40,7 +40,7 @@ def test_header_shows_not_connected_light_zero_cost_and_nav_in_order(client: Tes
     assert re.search(r'id="cost-badge".*?AI today <strong>\$0\.00</strong> · month <strong>\$0\.00</strong>', html, re.S)
     nav = html.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
     labels = re.findall(r'<a href="(/[a-z]+)"', nav)
-    assert labels == ["/inbox", "/runs", "/setup", "/pipeline", "/contacts", "/competitors", "/import", "/sync", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/whatsapp"]
+    assert labels == ["/inbox", "/runs", "/setup", "/pipeline", "/contacts", "/competitors", "/import", "/sync", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/users", "/whatsapp"]  # Users: shown to admins (open mode acts as the admin)
     assert nav.count("badge--stub") == 2  # only Metrics (Phase 4) and WhatsApp (Phase 5) are stubs now
     assert 'href="/inbox" aria-current="page"' in nav
     assert 'id="alert-banner"' not in html

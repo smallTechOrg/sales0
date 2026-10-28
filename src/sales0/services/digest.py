@@ -283,8 +283,6 @@ def _outreach(db: Session, w: Window) -> SectionResult:
 
 def _scrape_health(db: Session, w: Window) -> SectionResult:
     from sales0.services import runs as runs_service
-    from sales0.services import session as session_service
-
     rows = db.scalars(
         select(ScrapeRun)
         .where(_between(ScrapeRun.started_at, w))
@@ -298,17 +296,27 @@ def _scrape_health(db: Session, w: Window) -> SectionResult:
         if r.abort_reason:
             line += f", stopped: {r.abort_reason}"
         items.append({"text": line, "href": f"/runs/{r.id}"})
-    cooldown = runs_service.safety_cooldown_until(db, w.end)
-    if cooldown is not None:
+    # Cool-downs are per LinkedIn account; with one account the line reads as before.
+    from sales0.services import linkedin_accounts
+
+    accounts = linkedin_accounts.list_accounts(db, include_disabled=False)
+    cooldown = None
+    for account in accounts:
+        until = runs_service.safety_cooldown_until(db, w.end, account.id)
+        if until is None:
+            continue
+        cooldown = cooldown or until
+        suffix = f" ({account.label})" if len(accounts) > 1 else ""
         items.append(
-            f"LinkedIn safety cool-down in effect until {cooldown.astimezone(get_settings().tz).strftime('%H:%M')}"
+            f"LinkedIn safety cool-down in effect until {until.astimezone(get_settings().tz).strftime('%H:%M')}{suffix}"
         )
-    status = session_service.session_status(db)
-    needs_attention = status.stored_status == "needs_attention"
-    if needs_attention:
+    attention = [a for a in accounts if a.stored_status == "needs_attention"]
+    needs_attention = bool(attention)
+    for account in attention:
+        tag = f" ({account.label})" if len(accounts) > 1 else ""
         items.append(
             {
-                "text": f"LinkedIn session needs attention: {clip(status.last_error, 140) or 'reconnect it on Setup'}",
+                "text": f"LinkedIn session needs attention{tag}: {clip(account.last_error, 140) or 'reconnect it on Setup'}",
                 "href": "/setup",
             }
         )

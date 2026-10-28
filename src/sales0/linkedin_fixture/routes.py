@@ -100,8 +100,14 @@ def _sdui_page(
     )
 
 
+# A pasted li_at that starts with one of these is a cookie the fixture "LinkedIn" rejects (expired /
+# revoked), so tests can exercise the paste-cookie failure path. Any other non-empty value is accepted.
+REJECTED_COOKIE_PREFIXES = ("invalid", "expired", "revoked")
+
+
 def _logged_in(request: Request) -> bool:
-    return bool(request.cookies.get(SESSION_COOKIE))
+    value = request.cookies.get(SESSION_COOKIE)
+    return bool(value) and not value.lower().startswith(REJECTED_COOKIE_PREFIXES)
 
 
 def _base(request: Request) -> str:

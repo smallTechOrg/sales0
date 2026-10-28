@@ -25,10 +25,14 @@ FAILURE_MESSAGES: dict[str, str] = {
 }
 
 
-def _default_connect() -> Callable[..., Any]:
+def _default_connect(account_id: int) -> Callable[..., Any]:
     from sales0.scraper.connect import connect_interactive
+    from sales0.services import linkedin_accounts
 
-    return connect_interactive
+    def connect(settings: Any, on_tick: Any, should_cancel: Any) -> Any:
+        return connect_interactive(settings, on_tick, should_cancel, account=linkedin_accounts.build_handle(account_id))
+
+    return connect
 
 
 def _failure_message(reason: str, detail: str | None) -> str:
@@ -39,24 +43,27 @@ def _failure_message(reason: str, detail: str | None) -> str:
     return FAILURE_MESSAGES.get(reason, "Connect failed")
 
 
-def _record_failure(reason: str, message: str) -> None:
+def _record_failure(reason: str, message: str, account_id: int) -> None:
     with session_scope() as db:
-        row = session_service.get_session_row(db)
+        row = session_service.get_session_row(db, account_id)
         if row.status == "needs_attention":
-            session_service.note_error(db, message)  # keeps the stop reason + banner
+            session_service.note_error(db, message, account_id=account_id)  # keeps the stop reason + banner
         elif row.status == "connected" and reason == "cancelled":
             pass  # cancelling an optional re-login keeps the working session
         elif row.status == "connected" and reason == "error":
             # The browser could not open / LinkedIn refused: the saved login is still there.
-            session_service.note_error(db, message)
+            session_service.note_error(db, message, account_id=account_id)
         else:
-            session_service.mark_not_connected(db, message)
+            session_service.mark_not_connected(db, message, account_id=account_id)
 
 
-def execute(connect_fn: Callable[..., Any] | None = None) -> None:
+def execute(connect_fn: Callable[..., Any] | None = None, *, linkedin_account_id: int | None = None) -> None:
+    """Connect ONE LinkedIn account (default: the first active one) through its Chrome window."""
     settings = get_settings()
     runner = get_runner()
-    connect = connect_fn or _default_connect()
+    with session_scope() as db:
+        account_id = session_service.get_session_row(db, linkedin_account_id).id
+    connect = connect_fn or _default_connect(account_id)
     headless = settings.linkedin_mode == "fixture"
     try:
         result = connect(settings, runner.set_connect_elapsed, runner.connect_cancelled)
@@ -64,20 +71,20 @@ def execute(connect_fn: Callable[..., Any] | None = None) -> None:
         message = str(exc) or "The browser could not be started — see the server log"
         log.warning("linkedin_session_state", action="connect", result="error", reason="browser_unavailable",
                     browser=None, headless=headless)
-        _record_failure("error", message)
+        _record_failure("error", message, account_id)
         return
     except Exception as exc:  # noqa: BLE001 — reported to the user, logged with the trace
         log.exception("linkedin_session_state", action="connect", result="error", reason=type(exc).__name__,
                       headless=headless)
         with session_scope() as db:
-            session_service.note_error(db, f"Connect failed ({type(exc).__name__}) — see the server log")
+            session_service.note_error(db, f"Connect failed ({type(exc).__name__}) — see the server log", account_id=account_id)
         return
 
     if result.connected:
         with session_scope() as db:
-            session_service.mark_connected(db, connected=True)
+            session_service.mark_connected(db, connected=True, account_id=account_id)
     else:
-        _record_failure(result.reason, _failure_message(result.reason, result.detail))
+        _record_failure(result.reason, _failure_message(result.reason, result.detail), account_id)
     log_session_state(
         "connect",
         "connected" if result.connected else "not_connected",

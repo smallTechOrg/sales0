@@ -90,6 +90,8 @@ def test_real_database_copy_upgrades_to_head_without_losing_a_row(tmp_path: Path
 
     assert before_rev != head_revision() or before == after  # an already-migrated copy is a no-op
     for table, n in before.items():
+        if table == "users":
+            continue  # retired by p7 (team members are the users); it was empty
         assert table in after, f"table {table} vanished"
         if table in BACKFILL_TABLES:
             assert after[table] >= n, f"{table}: {n} -> {after[table]} (the backfill only adds)"
@@ -126,6 +128,8 @@ def test_p4_database_with_outreach_events_survives_p5_and_p6(p4_db) -> None:  # 
     command.upgrade(cfg, "head")
     after = _table_counts(engine)
     for table, n in before.items():
+        if table == "users":
+            continue  # retired by p7 (team members are the users); it was empty
         assert after[table] == n, f"{table}: {n} -> {after[table]}"
     _assert_clean_head(engine)
     # 60 accepted enquiries from 5 authors + 25 profile-less ones: one prospect per author, plus one per profile-less accepted enquiry
@@ -149,6 +153,8 @@ def test_p5_database_with_replies_survives_p6_and_a_round_trip(tmp_path: Path) -
         command.upgrade(cfg, "head")
         after = _table_counts(engine)
         for table, n in before.items():
+            if table == "users":
+                continue  # retired by p7 (team members are the users); it was empty
             assert after[table] == n, f"{table}: {n} -> {after[table]}"
         _assert_clean_head(engine)
 
@@ -164,6 +170,8 @@ def test_p5_database_with_replies_survives_p6_and_a_round_trip(tmp_path: Path) -
         command.upgrade(cfg, "head")
         again = _table_counts(engine)
         for table, n in before.items():
+            if table == "users":
+                continue  # retired by p7 (team members are the users); it was empty
             assert again[table] == n, f"{table}: {n} -> {again[table]} after the round trip"
         _assert_clean_head(engine)
     finally:

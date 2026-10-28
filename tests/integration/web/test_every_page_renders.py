@@ -44,15 +44,17 @@ CRM_PAGES = {
     "/contacts/duplicates": 'id="merge-list"',
     "/competitors": 'id="competitor-list"',
     "/import": 'id="csv-form"',
+    "/users": 'id="users-table"',  # Phase 5 accounts (open mode in this fixture: the acting admin may open it)
+    "/account": "My account",
     "/sync": "Google Sheet sync",  # S2 builds the page; the nav entry must never 500
 }
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/competitors", "/import",
-                    "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
+                    "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/replies", "/replies/suppressions"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/replies", "/replies/suppressions", "/users", "/account"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 
@@ -360,6 +362,8 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
         assert banner.strip() == "", where("/_shell/banner")
     card = _get(client, "/setup/linkedin/status")
     _assert_contains(card, ['id="linkedin-card"', 'id="browser-note"'], where("/setup/linkedin/status"))
+    accounts = _get(client, "/setup/linkedin/accounts")
+    _assert_contains(accounts, ['id="linkedin-accounts"', 'id="paste-cookie"'], where("/setup/linkedin/accounts"))
     progress = _get(client, f"/runs/{state.progress_run_id or state.run_id}/progress")
     _assert_contains(progress, ['id="run-panel"'], where("progress"))
 

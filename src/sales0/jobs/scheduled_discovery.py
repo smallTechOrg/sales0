@@ -36,7 +36,8 @@ class DiscoveryStart:
         return self.code in RETRYABLE_CODES
 
 
-def start_scheduled_discovery() -> DiscoveryStart:
+def start_scheduled_discovery(linkedin_account_id: int | None = None) -> DiscoveryStart:
+    """Start a scheduled run on one LinkedIn account (default: the first active account)."""
     from sales0.services import runs as runs_service
     from sales0.services.costs_report import spend_cap_status
 
@@ -45,9 +46,9 @@ def start_scheduled_discovery() -> DiscoveryStart:
             if spend_cap_status(db).state == "exceeded":
                 return DiscoveryStart(False, code="spend_cap_reached", reason="Monthly AI spend cap reached - not starting a run that could not be triaged.")
             try:
-                view = runs_service.start_run(db, None)
+                view = runs_service.start_run(db, None, linkedin_account_id)
             except DomainError as exc:
-                retry_at = runs_service.safety_cooldown_until(db) if exc.code == "safety_cooldown" else None
+                retry_at = runs_service.safety_cooldown_until(db, account_id=linkedin_account_id) if exc.code == "safety_cooldown" else None
                 return DiscoveryStart(False, code=exc.code, reason=exc.message, retry_at=retry_at)
             return DiscoveryStart(True, run_id=view.id)
     except Exception as exc:  # noqa: BLE001 - the scheduler must survive any start failure

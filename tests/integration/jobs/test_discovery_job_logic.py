@@ -14,9 +14,10 @@ import pytest
 from sqlalchemy import func, select
 from structlog.testing import capture_logs
 
+from sales0.services.session import get_session_row
 from sales0.config import reset_settings
 from sales0.db.engine import reset_engine, session_scope
-from sales0.db.models import Enquiry, EnquirySource, Keyword, LinkedInSession, LinkedinProfile, LlmCall, ScrapeRun, SeenPost
+from sales0.db.models import Enquiry, EnquirySource, Keyword, LinkedinProfile, LlmCall, ScrapeRun, SeenPost
 from sales0.jobs import discovery_job
 from sales0.llm import LLMAuthError
 from sales0.services import keywords, runs
@@ -103,7 +104,7 @@ def test_run_one_counts_seen_new_dupes_and_triages_each_new_enquiry_once(db_url:
         assert db.scalar(select(func.count(Enquiry.id))) == 7
         assert db.scalar(select(func.count(SeenPost.id))) == 7  # every distinct post is remembered once
         assert all(k.last_run_at is not None for k in db.scalars(select(Keyword)))
-        session = db.get(LinkedInSession, 1)
+        session = get_session_row(db)
         assert session is not None and session.last_successful_run_at is not None
         p2 = db.scalar(select(EnquirySource.enquiry_id).where(EnquirySource.source_ref.endswith("02")))
         assert db.scalar(select(func.count(EnquirySource.id)).where(EnquirySource.enquiry_id == p2)) == 2
@@ -140,7 +141,7 @@ def test_checkpoint_aborts_marks_session_needs_attention_and_skips_the_rest(db_u
     assert [k.status for k in d.keywords] == ["error", "skipped"]
     assert "checkpoint" in (d.run.error_message or "").lower()
     with session_scope() as db:
-        s = db.get(LinkedInSession, 1)
+        s = get_session_row(db)
         assert s is not None and s.status == "needs_attention"
         assert s.last_error and s.last_error.startswith("Checkpoint page at /")
         assert s.last_successful_run_at is None
@@ -375,7 +376,7 @@ def test_no_session_cookie_at_run_start_fails_the_run_and_sets_not_connected(db_
     assert d.run.finished_at is not None and searcher.searched == [] and llm.calls == 0
     assert [(k.status, k.error_message) for k in d.keywords] == [("skipped", "Not searched — not logged in")] * 2
     with session_scope() as db:
-        s = db.get(LinkedInSession, 1)
+        s = get_session_row(db)
         assert s is not None and (s.status, s.last_error) == ("not_connected", NOT_LOGGED_IN)
         assert runs.safety_cooldown_until(db) is None  # not a safety stop
         e = runs.run_eligibility(db)

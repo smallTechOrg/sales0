@@ -26,6 +26,8 @@ from sales0.web.acting import (
     clear_flash,
     get_acting_member,
     get_acting_member_optional,
+    get_login_member_optional,
+    require_admin,
     pop_flash,
     set_acting_cookie,
     set_flash,
@@ -71,7 +73,7 @@ def team_page(
         for m in members_service.list_members(db)
     ]
     flash = pop_flash(request)
-    response = render_page(request, db, "team/page.html", {"rows": rows, "flash": flash})
+    response = render_page(request, db, "team/page.html", {"rows": rows, "flash": flash, "gmail_hint": oauth_service.connect_hint()})
     if flash:
         clear_flash(response)
     return response
@@ -79,8 +81,15 @@ def team_page(
 
 @router.post("/team/acting")
 def switch_acting(
-    member_id: int = Form(...), next: str = Form("/team"), db: Session = Depends(get_db)
+    request: Request,
+    member_id: int = Form(...),
+    next: str = Form("/team"),
+    db: Session = Depends(get_db),
+    login: TeamMember | None = Depends(get_login_member_optional),
 ) -> Response:
+    # With accounts on, only an ADMIN may act as someone else; everyone else is always themselves.
+    if getattr(request.state, "auth_enabled", False) and (login is None or login.role != "admin"):
+        raise DomainError("forbidden", "Only an admin can act as another team member.", 403)
     member = db.get(TeamMember, member_id)
     if member is None or not member.active:
         raise DomainError("not_found", "That team member is not available - refresh the page.", 404)
@@ -95,12 +104,10 @@ def add_member(
     email: str = Form(...),
     role: str = Form("member"),
     db: Session = Depends(get_db),
-    acting: TeamMember = Depends(get_acting_member),
+    admin: TeamMember = Depends(require_admin),
 ) -> Response:
-    if acting.role != "admin":
-        raise DomainError("forbidden", "Only an admin can add team members.", 403)
     member = members_service.add_member(db, name, email, role)
-    return _back(f"Added {member.name}. They can now switch to themselves and connect their Gmail.")
+    return _back(f"Added {member.name}. Give them a set-password link on the Users page so they can log in and connect their Gmail.")
 
 
 @router.post("/team/members/{member_id}/active")
@@ -108,11 +115,9 @@ def set_member_active(
     member_id: PathId,
     active: str = Form(...),
     db: Session = Depends(get_db),
-    acting: TeamMember = Depends(get_acting_member),
+    admin: TeamMember = Depends(require_admin),
 ) -> Response:
-    if acting.role != "admin":
-        raise DomainError("forbidden", "Only an admin can change who is active.", 403)
-    member = members_service.set_active(db, member_id, active == "1")
+    member = members_service.set_active(db, member_id, active == "1", by=admin)
     return _back(f"{member.name} is now {'active' if member.active else 'inactive'}.")
 
 

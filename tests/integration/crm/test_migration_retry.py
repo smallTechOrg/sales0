@@ -57,6 +57,8 @@ def test_upgrade_is_retry_safe_after_a_mid_backfill_failure(tmp_path: Path) -> N
         assert current_revision(engine) == head_revision()
         after = _counts(engine)
         for table, n in before.items():
+            if table == "users":
+                continue  # retired by p7 (team members are the users); it was empty
             assert after[table] == n, f"{table}: {n} -> {after[table]}"
         assert after == expected, "a retried upgrade must end in the same state as a clean one"
         with engine.connect() as c:

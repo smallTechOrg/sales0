@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 
 from sales0.config import get_settings
 from sales0.db.engine import get_db
+from sales0.db.models import TeamMember
 from sales0.services import runs as runs_service
 from sales0.services.views import RunView
+from sales0.web.acting import get_acting_member_optional
 from sales0.web.context import PathId
 from sales0.web.context import cooldown_clock, cost_badge_oob, is_htmx, redirect, render_html, render_page
 from sales0.web.envelope import ok
@@ -129,8 +131,10 @@ def runs_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 
 
 @router.post("/runs", response_model=None)
-def run_now(request: Request, db: Session = Depends(get_db)) -> Response:
-    run = runs_service.start_run(db)
+def run_now(
+    request: Request, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+) -> Response:
+    run = runs_service.start_run(db, actor_user_id=member.id if member else None)
     if not is_htmx(request):
         return redirect("/runs")
     panel = render_html(request, "runs/_panel.html", _panel_ctx(db, run))

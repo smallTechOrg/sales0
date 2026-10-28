@@ -583,7 +583,8 @@ def list_skipped(
 
 # ---------------------------------------------------------------------- rescue / retry
 def rescue(
-    db: Session, seen_post_id: int, *, accept: bool = False, actor_user_id: int | None = None
+    db: Session, seen_post_id: int, *, accept: bool = False, actor_user_id: int | None = None,
+    acted_by_member_id: int | None = None,
 ) -> EnquiryCardView:
     """Turn a skipped post into an enquiry in To review (the AI verdict stays "discard").
     ``accept=True`` also records an accept decision (an override)."""
@@ -614,7 +615,10 @@ def rescue(
     enquiry.actor_user_id = actor_user_id
     db.flush()
     if accept:
-        return inbox.decide(db, [enquiry.id], "accept", actor_user_id=actor_user_id, now=stamp)[0]
+        return inbox.decide(
+            db, [enquiry.id], "accept", actor_user_id=actor_user_id, actor_member_id=actor_user_id,
+            acted_by_member_id=acted_by_member_id, now=stamp,
+        )[0]
     return inbox.get_card(db, enquiry.id)
 
 

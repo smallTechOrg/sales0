@@ -14,7 +14,7 @@ from sales0.db.models.decisions import TriageDecision
 from sales0.db.models.enquiries import Enquiry, EnquiryKeywordHit, EnquirySource
 from sales0.db.models.history import StatusHistory
 from sales0.db.models.keywords import Keyword
-from sales0.db.models.linkedin import LINKEDIN_SESSION_ID, LinkedInSession
+from sales0.db.models.linkedin import LINKEDIN_SESSION_ID, LinkedInAccount, LinkedInSession
 from sales0.db.models.llm_calls import LlmCall
 from sales0.db.models.meta import AppMeta
 from sales0.db.models.offerings import Offering, OfferingGroup
@@ -26,10 +26,9 @@ from sales0.db.models.registries import ChannelGroup, Competitor, CompetitorMent
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
 from sales0.db.models.seen_posts import SeenPost
 from sales0.db.models.sheetdata import SheetMetric, SheetMetricWeek, SheetSource
-from sales0.db.models.team import GmailConnection, TeamMember
+from sales0.db.models.team import GmailConnection, MemberSession, PasswordToken, TeamMember
 from sales0.db.models.sheet_sync import SheetSyncState
 from sales0.db.models.timeline import TimelineEvent
-from sales0.db.models.users import User
 
 __all__ = [
     "LINKEDIN_SESSION_ID",
@@ -62,7 +61,10 @@ __all__ = [
     "EnquiryKeywordHit",
     "EnquirySource",
     "GmailConnection",
+    "MemberSession",
+    "PasswordToken",
     "Keyword",
+    "LinkedInAccount",
     "LinkedInSession",
     "LinkedinProfile",
     "LlmCall",
@@ -84,6 +86,5 @@ __all__ = [
     "TeamMember",
     "TriageDecision",
     "UTCDateTime",
-    "User",
     "enums",
 ]

@@ -37,14 +37,18 @@ def _guarded(fn: Callable[[Session, Any], None]) -> Callable[[Session, Any], Non
     return wrapper
 
 
-def _member_actor(db: Session, member_id: int | None) -> Actor:
+def _member_actor(db: Session, member_id: int | None, by_member_id: int | None = None) -> Actor:
     m = db.get(TeamMember, member_id) if member_id else None
+    if m is not None and by_member_id and by_member_id != m.id:
+        by = db.get(TeamMember, by_member_id)
+        if by is not None:
+            return Actor(f"{by.name} as {m.name}"[:80], m.id, by.id)
     return Actor.of_member(m)
 
 
 # ---------------------------------------------------------------------------- enquiry decided
 def _on_enquiry_decided(db: Session, ev: events.EnquiryDecided) -> None:
-    actor = _member_actor(db, ev.actor_member_id)
+    actor = _member_actor(db, ev.actor_member_id, ev.by_member_id)
     e = db.get(Enquiry, ev.enquiry_id)
     if e is None:
         return

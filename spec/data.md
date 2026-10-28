@@ -1,16 +1,25 @@
 # sales0 — Data Model
 
-All timestamps are UTC, timezone-aware. Every table has `id` (integer PK) unless noted. Enum-like fields are lowercase strings with the allowed values listed. Actor-bearing tables carry a nullable `actor_user_id → users.id` for per-user attribution later. The raw text of an **enquiry** is never deleted. The raw text of a post the AI skipped (`seen_posts`, Phase 1.4) is purged after 14 days; its fingerprint and snippet stay.
+All timestamps are UTC, timezone-aware. Every table has `id` (integer PK) unless noted. Enum-like fields are lowercase strings with the allowed values listed. Actor-bearing tables carry a nullable `actor_user_id → team_members.id` (team members are the users; Phase 5). The raw text of an **enquiry** is never deleted. The raw text of a post the AI skipped (`seen_posts`, Phase 1.4) is purged after 14 days; its fingerprint and snippet stay.
 
 ## Phase 1 entities (migration `0002_phase1_discovery`)
 
-### users
-Created empty in Phase 1. Rows arrive in Phase 2/5.
+### users (retired in Phase 5, migration `p7_accounts_a1d4c6e8`)
+Phase 1 created it empty as the FK target of `actor_user_id`. **Team members are the users**: every `actor_user_id` now references `team_members.id` (`ON DELETE SET NULL`). The p7 migration turns any legacy `users` row into an inactive team member (email `legacy-user-<id>@users.invalid` when it had none), remaps the references, sets dangling ids to NULL and drops the table.
+
+### team_members account columns (Phase 5)
 | Field | Type | Notes |
 |---|---|---|
-| display_name | str(80) | |
-| email | str(254) null, unique | |
-| created_at | datetime | |
+| password_hash | str(255) null | argon2id; NULL = cannot log in until a set-password link is used |
+| password_set_at | datetime null | |
+| must_reset | bool, default false | set by a forced reset: the old password is refused until a new one is chosen |
+| last_login_at | datetime null | |
+
+### member_sessions (Phase 5)
+Server-side login sessions. `member_id` FK `team_members` CASCADE (indexed), `sid_hash` str(64) unique (SHA-256 of the cookie id; the id itself is never stored), `prev_sid_hash` + `prev_expires_at` (the previous id, valid 60 s after a rotation), `remember` bool, `created_at`, `rotated_at`, `expires_at`, `last_ip` str(64) null. Deleted on logout, deactivation, reset and password change.
+
+### password_tokens (Phase 5)
+One-time set-password links. `member_id` FK `team_members` CASCADE (indexed), `token_hash` str(64) unique (SHA-256; the token is shown once and never stored), `created_at`, `expires_at` (`SALES0_PASSWORD_RESET_TTL_H`), `used_at` null (single use; a newer link marks older ones used), `created_by_member_id` FK `team_members` SET NULL.
 
 ### offering_groups
 | Field | Type | Notes |
@@ -47,9 +56,30 @@ Group seeds: Training (1), Services (2), Products (3).
 | active | bool default true | |
 | last_run_at | datetime null | |
 | created_at | datetime | |
-| actor_user_id | FK users null | |
+| actor_user_id | FK team_members null | |
 
-### linkedin_session (singleton, id = 1, seeded)
+### linkedin_accounts (Phase 5, migration `p8_liaccts_b2e5f7a9`; replaces the `linkedin_session` singleton)
+| Field | Type | Notes |
+|---|---|---|
+| id | int PK | The default account is the first non-disabled row by id. |
+| label | str(80) | Shown in Setup; "Default" for the backfilled row. |
+| owner_member_id | int null | `team_members.id` of the owner. A plain column (no FK) so the team tables stay independent. |
+| status | `not_connected` \| `connected` \| `needs_attention` \| `disabled` | What is stored is the first three; "busy" is derived. `disabled` is reported by the views when `disabled` is true (the underlying status is kept). |
+| disabled | bool | Disabled accounts are never used by Run now, the scheduler or Re-check; the last enabled account cannot be disabled. |
+| backend | `folder` \| `db` | Session store. |
+| profile_dirname | str(120) null | Folder backend. NULL or a legacy `PROFILE_DIRNAMES` name = the pre-p8 per-(mode, channel) directory; otherwise the directory is `<profile_dirname>-<mode>-<channel>`. |
+| session_state | text null | DB backend: Playwright `storage_state` JSON, **Fernet-encrypted** with `SALES0_SECRET_KEY`. Never returned by a view or logged. |
+| proxy_url, user_agent, locale, timezone, viewport | str null | Pinned browser identity (`viewport` = "1280x860"); NULL = browser default. |
+| last_checked_at, last_connected_at, last_successful_run_at, last_ok_at | datetime null | `last_ok_at` = the last time the account proved healthy (green check, connect or successful run). |
+| last_error | str(300) null | |
+| safety_state, last_stop_at, last_stop_reason | str(20) / datetime / str(300) null | The latest LinkedIn stop of THIS account (`logout\|checkpoint\|captcha\|rate_limited`). |
+| cooldown_until | datetime null | Mirror of the cool-down derived from this account's aborted runs (the runs are authoritative). |
+| counter_day, runs_today, posts_today | str(10) null / int / int | Snapshot of this account's daily counters (local date), refreshed at the end of each run. Eligibility always recomputes from `scrape_runs`. |
+| created_at, updated_at | datetime | |
+
+Constraints: CHECK on `status` and `backend`; index on `owner_member_id`. The migration creates the table, adds `scrape_runs.linkedin_account_id` (below), inserts the DEFAULT account from the `linkedin_session` singleton (status, last_* and error copied; folder backend; the profile name for the configured mode and channel) and stamps every existing run with it. `status_history` rows for account status changes keep `entity_type='linkedin_session'` with `entity_id` = the account id.
+
+### linkedin_session (LEGACY since p8: singleton, id = 1, seeded; no longer read or written)
 | Field | Type | Notes |
 |---|---|---|
 | status | `not_connected` \| `connected` \| `needs_attention` | Seed `not_connected`. "busy" is derived from the job runner and never stored. |
@@ -60,6 +90,7 @@ Group seeds: Training (1), Services (2), Products (3).
 | updated_at | datetime | |
 
 ### scrape_runs
+p8 adds `linkedin_account_id` (int null FK `linkedin_accounts.id` ON DELETE SET NULL, indexed): the account that ran. Cool-down and daily caps are computed per account over these rows (a NULL counts for the default account). Added with `ALTER TABLE … ADD COLUMN … REFERENCES` (the table is FK-referenced; no rebuild on upgrade; the downgrade rebuilds it with the four-step recipe).
 | Field | Type | Notes |
 |---|---|---|
 | trigger | `manual` (Phase 4 adds `scheduled`) | |
@@ -73,7 +104,7 @@ Group seeds: Training (1), Services (2), Products (3).
 | enquiries_triaged, triage_failed, errors_count | int default 0 | |
 | abort_reason | `logout` \| `checkpoint` \| `captcha` \| `rate_limited` \| `daily_post_cap` \| null | `daily_post_cap` ends the run as `succeeded`, with the note in current_step. Null on `failed` runs, including fatal LLM errors (`aborted` is reserved for account-safety stops). A fatal LLM error after a safety stop keeps the run `aborted` with its reason (`architecture.md` step 6a). |
 | error_message | str(500) null | Also holds the LLM message when a fatal LLM error follows a safety stop. |
-| actor_user_id | FK users null | |
+| actor_user_id | FK team_members null | |
 
 ### scrape_run_keywords
 | Field | Type | Notes |
@@ -121,7 +152,7 @@ The core record: one per real-world RELEVANT post, after dedupe. From Phase 1.4 
 | update_note | text null | Sheet "Update" (Phase 2) |
 | date_email_sent, date_proposal_sent | date null | Sheet columns. Written in Phase 2/3. |
 | decided_at | datetime null | |
-| actor_user_id | FK users null | Last decider |
+| actor_user_id | FK team_members null | Last decider |
 
 Indexes: `(review_status, ai_verdict, priority, date_added)`, `date_added`, `company`.
 
@@ -158,7 +189,7 @@ The learning-loop signal. Append-only.
 | reason | str(200) null | Discard reason |
 | field_overrides | JSON null | e.g. `{"priority": ["low","high"], "offering_id": [2,1]}`, recorded by `update_fields` |
 | decided_at | datetime | |
-| actor_user_id | FK users null | |
+| actor_user_id | FK team_members null | |
 
 ### llm_calls
 | Field | Type | Notes |
@@ -187,7 +218,7 @@ Generic history of every status change.
 | from_value, to_value | str null | |
 | note | str null | |
 | changed_at | datetime | |
-| actor_user_id | FK users null | |
+| actor_user_id | FK team_members null | |
 Index `(entity_type, entity_id, changed_at)`.
 
 ### Phase 1.1: no schema change (head stays `0002_phase1_discovery`)

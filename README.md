@@ -1,40 +1,88 @@
 # sales0
 
-AI sales and marketing agent for smallTech. sales0 searches LinkedIn for posts where a
-company is looking for AI training or AI consulting, using the team's own logged-in
-LinkedIn session. It merges duplicate posts, asks Claude Haiku once per new post whether it
-is a genuine buyer enquiry (with a one-line reason, summary, priority, matching offering and
-extracted contact details), and puts **only the relevant ones** in a **Review inbox**. A
-person accepts, discards or overrides each card. Every decision is stored and fed back into
-later triage calls as examples (the learning loop). No spreadsheet is involved.
+AI sales and marketing agent for smallTech (AI corporate workshops, AI training, consulting).
+sales0 finds buyer enquiries on LinkedIn, lets a person review them, tracks the relationship
+in a small CRM, and drafts and sends outreach email from each person's own Gmail.
 
-**Status: Phase 2 (CRM memory) on top of Phase 1.4 discovery.** Accepted enquiries become
-prospects in a **Pipeline** (Prospects, Leads, Clients), with Contacts, Competitors & Groups,
-Import, a per-record timeline, a "Due today" follow-up list, a read-only **Google Sheet sync**
-and an optional shared-password login (see [Phase 2: CRM, sheet sync and login](#phase-2-crm-sheet-sync-and-login)).
-Outreach email and reply tracking are real too; Metrics and WhatsApp are still labelled stub
-pages that say "Coming in Phase N". That is expected, not a bug. The full plan is in
-`spec/roadmap.md`.
+## What it does today
 
-`SALES0_LINKEDIN_HEADLESS` no longer exists (Connect always shows a window, checks and runs
-never do). A leftover line in an old `.env` is ignored.
+| Area | What is built |
+|---|---|
+| **LinkedIn discovery + triage** | Searches LinkedIn posts with the team's own logged-in session (slowly, with caps and safety stops), merges duplicates, and asks Claude Haiku once per new post whether it is a genuine buyer enquiry (reason, summary, priority, offering, contact details). |
+| **Review inbox** | Only relevant posts are shown. Accept, discard (with a reason) or override; every decision is fed back into later triage as examples. |
+| **CRM pipeline** | Accepted enquiries become Prospects, then Leads, then Clients, with Contacts, Competitors & Groups, Import (paste a post or CSV), per-record timeline and a "Due today" follow-up list. |
+| **Google Sheet sync** | One-way, read-only import of the team's two Google Sheets into the CRM. sales0 never writes to Google. |
+| **Outreach email** | Company research, a drafted email, human approval, send through **each person's own Gmail** (OAuth), deck attachment, follow-ups at +3 / +7 / +14 days. |
+| **Reply tracking** | Read-only polling of each member's Gmail detects replies to sent outreach, classifies them and moves the prospect (for example to Lead). |
+| **Digest, suggestions, costs** | Daily digest, proactive suggestions, AI spend view with an optional monthly cap. |
+| **Scheduler** | Background jobs (nightly discovery window, sheet sync, digest, purge) switched on/off on the **Schedule** page; sheet sync is opt-in. |
+| **Accounts and login** | Per-user email + password accounts with admin/member roles (see [Accounts and login](#accounts-and-login)), multiple LinkedIn accounts with per-account safety state. |
+| **Metrics** | **Stub page** ("Coming in Phase 4"): not built. |
+| **WhatsApp** | **Deferred by decision, not built.** The page is a labelled stub; no WhatsApp automation exists or is planned for now. |
 
-## Run
+Status of what is *planned only* (not in the code) is listed under [Roadmap](#roadmap-and-what-is-not-supported).
+The full plan is in `spec/roadmap.md`.
+
+## Quickstart (local, single user)
+
+Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), an Anthropic API key, and Google
+Chrome (or Playwright's Chromium) for LinkedIn.
 
 ```bash
-# working directory: /Users/sai/Workspace/Code/sales0
-uv run python -m sales0
+# working directory: the repo root
+cp .env.example .env                   # then set SALES0_ANTHROPIC_API_KEY (and SALES0_ANTHROPIC_WORKSPACE_ID if your key needs it)
+uv sync
+uv run playwright install chromium     # only needed when Google Chrome is not installed
+uv run alembic upgrade head            # create / upgrade the database (the server refuses to start on an old schema)
+uv run python -m sales0                # serves http://127.0.0.1:8765/
 ```
 
-Open http://127.0.0.1:8765/. You land on the Review inbox. Health check:
-http://127.0.0.1:8765/api/health (`db_revision` is `0003_phase1_4_seen_posts`). Logs are JSON
-lines on stdout, one per HTTP request (`"event": "http_request"`) and one per AI call
-(`"event": "llm_call"`, with tokens and USD cost). Session cookies are never logged. Stop
-the server with Ctrl+C.
+You land on the Review inbox. Health check: `http://127.0.0.1:8765/api/health` (reports the
+database revision and which settings are present, never their values). Logs are JSON lines on
+stdout, one per HTTP request and one per AI call (tokens and USD cost); cookies are never logged.
+Stop with Ctrl+C. Next: connect LinkedIn (below), and optionally Gmail ([Gmail OAuth](#gmail-oauth-per-person)).
 
-If the database is not migrated, startup stops with "Run: uv run alembic upgrade head".
+Check an install without the web UI:
 
-### Connecting LinkedIn (one time)
+```bash
+uv run python -m sales0.cli check-llm        # one real Haiku call
+uv run python -m sales0.cli check-browser    # launches the configured browser headless on a throwaway profile
+```
+
+## Accounts and login
+
+**Open mode (default, local).** With no users and no `SALES0_APP_PASSWORD`, there is no login
+and the server only starts on a loopback host (`127.0.0.1`). This is the right mode for one
+person on one machine.
+
+**Bootstrap password.** `SALES0_APP_PASSWORD` is a *bootstrap* secret, not a team password: it
+is the first admin's initial password. Log in with `SALES0_ADMIN_EMAIL` (default
+`admin@smalltech.in`) and that password; sales0 creates that admin account on the first login.
+It only counts while no admin has a password of their own: once one does, the variable is
+ignored and everyone signs in with their own email and password. Starting on a non-loopback
+`SALES0_HOST` is refused unless the password is set. Login turns on as soon as the bootstrap
+password is set or any member has a password; otherwise it is open mode (the Users page shows an "Open mode" warning).
+
+```bash
+SALES0_APP_PASSWORD=choose-a-long-random-password     # in .env, then restart
+```
+
+**Users page (admins).** An admin adds people (name, email, role `admin` or `member`). sales0
+shows a **one-time set-password link** (valid `SALES0_PASSWORD_RESET_TTL_H` hours, shown once,
+nothing is emailed: send it yourself) for that person; they choose their own password (minimum `SALES0_PASSWORD_MIN_LENGTH` characters).
+Passwords are stored only as an argon2id hash. Members cannot open user management (403).
+Each person can change their own password under **Account**; an admin can force a reset (new link).
+Accept/discard/stage changes/sends are credited to the signed-in person on the timeline
+("Accepted by Priya"); older records with no actor show "Team".
+
+Sessions last `SALES0_SESSION_DAYS` (or `SALES0_SESSION_REMEMBER_DAYS` with "remember me");
+repeated wrong passwords for one address + email are throttled (`SALES0_LOGIN_MAX_ATTEMPTS` /
+`SALES0_LOGIN_LOCKOUT_S`). Behind a reverse proxy set `SALES0_TRUSTED_PROXIES` so the throttle
+sees real client addresses ([Reverse proxy](#reverse-proxy-tls)).
+
+## LinkedIn: connecting, running, safety
+
+### Connecting LinkedIn (one time, local)
 
 1. Open **Setup**. The LinkedIn card shows which browser sales0 will use, for example
    "Browser: Google Chrome 156".
@@ -60,44 +108,32 @@ If the database is not migrated, startup stops with "Run: uv run alembic upgrade
 built-in browser". That fallback uses its own profile, `data/linkedin-profile/`. Set
 `SALES0_LINKEDIN_BROWSER_CHANNEL=chrome` if you would rather get an error than the fallback.
 
-**Upgrading from Phase 1:** your Phase-1 login lives in the built-in browser's profile
-(`data/linkedin-profile/`). Google Chrome cannot reuse it, so **press Connect LinkedIn once
-more** and log in in the Chrome window. The card may still say "Connected" from Phase 1; if
-you press Run now before reconnecting, the run stops at once with "Not logged in to LinkedIn
-in sales0's browser — press Connect LinkedIn in Setup". No LinkedIn page is opened and there
-is no penalty. Afterwards, `data/linkedin-profile-fixture/` is unused and can be deleted, and
-`data/linkedin-profile/` can be deleted too unless you might run without Google Chrome.
-
 ### Using it (live LinkedIn)
 
-1. **Upgrading from Phase 1.3:** stop sales0 and run `uv run alembic upgrade head` once (the
-   app refuses to start on an old database and says so). No re-login is needed. Posts the AI
-   had already discarded and you never touched move to **Skipped by AI**; everything you
-   decided stays where it was.
-2. **Setup**: the four default offerings are listed and can be edited. **Keywords** lists 60
+1. **Setup**: the four default offerings are listed and can be edited. **Keywords** lists 60
    buyer-intent phrases ("looking for AI trainer", "corporate AI training", "Claude Code
    trainer", "hiring AI consultant" ...) under the four offerings; edit, switch off or remove
    any. **Add suggested keywords** adds missing ones and never changes what you have ("Added 0 · 60
    already present"). Your own topic keywords stay allowed, but a topic ("agentic AI training")
    mostly finds thought leadership, so prefer buyer phrases. Each keyword shows its yield
    ("Scanned 412 · Relevant 6"); switch off keywords that never yield.
-3. **Connect LinkedIn** once (above).
-4. **Runs → Run now** returns at once and starts a **long background run**. The panel shows
+2. **Connect LinkedIn** once (above).
+3. **Runs → Run now** returns at once and starts a **long background run**. The panel shows
    live counters (Scanned · New to us · Already seen · Relevant · Skipped by AI · Post links)
    and "Keyword 7/40". See "Long runs" below.
-5. **Inbox** shows **only relevant posts** (what the AI judged a genuine buyer, or what you
+4. **Inbox** shows **only relevant posts** (what the AI judged a genuine buyer, or what you
    rescued). Each card shows the summary, the AI verdict with a one-line reason, priority,
    offering, extracted details, a link (**"View post ↗"** or **"Author profile (post link
    unavailable) ↗"**, see below), the full text and the AI cost. **Accept** moves a card to
    Accepted as "Prospect · New". **Discard** asks for a reason. Use the checkboxes for bulk
    accept or discard. Discarded enquiries are kept and can be searched.
-6. **Inbox → Skipped by AI** lists the posts the AI rejected, with the reason, poster type,
+5. **Inbox → Skipped by AI** lists the posts the AI rejected, with the reason, poster type,
    author and how often it was seen. Search by words, reason or author. **Rescue → enquiry**
    moves one to To review (the AI's verdict stays "Discard" so its mistake is visible);
    **Override: accept** rescues and accepts in one click. Both teach the AI. The full text is
    kept for 14 days (`SALES0_SEEN_RAW_RETENTION_DAYS`); after that the row says "text purged"
    and cannot be rescued. A "Triage failed" filter lists posts whose AI call failed, with **Retry triage**.
-7. **Runs → a run** shows the per-keyword log and the cost. The header shows the AI spend
+6. **Runs → a run** shows the per-keyword log and the cost. The header shows the AI spend
    for today and this month.
 
 ### Thorough discovery and long runs (Phase 1.4)
@@ -176,7 +212,7 @@ LinkedIn account. Every page shows a `FIXTURE MODE` badge. The AI triage still m
 Haiku calls. Keep demo data out of your real inbox with a separate demo database:
 
 ```bash
-# working directory: /Users/sai/Workspace/Code/sales0
+# working directory: the repo root
 SALES0_DATABASE_URL=sqlite:///data/demo.db uv run alembic upgrade head
 SALES0_DATABASE_URL=sqlite:///data/demo.db SALES0_LINKEDIN_MODE=fixture uv run python -m sales0
 ```
@@ -197,11 +233,11 @@ several keywords expect the 20–60 s pauses between them. Fixture mode keeps it
 profile (`data/linkedin-profile-fixture-chrome/`, or `…-chromium/` with the built-in browser),
 never your real sales0 login.
 
-## Phase 2: CRM, sheet sync and login
+## CRM and Google Sheet sync
 
 ```bash
-# working directory: /Users/sai/Workspace/Code/sales0
-uv run alembic upgrade head          # once after pulling: adds the CRM tables (one head: p6_crm_5b2e7d14)
+# working directory: the repo root
+uv run alembic upgrade head          # once after pulling
 uv run python -m sales0              # the same run command as always
 ```
 
@@ -217,28 +253,10 @@ book (search, tags, merge duplicates); **Competitors & Groups** are flagged when
 mentions a competitor; **Import** takes a single pasted post (triaged by Haiku like any
 scraped post) or a CSV of data that is not in your Sheets.
 
-**Shared login (`SALES0_APP_PASSWORD`).** Set it in `.env` and restart:
-
-```bash
-SALES0_APP_PASSWORD=choose-a-long-shared-password
-```
-
-Every page then redirects to `/login` (`/api/health` and `/static` stay open); the cookie lasts
-`SALES0_SESSION_DAYS` (default 14), five wrong passwords a minute from one address locks the
-login for a minute, and **Log out** is in the header. Unset or empty = no login, which is only
-accepted on a loopback `SALES0_HOST`: sales0 refuses to start on a public host without a password.
-
 **Google Sheet sync (read-only).** The team's two Sheets are synced into the CRM one way:
 the Sheet is the source of truth for the fields it holds, and everything added in sales0
 (notes, stages you move, tags, follow-ups, timeline) is kept. **sales0 never writes to Google.**
-Settings (all optional, in `.env.example`):
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `SALES0_SHEET_SYNC_MINUTES` | `30` | Interval of the automatic sync (`0` turns it off). It is opt-in on the Schedule/Sync page. |
-| `SALES0_SHEET_CLIENT_SOURCING_ID` / `SALES0_SHEET_METRICS_ID` | the team's two Sheets | Which Sheets to read. They must be readable by "anyone with the link". |
-| `SALES0_SHEET_TABS_JSON` | built-in tab list | Replace the tab list (name, kind, gid). |
-| `SALES0_SHEET_FETCH_TIMEOUT_S` / `_RETRIES` / `_MAX_BYTES` | `20` / `3` / `20000000` | Fetch limits. |
+Settings (all optional) are in the [Configuration](#configuration) table (`SALES0_SHEET_*`). The Sheets must be readable by "anyone with the link".
 
 Open **Sync** in the navigation: it shows the last sync (status, time, per-tab counts of rows /
 added / updated / unchanged / removed / errors, counts only, never cell content) and has
@@ -259,10 +277,374 @@ enquiries are turned into prospects (one per LinkedIn author) with a timeline, s
 Pipeline is not empty after the upgrade. Back up `data/sales0.db` (with its `-wal`/`-shm`)
 first if you want a way back: `uv run alembic downgrade -1` also works.
 
+## Configuration
+
+Every setting is an environment variable with the `SALES0_` prefix, read from the process
+environment and the repo-root `.env` (copy `.env.example`). Blank means "use the default".
+This table is **generated from the code** (`uv run python -m sales0.cli env-docs`) and a unit test fails if it
+drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.md`. Secrets show no value.
+
+<!-- env-docs:start -->
+
+| Variable | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `SALES0_ANTHROPIC_API_KEY` | secret | (secret) | Anthropic API key for triage, research, drafting and the digest summary. Required to start the server. |
+| `SALES0_ANTHROPIC_WORKSPACE_ID` | str | unset | Only when the key is not scoped to a workspace: sent as the `anthropic-workspace-id` header. |
+| `SALES0_LLM_MODEL` | str | `claude-haiku-5-5` | Model slug used for every LLM call. |
+| `SALES0_LLM_MAX_OUTPUT_TOKENS` | int | `900` | Max output tokens per LLM call. |
+| `SALES0_LLM_TIMEOUT_S` | float | `30.0` | Per-call LLM timeout in seconds. |
+| `SALES0_LLM_MAX_RETRIES` | int | `3` | Retries on transient LLM errors. |
+| `SALES0_LLM_PRICE_INPUT_USD_PER_MTOK` | float | `0.1` | Input price (USD per 1M tokens) used for the spend estimate. |
+| `SALES0_LLM_PRICE_OUTPUT_USD_PER_MTOK` | float | `0.5` | Output price (USD per 1M tokens) used for the spend estimate. |
+| `SALES0_HOST` | str | `127.0.0.1` | Bind address. A non-loopback host refuses to start without `SALES0_APP_PASSWORD` (or an existing user account). |
+| `SALES0_PORT` | int | `8765` | Bind port. |
+| `SALES0_DATA_DIR` | str | `data` | Runtime directory: SQLite DB, Chrome profile, secret key, uploads. Put it on a persistent volume when hosted. |
+| `SALES0_DATABASE_URL` | str | `sqlite:///data/sales0.db` | SQLAlchemy URL. SQLite only today; relative file paths resolve against the repo root. Postgres is not supported yet. |
+| `SALES0_TEST_DATABASE_URL` | str | unset | Test-suite only: database URL used by tests instead of a temp file. |
+| `SALES0_GOOGLE_CLIENT_SECRET_PATH` | str | `data/google_client_secret.json` | Google OAuth client JSON (Desktop `installed` or Web `web` type) used for Gmail. |
+| `SALES0_GOOGLE_TOKEN_PATH` | str | `data/google_token.json` | Token file written by the `google-auth` CLI command (single-user fallback; team members' tokens live encrypted in the DB). |
+| `SALES0_SECRET_KEY` | secret | (secret) | Encrypts Gmail tokens and LinkedIn sessions at rest and signs cookies (>= 16 chars or a Fernet key). Unset: generated once into `<data_dir>/secret.key`. Set it explicitly on a server and back it up: losing it makes stored tokens unreadable. |
+| `SALES0_ADMIN_EMAIL` | str | `admin@smalltech.in` | Email of the first admin team member created on an empty database. |
+| `SALES0_ADMIN_NAME` | str | `Admin` | Display name of that first admin. |
+| `SALES0_GMAIL_DAILY_SEND_CAP` | int | `40` | Max outreach emails sent per member per day (0 disables sending). |
+| `SALES0_DECK_MAX_BYTES` | int | `10485760` | Max size of one uploaded deck PDF, in bytes. |
+| `SALES0_PUBLIC_BASE_URL` | str | unset | Public origin when hosted (e.g. `https://sales.example.com`). Builds the Google OAuth redirect (`<url>/oauth/google/callback`, must match a registered redirect URI exactly) and turns on the Secure cookie flag when it starts with `https://`. |
+| `SALES0_GOOGLE_AUTH_ENDPOINT` | str | `https://accounts.google.com/o/oauth2/v2/auth` | Google authorize endpoint (override for tests/proxies). |
+| `SALES0_GOOGLE_TOKEN_ENDPOINT` | str | `https://oauth2.googleapis.com/token` | Google token endpoint (override for tests/proxies). |
+| `SALES0_GOOGLE_USERINFO_ENDPOINT` | str | `https://openidconnect.googleapis.com/v1/userinfo` | Google userinfo endpoint (override for tests/proxies). |
+| `SALES0_GOOGLE_REVOKE_ENDPOINT` | str | `https://oauth2.googleapis.com/revoke` | Google revoke endpoint (override for tests/proxies). |
+| `SALES0_RESEARCH_ALLOW_PRIVATE_HOSTS` | str | empty | Test only: hosts the research fetcher may reach although private. Ignored unless `SALES0_LINKEDIN_MODE=fixture`. |
+| `SALES0_TIMEZONE` | str | `Asia/Kolkata` | IANA timezone for the scheduler, digest and daily caps. |
+| `SALES0_LOG_LEVEL` | DEBUG \| INFO \| WARNING \| ERROR \| CRITICAL | `INFO` | Log level. |
+| `SALES0_LOG_FORMAT` | json \| console | `json` | `json` or `console`. |
+| `SALES0_LOG_FILE` | str | unset | Also write logs to this file (optional). |
+| `SALES0_LINKEDIN_MODE` | live \| fixture | `live` | `live` drives the real LinkedIn; `fixture` uses the local fake site (tests/demo). |
+| `SALES0_LINKEDIN_BROWSER_CHANNEL` | auto \| chrome \| chromium | `auto` | `auto` (installed Chrome, else bundled Chromium), `chrome`, or `chromium`. |
+| `SALES0_LINKEDIN_CONNECT_TIMEOUT_S` | int | `300` | How long the headed LinkedIn login window may stay open. |
+| `SALES0_SAFETY_COOLDOWN_MIN` | int | `60` | Minutes a LinkedIn account stays paused after a rate-limit/captcha stop (0 = off). |
+| `SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN` | int | `15` | Minutes paused after a checkpoint/logout stop. |
+| `SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN` | int | `40` | Max search phrases per discovery run. |
+| `SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD` | int | `80` | Max posts read per phrase. |
+| `SALES0_SCRAPE_MAX_POSTS_PER_DAY` | int | `2000` | Max posts read per day. |
+| `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | int | `4` | Max discovery runs per day. |
+| `SALES0_SCRAPE_DELAY_MIN_S` | float | `3.0` | Min human-like delay between actions (seconds). |
+| `SALES0_SCRAPE_DELAY_MAX_S` | float | `9.0` | Max delay between actions (seconds). |
+| `SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S` | float | `20.0` | Min pause between phrases (seconds). |
+| `SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S` | float | `60.0` | Max pause between phrases (seconds). |
+| `SALES0_SCRAPE_MAX_SCROLLS` | int | `20` | Max scrolls per search pass. |
+| `SALES0_SCRAPE_NO_GROWTH_SCROLLS` | int | `2` | Consecutive scrolls without new cards that end a pass. |
+| `SALES0_SCRAPE_SORT` | latest \| relevance | `latest` | `latest` or `relevance` search ordering. |
+| `SALES0_SCRAPE_DATE_FILTERS` | list | `past-week,past-month` | Comma list of date filters, one search pass each: `past-24h`, `past-week`, `past-month`. |
+| `SALES0_SCRAPE_DATE_FILTER` | str | unset | Legacy single date filter; read only when `SALES0_SCRAPE_DATE_FILTERS` is unset. |
+| `SALES0_SCRAPE_VARIANTS` | bool | `True` | Run extra per-phrase search variants in a daily rotation. |
+| `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` | int | `6` | Cap on search passes per phrase. |
+| `SALES0_SCRAPE_EXPAND_MAX_PER_KEYWORD` | int | `40` | Max "see more" clicks per phrase. |
+| `SALES0_SCRAPE_PERMALINK_MAX_PER_KEYWORD` | int | `15` | Max "Copy link to post" attempts per phrase (0 = off). |
+| `SALES0_FEWSHOT_MAX_EXAMPLES` | int | `6` | Max reviewed examples shown to triage as few-shot context. |
+| `SALES0_FEWSHOT_TEXT_CHARS` | int | `600` | Characters kept per few-shot example. |
+| `SALES0_TRIAGE_MAX_INPUT_CHARS` | int | `4000` | Characters of a post sent to triage. |
+| `SALES0_TRIAGE_CONCURRENCY` | int | `4` | Parallel triage calls. |
+| `SALES0_SEEN_RAW_RETENTION_DAYS` | int | `14` | Days raw seen-post text is kept. |
+| `SALES0_SEED_SUGGESTED_KEYWORDS` | bool | `True` | Seed the suggested search phrases on first run. |
+| `SALES0_REPLY_POLL_MINUTES` | int | `10` | Minutes between Gmail reply checks (0 disables the poller). |
+| `SALES0_REPLY_LOOKBACK_DAYS` | int | `60` | Only sent messages younger than this are polled for replies. |
+| `SALES0_REPLY_MAX_THREADS_PER_POLL` | int | `300` | Max threads checked per member per cycle. |
+| `SALES0_REPLY_OWN_ALIASES` | str | empty | Comma list of extra addresses that are "us" (Send-As aliases); never counted as replies. |
+| `SALES0_SHEET_SYNC_MINUTES` | int | `30` | Minutes between Google Sheet syncs (0 disables). |
+| `SALES0_SHEET_CLIENT_SOURCING_ID` | str | `1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag` | Spreadsheet id of the client-sourcing sheet. |
+| `SALES0_SHEET_METRICS_ID` | str | `1tnwiBRMfp_QR0CmAkxZM_Chl-VAixmcWPxE1NCGED5w` | Spreadsheet id of the metrics sheet. |
+| `SALES0_SHEET_TABS_JSON` | str | unset | Optional JSON list replacing the default tabs: `[{"name","kind","gid","sheet_id"?}]`. |
+| `SALES0_SHEET_FETCH_TIMEOUT_S` | float | `20.0` | Sheet fetch timeout in seconds. |
+| `SALES0_SHEET_FETCH_RETRIES` | int | `3` | Sheet fetch retries. |
+| `SALES0_SHEET_FETCH_MAX_BYTES` | int | `20000000` | Max bytes read from a sheet export. |
+| `SALES0_APP_PASSWORD` | secret | (secret) | Bootstrap password: creates the first admin account when no users exist (and is the shared login until then). Unset = open mode, loopback only. Not a per-user password. |
+| `SALES0_SESSION_DAYS` | int | `14` | Login session lifetime in days. |
+| `SALES0_LOGIN_MAX_ATTEMPTS` | int | `5` | Failed logins per client before lockout. |
+| `SALES0_LOGIN_LOCKOUT_S` | int | `60` | Lockout duration in seconds. |
+| `SALES0_SESSION_REMEMBER_DAYS` | int | `30` | Lifetime of a "remember me" login cookie, in days. |
+| `SALES0_TRUSTED_PROXIES` | str | empty | Comma list of IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for client IPs (login throttle). Empty = never trust it. |
+| `SALES0_PASSWORD_RESET_TTL_H` | int | `24` | Hours an admin-issued set-password link stays valid. |
+| `SALES0_PASSWORD_MIN_LENGTH` | int | `10` | Minimum length of a user password. |
+| `SALES0_LINKEDIN_SESSION_BACKEND` | folder \| db | `folder` | Where NEW LinkedIn accounts keep their session: `folder` (Chrome profile under the data dir) or `db` (encrypted storage state). |
+| `SALES0_FOLLOWUP_DAYS_1` | int | `3` | Days after the first email before follow-up 1 is due. |
+| `SALES0_FOLLOWUP_DAYS_2` | int | `7` | Days before follow-up 2. |
+| `SALES0_FOLLOWUP_DAYS_FINAL` | int | `14` | Days before the final follow-up. |
+| `SALES0_STALE_LEAD_DAYS` | int | `14` | Days without activity before a lead counts as stale. |
+| `SALES0_REPEAT_POSTER_MIN` | int | `3` | Posts needed to flag someone as a repeat poster. |
+| `SALES0_REPEAT_POSTER_DAYS` | int | `60` | Window (days) for the repeat-poster count. |
+| `SALES0_CRM_PAGE_SIZE` | int | `50` | Rows per page in CRM lists. |
+| `SALES0_MONTHLY_SPEND_CAP_USD` | float | `0.0` | Monthly AI spend cap in USD (0 = no cap). Over the cap every LLM feature stops. |
+| `SALES0_SPEND_CAP_WARN_PCT` | int | `80` | Percent of the cap at which a warning shows. |
+| `SALES0_SCHEDULER_ENABLED` | bool | `True` | False = no background scheduler thread (pages still work). |
+| `SALES0_SCHEDULER_POLL_S` | float | `5.0` | Scheduler tick in seconds. |
+| `SALES0_SCHEDULER_WINDOW_START` | str | `01:00` | Nightly discovery window start (local `HH:MM`). |
+| `SALES0_SCHEDULER_WINDOW_END` | str | `05:00` | Nightly discovery window end (local `HH:MM`, same day). |
+| `SALES0_SCHEDULER_DISCOVERY_MAX_RUNS_PER_DAY` | int | `1` | Scheduled discovery runs per day (also bounded by `SALES0_SCRAPE_MAX_RUNS_PER_DAY`). |
+| `SALES0_SCHEDULER_DIGEST_TIME` | str | `07:30` | Local time the daily digest is built. |
+| `SALES0_SCHEDULER_PURGE_TIME` | str | `04:15` | Local time of the nightly purge. |
+| `SALES0_PURGE_RETENTION_DAYS` | int | `90` | Days of raw data kept before purge. |
+| `SALES0_DIGEST_AI_SUMMARY` | bool | `True` | One LLM call adds a short summary to the digest. |
+
+<!-- env-docs:end -->
+
+## Deploying on a single server
+
+sales0 is built as a single-process app (one uvicorn worker, a background scheduler thread,
+SQLite). One server, one process, one persistent data directory. Do not run two instances on
+the same data directory.
+
+### Layout and persistence
+
+- Put **`SALES0_DATA_DIR`** (an absolute path, for example `/var/lib/sales0`) on a persistent
+  disk or volume. It holds the SQLite database (`sales0.db`, plus `-wal` and `-shm`), uploaded
+  decks, the generated `secret.key` (when `SALES0_SECRET_KEY` is unset), Chrome profiles for
+  LinkedIn accounts, and logs if you point `SALES0_LOG_FILE` there. Relative paths resolve
+  against the repo root, so set absolute paths on a server.
+- Set `SALES0_DATABASE_URL=sqlite:////var/lib/sales0/sales0.db` (four slashes = absolute path).
+- Set `SALES0_SECRET_KEY` explicitly (for example `openssl rand -base64 48`) and keep a copy
+  outside the server. It encrypts Gmail tokens and stored LinkedIn sessions; if it is lost
+  those become unreadable and every member must reconnect.
+- Apply schema changes before starting a new version: `uv run alembic upgrade head`.
+
+### systemd
+
+`/etc/systemd/system/sales0.service` (paths and user are examples):
+
+```ini
+[Unit]
+Description=sales0
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sales0
+Group=sales0
+WorkingDirectory=/opt/sales0
+EnvironmentFile=/etc/sales0.env
+ExecStartPre=/usr/local/bin/uv run --frozen alembic upgrade head
+ExecStart=/usr/local/bin/uv run --frozen python -m sales0
+Restart=on-failure
+RestartSec=5
+# modest hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/sales0 /opt/sales0
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/sales0.env` (mode 600, owned by root or `sales0`) holds the same `KEY=value` lines as
+`.env`: at minimum `SALES0_ANTHROPIC_API_KEY`, `SALES0_SECRET_KEY`, `SALES0_DATA_DIR`,
+`SALES0_DATABASE_URL`, `SALES0_APP_PASSWORD`, `SALES0_PUBLIC_BASE_URL`, `SALES0_TRUSTED_PROXIES`.
+Then `systemctl daemon-reload && systemctl enable --now sales0`, and `journalctl -u sales0 -f`.
+Adjust `ReadWritePaths` if your data directory is elsewhere. This unit is a template that has not been
+run against a real server here; check paths, the `uv` location and permissions on first use.
+
+### Docker (sketch, untested)
+
+There is no Dockerfile in the repo. A sketch, **untested**, to adapt:
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install uv
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+COPY . .
+RUN uv run playwright install --with-deps chromium
+ENV SALES0_HOST=0.0.0.0 SALES0_DATA_DIR=/data SALES0_DATABASE_URL=sqlite:////data/sales0.db
+VOLUME /data
+EXPOSE 8765
+CMD ["sh", "-c", "uv run alembic upgrade head && uv run python -m sales0"]
+```
+
+Run with `-v sales0-data:/data --env-file sales0.env -p 127.0.0.1:8765:8765` and put a TLS
+reverse proxy in front. Binding `0.0.0.0` inside the container requires `SALES0_APP_PASSWORD`
+(startup refuses otherwise). Keep `/data` on a named volume or host path, never in the image layer.
+
+### Reverse proxy (TLS)
+
+Terminate TLS at a proxy (Caddy, nginx, a cloud load balancer) and forward to sales0 on
+`127.0.0.1:8765`. Set:
+
+- `SALES0_PUBLIC_BASE_URL=https://sales.example.com`: used to build the Google OAuth redirect
+  and, when it starts with `https://`, marks the session cookies `Secure`.
+- `SALES0_TRUSTED_PROXIES=127.0.0.1` (the proxy's address, or a CIDR): only then is
+  `X-Forwarded-For` trusted for the client address used by the login throttle. Leave it empty
+  when sales0 faces clients directly, otherwise anyone could spoof their address.
+- **Always set `SALES0_APP_PASSWORD` and create user accounts on a server**, even though sales0
+  itself listens on loopback behind the proxy: a loopback bind with nothing configured is "open
+  mode", and the proxy would expose it to the internet.
+
+Caddy example:
+
+```
+sales.example.com {
+    reverse_proxy 127.0.0.1:8765
+}
+```
+
+### Backups (SQLite)
+
+The database runs in WAL mode, so copying `sales0.db` with `cp` while the app runs can produce a
+broken backup (committed data may still sit in `sales0.db-wal`). Use SQLite's online backup,
+which is consistent and safe while the server is running:
+
+```bash
+mkdir -p /var/backups/sales0
+sqlite3 /var/lib/sales0/sales0.db ".backup '/var/backups/sales0/sales0-$(date +%F-%H%M).db'"
+sqlite3 /var/backups/sales0/sales0-<stamp>.db "PRAGMA integrity_check;"     # expect: ok
+```
+
+The backup file is a single self-contained database; you do not copy `-wal`/`-shm` with it.
+If the `sqlite3` CLI is not installed, the same thing with Python:
+
+```bash
+uv run python - <<'PY'
+import sqlite3, datetime
+src = sqlite3.connect("/var/lib/sales0/sales0.db")
+dst = sqlite3.connect(f"/var/backups/sales0/sales0-{datetime.datetime.now():%F-%H%M}.db")
+src.backup(dst); dst.close(); src.close()
+PY
+```
+
+Also back up the rest of the data dir that is not in the database: `secret.key` (if you did not
+set `SALES0_SECRET_KEY`), `decks/` and your `.env`/`/etc/sales0.env`. Cron (daily at 02:30, keep 14 days):
+
+```cron
+30 2 * * * sales0 sqlite3 /var/lib/sales0/sales0.db ".backup '/var/backups/sales0/sales0-$(date +\%F).db'" && find /var/backups/sales0 -name 'sales0-*.db' -mtime +14 -delete
+```
+
+Copy the backups off the machine (object storage, another host). Restore:
+
+```bash
+systemctl stop sales0
+cd /var/lib/sales0
+mv sales0.db sales0.db.broken; rm -f sales0.db-wal sales0.db-shm   # stale WAL files must not be mixed with a restored file
+cp /var/backups/sales0/sales0-<stamp>.db sales0.db
+chown sales0:sales0 sales0.db
+sqlite3 sales0.db "PRAGMA integrity_check;"
+uv run alembic upgrade head        # from /opt/sales0, in case the backup is from an older version
+systemctl start sales0
+```
+
+Before upgrading the app or running a migration, take a backup first; `alembic downgrade -1` exists but a backup is the safe way back.
+
+## Gmail OAuth (per person)
+
+Each person who sends outreach connects **their own** Gmail on the **Team** page; mail always
+goes out from their own address. The refresh token is stored encrypted in the database
+(`SALES0_SECRET_KEY`). The app requests `gmail.modify` (drafts, send, read for reply tracking,
+trash for test cleanup), `openid` and the account email. Reply tracking only reads.
+
+One-time Google Cloud setup (details and error table in [docs/gmail-setup.md](docs/gmail-setup.md)):
+
+1. Create a project, enable the **Gmail API**.
+2. **OAuth consent screen**: for a Google Workspace domain choose **Internal** (no Google review,
+   only users in your domain). For personal `@gmail.com` accounts choose External + **Testing**
+   and add each person under *Test users* (Testing-mode refresh tokens expire after 7 days).
+3. **Credentials -> Create OAuth client ID**, then download the JSON to
+   `SALES0_GOOGLE_CLIENT_SECRET_PATH` (default `data/google_client_secret.json`):
+   - **Local use:** type *Desktop app*. The JSON has an `installed` block. Google allows
+     `http://127.0.0.1` / `localhost` on any port, so open sales0 on `http://127.0.0.1:<port>/team`
+     and press *Connect my Gmail*.
+   - **Hosted:** type **Web application**. The JSON has a `web` block. Add this exact value under
+     *Authorized redirect URIs* (scheme, host, path, no trailing slash must all match):
+     `<SALES0_PUBLIC_BASE_URL>/oauth/google/callback`, for example
+     `https://sales.example.com/oauth/google/callback`. Set `SALES0_PUBLIC_BASE_URL` to the
+     public origin and restart. A Desktop client cannot be used for a hosted deployment because
+     Google only accepts loopback redirects for it.
+4. Open **Team**, sign in as the person, press **Connect my Gmail**. The Team page shows the exact
+   redirect URI to register when `SALES0_PUBLIC_BASE_URL` is set. If the redirect is not in the
+   JSON's `redirect_uris`, or a Desktop client is used with a public URL, the Connect press shows
+   a clear error naming the URI instead of sending you to a Google error page. The connecting
+   Google account must match the member's email.
+
+The single-user CLI path (`uv run python -m sales0.cli google-auth`) still works with a Desktop client.
+`gmail.modify` is a *restricted* scope: Internal apps are exempt, but an External app used by
+people outside one domain needs Google's OAuth verification (see the roadmap).
+
+## LinkedIn on a server
+
+LinkedIn is the fragile part of a hosted setup:
+
+- A server has no screen, so the headed Chrome login window cannot be used. On the **Setup**
+  page add a LinkedIn account by **pasting the `li_at` cookie** from a browser where you are
+  logged in (browser dev tools -> Application -> Cookies -> `li_at`). The session is stored
+  encrypted in the database (an account created from a pasted cookie uses the `db` backend; `SALES0_LINKEDIN_SESSION_BACKEND`
+  picks the backend for other new accounts, and the default local account keeps using the Chrome profile folder). sales0 validates the cookie with one feed visit before marking the account connected. Treat the cookie
+  like a password; it is shown nowhere after saving. When LinkedIn invalidates it, paste a new one.
+- Install the browser on the server: `uv run playwright install --with-deps chromium`.
+- **Datacentre IPs are suspicious to LinkedIn** and are more likely to trigger checkpoints and
+  captchas than a home or office connection. The intended setup is a **fixed proxy per LinkedIn account**
+  (a residential/ISP address that always belongs to that account, never rotating); each account can pin its
+  own proxy URL, user agent, locale, timezone and viewport, and the browser applies them. **Planned:** there
+  is no Setup form field for these pins yet (they are set through the service layer only), so today a hosted
+  install runs from the server's own address.
+- **Terms of service risk.** Automated access to LinkedIn is against LinkedIn's terms and can get the
+  account restricted. sales0 keeps to your own logged-in session, human-like pacing, daily caps and
+  stops at the first sign of trouble, but the risk is yours; do not use an account you cannot afford to lose.
+- A streamed **remote-browser login** (log in through a browser window shown inside sales0) is *future
+  work*, not built.
+
+## Roadmap and what is not supported
+
+Not supported today (do not rely on these):
+
+- **PostgreSQL.** SQLite only. The database layer is SQLAlchemy and Alembic, so a Postgres move is
+  possible, but migrations, locking and the single-process job runner are written and tested for SQLite. Future.
+- **More than one process / worker** on the same data directory.
+- **Multi-tenant (several companies in one install).** Planned, none of it exists yet:
+  a tenant/workspace id on every table (a cheap migration: the names are already tenant-neutral and data goes
+  through services), Postgres, object storage for decks and uploads instead of the local disk, a worker queue
+  instead of the in-process scheduler thread, per-tenant proxies and Gmail/LinkedIn accounts, and **Google OAuth app
+  verification** (including the restricted-scope security assessment for `gmail.modify`) for external domains.
+- **WhatsApp** ingestion: deferred by decision. **Metrics** page: stub.
+- **Remote-browser LinkedIn login:** future (use the paste-`li_at` fallback).
+
+## Security notes
+
+- **Secret key.** `SALES0_SECRET_KEY` derives the encryption key for Gmail tokens and stored LinkedIn
+  sessions and the key that signs cookies. Set it explicitly, keep it out of git, back it up. Rotating it invalidates
+  stored tokens and sessions.
+- **Cookies.** The login session cookie is HttpOnly, SameSite=Lax and carries the `Secure` flag when
+  `SALES0_PUBLIC_BASE_URL` starts with `https://` (the session id is stored server-side only as a hash). The
+  signed "acting as" and flash cookies are HttpOnly + SameSite=Lax but are not marked `Secure`. Serve hosted
+  installs over HTTPS only.
+- **CSRF.** Unsafe requests (POST etc.) must come from the app's own origin; the OAuth callback is protected by a
+  single-use `state` bound to the signed-in person.
+- **Login throttle.** Failed logins per client address and email are limited and then locked out for a while; the
+  address comes from `X-Forwarded-For` only for proxies in `SALES0_TRUSTED_PROXIES`.
+- **Passwords** are stored as argon2id hashes; set-password links are single-use and expire.
+- **Encrypted at rest:** Gmail refresh tokens and LinkedIn session state in the database.
+- **NOT protected:** the SQLite file itself is not encrypted (it holds enquiry text, contacts, drafted
+  emails; use disk encryption and file permissions); logs and backups are plain files; `.env` / `/etc/sales0.env`
+  contains the Anthropic key in clear text; anyone with shell access to the server can read everything; there is no
+  audit trail beyond the CRM timeline; the research fetcher blocks private network addresses but runs on your server.
+- **Personal data.** Enquiries and contacts are personal data. Fixtures in this repo are synthetic.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `sales0: SALES0_ANTHROPIC_API_KEY is missing` | Add the key to `.env` / the service environment file. |
+| `Set SALES0_APP_PASSWORD before binding to a public host` | You set a non-loopback `SALES0_HOST`; set a password (or bind to `127.0.0.1` behind a proxy and still set one). |
+| `Run: uv run alembic upgrade head` at start | The database is older than the code; run the migration (back up first). |
+| Gmail "redirect_uri_mismatch" from Google | The redirect URI sales0 sent is not registered on the *Web application* client. Copy the exact URI from the Team page into Authorized redirect URIs. |
+| "Desktop app client ... only allows loopback" on Connect | You set `SALES0_PUBLIC_BASE_URL` with a Desktop client JSON. Create a Web application client. |
+| "Google returned no refresh token" | Remove sales0 at https://myaccount.google.com/permissions and connect again. |
+| Gmail connection "needs reauth" after 7 days | Testing-mode consent screen; publish the app, or use an Internal app on Workspace. |
+| Everyone gets locked out of login behind a proxy | `SALES0_TRUSTED_PROXIES` is unset, so all users share the proxy's address. Set it to the proxy IP. |
+| LinkedIn light turns red / "needs attention" | A checkpoint, captcha, rate limit or logout stopped the run on purpose. Resolve it on LinkedIn, then Connect again (or paste a fresh `li_at`); the cool-down must also pass. |
+| Stored Gmail/LinkedIn secrets stopped working after a restore | The `SALES0_SECRET_KEY` (or `data/secret.key`) differs from the one that encrypted them. Restore the right key or reconnect. |
+| No scheduled run / digest | `SALES0_SCHEDULER_ENABLED`, the per-job switches on the **Schedule** page (opt-in), and the server timezone. |
+
 ## Tests
 
 ```bash
-# working directory: /Users/sai/Workspace/Code/sales0
+# working directory: the repo root
 uv run pytest tests/unit -q          # pure unit tests: no network, no browser
 uv run pytest tests/integration -q   # real SQLite files, real headless Chromium + headless Google Chrome, real Haiku (the pipeline tests use a fake-LLM oracle; ~10-15 min)
 uv run pytest tests/e2e -q           # live servers on ports 8766 / 8792 (Phase 2 journey) + headless Chromium + real Haiku

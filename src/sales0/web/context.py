@@ -64,6 +64,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Suggestions", "/suggestions", None),
     ("Costs", "/costs", None),
     ("Schedule", "/schedule", None),
+    ("Users", "/users", None),
     ("WhatsApp", "/whatsapp", 5),
 )
 
@@ -82,9 +83,11 @@ POSTER_TYPE_LABELS = {
 }
 
 
-def nav_items(path: str, due: int = 0) -> list[NavItem]:
+def nav_items(path: str, due: int = 0, *, admin: bool = False) -> list[NavItem]:
     items = []
     for label, href, phase in NAV:
+        if href == "/users" and not admin:
+            continue  # admins only
         active = path == href or path.startswith(href + "/")
         shown: str = label
         if href == "/pipeline" and due > 0:
@@ -134,16 +137,29 @@ def status_light_view(session: SessionStatusView) -> dict[str, Any]:
 
 def shell_context(request: Request, db: Session) -> dict[str, Any]:
     session = session_service.session_status(db)
-    acting_member = acting_service.resolve_acting_member(db, request.cookies.get(acting_service.COOKIE_NAME))
+    resolution = acting_service.resolve(
+        db,
+        auth_enabled=bool(getattr(request.state, "auth_enabled", False)),
+        login_member_id=getattr(request.state, "login_member_id", None),
+        raw_cookie=request.cookies.get(acting_service.COOKIE_NAME),
+    )
+    acting_member = resolution.acting
+    login_member = resolution.login
+    real = login_member or acting_member  # the real user's rights decide admin pages, not the acted-as member
+    is_admin = bool(real is not None and real.role == "admin")
     due = due_count(db)
     return {
+        "login_member": login_member,
+        "is_admin": is_admin,
+        "open_mode": not bool(getattr(request.state, "auth_enabled", False)),
+        "can_act_as": login_member is None or login_member.role == "admin",
         "due_count": due,
         "acting_member": acting_member,
         "team_members": members_service.list_members(db, include_inactive=False),
         "session": session,
         "cost": costs_service.cost_summary(db),
         "active_run": runs_service.active_run(db),
-        "nav": nav_items(request.url.path, due),
+        "nav": nav_items(request.url.path, due, admin=is_admin),
         "banner": banner_text(session),
         "spend_cap": costs_report.spend_cap_status(db),
         "mode": get_settings().linkedin_mode,
