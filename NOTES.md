@@ -44,3 +44,9 @@ Branch: feature/sales0-20261027-1816-v0.1 (base: main)
 - **Cause:** LinkedIn serves the SDUI results page in more than one markup variant per load. One has no `data-view-name` at all, so the Phase 1.2 reader (keyed on `feed-full-update`) found nothing. A single capture had looked representative and wasn't.
 - **Fix:** third card tier (`listitem`): `role=listitem` holding an expandable text box or an "Open control menu for post by <Name>" button; name from that label, headline/time from text nodes before the post text. It is also used when the other tiers yield no post text. No permalink capture on this tier (profile link instead).
 - **Lesson:** reproduce through the app's own run path (not a one-shot page load) before declaring a parser fixed, and key parsers on visible structure (roles, aria-labels, test ids), never on a single vendor attribute. Verified live: 9/9 posts, no drift.
+
+## Sheet-sync engine (branch feature/sales0-sheetsync, parallel builder)
+- Assumed: engine is CRM-independent behind `SheetRepository`; entities are `enquiry|discarded|prospect|competitor|group|metric`; Outreach/Prospects/Working Sheet all map to entity `prospect` (one row per person, one source per tab).
+- Assumed: allow the export's 307 download host (`doc-*-sheets.googleusercontent.com`, GET only) in the read-only guard; the two hosts named in the brief are insufficient for a real export.
+- Real-sheet quirks found live (all fixed + synthetic regression cases): Secondary tab has a group label column and a blank-header metric column; Discarded tab ends with pre-filled Status-only rows; two Active rows share one post link; a profile URL typed into "Contact Number"; a `lnkd.in` short link in "Linkedin ID".
+- Migration `0003_sheet_sync_state` is chained on 0002; three Phase-1 tests pin head == 0002 (test_migration_0002 x2, test_boot x1) and fail on this branch until the integrator re-chains/updates them.

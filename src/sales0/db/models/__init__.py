@@ -17,6 +17,7 @@ from sales0.db.models.llm_calls import LlmCall
 from sales0.db.models.meta import AppMeta
 from sales0.db.models.offerings import Offering, OfferingGroup
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
+from sales0.db.models.sheet_sync import SheetSyncState
 from sales0.db.models.users import User
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "OfferingGroup",
     "ScrapeRun",
     "ScrapeRunKeyword",
+    "SheetSyncState",
     "StatusHistory",
     "TriageDecision",
     "UTCDateTime",
