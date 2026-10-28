@@ -66,6 +66,16 @@ def search_url(base: str, keyword: str, date_filter: str, sort: Literal["latest"
     return f"{base}/search/results/content/?{query}"
 
 
+def profile_activity_url(base: str, slug: str) -> str:
+    """The page listing a tracked profile's posts: ``in/<x>`` -> .../in/<x>/recent-activity/all/,
+    ``company/<x>`` -> .../company/<x>/posts/. ValueError for anything else."""
+    kind, _, name = slug.partition("/")
+    if kind not in ("in", "company") or not name or "/" in name:
+        raise ValueError(f"Not a profile slug: {slug!r}")
+    q = quote(name, safe="-_.~%")
+    return f"{base}/in/{q}/recent-activity/all/" if kind == "in" else f"{base}/company/{q}/posts/"
+
+
 # --------------------------------------------------------------------------- site rules
 def strip_fixture_prefix(path: str) -> str:
     """``/__fixtures/linkedin/feed/`` → ``/feed/``; any other path is returned unchanged."""

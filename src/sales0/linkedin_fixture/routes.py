@@ -256,6 +256,33 @@ def search(
     return _sdui_page(request, keywords, sdui_cards(posts_for(key), key))
 
 
+def _activity_page(request: Request, kind: str, slug: str) -> Response:
+    """A fake profile's posts page (prospect watch)."""
+    if not _logged_in(request):
+        return _to(request, "fixture_authwall")
+    from sales0.linkedin_fixture import watch
+
+    key = slug.lower()
+    if key == watch.CHECKPOINT_PROFILE:
+        return _to(request, "fixture_checkpoint")
+    if key == watch.RATELIMIT_PROFILE:
+        return _page(request, "ratelimit.html", status_code=429)
+    posts = watch.watch_posts(kind, key)
+    if posts is None:
+        return _page(request, "post.html", status_code=404, post=None)
+    return _sdui_page(request, f"activity {kind}/{key}", sdui_cards(posts, "activity", force_copy_link="none"))
+
+
+@router.get("/in/{slug}/recent-activity/all/", name="fixture_person_activity")
+def person_activity(request: Request, slug: str) -> Response:
+    return _activity_page(request, "in", slug)
+
+
+@router.get("/company/{slug}/posts/", name="fixture_company_posts")
+def company_posts(request: Request, slug: str) -> Response:
+    return _activity_page(request, "company", slug)
+
+
 @router.get("/voyager/api/search/dash/clusters", name="fixture_voyager_clusters")
 def voyager_clusters(request: Request) -> Response:
     """A background API LinkedIn's search page calls; here it is always throttled."""

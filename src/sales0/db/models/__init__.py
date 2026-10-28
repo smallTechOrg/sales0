@@ -20,7 +20,7 @@ from sales0.db.models.profiles import LinkedinProfile
 from sales0.db.models.ops import Digest, ScheduledJob, Suggestion
 from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
 from sales0.db.models.replies import OutreachReply, ReplyPollState, Suppression
-from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
+from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword, WatchRun
 from sales0.db.models.seen_posts import SeenPost
 from sales0.db.models.team import GmailConnection, TeamMember
 from sales0.db.models.sheet_sync import SheetSyncState
@@ -59,5 +59,6 @@ __all__ = [
     "TriageDecision",
     "UTCDateTime",
     "User",
+    "WatchRun",
     "enums",
 ]

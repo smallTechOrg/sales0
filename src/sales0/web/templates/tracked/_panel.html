@@ -1,0 +1,44 @@
+{# Needs: run (RunView|None), active (bool), error (DomainError|None), due (int), log (list[WatchLogRow]), caps. #}
+<section id="watch-panel" class="card" aria-labelledby="watch-panel-title" aria-live="polite"
+  {% if active %}data-run-id="{{ run.id }}" data-status="{{ run.status }}" hx-get="/tracked/runs/{{ run.id }}/progress" hx-trigger="every 1s" hx-swap="outerHTML"{% elif run %}data-run-id="{{ run.id }}" data-status="{{ run.status }}"{% endif %}>
+  <div class="card__header">
+    <h2 id="watch-panel-title">{% if active %}Watch in progress{% else %}Run watch{% endif %}</h2>
+    {% if run %}<a class="btn btn--ghost btn--sm" href="/runs/{{ run.id }}">Run #{{ run.id }} details</a>{% endif %}
+  </div>
+  <div class="card__body stack stack--tight">
+    {% if active %}
+      <progress id="watch-progress" class="progress" max="{{ [run.keywords_planned, 1] | max }}" value="{{ run.keywords_done }}">{{ run.keywords_done }}/{{ run.keywords_planned }}</progress>
+      <p class="row"><span class="spinner" aria-hidden="true"></span><span class="run-step">{{ run.current_step or "Opening the browser..." }}</span></p>
+      <p class="muted">Profile {{ [run.keywords_done + 1, run.keywords_planned] | min }}/{{ run.keywords_planned }}. The pauses between profiles are deliberate - they keep the visits human-paced.</p>
+    {% else %}
+      {% if run %}
+        <div class="outcome outcome--{{ 'ok' if run.status == 'succeeded' else ('warn' if run.status == 'aborted' and not run.abort_reason else 'error') }}" data-run-status="{{ run.status }}">
+          <p><strong>Watch run #{{ run.id }} {{ run.status }}</strong>{% if run.error_message %} - {{ run.error_message }}{% endif %}</p>
+          <p class="muted watch-summary">{{ run.current_step or "" }}</p>
+        </div>
+      {% endif %}
+      <div class="row">
+        <form method="post" action="/tracked/run" hx-post="/tracked/run" hx-target="#watch-panel" hx-swap="outerHTML">
+          <button id="watch-run-now" class="btn btn--primary" type="submit" hx-disabled-elt="this" {% if error %}disabled aria-describedby="watch-run-reason"{% endif %}>Run watch now</button>
+        </form>
+        {% if error %}<span id="watch-run-reason" class="field__error" data-reason-code="{{ error.code }}">{{ error.message }}</span>{% endif %}
+      </div>
+      <p class="muted">{{ due }} profile{{ "" if due == 1 else "s" }} due now - up to {{ caps.max_profiles }} per run, each at most once per {{ caps.min_days }} days, max {{ caps.max_posts }} posts per profile. Profile visits count against the daily post limit.</p>
+    {% endif %}
+    {% if log %}
+      <div class="table-wrap">
+        <table class="table" id="watch-log">
+          <thead><tr><th scope="col">Profile</th><th scope="col">Result</th><th scope="col" class="num">Posts seen</th><th scope="col" class="num">New</th><th scope="col" class="num">Relevant</th><th scope="col" class="num">Errors</th><th scope="col">Note</th></tr></thead>
+          <tbody>
+            {% for r in log %}
+              <tr data-slug="{{ r.slug }}" data-status="{{ r.status }}">
+                <td>{{ r.slug }}</td><td>{{ r.status }}</td><td class="num">{{ r.posts_seen }}</td><td class="num">{{ r.posts_new }}</td>
+                <td class="num">{{ r.posts_relevant }}</td><td class="num">{{ r.errors }}</td><td class="muted">{{ r.message or "" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</section>

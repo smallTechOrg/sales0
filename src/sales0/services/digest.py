@@ -338,6 +338,20 @@ def _cost_today(db: Session, w: Window) -> SectionResult:
     return SectionResult(items, stats)
 
 
+def _tracked_profile_hits(db: Session, w: Window) -> SectionResult:
+    from sales0.services import tracked_profiles
+
+    hits = tracked_profiles.hits_since(db, w.start, w.end)
+    items: list[Item] = [
+        {"text": f"{name} posted a new requirement", "href": f"/inbox?q=&tab=review#enquiry-{eid}"} for name, eid, _pid in hits[:LIST_CAP]
+    ]
+    return SectionResult(
+        items,
+        {"hits": len(hits), "profiles": len({pid for _n, _e, pid in hits})},
+        "No new posts from tracked profiles in the last 24 hours.",
+    )
+
+
 def _register_builtins() -> None:
     for order, key, title, fn in (
         (
@@ -349,6 +363,7 @@ def _register_builtins() -> None:
         (20, "awaiting_review", "Awaiting review", _awaiting_review),
         (30, "outreach", "Outreach", _outreach),
         (40, "scrape_health", "Discovery health", _scrape_health),
+        (45, "tracked_profile_hits", "Tracked-profile hits", _tracked_profile_hits),
         (50, "cost_today", "AI cost", _cost_today),
     ):
         register_section(DigestSection(key, title, order, fn))

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Tracked profiles{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Tracked profiles</h1>
+      <p>LinkedIn profiles whose new posts are checked for fresh requirements. A watch run visits the profiles that are due, least recently checked first, and triages new posts exactly like discovery.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+<div class="stack">
+  {% if flash %}<div class="flash flash--{{ flash.kind }}" role="status">{{ flash.message }}</div>{% endif %}
+  {% include "tracked/_panel.html" %}
+  <section class="card" aria-labelledby="tracked-title">
+    <div class="card__header"><h2 id="tracked-title">Profiles ({{ profiles | length }})</h2></div>
+    <div class="card__body">{% include "tracked/_list.html" %}</div>
+  </section>
+</div>
+{% endblock %}

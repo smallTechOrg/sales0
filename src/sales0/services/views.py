@@ -201,6 +201,9 @@ class EnquiryCardView(_View):
     author_profile_url: str | None = None
     # Phase 1.5
     ai_opportunity_type: str | None = None
+    # Prospect watch
+    author_profile_id: int | None = None
+    author_tracked: bool = False
 
 
 class SkippedPostView(_View):

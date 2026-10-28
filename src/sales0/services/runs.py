@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sales0.clock import ensure_utc, local_day_bounds_utc, local_now, utcnow
 from sales0.config import get_settings
 from sales0.db.engine import session_scope
-from sales0.db.models import Keyword, LlmCall, ScrapeRun, ScrapeRunKeyword, StatusHistory
+from sales0.db.models import Keyword, LlmCall, ScrapeRun, ScrapeRunKeyword, StatusHistory, WatchRun
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.logging import get_logger
@@ -205,11 +205,13 @@ def active_run(db: Session) -> RunView | None:
 # ---------------------------------------------------------------------- eligibility
 def _day_counts(db: Session, now: datetime) -> tuple[int, int]:
     start, end = local_day_bounds_utc(get_settings().tz, now)
-    runs_today, posts_today = db.execute(
-        select(func.count(ScrapeRun.id), func.coalesce(func.sum(ScrapeRun.posts_seen), 0)).where(
-            ScrapeRun.started_at >= start, ScrapeRun.started_at < end
-        )
-    ).one()
+    in_day = (ScrapeRun.started_at >= start, ScrapeRun.started_at < end)
+    # Prospect-watch runs use the SAME daily post cap (their scanned posts count) but are not
+    # discovery runs, so they never use up the daily run allowance.
+    runs_today = db.scalar(
+        select(func.count(ScrapeRun.id)).where(*in_day, ScrapeRun.id.not_in(select(WatchRun.run_id)))
+    )
+    posts_today = db.scalar(select(func.coalesce(func.sum(ScrapeRun.posts_seen), 0)).where(*in_day))
     return int(runs_today or 0), int(posts_today or 0)
 
 
@@ -271,8 +273,11 @@ def cooldown_reason(until: datetime, now: datetime | None = None) -> str:
     return f"{COOLDOWN_REASON_PREFIX}{cooldown_clock(until, now)}"
 
 
-def _check(db: Session, now: datetime) -> tuple[DomainError | None, int, int]:
-    """The first reason a run cannot start (api.md order), plus today's counts."""
+def _check(db: Session, now: datetime, *, watch: bool = False) -> tuple[DomainError | None, int, int]:
+    """The first reason a run cannot start (api.md order), plus today's counts.
+
+    ``watch=True`` (prospect-watch run): same overlap / session / cool-down / post-cap rules, but it
+    needs no keywords and does not consume the daily run allowance."""
     settings = get_settings()
     runs_today, posts_today = _day_counts(db, now)
     error: DomainError | None = None
@@ -295,9 +300,9 @@ def _check(db: Session, now: datetime) -> tuple[DomainError | None, int, int]:
         error = DomainError("not_connected", "Connect LinkedIn first (Setup → Connect LinkedIn).", 409)
     elif busy is not None:
         error = job_busy_error(busy)
-    elif _active_keyword_count(db) == 0:
+    elif not watch and _active_keyword_count(db) == 0:
         error = DomainError("no_keywords", "Add at least one active keyword in Setup.", 409)
-    elif runs_today >= settings.scrape_max_runs_per_day:
+    elif not watch and runs_today >= settings.scrape_max_runs_per_day:
         error = DomainError(
             "daily_run_cap",
             f"Daily run limit reached ({runs_today}/{settings.scrape_max_runs_per_day}). "
@@ -374,7 +379,10 @@ def plan_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
     chosen: list[tuple[int, str]] = []
     seen: set[int] = set()
     previous = db.scalar(
-        select(ScrapeRun).where(ScrapeRun.status.not_in(ACTIVE_STATUSES)).order_by(ScrapeRun.id.desc()).limit(1)
+        select(ScrapeRun)
+        .where(ScrapeRun.status.not_in(ACTIVE_STATUSES), ScrapeRun.id.not_in(select(WatchRun.run_id)))
+        .order_by(ScrapeRun.id.desc())
+        .limit(1)
     )
     if previous is not None:
         rows = db.execute(

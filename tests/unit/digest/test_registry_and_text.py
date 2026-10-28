@@ -20,7 +20,7 @@ def clean_registry() -> Iterator[None]:
 
 def test_builtin_sections_are_in_display_order() -> None:
     assert [s.key for s in dg.sections()] == [
-        "new_relevant_enquiries", "awaiting_review", "outreach", "scrape_health", "cost_today",
+        "new_relevant_enquiries", "awaiting_review", "outreach", "scrape_health", "tracked_profile_hits", "cost_today",
     ]  # fmt: skip
 
 

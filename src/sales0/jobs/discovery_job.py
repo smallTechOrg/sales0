@@ -608,6 +608,18 @@ def _execute(
                 if posts_seen_today(db) >= settings.scrape_max_posts_per_day and index < len(rows):
                     cap_hit = True
                     break
+            if settings.watch_append_to_discovery and state.fatal_llm is None and not cap_hit:
+                # Prospect watch appended to this run (same browser session, same caps and cool-down).
+                from sales0.jobs import watch_job
+
+                watch_state = watch_job._WatchRun(db, run_id, settings, llm, sleep, rng)
+                watch_rows = watch_job.plan_rows(db, run_id)
+                rows.extend(watch_rows)
+                run.keywords_planned += len(watch_rows)
+                db.commit()
+                if watch_rows:
+                    cap_hit = watch_job.watch_phase(watch_state, searcher, watch_rows, sleep, rng, pause_first=True)
+                    state.fatal_llm = watch_state.fatal_llm
     except SessionMissing as missing:
         db.rollback()
         session_missing = True

@@ -31,6 +31,17 @@ class ReplyReceived:
     failed_recipients: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class TrackedProfileHit:
+    """A tracked LinkedIn profile posted a new relevant requirement (prospect watch).
+
+    Phase 2 (CRM) subscribes to attach the enquiry to the prospect owning ``profile_id``."""
+
+    profile_id: int
+    enquiry_id: int
+    run_id: int | None = None
+
+
 Handler = Callable[[Session, Any], None]
 _lock = threading.Lock()
 _subscribers: dict[type, list[Handler]] = {}
@@ -76,4 +87,4 @@ def reset() -> None:
         _subscribers.clear()
 
 
-__all__ = ["ReplyReceived", "publish", "reset", "subscribe", "subscribers", "unsubscribe"]
+__all__ = ["ReplyReceived", "TrackedProfileHit", "publish", "reset", "subscribe", "subscribers", "unsubscribe"]

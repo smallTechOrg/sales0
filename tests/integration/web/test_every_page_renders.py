@@ -40,7 +40,7 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/replies", "/replies/suppressions"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 

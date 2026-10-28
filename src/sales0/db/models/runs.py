@@ -96,3 +96,17 @@ class ScrapeRunKeyword(Base):
     error_message: Mapped[str | None] = mapped_column(String(300))
 
     run: Mapped[ScrapeRun] = relationship(back_populates="keywords")
+
+
+class WatchRun(Base):
+    """Marks a ``scrape_runs`` row as a prospect-watch run (its per-profile log rows are
+    ``scrape_run_keywords`` rows with ``keyword_text`` 'watch:<slug>'). ``scrape_runs.trigger`` has a
+    CHECK we cannot widen without rebuilding a table other tables cascade from, hence this marker."""
+
+    __tablename__ = "watch_runs"
+
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("scrape_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    origin: Mapped[str] = mapped_column(String(12), nullable=False, default="manual", server_default="manual")
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
