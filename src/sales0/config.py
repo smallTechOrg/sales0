@@ -69,6 +69,31 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///data/sales0.db"
     test_database_url: str | None = None
 
+    # --- Google / Gmail (Phase 3D) ---
+    google_client_secret_path: str = "data/google_client_secret.json"
+    google_token_path: str = "data/google_token.json"
+
+    # --- Team / outreach (Phase 3) ---
+    # Encrypts Gmail tokens at rest and signs the "acting as" cookie. Any string (>= 16 chars)
+    # or a Fernet key. Unset in dev: a key is generated once and kept at <data_dir>/secret.key.
+    secret_key: SecretStr | None = None
+    admin_email: str = "admin@smalltech.in"
+    admin_name: str = "Admin"
+    gmail_daily_send_cap: int = Field(40, ge=0)  # 0 = sending disabled
+    deck_max_bytes: int = Field(10 * 1024 * 1024, gt=0)  # max size of one uploaded deck PDF
+    # Only for a non-loopback deployment (e.g. https://sales.example.com); locally the OAuth
+    # redirect URI is built from the request's own loopback host and port.
+    public_base_url: str | None = None
+    # Google endpoints; overridable so tests (and proxies) can point the OAuth flow elsewhere.
+    google_auth_endpoint: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    google_token_endpoint: str = "https://oauth2.googleapis.com/token"
+    google_userinfo_endpoint: str = "https://openidconnect.googleapis.com/v1/userinfo"
+    google_revoke_endpoint: str = "https://oauth2.googleapis.com/revoke"
+
+    # TEST ONLY: comma-separated hosts (or 1/true = loopback) the research fetcher may reach even
+    # though they are private. Ignored unless linkedin_mode == "fixture" (see ``research_private_hosts``).
+    research_allow_private_hosts: str = ""
+
     # --- Time ---
     timezone: str = "Asia/Kolkata"
 
@@ -125,6 +150,16 @@ class Settings(BaseSettings):
     seen_raw_retention_days: int = Field(14, ge=0)
     seed_suggested_keywords: bool = True
 
+    # --- Google Sheet sync (read-only; Phase 2) ---
+    sheet_sync_minutes: int = Field(30, ge=0)  # 0 disables the interval scheduler
+    sheet_client_sourcing_id: str = "1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag"
+    sheet_metrics_id: str = "1tnwiBRMfp_QR0CmAkxZM_Chl-VAixmcWPxE1NCGED5w"
+    # Optional JSON list replacing the default tabs: [{"name","kind","gid","sheet_id"?}, ...]
+    sheet_tabs_json: str | None = None
+    sheet_fetch_timeout_s: float = Field(20.0, gt=0)
+    sheet_fetch_retries: int = Field(3, ge=0, le=10)
+    sheet_fetch_max_bytes: int = Field(20_000_000, ge=1000)
+
     # ------------------------------------------------------------------ validators
     @field_validator(
         "linkedin_mode",
@@ -173,9 +208,27 @@ class Settings(BaseSettings):
     def _strip_plain(cls, value: Any) -> Any:
         return _clean_enum_value(value)
 
-    @field_validator(
-        "data_dir", "database_url", "test_database_url", "log_file", mode="before"
-    )
+    @field_validator("admin_email", mode="before")
+    @classmethod
+    def _lower_admin_email(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("admin_name", "public_base_url", mode="before")
+    @classmethod
+    def _strip_team_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("google_client_secret_path", "google_token_path", mode="before")
+    @classmethod
+    def _strip_google_paths(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("sheet_client_sourcing_id", "sheet_metrics_id", "sheet_tabs_json", mode="before")
+    @classmethod
+    def _strip_sheet(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("data_dir", "database_url", "test_database_url", "log_file", mode="before")
     @classmethod
     def _strip_whitespace(cls, value: Any) -> Any:
         # No comment stripping here: URLs and paths may legitimately contain '#'.
@@ -232,6 +285,26 @@ class Settings(BaseSettings):
     def data_path(self) -> Path:
         """Absolute runtime dir; relative values resolve against the repo root."""
         path = Path(self.data_dir).expanduser()
+        return path if path.is_absolute() else REPO_ROOT / path
+
+    @property
+    def research_private_hosts(self) -> list[str]:
+        """Hosts the research fetcher may reach although private. Always [] outside fixture mode."""
+        raw = self.research_allow_private_hosts.strip()
+        if self.linkedin_mode != "fixture" or not raw:
+            return []
+        if raw.lower() in {"1", "true", "yes", "on"}:
+            return ["127.0.0.1", "localhost"]
+        return [h.strip().lower() for h in raw.split(",") if h.strip()]
+
+    @property
+    def google_client_secret_file(self) -> Path:
+        path = Path(self.google_client_secret_path).expanduser()
+        return path if path.is_absolute() else REPO_ROOT / path
+
+    @property
+    def google_token_file(self) -> Path:
+        path = Path(self.google_token_path).expanduser()
         return path if path.is_absolute() else REPO_ROOT / path
 
     @property

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Team{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Team</h1>
+      <p>Everyone who sends outreach connects their own Gmail here. Mail always goes out from the member's own address, never from someone else's.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% if flash %}
+      <div class="flash flash--{{ flash.kind }}" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    {% if not acting_member %}
+      <section class="card"><div class="card__body"><p>No active team member yet. Ask an admin to add you.</p></div></section>
+    {% endif %}
+
+    <section class="card" aria-labelledby="members-title">
+      <div class="card__header">
+        <h2 id="members-title">Members</h2>
+        <span class="muted">Gmail connection per member</span>
+      </div>
+      <div class="card__body table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Gmail</th><th>Actions</th></tr></thead>
+          <tbody>
+          {% for row in rows %}
+            {% set m = row.member %}{% set c = row.connection %}
+            <tr id="member-{{ m.id }}">
+              <td>{{ m.name }}{% if acting_member and m.id == acting_member.id %} <span class="badge badge--info">You (acting)</span>{% endif %}{% if not m.active %} <span class="badge badge--low">Inactive</span>{% endif %}</td>
+              <td>{{ m.email }}</td>
+              <td>{{ m.role|capitalize }}</td>
+              <td>
+                <span class="conn conn--{{ c.status }}" data-status="{{ c.status }}"><span class="conn__dot" aria-hidden="true"></span>{{ c.label }}</span>
+                {% if c.status == "connected" %}<div class="muted">as {{ c.email }}{% if c.connected_at %} · since {{ c.connected_at|localdt }}{% endif %}</div>{% endif %}
+                {% if c.last_error %}<div class="muted">{{ c.last_error }}</div>{% endif %}
+              </td>
+              <td>
+                {% if acting_member and m.id == acting_member.id and m.active %}
+                  <form method="post" action="/team/gmail/connect">
+                    <button class="btn btn--primary btn--sm" type="submit">{% if c.status == "connected" %}Reconnect my Gmail{% else %}Connect my Gmail{% endif %}</button>
+                  </form>
+                {% elif m.active %}
+                  <span class="muted">{{ m.name }} connects their own Gmail (switch to them in the header).</span>
+                {% endif %}
+                {% if c.status in ("connected", "needs_reauth", "scope_insufficient") and acting_member and (acting_member.id == m.id or acting_member.role == "admin") %}
+                  <form method="post" action="/team/gmail/disconnect" data-q="Disconnect Gmail for {{ m.name }}? They will need to connect again before sending." onsubmit="return confirm(this.dataset.q)">
+                    <input type="hidden" name="member_id" value="{{ m.id }}">
+                    <button class="btn btn--danger btn--sm" type="submit">Disconnect</button>
+                  </form>
+                {% endif %}
+                {% if acting_member and acting_member.role == "admin" and m.id != acting_member.id %}
+                  <form method="post" action="/team/members/{{ m.id }}/active">
+                    <input type="hidden" name="active" value="{{ '0' if m.active else '1' }}">
+                    <button class="btn btn--ghost btn--sm" type="submit">{{ "Deactivate" if m.active else "Reactivate" }}</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">No members yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {% if acting_member and acting_member.role == "admin" %}
+    <section class="card" aria-labelledby="add-member-title">
+      <div class="card__header"><h2 id="add-member-title">Add a team member</h2><span class="muted">Admins only</span></div>
+      <div class="card__body">
+        <form class="inline-form" method="post" action="/team/members">
+          <div class="field">
+            <label class="field__label" for="member-name">Name</label>
+            <input class="input" id="member-name" name="name" type="text" maxlength="80" required autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="field__label" for="member-email">Gmail address</label>
+            <input class="input" id="member-email" name="email" type="email" maxlength="254" required autocomplete="off" placeholder="name@yourcompany.com">
+          </div>
+          <div class="field">
+            <label class="field__label" for="member-role">Role</label>
+            <select class="input" id="member-role" name="role"><option value="member">Member</option><option value="admin">Admin</option></select>
+          </div>
+          <button class="btn btn--primary" type="submit">Add member</button>
+        </form>
+        <p class="muted">The Gmail account a member signs in with must match this address exactly, otherwise the connection is refused.</p>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+{% endblock %}

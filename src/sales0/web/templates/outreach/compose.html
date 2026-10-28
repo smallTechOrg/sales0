@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Compose outreach{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Compose outreach</h1>
+  <p>Fill in who you are writing to. Research is optional; the draft is always yours to review before anything is sent.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "outreach/_subnav.html" %}
+    {% if connection.status != "connected" %}
+      <div class="flash flash--error" id="gmail-block" role="alert">Your Gmail is not connected ({{ connection.label }}), so you can draft but not send. <a href="/team">Connect it on the Team page</a>.</div>
+    {% endif %}
+    {% if form.enquiry_id %}<p class="muted" id="prefill-note">Prefilled from enquiry #{{ form.enquiry_id }}. Check every field - nothing is invented for missing ones.</p>{% endif %}
+
+    <form id="compose-form" class="stack" method="post" action="/outreach/draft"
+          hx-post="/outreach/draft" hx-indicator="#draft-indicator" hx-disabled-elt="#draft-btn, #research-btn">
+      <input type="hidden" name="enquiry_id" value="{{ form.enquiry_id or '' }}">
+      <section class="card" aria-labelledby="recipient-title">
+        <div class="card__header"><h2 id="recipient-title">1. Recipient</h2></div>
+        <div class="card__body stack">
+          <div class="grid-2">
+            <div class="field"><label class="field__label" for="contact_name">Contact name</label>
+              <input class="input" id="contact_name" name="contact_name" maxlength="200" value="{{ form.contact_name }}" placeholder="Priya Sharma"></div>
+            <div class="field"><label class="field__label" for="to">Email</label>
+              <input class="input" id="to" name="to" maxlength="500" value="{{ form.email }}" placeholder="priya@acme.example"></div>
+            <div class="field"><label class="field__label" for="cc">Cc (optional)</label>
+              <input class="input" id="cc" name="cc" maxlength="500" placeholder="comma separated"></div>
+            <div class="field"><label class="field__label" for="company">Company</label>
+              <input class="input" id="company" name="company" maxlength="200" required value="{{ form.company }}" placeholder="Acme Logistics"></div>
+            <div class="field"><label class="field__label" for="website">Company website (needed for research)</label>
+              <input class="input" id="website" name="website" maxlength="300" value="{{ form.website }}" placeholder="https://acme.example"></div>
+            <div class="field"><label class="field__label" for="offering_id">Offering</label>
+              <select class="input" id="offering_id" name="offering_id" hx-get="/outreach/compose/defaults" hx-trigger="change"
+                      hx-target="#template-deck-fields" hx-swap="outerHTML" hx-include="this">
+                <option value="">Not sure / general</option>
+                {% for o in offerings %}<option value="{{ o.id }}"{% if o.id == form.offering_id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+              </select></div>
+          </div>
+          <div class="field"><label class="field__label" for="requirement">Their requirement</label>
+            <textarea class="input" id="requirement" name="requirement" rows="4" maxlength="4000" placeholder="What they asked for, in their words">{{ form.requirement }}</textarea></div>
+          {% include "outreach/_defaults.html" %}
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="research-title">
+        <div class="card__header"><h2 id="research-title">2. Research the company <span class="muted">(optional)</span></h2></div>
+        <div class="card__body stack">
+          <p class="muted">Reads up to a few pages of the company's own website and writes a short brief with source links. It takes 20-60 seconds.</p>
+          <div class="row">
+            <button class="btn" id="research-btn" type="button" hx-post="/outreach/research" hx-include="#compose-form"
+                    hx-target="#brief-panel" hx-swap="innerHTML" hx-indicator="#research-indicator" hx-disabled-elt="#draft-btn, #research-btn">Research company</button>
+            <span class="htmx-indicator" id="research-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching the website... this can take up to a minute.</span>
+          </div>
+          <div id="brief-panel" aria-live="polite"><p class="muted" id="brief-empty">No research yet. You can skip this and draft from the requirement alone.</p></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="draft-title">
+        <div class="card__header"><h2 id="draft-title">3. Generate the draft</h2></div>
+        <div class="card__body row">
+          <button class="btn btn--primary" id="draft-btn" type="submit">Generate draft</button>
+          <span class="htmx-indicator" id="draft-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Writing the draft...</span>
+          <span class="muted">You review and approve it on the next screen. Nothing is sent from here.</span>
+        </div>
+      </section>
+    </form>
+  </div>
+{% endblock %}

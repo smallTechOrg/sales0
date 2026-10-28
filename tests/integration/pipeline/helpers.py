@@ -6,7 +6,6 @@ import threading
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
 
 from sales0.db.engine import session_scope
 from sales0.db.models import ScrapeRun

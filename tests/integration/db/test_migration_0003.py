@@ -16,7 +16,7 @@ from alembic import command
 
 from sales0.config import REPO_ROOT
 from sales0.db.engine import build_engine
-from sales0.db.migrate_check import alembic_config, current_revision
+from sales0.db.migrate_check import alembic_config, current_revision, head_revision
 from tests.integration.db._drift import assert_inline_fks_cascade, drift
 
 MIGRATION_FILE = REPO_ROOT / "migrations" / "versions" / "0003_phase1_4_seen_posts.py"
@@ -213,7 +213,7 @@ def test_upgrade_moves_exactly_the_never_touched_ai_discards(
 
     engine = build_engine(url)  # type: ignore[arg-type]
     try:
-        assert current_revision(engine) == "0003_phase1_4_seen_posts"
+        assert current_revision(engine) == head_revision()
     finally:
         engine.dispose()
 

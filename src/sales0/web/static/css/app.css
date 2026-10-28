@@ -503,3 +503,33 @@ progress.progress::-moz-progress-bar { background: var(--color-primary); border-
 .skipped__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .subfilter { display: flex; gap: var(--space-2); align-items: center; }
 .subfilter a[aria-current="true"] { font-weight: 700; text-decoration: none; }
+/* ------------------------------------------------------------------ team / acting-as */
+.acting { display: flex; align-items: center; gap: var(--space-2); }
+.acting__form { display: flex; align-items: center; gap: var(--space-1); margin: 0; }
+.acting__label { color: var(--color-header-muted); font-size: var(--font-size-sm); }
+.acting__select { font: inherit; font-size: var(--font-size-sm); padding: 0.125rem 0.375rem; border-radius: var(--radius); max-width: 12rem; }
+.acting__team { color: var(--color-header-muted); font-size: var(--font-size-sm); text-decoration: underline; }
+.conn { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-size-sm); }
+.conn__dot { width: 0.625rem; height: 0.625rem; border-radius: 50%; background: #8b95a1; display: inline-block; }
+.conn--connected .conn__dot { background: #2fa857; }
+.conn--needs_reauth .conn__dot, .conn--scope_insufficient .conn__dot { background: #e0a100; }
+.conn--disconnected .conn__dot { background: #8b95a1; }
+.flash { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid var(--color-border); }
+.flash--ok { background: var(--color-ok-soft); border-color: #a8d5b5; color: var(--color-ok); }
+.flash--error { background: var(--color-danger-soft); border-color: #f0b8b2; color: var(--color-danger); }
+.table form { display: inline; margin: 0; }
+
+/* ------------------------------------------------------------------ outreach */
+.state { text-transform: none; }
+.state--draft, .state--edited { background: var(--color-primary-soft); color: var(--color-primary); }
+.state--approved { background: var(--color-warn-soft); color: var(--color-warn); }
+.state--sending { background: var(--color-warn-soft); color: var(--color-warn); }
+.state--sent { background: var(--color-ok-soft); color: var(--color-ok); }
+.state--failed, .state--rejected { background: var(--color-danger-soft); color: var(--color-danger); }
+.text-danger { color: var(--color-danger); }
+.sender-banner { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 2px solid var(--color-primary); background: var(--color-primary-soft); font-size: var(--font-size-base); }
+.sender-banner--other { border-color: var(--color-border-strong); background: var(--color-surface); }
+.mail-body { white-space: pre-wrap; word-break: break-word; font-family: var(--font-sans); background: #f9fafb; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3); margin: 0; }
+.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.timeline li { padding-left: var(--space-3); border-left: 3px solid var(--color-border-strong); }
+.brief { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3); }

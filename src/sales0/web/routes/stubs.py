@@ -40,10 +40,6 @@ STUBS: dict[str, StubPage] = {
         "Import", 2,
         "Import the existing Active and Discarded Enquiries sheets (CSV) and paste single posts by hand, with duplicates merged.",
     ),
-    "/outreach": StubPage(
-        "Outreach", 3,
-        "Research a company, draft a personalised email with the right deck, and send it from Gmail only after you approve that exact message.",
-    ),
     "/metrics": StubPage(
         "Metrics", 4,
         "The Weekly and Secondary metrics sheets, produced automatically per ISO week against your targets, plus the AI cost view.",

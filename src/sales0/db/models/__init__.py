@@ -17,26 +17,37 @@ from sales0.db.models.llm_calls import LlmCall
 from sales0.db.models.meta import AppMeta
 from sales0.db.models.offerings import Offering, OfferingGroup
 from sales0.db.models.profiles import LinkedinProfile
+from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
 from sales0.db.models.seen_posts import SeenPost
+from sales0.db.models.team import GmailConnection, TeamMember
+from sales0.db.models.sheet_sync import SheetSyncState
 from sales0.db.models.users import User
 
 __all__ = [
     "LINKEDIN_SESSION_ID",
     "AppMeta",
+    "CompanyBrief",
+    "Deck",
     "Enquiry",
     "EnquiryKeywordHit",
     "EnquirySource",
+    "GmailConnection",
     "Keyword",
     "LinkedInSession",
     "LinkedinProfile",
     "LlmCall",
+    "MessageTemplate",
     "Offering",
     "OfferingGroup",
+    "OutreachEvent",
+    "OutreachMessage",
     "ScrapeRun",
     "ScrapeRunKeyword",
     "SeenPost",
+    "SheetSyncState",
     "StatusHistory",
+    "TeamMember",
     "TriageDecision",
     "UTCDateTime",
     "User",

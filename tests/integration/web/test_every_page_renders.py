@@ -32,14 +32,14 @@ STUB_PAGES = {
     "/contacts": 2,
     "/competitors": 2,
     "/import": 2,
-    "/outreach": 3,
     "/metrics": 4,
     "/whatsapp": 5,
 }
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
-COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status"}
+COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
+                    "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 
@@ -276,6 +276,13 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
     page(f"/runs/{state.run_id}", f"Run #{state.run_id}", ['id="run-keywords"', 'id="run-summary"', *state.extra_detail])
     for path, phase in STUB_PAGES.items():
         page(path, f"Coming in Phase {phase}")
+
+    # Phase 3 outreach pages (the acting member is the seeded admin).
+    page("/outreach", "Outreach", ['id="cap-usage"', "0 of 40</strong> sent today", 'id="outbox-filters"', "Coming later"])
+    page("/outreach/compose", "Compose outreach", ['id="compose-form"', 'id="research-btn"', 'id="draft-btn"'])
+    page("/outreach/templates", "Message templates", ['id="template-form"', 'id="variable-help"'])
+    page("/outreach/decks", "Decks", ['id="deck-upload-form"', "up to 10 MB"])
+    _assert_contains(_get(client, "/outreach/compose/defaults?offering_id=1"), ['id="template-deck-fields"'], where("defaults"))
 
     error = _get(client, "/runs/999999", status=404)
     _assert_contains(error, ["That item no longer exists", "Back to sales0"], where("/runs/999999"))

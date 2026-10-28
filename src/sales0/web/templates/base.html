@@ -34,6 +34,7 @@
           {% if shell.mode == "fixture" %}<span class="fixture-badge" title="Demo data from the built-in fake LinkedIn — not live">FIXTURE MODE</span>{% endif %}
           {% with session=shell.session, light=shell.light %}{% include "_shell/status_light.html" %}{% endwith %}
           {% with cost=shell.cost %}{% include "_shell/cost_badge.html" %}{% endwith %}
+          {% include "team/_acting.html" %}
         </div>
       {% endif %}
     </div>

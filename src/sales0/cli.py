@@ -222,6 +222,62 @@ def _check_browser() -> int:
     return check_browser(settings)
 
 
+# ----------------------------------------------------------------------------- sync-sheets
+def sync_sheets(settings: Settings, *, dry_run: bool, tab: str | None, source: object | None = None) -> int:
+    """Read-only Google Sheet sync; prints per-tab COUNTS only (never cell content)."""
+    from sales0.services.sheetsync import (
+        InMemorySheetRepository,
+        SheetFetcher,
+        SyncEngine,
+        get_repository,
+        make_client,
+        tabs_from_settings,
+    )
+
+    tabs = tabs_from_settings(settings)
+    repo = get_repository()
+    note = ""
+    if repo is None:
+        repo = InMemorySheetRepository()
+        note = " (no CRM repository registered: in-memory, nothing is persisted)"
+    fetcher = None
+    if source is None:
+        fetcher = SheetFetcher(
+            make_client(timeout_s=settings.sheet_fetch_timeout_s),
+            retries=settings.sheet_fetch_retries,
+            max_bytes=settings.sheet_fetch_max_bytes,
+        )
+        source = fetcher
+    from datetime import datetime
+
+    engine = SyncEngine(source, repo, tabs, today=lambda: datetime.now(settings.tz).date())  # type: ignore[arg-type]
+    try:
+        report = engine.run(dry_run=dry_run, only_tab=tab)
+    except KeyError:
+        print(f"sync-sheets ERROR unknown tab {tab!r}; known: {', '.join(t.name for t in tabs)}", file=sys.stderr)
+        return 2
+    finally:
+        if fetcher is not None:
+            fetcher.close()
+    print(f"sync-sheets {'DRY-RUN' if dry_run else 'APPLY'}{note}")
+    for line in report.summary_lines():
+        print(line)
+    return 0 if report.ok else 1
+
+
+def _sync_sheets(dry_run: bool, tab: str | None) -> int:
+    from pydantic import ValidationError
+
+    from sales0.config import get_settings
+
+    try:
+        settings = get_settings()
+    except ValidationError as exc:
+        print(f"sync-sheets ERROR invalid configuration: {exc.error_count()} error(s)", file=sys.stderr)
+        return 1
+    return sync_sheets(settings, dry_run=dry_run, tab=tab)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -230,11 +286,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         "check-browser",
         help="Launch the configured browser headless on a throwaway profile (about:blank only) and report it",
     )
+    auth = sub.add_parser("google-auth", help="Sign in to Google (browser consent) and store the Gmail token")
+    auth.add_argument(
+        "--member", metavar="EMAIL", default=None,
+        help="Store the token (encrypted, in the database) for this team member instead of the token file",
+    )
+    sub.add_parser("gmail-check", help="Draft to yourself with a PDF, fetch it, delete it; never sends")
+    send = sub.add_parser("gmail-send-test", help="Send ONE labelled test email to your own address")
+    send.add_argument("--yes-send", action="store_true", help="Required: actually send the test email")
+    send.add_argument("--allow-external", action="store_true", help="dangerous")
+    send.add_argument("--to", default=None, help=argparse.SUPPRESS)
+    ss = sub.add_parser("sync-sheets", help="Read-only sync of the Google Sheets (prints per-tab counts only)")
+    ss.add_argument("--dry-run", action="store_true", help="compute the diff report without applying it")
+    ss.add_argument("--tab", default=None, help="sync only this tab (e.g. 'Active Enquiries')")
     args = parser.parse_args(argv)
+    if args.command == "sync-sheets":
+        return _sync_sheets(args.dry_run, args.tab)
     if args.command == "check-llm":
         return _check_llm()
     if args.command == "check-browser":
         return _check_browser()
+    if args.command in ("google-auth", "gmail-check", "gmail-send-test"):
+        from sales0.integrations.gmail.live import run_command
+
+        return run_command(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

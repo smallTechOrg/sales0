@@ -1,0 +1,16 @@
+{# Header "Acting as" selector. Needs shell.acting_member and shell.team_members. #}
+<div class="acting" id="acting-as">
+  {% if shell.acting_member %}
+    <form class="acting__form" method="post" action="/team/acting">
+      <input type="hidden" name="next" value="{{ request.url.path }}">
+      <label class="acting__label" for="acting-select">Acting as</label>
+      <select class="acting__select" id="acting-select" name="member_id" onchange="this.form.submit()">
+        {% for m in shell.team_members %}
+          <option value="{{ m.id }}"{% if m.id == shell.acting_member.id %} selected{% endif %}>{{ m.name }}{% if m.role == "admin" %} (admin){% endif %}</option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn--sm" type="submit">Switch</button></noscript>
+    </form>
+  {% endif %}
+  <a class="acting__team" href="/team"{% if request.url.path == "/team" %} aria-current="page"{% endif %}>Team</a>
+</div>

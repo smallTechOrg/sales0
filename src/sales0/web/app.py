@@ -15,9 +15,10 @@ from sales0.db.migrate_check import assert_at_head
 from sales0.logging import configure_logging, get_logger
 from sales0.services.keywords import seed_suggested_once
 from sales0.services.runs import recover_interrupted_runs_on_startup
+from sales0.services.team.members import seed_admin
 from sales0.web.envelope import install_exception_handlers
 from sales0.web.middleware import CsrfOriginMiddleware, RequestContextMiddleware
-from sales0.web.routes import health, inbox, runs, setup, stubs
+from sales0.web.routes import health, inbox, oauth, outreach, runs, setup, stubs
 from sales0.web.templating import STATIC_DIR
 
 log = get_logger("sales0.app")
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         recover_interrupted_runs_on_startup()  # Phase 1.4: queued/running runs -> aborted (restart)
         with session_scope() as db:
             seed_suggested_once(db)  # Phase 1.4: the 60 suggested keywords, once
+            seed_admin(db, settings)  # Phase 3: first admin from SALES0_ADMIN_EMAIL (idempotent)
         log.info(
             "app_started",
             db_revision=revision,
@@ -57,6 +59,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(setup.router)
     app.include_router(runs.router)
     app.include_router(inbox.router)
+    app.include_router(oauth.router)
+    app.include_router(outreach.router)
 
     if settings.linkedin_mode == "fixture":
         from sales0.linkedin_fixture.routes import router as fixture_router
