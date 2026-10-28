@@ -31,6 +31,7 @@ from sales0.db.models import (
 )
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound
+from sales0.logging import get_logger
 from sales0.scraper.relative_time import parse_relative
 from sales0.scraper.types import ScrapedPost
 from sales0.scraper.urls import base_url, link_kind_of, profile_slug, search_url
@@ -46,6 +47,8 @@ from sales0.services.dedupe import (
     strip_ellipsis,
 )
 from sales0.services.views import EnquiryCardView, SkippedPage, SkippedPostView
+
+log = get_logger("sales0.services.seen_posts")
 
 Verdict = Literal["genuine", "discard"]
 MAX_PAGE_SIZE = 100
@@ -151,6 +154,58 @@ def _needs_permalink(db: Session, row: SeenPost) -> bool:
     return link_kind_of(url) != "post"
 
 
+def _collapse(text: str) -> str:
+    return " ".join(strip_ellipsis(text or "").split())
+
+
+def _refresh_from_resighting(db: Session, row: SeenPost, post: ScrapedPost, slug: str | None, stamp: datetime) -> None:
+    """Fill what the first sighting missed (post time, headline, name) and upgrade truncated text.
+
+    Existing values are never overwritten. A longer text that starts with the stored one replaces it
+    (fingerprint/prefix/snippet refreshed so the full text from the same author matches directly next
+    time; content_hash is kept so another author's identical text is still its own post); a row
+    the AI discarded or failed on is re-queued as pending so the full text is triaged. A failed row
+    seen again with the same text is re-queued too (retry)."""
+    if not row.posted_relative and post.posted_relative:
+        row.posted_relative = clip(post.posted_relative, 30)
+    if not row.author_headline and post.author_headline:
+        row.author_headline = clip(post.author_headline, 500)
+    if not row.author_name and post.author_name:
+        row.author_name = clip(post.author_name, 200)
+    if row.enquiry_id is not None:
+        enquiry = db.get(Enquiry, row.enquiry_id)
+        if enquiry is not None:
+            if not enquiry.posted_relative and row.posted_relative:
+                enquiry.posted_relative = row.posted_relative
+            if not enquiry.author_headline and row.author_headline:
+                enquiry.author_headline = row.author_headline
+        return
+    if not row.raw_text or not normalize_text(post.text):
+        return
+    old, new = _collapse(row.raw_text), _collapse(post.text)
+    upgraded = len(old) >= 20 and len(new) > len(old) and new.startswith(old)
+    if upgraded:
+        row.raw_text = post.text
+        row.text_prefix = _text_prefix(post.text)
+        row.snippet = snippet_of(post.text)
+        fp = _post_fingerprint(slug, post)
+        if row.fingerprint != fp and db.scalar(select(SeenPost.id).where(SeenPost.fingerprint == fp)) is None:
+            row.fingerprint = fp
+    requeue = row.triage_status == "failed" or (
+        upgraded and row.triage_status == "done" and row.verdict == "discard" and row.rescued_at is None
+    )
+    if requeue:
+        row.triage_status = "pending"
+        row.triage_error = None
+        row.verdict = None
+        row.reason = None
+        row.poster_type = None
+        row.ai_result = None
+        row.raw_purge_after = stamp + timedelta(days=get_settings().seen_raw_retention_days)
+    if upgraded or requeue:
+        log.info("seen_post_resighting_refresh", seen_post_id=row.id, text_upgraded=upgraded, requeued=requeue)
+
+
 def register_sighting(
     db: Session,
     post: ScrapedPost,
@@ -198,6 +253,7 @@ def register_sighting(
                 row.source_ref = post.source_ref
         if post.link_kind == "post" and row.post_url is None:
             row.post_url = post.url[:500]
+        _refresh_from_resighting(db, row, post, slug, stamp)
         if row.enquiry_id is not None:
             _merge(db, row.enquiry_id, post, run_id, stamp)
             _add_hit(db, row.enquiry_id, run_id, keyword_id, keyword_text, stamp)
@@ -675,11 +731,16 @@ def retry_triage(db: Session, seen_post_id: int, llm: LLMClient | None = None) -
 
 # ---------------------------------------------------------------------- purge
 def purge_expired(db: Session, *, now: datetime | None = None) -> int:
-    """Drop the full text of skipped posts past their retention; fingerprint, prefix and snippet stay."""
+    """Drop the full text of triaged (``done``) posts past their retention; fingerprint, prefix and
+    snippet stay. Pending/failed rows keep their text (they can still be triaged/retried)."""
     stamp = now_or(now)
     result = db.execute(
         update(SeenPost)
-        .where(SeenPost.raw_purge_after <= stamp, SeenPost.raw_text.is_not(None))
+        .where(
+            SeenPost.raw_purge_after <= stamp,
+            SeenPost.raw_text.is_not(None),
+            SeenPost.triage_status == "done",
+        )
         .values(raw_text=None, raw_purged_at=stamp, raw_purge_after=None)
     )
     db.flush()

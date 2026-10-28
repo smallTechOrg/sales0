@@ -226,6 +226,36 @@ def posts_seen_today(db: Session, now: datetime | None = None, account_id: int |
     return _day_counts(db, now_or(now), account_id)[1]
 
 
+def page_loads_today(db: Session, now: datetime | None = None, account_id: int | None = None) -> int:
+    """LinkedIn page loads ONE account used today (local day): discovery AND watch runs (``scrape_runs.page_loads``)."""
+    start, end = local_day_bounds_utc(get_settings().tz, now_or(now))
+    mine = linkedin_accounts.account_runs_clause(db, _account(db, account_id))
+    total = db.scalar(
+        select(func.coalesce(func.sum(ScrapeRun.page_loads), 0)).where(
+            ScrapeRun.started_at >= start, ScrapeRun.started_at < end, mine
+        )
+    )
+    return int(total or 0)
+
+
+def watch_day_counts(db: Session, now: datetime | None = None, account_id: int | None = None) -> tuple[int, int]:
+    """(watch runs started, profile visits made) today by ONE account. A visit = a watch log row that was attempted."""
+    start, end = local_day_bounds_utc(get_settings().tz, now_or(now))
+    mine = linkedin_accounts.account_runs_clause(db, _account(db, account_id))
+    in_day = (ScrapeRun.started_at >= start, ScrapeRun.started_at < end, mine)
+    watch_runs = db.scalar(select(func.count(ScrapeRun.id)).where(*in_day, ScrapeRun.id.in_(select(WatchRun.run_id))))
+    visits = db.scalar(
+        select(func.count(ScrapeRunKeyword.id))
+        .join(ScrapeRun, ScrapeRun.id == ScrapeRunKeyword.run_id)
+        .where(
+            *in_day,
+            ScrapeRunKeyword.keyword_text.like("watch:%"),
+            ScrapeRunKeyword.status.in_(("done", "warning", "error")),
+        )
+    )
+    return int(watch_runs or 0), int(visits or 0)
+
+
 def _active_keyword_count(db: Session) -> int:
     return int(db.scalar(select(func.count(Keyword.id)).where(Keyword.active.is_(True))) or 0)
 
@@ -239,10 +269,10 @@ def safety_cooldown_until(
     never blocks another. Reads the latest ``aborted`` run of that account (by ``finished_at``) whose ``abort_reason`` is a safety
     kind. rate_limited / captcha -> ``SALES0_SAFETY_COOLDOWN_MIN``; checkpoint / logout ->
     ``SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN``. None when that instant is not in the future
-    or the applicable setting is 0. Derived from stored columns only (no migration).
+    or the applicable setting is 0. Derived from stored columns only (no migration): the latest aborted run
+    AND the account's own ``last_stop_at`` (a stop found by a Re-check), whichever ends later.
     """
     now = ensure_utc(now_or(now))
-    settings = get_settings()
     row = db.execute(
         select(ScrapeRun.abort_reason, ScrapeRun.finished_at)
         .where(
@@ -254,16 +284,26 @@ def safety_cooldown_until(
         .order_by(ScrapeRun.finished_at.desc(), ScrapeRun.id.desc())
         .limit(1)
     ).first()
-    if row is None:
-        return None
-    kind, finished_at = row
-    minutes = (
-        settings.safety_cooldown_min if kind in LONG_COOLDOWN_KINDS else settings.safety_cooldown_checkpoint_min
-    )
-    if minutes <= 0:
-        return None
-    until = ensure_utc(finished_at) + timedelta(minutes=minutes)
-    return until if until > now else None
+    candidates: list[datetime] = []
+    if row is not None:
+        kind, finished_at = row
+        candidates.append(ensure_utc(finished_at) + timedelta(minutes=_cooldown_minutes(kind)))
+    # Fixscrape D #4: a stop detected by a Re-check (no aborted run behind it) also starts the cool-down:
+    # the account's own ``last_stop_at`` / ``safety_state``. A stop "in the future" of ``now`` is ignored.
+    account = linkedin_accounts.get_account(db, _account(db, account_id))
+    if account is not None and account.last_stop_at is not None and account.safety_state in (
+        LONG_COOLDOWN_KINDS + SHORT_COOLDOWN_KINDS
+    ):
+        stopped = ensure_utc(account.last_stop_at)
+        if stopped <= now:
+            candidates.append(stopped + timedelta(minutes=_cooldown_minutes(account.safety_state)))
+    until = max(candidates, default=None)
+    return until if until is not None and until > now else None
+
+
+def _cooldown_minutes(kind: str) -> int:
+    settings = get_settings()
+    return settings.safety_cooldown_min if kind in LONG_COOLDOWN_KINDS else settings.safety_cooldown_checkpoint_min
 
 
 def cooldown_clock(until: datetime, now: datetime | None = None, tz: str | ZoneInfo | None = None) -> str:
@@ -325,11 +365,33 @@ def _check(
             f"Runs reset at midnight ({settings.timezone}).",
             429,
         )
+    elif watch and watch_day_counts(db, now, account_id)[0] >= settings.watch_max_runs_per_day:
+        error = DomainError(
+            "daily_watch_cap",
+            f"Daily prospect-watch run limit reached ({watch_day_counts(db, now, account_id)[0]}/"
+            f"{settings.watch_max_runs_per_day}). Runs reset at midnight ({settings.timezone}).",
+            429,
+        )
     elif posts_today >= settings.scrape_max_posts_per_day:
         error = DomainError(
             "daily_post_cap",
             f"Daily post limit reached ({posts_today}/{settings.scrape_max_posts_per_day}) "
             "— protects your LinkedIn account.",
+            429,
+        )
+    elif (loads := page_loads_today(db, now, account_id)) >= settings.scrape_max_pageloads_per_day:
+        error = DomainError(
+            "daily_pageload_cap",
+            f"Daily LinkedIn page-load limit reached ({loads}/{settings.scrape_max_pageloads_per_day}) "
+            "— protects your LinkedIn account. Resets at midnight "
+            f"({settings.timezone}).",
+            429,
+        )
+    elif watch and (visits := watch_day_counts(db, now, account_id)[1]) >= settings.watch_max_visits_per_day:
+        error = DomainError(
+            "daily_visit_cap",
+            f"Daily profile-visit limit reached ({visits}/{settings.watch_max_visits_per_day}). "
+            f"Resets at midnight ({settings.timezone}).",
             429,
         )
     return error, runs_today, posts_today

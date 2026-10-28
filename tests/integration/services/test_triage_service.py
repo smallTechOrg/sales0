@@ -122,4 +122,4 @@ def test_real_haiku_triage_of_p1_extracts_the_buyer_and_records_real_cost(db_url
     assert card.ai_reason and 1 <= len(card.ai_reason) <= 160 and "\n" not in card.ai_reason
     rows = _llm_rows(eid)
     assert rows and all(r.input_tokens > 0 and r.output_tokens > 0 for r in rows)
-    assert all(r.cost_usd_micros == cost_usd_micros(r.input_tokens, r.output_tokens, get_settings()) for r in rows)
+    assert all(r.cost_usd_micros >= cost_usd_micros(r.input_tokens, r.output_tokens, get_settings()) for r in rows)  # >=: cache tokens are folded into cost only

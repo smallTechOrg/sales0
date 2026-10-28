@@ -383,7 +383,12 @@ def paste_linkedin_cookie(
     target = int(account_id) if account_id.strip().isdigit() else None
     account = accounts_service.paste_cookie(db, cookie, label=label or None, account_id=target)
     db.commit()  # the check job reads the row from its own session
-    session_service.start_check(db, account.id)
+    try:
+        session_service.start_check(db, account.id)
+    except DomainError as exc:  # fixscrape D #4: no validation page load during the safety cool-down
+        if exc.code != "safety_cooldown":
+            raise
+        return _accounts_response(request, db, f"Cookie stored encrypted for '{account.label}'. Not validated yet: {exc.message}")
     return _accounts_response(request, db, f"Cookie stored encrypted for '{account.label}' - validating it with one feed load...")
 
 

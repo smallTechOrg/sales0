@@ -35,6 +35,13 @@ IST = timedelta(hours=5, minutes=30)
 REQ = "Northwind Logistics wants a corporate trainer for a 2-day Generative AI workshop in Mumbai, 30 managers, December."
 
 
+@pytest.fixture(autouse=True)
+def _no_watch_jitter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests pin the exact 05:30 slot; the jitter (fixscrape D #14) has its own tests."""
+    monkeypatch.setenv("SALES0_WATCH_START_JITTER_MIN", "0")
+    reset_settings()
+
+
 @pytest.fixture
 def web(db_url: str):
     with TestClient(create_app()) as c:

@@ -21,7 +21,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from sales0.scraper import selectors as S
 from sales0.scraper.relative_time import normalize_relative, parse_relative
-from sales0.scraper.types import OPTIONAL_POST_FIELDS, TEXT_FIELD, CardStrategy, ScrapedPost
+from sales0.scraper.types import OPTIONAL_POST_FIELDS, TEXT_FIELD, TRUNCATED_FIELD, CardStrategy, ScrapedPost
 from sales0.scraper.urls import (  # urn_from_href is re-exported (it lives in urls since Phase 1.2)
     FEED_UPDATE_HREF,
     POSTS_SLUG_HREF,
@@ -216,6 +216,7 @@ const urnRaw = (card, idx) => {
   }
   const text = textEl && textLen > 0 ? (textEl.innerText || textEl.textContent || '') : null;
   if (!text) delete via.text;
+  const truncated = !!text && truncatedOf(textEl, text);
 
   // Headline: first line of the author anchor (or its parent) that is not name/degree/Follow/time.
   const skip = (l) => (name && l.includes(name)) || isSkip(l);
@@ -248,7 +249,7 @@ const urnRaw = (card, idx) => {
 
   return { strategy: 'urn', urn, component_key: null, post_href: postHref, author_name: name, author_profile_url: profile,
            author_headline: headline, posted_relative: posted, text, has_control_menu: false,
-           card_index: idx, menu_label: null, via };
+           card_index: idx, menu_label: null, truncated, via };
 };
 
 // ---------------------------------------------------------------- SDUI (Phase 1.2)
@@ -263,15 +264,36 @@ const isHidden = (el) => {
   return false;
 };
 const shown = (el) => (!el || isHidden(el) ? '' : (el.innerText !== undefined ? el.innerText : (el.textContent || '')));
+// Audit #7: the text is still cut short when an unexpanded "…more" toggle sits with it (hidden or
+// already-expanded toggles do not count) or the text itself ends in an ellipsis marker.
+const truncatedOf = (textEl, rawText) => {
+  if (!textEl) return false;
+  const expand = textEl.querySelector(sel.sdui_expand) || (textEl.parentElement ? textEl.parentElement.querySelector(sel.sdui_expand) : null);
+  if (expand && !isHidden(expand) && expand.getAttribute('aria-expanded') !== 'true') return true;
+  return /(…|\.\.\.)\s*((see|show)\s+)?(more)?$/i.test((rawText || '').replace(/\s+$/, ''));
+};
 // Phase 1.4: contact links whose address is not in the visible text (a mailto:/tel: anchor labelled
 // "email me" ...) are appended, so the e-mail/phone the poster published is never lost.
 const contactTail = (el, text) => {
   if (!el) return '';
-  const hay = (text || '').toLowerCase().replace(/[\s()-]+/g, '');
+  const norm = (v) => v.toLowerCase().replace(/[\s()-]+/g, '');
+  const hay = norm(text || '');
   const extra = [];
   for (const a of el.querySelectorAll('a[href^="mailto:" i], a[href^="tel:" i]')) {
     const h = decode(a.getAttribute('href') || '').replace(/^(mailto:|tel:)/i, '').split('?')[0].trim();
-    if (h && !hay.includes(h.toLowerCase().replace(/[\s()-]+/g, '')) && !extra.includes(h)) extra.push(h);
+    if (h && !hay.includes(norm(h)) && !extra.includes(h)) extra.push(h);
+  }
+  // Audit #12: the target of an external link whose (possibly truncated) label does not show it.
+  // LinkedIn-internal links (hashtags, mentions, "#") are not contact data and are skipped.
+  for (const a of el.querySelectorAll('a[href]')) {
+    const raw = (a.getAttribute('href') || '').trim();
+    if (!/^https?:\/\//i.test(raw)) continue;
+    let host = '';
+    try { host = new URL(raw).hostname.toLowerCase(); } catch (e) { continue; }
+    if (host === 'linkedin.com' || host.endsWith('.linkedin.com')) continue;
+    const bare = norm(raw.replace(/^https?:\/\//i, '').replace(/\/$/, ''));
+    if (hay.includes(bare) || extra.includes(raw)) continue;
+    extra.push(raw);
   }
   return extra.length ? '\n' + extra.join('\n') : '';
 };
@@ -334,6 +356,15 @@ const sduiRaw = (card, idx) => {
     let c = actors[0];
     while (c && !actors.every((a) => c.contains(a))) c = c.parentElement;
     if (okBlock(c)) block = c;
+    // Audit #2: the common ancestor swallowed text/media/menu: fall back to the widest text-free
+    // ancestor of any single actor that holds the relative time.
+    if (!block) {
+      for (const a0 of actors) {
+        let d = a0;
+        while (d.parentElement && okBlock(d.parentElement)) d = d.parentElement;
+        if (d !== a0 && lines(d).some(isRel)) { block = d; break; }
+      }
+    }
   } else if (actors.length === 1) {
     let c = actors[0];
     while (c.parentElement && okBlock(c.parentElement)) c = c.parentElement;
@@ -409,9 +440,10 @@ const sduiRaw = (card, idx) => {
       }
     }
   }
-  let text = null;
+  let text = null, truncated = false;
   if (textEl) {
     text = shown(textEl);
+    truncated = truncatedOf(textEl, text);
     const expand = textEl.querySelector(sel.sdui_expand) || (textEl.parentElement ? textEl.parentElement.querySelector(sel.sdui_expand) : null);
     text = text.replace(/\s+$/, '');
     if (expand) {
@@ -421,22 +453,28 @@ const sduiRaw = (card, idx) => {
       }
     }
     text = text.replace(/\s*(…|\.\.\.)$/, '');
-    if (!clean(text)) { text = null; delete via.text; }
+    if (!clean(text)) { text = null; truncated = false; delete via.text; }
     else text += contactTail(textEl, text);
   }
-  // A reshare with no commentary of its own: the reshared original's text is the only text there is.
-  if (!text && nestedPosts.length) {
+  // A reshare: the reshared original's text is the only text when the resharer wrote none; when
+  // they did, the original follows it, marked (audit #13), so its e-mail/phone/ask is not lost.
+  if (nestedPosts.length) {
     for (const n of nestedPosts) {
       const el = Array.from(n.querySelectorAll(textCss)).find((e) => clean(shown(e)) && !e.closest(exclCss));
       if (!el) continue;
-      let t = shown(el).replace(/\s+$/, '').replace(/\s*(…|\.\.\.)\s*((see|show)\s+)?more$/i, '').replace(/\s*(…|\.\.\.)$/, '');
-      if (clean(t)) { text = t + contactTail(el, t); via.text = 'reshared_original'; break; }
+      const rawNested = shown(el);
+      let t = rawNested.replace(/\s+$/, '').replace(/\s*(…|\.\.\.)\s*((see|show)\s+)?more$/i, '').replace(/\s*(…|\.\.\.)$/, '');
+      if (!clean(t)) continue;
+      const nestedTruncated = truncatedOf(el, rawNested);
+      if (!text) { text = t + contactTail(el, t); via.text = 'reshared_original'; truncated = nestedTruncated; }
+      else { text += '\n\n[Reshared post] ' + t + contactTail(el, t); via.reshared = 'appended'; truncated = truncated || nestedTruncated; }
+      break;
     }
   }
 
   return { strategy: 'sdui', urn, component_key: key, post_href: postHref, author_name: name, author_profile_url: profile,
            author_headline: headline, posted_relative: posted, text, has_control_menu: !!card.querySelector(sel.sdui_control_menu),
-           card_index: idx, menu_label: (() => { const b = card.querySelector(sel.sdui_control_menu + ' button, ' + sel.listitem_menu); return b ? (clean(b.getAttribute('aria-label')) || null) : null; })(),
+           truncated, card_index: idx, menu_label: (() => { const b = card.querySelector(sel.sdui_control_menu + ' button, ' + sel.listitem_menu); return b ? (clean(b.getAttribute('aria-label')) || null) : null; })(),
            via };
 };
 
@@ -471,9 +509,10 @@ const listRaw = (card, idx) => {
       if (len > best) { textEl = el; best = len; via.text = css; }
     }
   }
-  let text = null;
+  let text = null, truncated = false;
   if (textEl) {
     text = shown(textEl).replace(/\s+$/, '');
+    truncated = truncatedOf(textEl, text);
     const expand = textEl.querySelector(sel.sdui_expand) || (textEl.parentElement ? textEl.parentElement.querySelector(sel.sdui_expand) : null);
     if (expand) {
       const raw = (expand.innerText || expand.textContent || '').trim();
@@ -482,7 +521,7 @@ const listRaw = (card, idx) => {
       }
     }
     text = text.replace(/\s*(…|\.\.\.)$/, '');
-    if (!clean(text)) { text = null; delete via.text; }
+    if (!clean(text)) { text = null; truncated = false; delete via.text; }
     else text += contactTail(textEl, text);
   }
 
@@ -515,7 +554,7 @@ const listRaw = (card, idx) => {
   if (key) via.component_key = 'listitem';
   return { strategy: 'listitem', urn: null, component_key: key, post_href: null, author_name: name,
            author_profile_url: profile, author_headline: headline, posted_relative: posted, text,
-           has_control_menu: !!menu, card_index: idx, menu_label: label || null, via };
+           has_control_menu: !!menu, card_index: idx, menu_label: label || null, truncated, via };
 };
 
 const found = __cards(sel);
@@ -698,6 +737,7 @@ def post_from_raw(raw: dict[str, Any], base: str, today: date, search_url: str |
         text=text,
         link_kind=link_kind_of(url) or "other",
         search_url=search_url,
+        truncated=raw.get("truncated") is True,
     )
 
 
@@ -761,6 +801,9 @@ def parse_cards(
     text_misses = len(textless - seen)
     misses = {TEXT_FIELD: text_misses} if text_misses else {}
     misses.update(field_misses_of(posts))
+    truncated = sum(1 for p in posts if p.truncated)
+    if truncated:
+        misses[TRUNCATED_FIELD] = truncated
     return ParsedCards(
         posts=posts,
         parse_errors=len(errors),

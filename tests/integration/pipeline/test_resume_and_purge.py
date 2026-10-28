@@ -67,11 +67,20 @@ def test_a_restart_mid_run_aborts_it_and_the_next_run_continues_with_the_unreach
         d2 = runs.get_run(db, rid2)
         total_seen = db.scalar(select(func.count(SeenPost.id)))
         triage_rows = db.scalar(select(func.count(LlmCall.id)).where(LlmCall.feature == "triage"))
+        # fixscrape #7: a post first read truncated and later expanded is re-triaged ONCE on its full
+        # text (the only legitimate second call); count those posts.
+        retriaged = db.scalar(
+            select(func.count()).select_from(
+                select(LlmCall.seen_post_id).where(LlmCall.feature == "triage").group_by(LlmCall.seen_post_id)
+                .having(func.count(LlmCall.id) > 1).subquery()
+            )
+        ) or 0
     assert d2.run.status == "succeeded" and d2.run.keywords_done == 5
     assert [k.keyword_text for k in d2.keywords][:3] == list(five[2:])
-    # nothing is triaged twice: every distinct post cost exactly one call over both runs
-    assert llm.calls == triage_rows == total_seen > seen_after_run1 >= 1
-    assert llm.calls - calls_after_run1 == d2.run.posts_new == total_seen - seen_after_run1
+    # nothing is triaged twice except truncated->expanded upgrades: one call per distinct post (+1 per upgrade)
+    assert llm.calls == triage_rows == total_seen + retriaged
+    assert total_seen > seen_after_run1 >= 1
+    assert llm.calls - calls_after_run1 == d2.run.posts_new + retriaged == total_seen - seen_after_run1 + retriaged
 
 
 def test_purge_at_run_start_keeps_the_fingerprint_and_a_purged_post_found_again_makes_no_row_and_no_call(

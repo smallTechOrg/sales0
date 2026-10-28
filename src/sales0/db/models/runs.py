@@ -54,6 +54,8 @@ class ScrapeRun(Base):
     enquiries_triaged: Mapped[int] = _counter()
     triage_failed: Mapped[int] = _counter()
     errors_count: Mapped[int] = _counter()
+    # p9: LinkedIn page loads this run used (per-account daily page-load cap)
+    page_loads: Mapped[int] = _counter()
     abort_reason: Mapped[str | None] = mapped_column(String(20))
     error_message: Mapped[str | None] = mapped_column(String(500))
     actor_user_id: Mapped[int | None] = mapped_column(

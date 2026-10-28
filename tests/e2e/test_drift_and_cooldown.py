@@ -23,7 +23,6 @@ from tests.e2e._flows import (
     add_keyword,
     assert_server_logs_clean,
     connect_linkedin,
-    recheck_linkedin,
     remove_keyword,
     run_now,
 )
@@ -126,8 +125,13 @@ def test_drift_alert_then_rate_limit_cooldown_survives_recheck_and_restart(coold
     page.goto(f"{base}/setup")
     expect(page.locator("#linkedin-card")).to_contain_text(f"After that, the next run is allowed after {clock}.")
 
-    # --- a green Re-check clears needs_attention but NOT the cool-down
-    recheck_linkedin(page, server)
+    # --- fixscrape D #4: Re-check is refused during the cool-down (it is an extra feed load); Connect resolves it
+    page.goto(f"{base}/setup")
+    page.locator("#check-linkedin").click()
+    expect(page.locator("#toasts")).to_contain_text("Re-check is paused for")
+    assert server.get_json("/api/session")["status"] == "needs_attention"
+    # --- a green Connect clears needs_attention but NOT the cool-down
+    connect_linkedin(page, base)
     expect(page.locator("#alert-banner")).to_have_count(0)
     assert _utc(server.get_json("/api/session")["cooldown_until"]) == until
     page.goto(f"{base}/runs")

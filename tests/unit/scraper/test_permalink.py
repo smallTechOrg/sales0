@@ -87,7 +87,7 @@ class FakePage:
     def evaluate_handle(self, js: str, arg: Any = None) -> Any:
         assert js == P.FIND_TRIGGER_JS
         self.locate_args.append(arg)
-        index = arg["index"]
+        index = int(arg["key"].removeprefix("KEY"))  # located by component key (no positional fallback)
         self._current = index
         behaviour = self.behaviours[index]
         if behaviour == "no_trigger":
@@ -188,7 +188,7 @@ def test_a_hit_sets_copied_url_only_and_each_step_is_paced_and_checkpointed() ->
         "short", "key:Escape", "checkpoint",
     ]
     assert page.hook_installs == 1
-    assert page.locate_args[0]["key"] == "KEY0" and page.locate_args[0]["index"] == 0
+    assert page.locate_args[0]["key"] == "KEY0" and page.locate_args[0]["index"] == -1
 
 
 def test_cap_zero_installs_no_hook_and_clicks_nothing() -> None:
@@ -296,7 +296,7 @@ def test_eligible_refs_picks_capturable_refs_in_the_order_given_up_to_the_cap() 
 
 def test_the_trigger_is_located_per_tier_by_key_then_card_index_verified_by_label() -> None:
     sdui = P._trigger_args(_raw(2), 7)
-    assert sdui["tier"] == "sdui" and sdui["key"] == "KEY2" and sdui["index"] == 7
+    assert sdui["tier"] == "sdui" and sdui["key"] == "KEY2" and sdui["index"] == -1  # no card_index -> key lookup only
     li = P._trigger_args(_raw(4, strategy="listitem", card_index=9, menu_label="Open control menu for post by Jo"), 0)
     assert li["tier"] == "listitem" and li["index"] == 9 and li["menu_label"] == "Open control menu for post by Jo"
     assert li["listitem_menu"] == 'button[aria-label^="Open control menu for post by"]'

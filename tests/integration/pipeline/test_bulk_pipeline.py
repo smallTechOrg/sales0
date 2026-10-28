@@ -86,7 +86,9 @@ def test_six_bulk_keywords_scan_200_posts_in_order_and_a_second_run_changes_noth
     genuine = len(truth)
     assert counts1["enquiries"] == genuine == r1.posts_relevant > 0
     assert counts1["seen"] == r1.posts_new and r1.posts_new + r1.posts_dupe == r1.posts_seen
-    assert llm.calls == counts1["llm_triage"] == r1.posts_new, "each new post is triaged exactly once"
+    # a truncated-then-expanded re-sighting may re-triage a discarded post once (fixscrape #7): calls can
+    # exceed posts_new, but the run tallies still count each post once
+    assert llm.calls == counts1["llm_triage"] >= r1.posts_new
     assert r1.posts_relevant + r1.posts_skipped_ai + r1.triage_failed == r1.posts_new
     assert (r1.current_step or "").startswith(f"Run finished — scanned {r1.posts_seen} · new {r1.posts_new}")
 

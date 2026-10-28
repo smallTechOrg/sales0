@@ -186,7 +186,7 @@ def test_llm_price_defaults_are_haiku_5_5_pricing(clean_env: None) -> None:
 def test_phase_1_4_defaults(clean_env: None) -> None:
     s = Settings(_env_file=None)
     assert (s.scrape_max_keywords_per_run, s.scrape_max_posts_per_keyword) == (40, 80)
-    assert (s.scrape_max_posts_per_day, s.scrape_max_runs_per_day) == (2000, 4)
+    assert (s.scrape_max_posts_per_day, s.scrape_max_runs_per_day) == (2000, 2)  # fixscrape D: conservative default (was 4)
     assert s.scrape_max_scrolls == 20 and s.scrape_no_growth_scrolls == 2
     assert s.scrape_sort == "latest"
     assert s.scrape_date_filters == ("past-week", "past-month")
@@ -289,7 +289,7 @@ def test_env_example_documents_the_phase_1_4_defaults_and_keeps_the_permalink_ca
         "SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN=40",
         "SALES0_SCRAPE_MAX_POSTS_PER_KEYWORD=80",
         "SALES0_SCRAPE_MAX_POSTS_PER_DAY=2000",
-        "SALES0_SCRAPE_MAX_RUNS_PER_DAY=4",
+        "SALES0_SCRAPE_MAX_RUNS_PER_DAY=2",
         "SALES0_SCRAPE_MAX_SCROLLS=20",
         "SALES0_SCRAPE_NO_GROWTH_SCROLLS=2",
         "SALES0_SCRAPE_SORT=latest",

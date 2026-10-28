@@ -18,6 +18,17 @@ from sales0.llm.errors import LLMAuthError, LLMModelNotFound
 _FATAL = (LLMAuthError, LLMModelNotFound)
 
 
+def _run_with_retry(inp: TriageInput, deps: TriageDeps) -> TriageOutcome:
+    """``run_triage``; a non-fatal ``failed`` outcome is retried once (a transient provider or JSON
+    problem should not park the post as failed). Both attempts' LLM responses are kept so cost is
+    never lost. Fatal errors propagate untouched."""
+    first = run_triage(inp, deps)
+    if first.status != "failed":
+        return first
+    second = run_triage(inp, deps)
+    return second.model_copy(update={"llm_responses": [*first.llm_responses, *second.llm_responses]})
+
+
 @dataclass(frozen=True)
 class BatchItem:
     key: int
@@ -62,7 +73,7 @@ def triage_concurrently(
                     if item is None:
                         stopped = True
                         break
-                    in_flight[pool.submit(run_triage, item.inp, deps)] = item.key
+                    in_flight[pool.submit(_run_with_retry, item.inp, deps)] = item.key
                 if not in_flight:
                     return
                 done, _ = wait(in_flight, return_when=FIRST_COMPLETED)

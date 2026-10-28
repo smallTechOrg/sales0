@@ -21,11 +21,12 @@ class SuggestedKeyword:
     key: str
     text: str
     group: str
+    since: int = 1  # library version that introduced the phrase (v2 = fixscrape additions)
 
 
-def _group(group: str, *texts: str) -> tuple[SuggestedKeyword, ...]:
+def _group(group: str, *texts: str, since: int = 1) -> tuple[SuggestedKeyword, ...]:
     return tuple(
-        SuggestedKeyword(key=suggested_key_of(t), text=t, group=group) for t in texts
+        SuggestedKeyword(key=suggested_key_of(t), text=t, group=group, since=since) for t in texts
     )
 
 
@@ -112,3 +113,48 @@ GROUP_NAMES: tuple[str, ...] = (
     "Products",
 )
 SUGGESTED_KEYWORDS: tuple[SuggestedKeyword, ...] = _G1 + _G2 + _G3 + _G4
+
+# v2 (fixscrape #11): vocabulary the first 60 missed - agency/RFP/empanelment/TOC wording, L&D buyers,
+# Copilot training, Hinglish and city variants. Kept apart from the 60 so the original seeding contract
+# (60, 15 per group) holds; existing databases receive these once via ``keyword_library_seed``.
+_V2 = (
+    _group(
+        "AI corporate workshops",
+        "AI trainer requirement",
+        "AI training RFP",
+        "AI training vendor empanelment",
+        "empanelment of AI trainers",
+        "AI training agency required",
+        "L&D head looking for AI training",
+        "L&D team needs GenAI workshop",
+        "AI training TOC and proposal",
+        "Microsoft Copilot training for employees",
+        "trainer chahiye AI workshop",
+        "AI trainer chahiye",
+        "AI trainer Bangalore",
+        "AI trainer Mumbai",
+        "AI training Pune",
+        "AI workshop Hyderabad",
+        "AI trainer Delhi NCR",
+        "AI training Chennai",
+        since=2,
+    )
+    + _group(
+        "Technical AI training",
+        "GitHub Copilot training for developers",
+        "Copilot training for engineering team",
+        "developer AI training RFP",
+        "GenAI trainer for tech team Bangalore",
+        since=2,
+    )
+    + _group(
+        "AI consulting & build services",
+        "RFP for AI development vendor",
+        "AI vendor empanelment",
+        "AI development agency required",
+        "AI consulting RFP India",
+        since=2,
+    )
+)
+SUGGESTED_KEYWORDS_V2: tuple[SuggestedKeyword, ...] = _V2
+ALL_SUGGESTED_KEYWORDS: tuple[SuggestedKeyword, ...] = SUGGESTED_KEYWORDS + SUGGESTED_KEYWORDS_V2

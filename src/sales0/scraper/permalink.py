@@ -18,10 +18,24 @@ what was parsed); it only adds ``raw["copied_url"]`` on a hit. Safety:
   skipped and counts neither as an attempt nor a miss; ``eligible_refs`` picks cards by ref.
 - At most ``cap`` attempts per keyword (0 = no hook, no clicks); 3 consecutive misses end
   capture for the keyword; leaving the search page ends it too.
+
+Audit fixes (AUDIT_SCRAPER.md): #1 the SDUI tier trusts a post only by its component key, or - as a
+last resort - by ``card_index`` when the trigger's aria-label AND the post's leading text match what
+was extracted (a raw from an earlier pass has no ``card_index`` and is found by key only: the wrong
+post's URL must never be attached); #9 the SDUI trigger must carry an aria-label like "control menu"
+/ "more actions"; #10 an unresolved ``lnkd.in`` short link is a MISS (never stored), resolved through
+the account proxy with the browser's own User-Agent inside one short shared budget; #14 the waits
+around a menu are randomised, not fixed.
+
+Known risk (documented, not removed): ``CLIPBOARD_HOOK_JS`` replaces ``navigator.clipboard`` inside
+the page; a page script that fingerprints the property descriptor can see it. It is installed only
+when a capture actually runs (never on the plain scan) and only to avoid touching the user's clipboard.
 """
 
 from __future__ import annotations
 
+import re
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -37,8 +51,9 @@ from sales0.scraper.pacing import Pacer
 from sales0.scraper.parsing import URN_RE, urn_from_href
 
 log = get_logger("sales0.scraper.permalink")
+_DEFAULT_PACER = Pacer(3.0, 9.0)
 
-Outcome = Literal["hit", "no_menu_item", "no_copy", "click_error", "no_card"]
+Outcome = Literal["hit", "no_menu_item", "no_copy", "click_error", "no_card", "unresolved"]
 
 MAX_CONSECUTIVE_MISSES = 3
 MENU_ITEM_TIMEOUT_MS = 2_000  # wait for "Copy link to post" to become visible
@@ -100,6 +115,16 @@ FIND_TRIGGER_JS = r"""(a) => {
     return card ? card.querySelector(a.listitem_menu) : null;
   }
   const outermost = (els) => els.filter((p) => !(p.parentElement && p.parentElement.closest(a.post_sel)));
+  const labelRe = new RegExp(a.trigger_label_re, "i");
+  const norm = (t) => (t || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const labelOf = (b) => (b.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+  // The post's menu trigger: only a button whose aria-label says it is the control menu.
+  const triggerOf = (post) => {
+    const menu = post.querySelector(a.menu_sel);
+    if (!menu) return null;
+    const cands = menu.matches(a.trigger_sel) ? [menu] : Array.from(menu.querySelectorAll(a.trigger_sel));
+    return cands.find((b) => labelRe.test(labelOf(b))) || null;
+  };
   let post = null;
   if (a.key) {
     for (const el of document.querySelectorAll("[" + a.key_attr + "]")) {
@@ -108,11 +133,16 @@ FIND_TRIGGER_JS = r"""(a) => {
       if (post) break;
     }
   }
-  if (!post) post = outermost(Array.from(document.querySelectorAll(a.post_sel)))[a.index] || null;
-  if (!post) return null;
-  const menu = post.querySelector(a.menu_sel);
-  if (!menu) return null;
-  return menu.matches(a.trigger_sel) ? menu : menu.querySelector(a.trigger_sel);
+  if (post) return triggerOf(post);
+  // Index fallback (key gone): never trusted on its own. A raw without a card_index (earlier pass)
+  // has index -1 and gets nothing; otherwise the trigger's label AND the post's leading text must match.
+  if (a.index < 0 || !a.menu_label) return null;
+  const cand = outermost(Array.from(document.querySelectorAll(a.post_sel)))[a.index] || null;
+  if (!cand) return null;
+  const trig = triggerOf(cand);
+  if (!trig || labelOf(trig) !== a.menu_label) return null;
+  if (a.text_head && !norm(cand.innerText).includes(a.text_head)) return null;
+  return trig;
 }"""
 
 # Polled by wait_for_function: the innermost VISIBLE element whose trimmed text equals the
@@ -149,36 +179,80 @@ FIND_COPY_ITEM_JS = r"""([trigger, a]) => {
 # discarded. A short link is resolved with ONE anonymous, cookie-less HEAD to lnkd.in (no LinkedIn
 # session, not a scraper action on the account); its 301 ``Location`` is the real post URL.
 SHORT_LINK_HOSTS = frozenset({"lnkd.in", "www.lnkd.in"})
-SHORT_LINK_TIMEOUT_S = 8.0
+SHORT_LINK_TOTAL_BUDGET_S = 5.0  # ONE budget shared by every HEAD hop of one short link
+SHORT_LINK_MAX_HOPS = 2
+# Used only when the page cannot report its own User-Agent.
+FALLBACK_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
 _HIGHLIGHT_URN = "highlightedUpdateUrn"
 _POST_URN_RE = r"^urn:li:(activity|ugcPost|share):\d+$"
+_REDIRECTS = (301, 302, 303, 307, 308)
 
 
-def _fetch_location(url: str) -> str | None:
-    """The ``Location`` of the short link's first redirect (no cookies, no following)."""
+def is_short_link(value: str) -> bool:
     try:
-        resp = httpx.head(url, follow_redirects=False, timeout=SHORT_LINK_TIMEOUT_S, headers={"Accept": "*/*"})
-    except httpx.HTTPError:
-        return None
-    return resp.headers.get("location") if resp.status_code in (301, 302, 303, 307, 308) else None
+        parts = urlsplit(value.strip())
+    except ValueError:
+        return False
+    return parts.scheme == "https" and (parts.hostname or "").lower() in SHORT_LINK_HOSTS and parts.path.startswith("/p/")
 
 
-def resolve_short_link(copied: str, fetch: Callable[[str], str | None] | None = None) -> str:
+def _fetch_location(url: str, *, proxy_url: str | None = None, user_agent: str | None = None) -> str | None:
+    """The ``Location`` of the short link's redirect (no cookies, redirects not followed by httpx).
+
+    Goes through the account's proxy (so the request leaves from the same IP as the account) with the
+    browser's own User-Agent. At most ``SHORT_LINK_MAX_HOPS`` HEADs share ONE ``SHORT_LINK_TOTAL_BUDGET_S``
+    deadline (a short link that bounces to another short link is followed while budget remains)."""
+    deadline = time.monotonic() + SHORT_LINK_TOTAL_BUDGET_S
+    headers = {"Accept": "*/*", "User-Agent": user_agent or FALLBACK_USER_AGENT}
+    current = url
+    for _ in range(SHORT_LINK_MAX_HOPS):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.25:
+            return None
+        kwargs: dict[str, Any] = {"headers": headers, "timeout": remaining, "follow_redirects": False}
+        if proxy_url:
+            kwargs["proxy"] = proxy_url
+        try:
+            with httpx.Client(**kwargs) as client:
+                resp = client.head(current)
+        except (httpx.HTTPError, ValueError):
+            return None
+        location = resp.headers.get("location") if resp.status_code in _REDIRECTS else None
+        if not location:
+            return None
+        if not is_short_link(location):
+            return location
+        current = location
+    return None
+
+
+def resolve_short_link(
+    copied: str,
+    fetch: Callable[[str], str | None] | None = None,
+    *,
+    proxy_url: str | None = None,
+    user_agent: str | None = None,
+) -> str:
     """``lnkd.in/p/<code>`` -> the post URL it points at; any other string is returned unchanged.
 
     The result is ``https://www.linkedin.com/feed/update/urn:li:activity:N/`` when the redirect names
     the activity (``highlightedUpdateUrn``), else the ``/posts/...`` path without its query. When the
-    short link cannot be resolved the original string is returned (the caller then drops it).
+    short link cannot be resolved the original string is returned; ``capture_permalinks`` then counts it as a
+    MISS (``is_short_link``) and never stores it.
     """
-    import re
-
     try:
         parts = urlsplit(copied.strip())
     except ValueError:
         return copied
     if parts.scheme != "https" or (parts.hostname or "").lower() not in SHORT_LINK_HOSTS or not parts.path.startswith("/p/"):
         return copied
-    location = (fetch or _fetch_location)(copied.strip())
+    if fetch is not None:
+        location = fetch(copied.strip())
+    else:
+        location = _fetch_location(copied.strip(), proxy_url=proxy_url, user_agent=user_agent)
     if not location:
         return copied
     try:
@@ -255,12 +329,27 @@ def eligible_refs(raws: list[dict[str, Any]], refs: Sequence[str], cap: int) -> 
     return out
 
 
+# Labels of a post's menu trigger ("Open control menu for post by X", "More actions"); anything else
+# in the control-menu container (Follow, Hide ...) is not the trigger.
+TRIGGER_LABEL_RE = r"control menu|more actions"
+TEXT_HEAD_CHARS = 30
+
+
+def _text_head(raw: dict[str, Any]) -> str:
+    text = raw.get("text")
+    return " ".join(text.split()).lower()[:TEXT_HEAD_CHARS] if isinstance(text, str) else ""
+
+
 def _trigger_args(raw: dict[str, Any], index: int) -> dict[str, Any]:
+    """``index`` (the position in the capture loop) is deliberately NOT a fallback: only the card's own
+    ``card_index`` (set for the page that is loaded) is, and a raw without one gets -1 (key lookup only)."""
     pos = raw.get("card_index")
     return {
         "tier": "listitem" if raw.get("strategy") == "listitem" else "sdui",
         "key": (raw.get("component_key") or "").strip(),
-        "index": pos if isinstance(pos, int) else index,
+        "index": pos if isinstance(pos, int) and not isinstance(pos, bool) else -1,
+        "trigger_label_re": TRIGGER_LABEL_RE,
+        "text_head": _text_head(raw),
         "menu_label": (raw.get("menu_label") or "").strip(),
         "key_attr": S.SDUI_KEY_ATTR,
         "key_prefix_re": S.LISTITEM_KEY_PREFIX_RE,
@@ -288,15 +377,17 @@ def _click(element: ElementHandle) -> None:
     element.click(timeout=CLICK_TIMEOUT_MS)
 
 
-def _center(page: Page, element: ElementHandle) -> None:
+def _center(page: Page, element: ElementHandle, pacer: Pacer | None = None) -> None:
     """Scroll the trigger to the middle of the viewport, let the card settle, then hover it.
     After a deep results scroll the first cards sit far above the viewport (and under LinkedIn's
-    sticky header); a click without settling opened no menu live (Phase 1.4 live check)."""
+    sticky header); a click without settling opened no menu live (Phase 1.4 live check). The settle
+    waits are jittered (never the same two numbers every time)."""
+    pacer = pacer or _DEFAULT_PACER
     try:
         element.evaluate("(e) => e.scrollIntoView({block: 'center', inline: 'nearest'})")
-        page.wait_for_timeout(700)
+        page.wait_for_timeout(pacer.jitter_ms(700))
         element.hover(timeout=CLICK_TIMEOUT_MS)
-        page.wait_for_timeout(250)
+        page.wait_for_timeout(pacer.jitter_ms(250))
     except Exception:  # noqa: BLE001 - best-effort; the click that follows decides
         pass
 
@@ -335,7 +426,13 @@ def _find_trigger(page: Page, raw: dict[str, Any], index: int) -> ElementHandle 
 
 
 def _attempt(
-    page: Page, raw: dict[str, Any], index: int, pacer: Pacer, checkpoint: Callable[[], object]
+    page: Page,
+    raw: dict[str, Any],
+    index: int,
+    pacer: Pacer,
+    checkpoint: Callable[[], object],
+    proxy_url: str | None = None,
+    user_agent: str | None = None,
 ) -> tuple[Outcome, str | None]:
     # 1. Open the post's "…" menu (normal action delay first).
     pacer.delay()
@@ -344,7 +441,7 @@ def _attempt(
         if trigger is None:
             checkpoint()
             return "no_card", None  # the card is no longer in the DOM: neither an attempt nor a miss
-        _center(page, trigger)
+        _center(page, trigger, pacer)
         _click(trigger)
     except PlaywrightError:
         checkpoint()
@@ -372,8 +469,11 @@ def _attempt(
         if outcome == "no_copy":
             copied = _poll_copied(page)
             if copied:
-                copied = resolve_short_link(copied)
-                outcome = "hit"
+                copied = resolve_short_link(copied, proxy_url=proxy_url, user_agent=user_agent)
+                if is_short_link(copied):
+                    copied, outcome = None, "unresolved"  # a short link is not a post URL: a miss
+                else:
+                    outcome = "hit"
 
     pacer.short()
     _press_escape(page)
@@ -389,6 +489,8 @@ def capture_permalinks(
     pacer: Pacer,
     checkpoint: Callable[[], object],
     keyword: str = "",
+    proxy_url: str | None = None,
+    user_agent: str | None = None,
 ) -> PermalinkStats:
     """Try "Copy link to post" on the eligible raws; set ``raw["copied_url"]`` on each hit.
 
@@ -413,7 +515,7 @@ def capture_permalinks(
         if urlsplit(page.url).path != search_path:
             log.debug("scraper_permalink_stopped", keyword=keyword, reason="left_search_page", index=index)
             break
-        outcome, copied = _attempt(page, raws[index], index, pacer, checkpoint)
+        outcome, copied = _attempt(page, raws[index], index, pacer, checkpoint, proxy_url, user_agent)
         log.debug("scraper_permalink", keyword=keyword, index=index, outcome=outcome)
         if outcome == "no_card":
             continue

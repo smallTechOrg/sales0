@@ -14,13 +14,15 @@ LinkKind = Literal["post", "profile", "search", "other"]
 # Phase 1.2: which card-discovery strategy won on a results page.
 CardStrategy = Literal["sdui", "urn", "listitem", "none"]
 # Phase 1.4: why ``LinkedInSearcher.scan`` ended.
-StopReason = Literal["cap", "no_growth", "max_scrolls", "no_results", "drift"]
+StopReason = Literal["cap", "no_growth", "max_scrolls", "no_results", "drift", "page_budget"]
 URN_REF_PREFIX = "urn:li:"
 
 # The optional post fields whose absence is counted into ``KeywordScrapeResult.field_misses``.
 OPTIONAL_POST_FIELDS: tuple[str, ...] = ("author_name", "author_profile_url", "author_headline", "posted_relative")
 # Phase 1.2: ``field_misses["text"]`` counts result containers with a ref but no readable text.
 TEXT_FIELD = "text"
+# Audit #7: ``field_misses["truncated"]`` counts posts whose text still had an unexpanded "see more".
+TRUNCATED_FIELD = "truncated"
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ class ScrapedPost:
     text: str
     link_kind: LinkKind = "post"  # Phase 1.2: == scraper.urls.link_kind_of(url)
     search_url: str | None = None  # Phase 1.2: the keyword's search URL (provenance)
+    truncated: bool = False  # audit #7: the card still had an unexpanded "see more" / ellipsis marker
 
     @property
     def urn(self) -> str | None:
@@ -61,6 +64,7 @@ class KeywordScrapeResult:
     passes: int = 1  # Phase 1.4: search passes run (one per date filter)
     expanded: int = 0  # Phase 1.4: "see more" clicks made
     stop_reason: StopReason = "cap"  # Phase 1.4: why the scan ended
+    page_loads: int = 0  # audit #8: search page loads this scan spent (daily page-load budget)
 
 
 @dataclass(frozen=True)

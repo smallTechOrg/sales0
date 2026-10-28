@@ -10,12 +10,14 @@ from fastapi.staticfiles import StaticFiles
 
 from sales0 import __version__
 from sales0.config import Settings, get_settings
+from sales0.datalock import DataDirLock
 from sales0.db.engine import get_engine, session_scope
 from sales0.db.migrate_check import assert_at_head
 from sales0.jobs.reply_poller import get_poller
 from sales0.logging import configure_logging, get_logger
 from sales0.services import crm
 from sales0.services.crm import digest_sections as crm_digest_sections
+from sales0.services.keyword_library_seed import seed_new_phrases
 from sales0.services.keywords import seed_suggested_once
 from sales0.services.metrics import digest_section as metrics_digest_section
 from sales0.services.runs import recover_interrupted_runs_on_startup
@@ -63,13 +65,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    async def _lifespan_body(_app: FastAPI) -> AsyncIterator[None]:
         configure_logging(settings)
         settings.data_path.mkdir(parents=True, exist_ok=True)
         revision = assert_at_head(get_engine())
         recover_interrupted_runs_on_startup()  # Phase 1.4: queued/running runs -> aborted (restart)
         with session_scope() as db:
             seed_suggested_once(db)  # Phase 1.4: the 60 suggested keywords, once
+            seed_new_phrases(db)  # fixscrape: v2 phrases for DBs that took v1
             seed_admin(db, settings)  # Phase 3: first admin from SALES0_ADMIN_EMAIL (idempotent)
             accounts.bootstrap_admin(db, settings)  # Phase 5: SALES0_APP_PASSWORD = first admin's initial password
         crm.install()  # Phase 2: CRM event hooks, SQL sheet repository, CRM digest sections
@@ -96,6 +99,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         poller.stop()
         scheduler.stop()
         log.info("app_stopped")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Fixscrape D (#5): one sales0 process per data dir, BEFORE recover_interrupted_runs_on_startup.
+        settings.data_path.mkdir(parents=True, exist_ok=True)
+        lock = DataDirLock(settings.data_path)
+        if not settings.allow_multi_process:
+            lock.acquire()  # raises DataDirLocked with the explanation when another process holds it
+        try:
+            async with _lifespan_body(_app):
+                yield
+        finally:
+            lock.release()
 
     app = FastAPI(title="sales0", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(CsrfOriginMiddleware)  # innermost

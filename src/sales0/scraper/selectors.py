@@ -128,7 +128,8 @@ SEE_MORE_ARIA_SELECTORS: tuple[str, ...] = (
     '[role="button"][aria-label*="see more" i]',
 )
 SEE_MORE_TEXT_CANDIDATES = 'button, [role="button"]'
-SEE_MORE_TEXT_RE = r"^(…|\.\.\.)?\s*(see|show)?\s*more$"
+# Audit #15: needs an ellipsis or a see/show prefix - a bare "More" (profile/nav "More" menu) never matches.
+SEE_MORE_TEXT_RE = r"^(?:(?:…|\.\.\.)\s*(?:(?:see|show)\s*)?|(?:see|show)\s*)more$"
 LEGACY_SEE_MORE = "button.feed-shared-inline-show-more-text__see-more-less-toggle"
 SEE_MORE_EXCLUDE_RE = r"actions|options|menu|comment|reaction"
 

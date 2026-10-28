@@ -6,6 +6,15 @@ is not installed (``SALES0_LINKEDIN_BROWSER_CHANNEL=auto``). Connect is the only
 launch; every check and run is headless on the same profile with the identical argument set
 (architecture.md -> ``## LinkedIn browser (Phase 1.1)``).
 
+Automation flags (AUDIT_SCRAPER.md #14, decision): ``--disable-blink-features=AutomationControlled`` and the
+removal of Playwright's ``--enable-automation`` are KEPT. A less-evasive default (webdriver=true, the
+"controlled by automated software" infobar on the headed Connect) was weighed and rejected for now because
+the repo's own contract tests it: ``sales0 check-browser`` fails on ``navigator.webdriver`` being true
+(``cli.automation_tell`` + ``tests/integration/test_check_browser_cli.py``) and the options are pinned in
+``tests/unit/scraper/test_browser_options.py``. Residual risk: LinkedIn can still fingerprint headless Chrome
+by other means (the in-page clipboard override in ``permalink.py``, uniform timing); behavioural mitigations
+(eased multi-step scrolls, jittered waits, small daily page-load budgets) live in ``search.py`` / ``pacing.py``.
+
 Resolution never starts a browser: Chrome's version comes from its ``Info.plist`` (macOS) or
 ``--version`` (Linux), Chromium's from Playwright's bundled ``browsers.json``.
 """

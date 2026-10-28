@@ -33,6 +33,7 @@ PageKind = Literal["ok", "logout", "checkpoint", "captcha", "rate_limited", "htt
 UrlKind = Literal["logout", "checkpoint", "captcha"]
 
 RATE_LIMIT_STATUSES: frozenset[int] = frozenset({429, 999})
+API_PATH_PREFIXES: tuple[str, ...] = ("/voyager/api/",)  # same-site XHR/fetch where a 403 means throttled
 LOGIN_FIRST_SEGMENTS: frozenset[str] = frozenset({"login", "login-submit", "uas", "authwall", "signup", "signin", "reg"})
 LOGIN_PATH_PREFIXES: tuple[str, ...] = ("/checkpoint/lg/", "/checkpoint/rm/sign-in-another-account", "/m/login")
 CHECKPOINT_FIRST_SEGMENT = "checkpoint"
@@ -111,7 +112,15 @@ def classify_page(signals: PageSignals) -> PageVerdict:
 # --------------------------------------------------------------------------- site rules
 def is_rate_limit_response(url: str, status: int, base: str) -> bool:
     """A response (document, XHR or fetch) that means LinkedIn is throttling this session."""
-    return status in RATE_LIMIT_STATUSES and same_site(url, base)
+    if not same_site(url, base):
+        return False
+    if status in RATE_LIMIT_STATUSES:
+        return True
+    # Audit #3: LinkedIn's background API answers a throttled/flagged session with 403 as often as 429.
+    # Only the same-site API paths count; a 403 on a DOCUMENT stays an ``http_error`` (a keyword error,
+    # which the searcher's consecutive-error breaker escalates) and 403s on trackers/assets are ignored.
+    path = (linkedin_path(url) or "").lower()
+    return status == 403 and path.startswith(API_PATH_PREFIXES)
 
 
 # --------------------------------------------------------------------------- cookie

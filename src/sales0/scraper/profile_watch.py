@@ -39,7 +39,7 @@ def scan_profile(searcher: Any, slug: str, max_posts: int) -> KeywordScrapeResul
     cap = max(1, min(max_posts, settings.watch_max_posts_per_profile))
     started = time.monotonic()
     searcher._last_keyword = f"watch:{slug}"
-    outcome = searcher._scan_pass(page, f"watch:{slug}", "", url, cap, 0, f" for {slug}")
+    outcome = searcher._scan_pass(page, f"watch:{slug}", "", url, cap, f" for {slug}")
     today = local_today(settings.tz)
     parsed = parse_cards(outcome.raws, base, today, cap, search_url=url)
     searcher._remember_cards([outcome.raws])
