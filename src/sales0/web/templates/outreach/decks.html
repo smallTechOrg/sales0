@@ -43,7 +43,7 @@
                   </form>
                 </td>
                 <td>
-                  <form method="post" action="/outreach/decks/{{ d.id }}/delete" data-q="Delete deck '{{ d.name }}'? Messages already approved with it can still be sent." onsubmit="return confirm(this.dataset.q)">
+                  <form method="post" action="/outreach/decks/{{ d.id }}/delete" data-q="Delete deck '{{ d.name }}'? Messages already approved with it can still be sent." data-confirm-submit>
                     <button class="btn btn--danger btn--sm" type="submit">Delete</button>
                   </form>
                 </td>

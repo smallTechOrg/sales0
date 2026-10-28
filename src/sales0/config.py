@@ -20,6 +20,7 @@ REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 ENV_FILE: Path = REPO_ROOT / ".env"
 
 LinkedInMode = Literal["live", "fixture"]
+CookieSecure = Literal["auto", "true", "false"]
 LogFormat = Literal["json", "console"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 DateFilter = Literal["past-24h", "past-week", "past-month"]
@@ -28,6 +29,7 @@ ScrapeSort = Literal["latest", "relevance"]
 DATE_FILTER_VALUES: tuple[str, ...] = ("past-24h", "past-week", "past-month")
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+MIN_SECRET_KEY_CHARS = 16  # a Fernet key is 44 chars, so "16+ chars or a Fernet key" is just this floor
 
 
 def _clean_enum_value(value: Any) -> Any:
@@ -84,6 +86,14 @@ class Settings(BaseSettings):
     # Only for a non-loopback deployment (e.g. https://sales.example.com); locally the OAuth
     # redirect URI is built from the request's own loopback host and port.
     public_base_url: str | None = None
+    # Extra Host names this server answers to (comma separated, port-agnostic) once logins are enabled, on top of
+    # loopback, SALES0_HOST and the host of SALES0_PUBLIC_BASE_URL. Any other Host header is refused (DNS rebinding).
+    allowed_hosts: str = ""
+    # Secure flag on every cookie: auto = when the request is https (or X-Forwarded-Proto=https from a trusted
+    # proxy, or SALES0_PUBLIC_BASE_URL is https); true / false force it.
+    cookie_secure: CookieSecure = "auto"
+    # TEST ONLY: also accept the Starlette TestClient's default Host ("testserver"). Set by tests/conftest.py.
+    allow_testserver_host: bool = False
     # Google endpoints; overridable so tests (and proxies) can point the OAuth flow elsewhere.
     google_auth_endpoint: str = "https://accounts.google.com/o/oauth2/v2/auth"
     google_token_endpoint: str = "https://oauth2.googleapis.com/token"
@@ -224,6 +234,7 @@ class Settings(BaseSettings):
         "linkedin_browser_channel",
         "log_format",
         "scrape_sort",
+        "cookie_secure",
         mode="before",
     )
     @classmethod
@@ -265,6 +276,22 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_plain(cls, value: Any) -> Any:
         return _clean_enum_value(value)
+
+    @field_validator("secret_key", mode="before")
+    @classmethod
+    def _secret_key_strong_enough(cls, value: Any) -> Any:
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(raw, str):
+            return value
+        raw = raw.strip()
+        if not raw:
+            return None  # blank = unset (a key is generated into <data_dir>/secret.key)
+        if len(raw) < MIN_SECRET_KEY_CHARS:
+            raise ValueError(
+                f"SALES0_SECRET_KEY must be at least {MIN_SECRET_KEY_CHARS} characters (or a Fernet key); "
+                "generate one with: openssl rand -base64 48"
+            )
+        return raw
 
     @field_validator("admin_email", mode="before")
     @classmethod
@@ -418,7 +445,43 @@ class Settings(BaseSettings):
 
     @property
     def session_cookie_secure(self) -> bool:
+        """Request-independent Secure decision (see ``sales0.web.cookies.cookie_secure`` for the per-request one)."""
+        if self.cookie_secure != "auto":
+            return self.cookie_secure == "true"
         return (self.public_base_url or "").lower().startswith("https://")
+
+    @property
+    def allowed_host_names(self) -> frozenset[str]:
+        """Host names (no port) accepted once logins are enabled: loopback, SALES0_HOST, the public URL's host and
+        SALES0_ALLOWED_HOSTS."""
+        from urllib.parse import urlsplit
+
+        names = {h.lower() for h in LOOPBACK_HOSTS} | {self.host.lower().strip("[]")}
+        if self.public_base_url:
+            try:
+                public = (urlsplit(self.public_base_url).hostname or "").lower()
+            except ValueError:
+                public = ""
+            if public:
+                names.add(public)
+        for part in self.allowed_hosts.split(","):
+            part = part.strip().lower()
+            if part:
+                try:
+                    names.add((urlsplit(f"//{part}").hostname or part).lower())
+                except ValueError:
+                    names.add(part)
+        if self.allow_testserver_host:
+            names.add("testserver")
+        return frozenset(names)
+
+    @property
+    def open_mode_host_names(self) -> frozenset[str]:
+        """Host names accepted while NO login exists (open mode): loopback and SALES0_HOST only."""
+        names = {h.lower() for h in LOOPBACK_HOSTS} | {self.host.lower().strip("[]")}
+        if self.allow_testserver_host:
+            names.add("testserver")
+        return frozenset(names)
 
     @property
     def base_url(self) -> str:
@@ -449,6 +512,11 @@ def check_startup(settings: Settings) -> None:
     if not settings.api_key_present:
         raise StartupError(
             "SALES0_ANTHROPIC_API_KEY is missing — add it to .env in the repo root (see .env.example)."
+        )
+    if settings.linkedin_mode == "fixture" and not settings.is_loopback_host:
+        raise StartupError(
+            "Refusing SALES0_LINKEDIN_MODE=fixture on a non-loopback SALES0_HOST: it serves a fake LinkedIn "
+            "(/__fixtures/*) without login. Use fixture mode on 127.0.0.1 only."
         )
     if not settings.is_loopback_host and not settings.app_password_set and not _accounts_have_passwords(settings):
         raise StartupError(

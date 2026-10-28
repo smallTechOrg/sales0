@@ -323,7 +323,10 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_ADMIN_NAME` | str | `Admin` | Display name of that first admin. |
 | `SALES0_GMAIL_DAILY_SEND_CAP` | int | `40` | Max outreach emails sent per member per day (0 disables sending). |
 | `SALES0_DECK_MAX_BYTES` | int | `10485760` | Max size of one uploaded deck PDF, in bytes. |
-| `SALES0_PUBLIC_BASE_URL` | str | unset | Public origin when hosted (e.g. `https://sales.example.com`). Builds the Google OAuth redirect (`<url>/oauth/google/callback`, must match a registered redirect URI exactly) and turns on the Secure cookie flag when it starts with `https://`. |
+| `SALES0_PUBLIC_BASE_URL` | str | unset | Public origin when hosted (e.g. `https://sales.example.com`). Builds the Google OAuth redirect (`<url>/oauth/google/callback`, must match a registered redirect URI exactly) and (with `SALES0_COOKIE_SECURE=auto`) turns on the Secure cookie flag when it starts with `https://`; its host is added to the accepted Host names. |
+| `SALES0_ALLOWED_HOSTS` | str | empty | Extra Host names (comma separated, any port) accepted once logins are enabled, in addition to loopback, `SALES0_HOST` and the host of `SALES0_PUBLIC_BASE_URL`. Any other Host header is refused with 400 (DNS-rebinding guard). In open mode (no logins) only loopback and `SALES0_HOST` are accepted. |
+| `SALES0_COOKIE_SECURE` | auto \| true \| false | `auto` | Secure flag on every cookie: `auto` (default: when the request is https, or `X-Forwarded-Proto: https` arrives from a `SALES0_TRUSTED_PROXIES` peer, or `SALES0_PUBLIC_BASE_URL` is https), `true` or `false`. |
+| `SALES0_ALLOW_TESTSERVER_HOST` | bool | `False` | TEST ONLY: also accept the Host `testserver` (Starlette TestClient). Never set it on a server. |
 | `SALES0_GOOGLE_AUTH_ENDPOINT` | str | `https://accounts.google.com/o/oauth2/v2/auth` | Google authorize endpoint (override for tests/proxies). |
 | `SALES0_GOOGLE_TOKEN_ENDPOINT` | str | `https://oauth2.googleapis.com/token` | Google token endpoint (override for tests/proxies). |
 | `SALES0_GOOGLE_USERINFO_ENDPOINT` | str | `https://openidconnect.googleapis.com/v1/userinfo` | Google userinfo endpoint (override for tests/proxies). |
@@ -491,11 +494,21 @@ reverse proxy in front. Binding `0.0.0.0` inside the container requires `SALES0_
 Terminate TLS at a proxy (Caddy, nginx, a cloud load balancer) and forward to sales0 on
 `127.0.0.1:8765`. Set:
 
-- `SALES0_PUBLIC_BASE_URL=https://sales.example.com`: used to build the Google OAuth redirect
-  and, when it starts with `https://`, marks the session cookies `Secure`.
-- `SALES0_TRUSTED_PROXIES=127.0.0.1` (the proxy's address, or a CIDR): only then is
-  `X-Forwarded-For` trusted for the client address used by the login throttle. Leave it empty
-  when sales0 faces clients directly, otherwise anyone could spoof their address.
+- `SALES0_PUBLIC_BASE_URL=https://sales.example.com`: used to build the Google OAuth redirect;
+  its host is accepted as a `Host` header, and when it starts with `https://` all cookies are
+  marked `Secure`.
+- `SALES0_TRUSTED_PROXIES=127.0.0.1` (the proxy's address, or a CIDR): **required behind a
+  proxy.** Only then is `X-Forwarded-For` trusted for the client address used by the login
+  throttle (otherwise every visitor shares the proxy's address = ONE throttle bucket, so one
+  attacker locks everybody out) and `X-Forwarded-Proto` for the cookie `Secure` flag. Leave it
+  empty when sales0 faces clients directly, otherwise anyone could spoof their address.
+- `SALES0_ALLOWED_HOSTS=other.example.com,10.0.0.5`: any extra names users open sales0 by.
+  A request whose `Host` is not loopback, `SALES0_HOST`, the public URL's host or in this list
+  gets a 400 (DNS-rebinding guard); in open mode only loopback / `SALES0_HOST` pass.
+- `SALES0_COOKIE_SECURE=auto|true|false`: `auto` follows https (see above); force `true` if your
+  proxy does not send `X-Forwarded-Proto`.
+
+See [docs/security.md](docs/security.md) for the hardening notes (headers/CSP, body limits, file modes).
 - **Always set `SALES0_APP_PASSWORD` and create user accounts on a server**, even though sales0
   itself listens on loopback behind the proxy: a loopback bind with nothing configured is "open
   mode", and the proxy would expose it to the internet.

@@ -43,7 +43,7 @@ def test_compose_keeps_prospect_contact_email_when_newest_enquiry_has_none(web: 
 # ---------------------------------------------------------------------- 2. throttle vs X-Forwarded-For
 def test_rotating_x_forwarded_for_still_locks_out(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SALES0_APP_PASSWORD", "right-pass")
-    monkeypatch.setenv("SALES0_SECRET_KEY", "k")
+    monkeypatch.setenv("SALES0_SECRET_KEY", "qa-hardening-secret-key")
     monkeypatch.setenv("SALES0_LOGIN_MAX_ATTEMPTS", "3")
     reset_settings()
     port = _free_port()
@@ -177,7 +177,7 @@ def test_merge_confirm_names_ids_and_emails_for_equal_names(web: TestClient) -> 
 
 def test_logout_link_has_light_text_on_the_dark_header(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SALES0_APP_PASSWORD", "pw-pw-pw")
-    monkeypatch.setenv("SALES0_SECRET_KEY", "k")
+    monkeypatch.setenv("SALES0_SECRET_KEY", "qa-hardening-secret-key")
     reset_settings()
     try:
         with TestClient(create_app(), follow_redirects=False) as c:

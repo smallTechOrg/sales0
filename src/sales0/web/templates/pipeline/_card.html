@@ -15,7 +15,7 @@
     <form class="pcard__move" method="post" action="/pipeline/prospects/{{ c.id }}/stage" hx-post="/pipeline/prospects/{{ c.id }}/stage" hx-swap="none">
       <input type="hidden" name="next" value="{{ next }}">
       <label class="visually-hidden" for="stage-p{{ c.id }}">Move {{ c.name }} to stage</label>
-      <select class="select" id="stage-p{{ c.id }}" name="stage" onchange="this.form.requestSubmit()">
+      <select class="select" id="stage-p{{ c.id }}" name="stage" data-autosubmit="request">
         {% for key, label in stage_options %}<option value="{{ key }}"{% if key == c.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
       <noscript><button class="btn btn--sm" type="submit">Move</button></noscript>
@@ -34,7 +34,7 @@
   <form class="pcard__move" method="post" action="/pipeline/leads/{{ c.id }}/stage" hx-post="/pipeline/leads/{{ c.id }}/stage" hx-swap="none">
     <input type="hidden" name="next" value="{{ next }}">
     <label class="visually-hidden" for="stage-l{{ c.id }}">Move {{ c.prospect_name }} to stage</label>
-    <select class="select" id="stage-l{{ c.id }}" name="stage" onchange="this.form.requestSubmit()">
+    <select class="select" id="stage-l{{ c.id }}" name="stage" data-autosubmit="request">
       {% for key, label in stage_options %}<option value="{{ key }}"{% if key == c.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
     <noscript><button class="btn btn--sm" type="submit">Move</button></noscript>

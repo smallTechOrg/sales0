@@ -192,15 +192,26 @@ async def change_password(
     if me is None:
         raise DomainError("forbidden", "Log in first - passwords are not enabled yet.", 403)
     response = RedirectResponse("/account", status_code=303)
+    guard: auth.LoginGuard = request.app.state.login_throttle
+    ip, key, moment = auth.client_ip(request, settings), f"{me.email}#password-change", auth.now()
+    left = guard.check(ip, key, moment)
+    if left is not None:  # the current password is a guessable secret: same lockout as the login form
+        log.warning("password_change_locked", client=ip, member_id=me.id, retry_after_s=left)
+        set_flash(response, f"Too many attempts - try again in {left} seconds.", "error")
+        response.headers["Retry-After"] = str(left)
+        return response
     if password != confirm:
         set_flash(response, "The two new passwords do not match.", "error")
         return response
     try:
         accounts.change_own_password(
-            db, me, current, password, settings, keep_session_id=getattr(request.state, "login_session_id", None), now=auth.now()
+            db, me, current, password, settings, keep_session_id=getattr(request.state, "login_session_id", None), now=moment
         )
     except DomainError as exc:
+        if exc.code == "password_wrong":
+            guard.fail(ip, key, moment)
         set_flash(response, exc.message, "error")
         return response
+    guard.reset(ip, key)
     set_flash(response, "Password changed. Your other sessions were signed out.")
     return response

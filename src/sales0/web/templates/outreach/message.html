@@ -96,7 +96,7 @@
               <p id="approved-note"><span class="badge badge--info">Approved</span> by {{ owner_name }}{% if msg.approved_at %} {{ msg.approved_at|localdt }}{% endif %}, content hash <span class="mono" id="approved-hash">{{ approved_hash }}</span>.</p>
             {% endif %}
             {% if can_send %}
-              <form method="post" action="/outreach/messages/{{ msg.id }}/send" id="send-form" onsubmit="var b=this.querySelector('button');if(b.dataset.busy){return false;}b.dataset.busy='1';b.disabled=true;b.textContent='Sending...';">
+              <form method="post" action="/outreach/messages/{{ msg.id }}/send" id="send-form" data-busy-submit data-busy-disable data-busy-text="Sending...">
                 <button class="btn btn--danger" id="send-btn" type="submit">Send now from {{ connection.email }}</button>
               </form>
               <p class="muted">This really sends the email. It cannot be undone and it can only be sent once.</p>
@@ -105,13 +105,13 @@
                 {% if connection.status != "connected" %}Gmail is not connected - <a href="/team">connect it</a>.{% elif cap.reached %}today's limit of {{ cap.cap }} emails is reached.{% endif %}</p>
             {% endif %}
             {% if can_retry_known %}
-              <form method="post" action="/outreach/messages/{{ msg.id }}/send" onsubmit="var b=this.querySelector('button');if(b.dataset.busy){return false;}b.dataset.busy='1';b.disabled=true;">
+              <form method="post" action="/outreach/messages/{{ msg.id }}/send" data-busy-submit data-busy-disable>
                 <button class="btn" id="retry-btn" type="submit">Retry send</button>
               </form>
               <p class="muted">Nothing was sent last time, so a retry is safe. It still only happens when you press the button.</p>
             {% endif %}
             {% if can_retry_unknown %}
-              <form method="post" action="/outreach/messages/{{ msg.id }}/retry" id="retry-unknown-form" onsubmit="var b=this.querySelector('button');if(b.dataset.busy){return false;}b.dataset.busy='1';b.disabled=true;">
+              <form method="post" action="/outreach/messages/{{ msg.id }}/retry" id="retry-unknown-form" data-busy-submit data-busy-disable>
                 <label class="row"><input type="checkbox" name="confirm_not_sent" value="1" id="confirm-not-sent" required> I checked the Gmail Sent folder and it was NOT sent.</label>
                 <button class="btn btn--danger" id="retry-unknown-btn" type="submit">Retry send</button>
               </form>
@@ -120,7 +120,7 @@
               <p class="muted" id="reapprove-note">The approval was cleared. Edit the message (any change) and save it to approve it again.</p>
             {% endif %}
             {% if can_reject %}
-              <form method="post" action="/outreach/messages/{{ msg.id }}/reject" data-q="Reject this message? It will never be sent." onsubmit="return confirm(this.dataset.q)">
+              <form method="post" action="/outreach/messages/{{ msg.id }}/reject" data-q="Reject this message? It will never be sent." data-confirm-submit>
                 <button class="btn btn--ghost" id="reject-btn" type="submit">Reject</button>
               </form>
             {% endif %}
@@ -172,8 +172,8 @@
       <div class="card__header"><h2 id="timeline-title">Timeline</h2></div>
       <div class="card__body">
         <ol class="timeline" id="timeline">
-          {% for ev, label, who in events %}
-            <li data-kind="{{ ev.kind }}"><strong>{{ label }}</strong>{% if who %} by {{ who }}{% endif %} <span class="muted">{{ ev.created_at|localdt("%d %b %H:%M:%S") }}</span>{% if ev.detail %}<div class="muted">{{ ev.detail }}</div>{% endif %}</li>
+          {% for ev, label, who, ev_detail in events %}
+            <li data-kind="{{ ev.kind }}"><strong>{{ label }}</strong>{% if who %} by {{ who }}{% endif %} <span class="muted">{{ ev.created_at|localdt("%d %b %H:%M:%S") }}</span>{% if ev_detail %}<div class="muted">{{ ev_detail }}</div>{% endif %}</li>
           {% else %}<li class="muted">No events yet.</li>{% endfor %}
         </ol>
       </div>

@@ -33,14 +33,14 @@
     <form class="inline-form" method="get" action="/outreach" id="outbox-filters">
       <div class="field">
         <label class="field__label" for="filter-state">State</label>
-        <select class="input" id="filter-state" name="state" onchange="this.form.submit()">
+        <select class="input" id="filter-state" name="state" data-autosubmit>
           {% for key, label in state_filters %}<option value="{{ key }}"{% if key == state %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
       {% if is_admin %}
         <div class="field">
           <label class="field__label" for="filter-scope">Show</label>
-          <select class="input" id="filter-scope" name="scope" onchange="this.form.submit()">
+          <select class="input" id="filter-scope" name="scope" data-autosubmit>
             <option value="mine"{% if scope == "mine" %} selected{% endif %}>My messages</option>
             <option value="all"{% if scope == "all" %} selected{% endif %}>All members' messages (admin)</option>
           </select>

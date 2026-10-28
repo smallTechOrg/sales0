@@ -19,7 +19,7 @@
       <div class="card__header"><h2 id="link-title">Set-password link for {{ link.member.name }}</h2><span class="muted">Shown once</span></div>
       <div class="card__body">
         <p>Send this link to {{ link.member.name }} yourself. It works once, for {{ ttl_h }} hours (until {{ link.expires|localdt }}), and cannot be shown again - generate a new one if it is lost.</p>
-        <input class="input" id="set-password-url" type="text" readonly value="{{ link.url }}" onclick="this.select()">
+        <input class="input" id="set-password-url" type="text" readonly value="{{ link.url }}" data-select-on-click>
         {% if link.first %}<p class="muted">{{ link.member.name }} was added without a password; opening the link lets them choose one.</p>{% endif %}
       </div>
     </section>
@@ -37,7 +37,7 @@
               <td>{{ m.email }}</td>
               <td>
                 <form method="post" action="/users/{{ m.id }}/role" class="inline-form">
-                  <select class="input" name="role" aria-label="Role for {{ m.name }}" onchange="this.form.submit()">
+                  <select class="input" name="role" aria-label="Role for {{ m.name }}" data-autosubmit>
                     <option value="member"{% if m.role == "member" %} selected{% endif %}>Member</option>
                     <option value="admin"{% if m.role == "admin" %} selected{% endif %}>Admin</option>
                   </select>

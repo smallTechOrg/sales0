@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sales0.db.engine import get_db
 from sales0.errors import DomainError
 from sales0.jobs.scheduler import get_scheduler
-from sales0.web.acting import clear_flash, pop_flash, set_flash
+from sales0.web.acting import clear_flash, pop_flash, require_admin, set_flash
 from sales0.web.context import render_page
 
 router = APIRouter()
@@ -40,7 +40,7 @@ def schedule_page(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
     return response
 
 
-@router.post("/schedule/{name}/enable")
+@router.post("/schedule/{name}/enable", dependencies=[Depends(require_admin)])
 def set_enabled(name: str, enabled: str = Form("1")) -> RedirectResponse:
     _known(name)
     on = enabled == "1"
@@ -48,7 +48,7 @@ def set_enabled(name: str, enabled: str = Form("1")) -> RedirectResponse:
     return _redirect(f"{name.replace('_', ' ').capitalize()} {'enabled' if on else 'disabled'}.")
 
 
-@router.post("/schedule/{name}/run")
+@router.post("/schedule/{name}/run", dependencies=[Depends(require_admin)])
 def run_now(name: str) -> RedirectResponse:
     _known(name)
     result = get_scheduler().run_now(name)

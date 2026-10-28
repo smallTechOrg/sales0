@@ -47,7 +47,7 @@ from sales0.logging import get_logger
 from sales0.services._common import clip, not_found, now_or
 from sales0.services import events, suppressions
 from sales0.services.outreach import decks, templates
-from sales0.services.outreach._shared import add_event, join_addrs, split_addrs
+from sales0.services.outreach._shared import acted_by_of, add_event, join_addrs, split_addrs
 from sales0.services.team import connections
 from sales0.services.team.members import normalise_email
 
@@ -135,6 +135,8 @@ def _load(db: Session, msg_id: int) -> OutreachMessage:
 
 def _require_owner(msg: OutreachMessage, member: TeamMember, action: str) -> None:
     if msg.member_id != member.id:
+        if member.role != "admin":
+            raise not_found()  # same answer as a nonexistent id: no message-id enumeration
         raise DomainError("not_owner", f"Only the member who owns this message can {action} it.", 403)
 
 
@@ -213,9 +215,9 @@ def update_message(
     msg.gmail_draft_id = None
     _reset_approval(msg)
     msg.updated_at = stamp
-    add_event(db, msg.id, "edited", member.id, "changed: " + ", ".join(changed), stamp)
+    add_event(db, msg.id, "edited", member.id, "changed: " + ", ".join(changed), stamp, acted_by_id=acted_by_of(member))
     if was_approved:
-        add_event(db, msg.id, "approval_reset", member.id, "edited after approval", stamp)
+        add_event(db, msg.id, "approval_reset", member.id, "edited after approval", stamp, acted_by_id=acted_by_of(member))
     db.commit()
     return msg
 
@@ -255,7 +257,7 @@ def approve(db: Session, msg_id: int, member: TeamMember, *, now: datetime | Non
     msg.state = "approved"
     msg.error = None
     msg.updated_at = stamp
-    add_event(db, msg.id, "approved", member.id, f"sha256={content.sha256[:12]}", stamp)
+    add_event(db, msg.id, "approved", member.id, f"sha256={content.sha256[:12]}", stamp, acted_by_id=acted_by_of(member))
     db.commit()
     return msg
 
@@ -271,7 +273,7 @@ def reject(db: Session, msg_id: int, member: TeamMember, *, reason: str | None =
     msg.state = "rejected"
     _reset_approval(msg)
     msg.updated_at = stamp
-    add_event(db, msg.id, "rejected", member.id, clip(reason, 300), stamp)
+    add_event(db, msg.id, "rejected", member.id, clip(reason, 300), stamp, acted_by_id=acted_by_of(member))
     db.commit()
     return msg
 
@@ -303,7 +305,7 @@ def send(db: Session, msg_id: int, member: TeamMember, *, now: datetime | None =
     claimed = _claim(db, msg, "(state = 'approved') OR (state = 'failed' AND send_outcome_unknown = 0 AND content_sha256 IS NOT NULL)", now)
     if not claimed:
         return _load(db, msg_id)  # someone else claimed it first: report the current state
-    add_event(db, msg.id, "sending", member.id, f"as {profile}", now)
+    add_event(db, msg.id, "sending", member.id, f"as {profile}", now, acted_by_id=acted_by_of(member))
     db.commit()
     _enforce_cap_after_claim(db, msg, member, prior, now)
     return _execute(db, msg, member, client, profile, now)
@@ -336,7 +338,7 @@ def retry_send(
     )  # fmt: skip
     if not claimed:
         return _load(db, msg_id)
-    add_event(db, msg.id, "retry_confirmed", member.id, f"confirmed not sent; as {profile}", now)
+    add_event(db, msg.id, "retry_confirmed", member.id, f"confirmed not sent; as {profile}", now, acted_by_id=acted_by_of(member))
     db.commit()
     if old_draft:
         try:
@@ -408,7 +410,7 @@ def _enforce_cap_after_claim(
         .values(state=prior, send_outcome_unknown=unknown, updated_at=now_or(now))
         .execution_options(synchronize_session=False)
     )
-    add_event(db, msg.id, "send_blocked", member.id, f"daily cap {cap} reached", now)
+    add_event(db, msg.id, "send_blocked", member.id, f"daily cap {cap} reached", now, acted_by_id=acted_by_of(member))
     db.commit()
     raise DomainError("daily_cap_reached", f"{member.name} has reached today's limit of {cap} emails. Try again tomorrow.", 429)
 
@@ -421,7 +423,7 @@ def _fail(db: Session, msg: OutreachMessage, member: TeamMember, text: str, *, u
     msg.updated_at = stamp
     if clear_approval:
         _reset_approval(msg)
-    add_event(db, msg.id, "send_failed", member.id, ("outcome unknown: " if unknown else "not sent: ") + (clip(text, 400) or ""), stamp)
+    add_event(db, msg.id, "send_failed", member.id, ("outcome unknown: " if unknown else "not sent: ") + (clip(text, 400) or ""), stamp, acted_by_id=acted_by_of(member))
     db.commit()
     log.warning("send_failed", message_id=msg.id, member_id=member.id, outcome_unknown=unknown)
     return msg
@@ -500,7 +502,7 @@ def _execute(
     msg.error = None
     msg.send_outcome_unknown = False
     msg.updated_at = stamp
-    add_event(db, msg.id, "sent", member.id, f"from {profile}; gmail_message={message_id}", stamp)
+    add_event(db, msg.id, "sent", member.id, f"from {profile}; gmail_message={message_id}", stamp, acted_by_id=acted_by_of(member))
     events.publish(
         db,
         events.MessageSent(

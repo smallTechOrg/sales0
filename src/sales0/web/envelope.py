@@ -7,6 +7,7 @@ fragment retargeted at ``#toasts``. Full-page requests render ``error.html``.
 
 from __future__ import annotations
 
+import re
 from html import escape
 from typing import Any
 
@@ -30,8 +31,17 @@ _HTTP_CODES = {
     404: ("not_found", "That item no longer exists — refresh the page."),
     405: ("method_not_allowed", "That action is not supported here."),
     409: ("conflict", "That conflicts with the current state — refresh the page."),
+    413: ("payload_too_large", "That request is too large."),
     429: ("rate_limited", "Too many requests — wait a moment and try again."),
 }
+
+
+_SECRET_PATH = re.compile(r"^(/set-password/)[^/?#]+")
+
+
+def redact_path(path: str) -> str:
+    """The path for logs: one-time secrets that live in the URL (set-password tokens) are masked."""
+    return _SECRET_PATH.sub(r"\1<redacted>", path)
 
 
 def ok(data: Any = None, status: int = 200) -> JSONResponse:
@@ -84,13 +94,13 @@ def error_response(request: Request, code: str, message: str, status: int) -> Re
 
 
 def unhandled_response(request: Request, exc: BaseException) -> Response:
-    log.error("unhandled_exception", path=request.url.path, error_type=type(exc).__name__, exc_info=exc)
+    log.error("unhandled_exception", path=redact_path(request.url.path), error_type=type(exc).__name__, exc_info=exc)
     return error_response(request, "internal_error", GENERIC_MESSAGE.format(request_id=_request_id(request)), 500)
 
 
 async def _domain_error_handler(request: Request, exc: Exception) -> Response:
     assert isinstance(exc, DomainError)
-    log.info("domain_error", code=exc.code, http_status=exc.http_status, path=request.url.path)
+    log.info("domain_error", code=exc.code, http_status=exc.http_status, path=redact_path(request.url.path))
     return error_response(request, exc.code, exc.message, exc.http_status)
 
 

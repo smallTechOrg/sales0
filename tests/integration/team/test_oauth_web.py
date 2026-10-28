@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -127,7 +128,13 @@ def test_disconnect_revokes_and_marks_disconnected(client: TestClient, google: F
     assert _status() == ["disconnected"]
 
 
-def test_connect_refuses_a_non_loopback_host(client: TestClient) -> None:
+@pytest.fixture
+def public_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The server is configured to answer to this name, so the Host guard lets the request reach the OAuth service."""
+    monkeypatch.setenv("SALES0_HOST", "sales.example.com")
+
+
+def test_connect_refuses_a_non_loopback_host(public_host: None, client: TestClient) -> None:
     resp = client.post("/team/gmail/connect", headers={"host": "sales.example.com"}, follow_redirects=True)
     assert "only works when sales0 is opened on localhost or 127.0.0.1" in resp.text
 

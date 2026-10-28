@@ -131,12 +131,15 @@ def test_only_the_owner_acts_and_admins_can_only_view(db: Session, team: Team) -
         ):
             with pytest.raises(DomainError) as exc:
                 call()
-            assert err_code(exc) == "not_owner" and exc.value.http_status == 403
+            if actor is team.bob:  # another member cannot tell it exists (same as a missing id)
+                assert err_code(exc) == "not_found" and exc.value.http_status == 404
+            else:  # an admin may read it, so gets the explicit refusal
+                assert err_code(exc) == "not_owner" and exc.value.http_status == 403
     messages.approve(db, msg.id, team.ann)
     for actor in (team.bob, team.admin):
         with pytest.raises(DomainError) as exc:
             messages.send(db, msg.id, actor)
-        assert err_code(exc) == "not_owner"
+        assert err_code(exc) == ("not_found" if actor is team.bob else "not_owner")
         with pytest.raises(DomainError):
             messages.retry_send(db, msg.id, actor, True)
     assert all(g.calls == [] for g in team.gmail.values())
@@ -344,7 +347,7 @@ def test_ambiguous_send_failure_needs_an_explicit_confirmed_retry(db: Session, t
         messages.update_message(db, msg.id, team.ann, body="edit while unknown")
     with pytest.raises(DomainError) as exc:
         messages.retry_send(db, msg.id, team.bob, True)
-    assert err_code(exc) == "not_owner"
+    assert err_code(exc) == "not_found"
     assert sum(1 for c in flaky.calls if c[0] == "send_draft") == sends_before
     db.refresh(msg)
     assert msg.state == "failed" and msg.retry_decided_by is None

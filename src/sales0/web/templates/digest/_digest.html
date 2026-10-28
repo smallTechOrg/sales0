@@ -41,17 +41,3 @@
     <textarea id="digest-plain-text" readonly hidden aria-hidden="true">{{ text }}</textarea>
   </div>
 </section>
-<script>
-  (function () {
-    var btn = document.getElementById("copy-digest");
-    var src = document.getElementById("digest-plain-text");
-    if (!btn || !src || !navigator.clipboard) { return; }
-    btn.hidden = false;
-    btn.addEventListener("click", function () {
-      navigator.clipboard.writeText(src.value).then(function () {
-        btn.textContent = "Copied";
-        setTimeout(function () { btn.textContent = "Copy to clipboard"; }, 2000);
-      }, function () { btn.textContent = "Copy failed - select the text instead"; });
-    });
-  })();
-</script>

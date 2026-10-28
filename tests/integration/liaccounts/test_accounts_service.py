@@ -299,11 +299,11 @@ def test_a_public_host_needs_a_secret_key_to_store_a_cookie(db_url: str, monkeyp
 
 
 def test_a_cookie_that_cannot_be_decrypted_is_treated_as_absent(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SALES0_SECRET_KEY", "key-one")
+    monkeypatch.setenv("SALES0_SECRET_KEY", "key-one-0123456789abcdef")
     reset_settings()
     with session_scope() as db:
         view = linkedin_accounts.paste_cookie(db, "AQEDAR" + "q" * 30)
-    monkeypatch.setenv("SALES0_SECRET_KEY", "key-two")
+    monkeypatch.setenv("SALES0_SECRET_KEY", "key-two-0123456789abcdef")
     reset_settings()
     with session_scope() as db:
         assert linkedin_accounts.decrypt_state(linkedin_accounts.get_account(db, view.id)) is None

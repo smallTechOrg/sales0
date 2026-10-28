@@ -80,7 +80,8 @@ def test_same_origin_post_is_allowed_for_configured_and_actual_host(local_client
 def test_rebinding_host_header_is_not_trusted_as_same_origin(db_url: str) -> None:
     with TestClient(create_app(), base_url="http://attacker.example:8765") as c:
         resp = c.post("/setup/keywords", data={"text": "ai workshop"}, headers={"Origin": "http://attacker.example:8765"})
-    assert resp.status_code == 403 and _keyword_count() == 0
+    # refused either by the Host guard (400, DNS rebinding) or by the Origin check (403) - never accepted
+    assert resp.status_code in {400, 403} and _keyword_count() == 0
 
 
 def test_referer_only_cross_origin_is_rejected_and_same_origin_allowed(local_client: TestClient) -> None:

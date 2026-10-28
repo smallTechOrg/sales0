@@ -20,26 +20,26 @@
       {% if message_filter %}<input type="hidden" name="message" value="{{ message_filter }}">{% endif %}
       <div class="field">
         <label class="field__label" for="filter-kind">Kind</label>
-        <select class="input" id="filter-kind" name="kind" onchange="this.form.submit()">
+        <select class="input" id="filter-kind" name="kind" data-autosubmit>
           {% for key, label in kind_filters %}<option value="{{ key }}"{% if key == kind %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
       <div class="field">
         <label class="field__label" for="filter-intent">Intent</label>
-        <select class="input" id="filter-intent" name="intent" onchange="this.form.submit()">
+        <select class="input" id="filter-intent" name="intent" data-autosubmit>
           {% for key, label in intent_filters %}<option value="{{ key }}"{% if key == intent %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
       <div class="field">
         <label class="field__label" for="filter-handled">Status</label>
-        <select class="input" id="filter-handled" name="handled" onchange="this.form.submit()">
+        <select class="input" id="filter-handled" name="handled" data-autosubmit>
           {% for key, label in handled_filters %}<option value="{{ key }}"{% if key == handled %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
       {% if is_admin %}
         <div class="field">
           <label class="field__label" for="filter-scope">Show</label>
-          <select class="input" id="filter-scope" name="scope" onchange="this.form.submit()">
+          <select class="input" id="filter-scope" name="scope" data-autosubmit>
             <option value="mine"{% if scope == "mine" %} selected{% endif %}>My replies</option>
             <option value="all"{% if scope == "all" %} selected{% endif %}>All members' replies (admin)</option>
           </select>

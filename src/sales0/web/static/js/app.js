@@ -139,11 +139,67 @@
     armToast(toast);
   }
 
+
+  // ------------------------------------------------------------------ CSP-safe replacements for inline handlers
+  // (the Content-Security-Policy forbids inline event handlers and inline <script>).
+  document.addEventListener("change", function (evt) {
+    var t = evt.target instanceof Element ? evt.target.closest("[data-autosubmit]") : null;
+    if (!t || !t.form) return;
+    if (t.getAttribute("data-autosubmit") === "request" && typeof t.form.requestSubmit === "function") {
+      t.form.requestSubmit();
+    } else {
+      t.form.submit();
+    }
+  });
+
+  document.addEventListener("click", function (evt) {
+    var t = evt.target instanceof Element ? evt.target.closest("[data-select-on-click]") : null;
+    if (t && typeof t.select === "function") t.select();
+  });
+
+  document.addEventListener("submit", function (evt) {
+    var form = evt.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.hasAttribute("data-confirm-submit") && !window.confirm(form.dataset.q || "Are you sure?")) {
+      evt.preventDefault();
+      evt.stopImmediatePropagation();
+      return;
+    }
+    if (form.hasAttribute("data-busy-submit")) {
+      var b = form.querySelector("button");
+      if (!b) return;
+      if (b.dataset.busy) { evt.preventDefault(); evt.stopImmediatePropagation(); return; }
+      b.dataset.busy = "1";
+      // Disable after the browser has collected the submitter (a disabled button is not submitted).
+      window.setTimeout(function () {
+        if (form.hasAttribute("data-busy-disable")) b.disabled = true;
+        if (form.dataset.busyText) b.textContent = form.dataset.busyText;
+      }, 0);
+    }
+  }, true);
+
+  // Digest page: "Copy to clipboard" (was an inline <script>).
+  document.addEventListener("click", function (evt) {
+    var btn = evt.target instanceof Element ? evt.target.closest("#copy-digest") : null;
+    var src = document.getElementById("digest-plain-text");
+    if (!btn || !src || !navigator.clipboard) return;
+    navigator.clipboard.writeText(src.value).then(function () {
+      btn.textContent = "Copied";
+      window.setTimeout(function () { btn.textContent = "Copy to clipboard"; }, 2000);
+    }, function () { btn.textContent = "Copy failed - select the text instead"; });
+  });
+
+  function armCopyDigest() {
+    var btn = document.getElementById("copy-digest");
+    if (btn && navigator.clipboard) btn.hidden = false;
+  }
   document.addEventListener("htmx:afterSettle", function () {
+    armCopyDigest();
     armAllToasts();
     refreshBulkBar();
   });
   document.addEventListener("DOMContentLoaded", function () {
+    armCopyDigest();
     armAllToasts();
     refreshBulkBar();
   });

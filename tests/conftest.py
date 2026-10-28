@@ -75,6 +75,9 @@ TEST_ENV = {
     "SALES0_TRIAGE_CONCURRENCY": "4",
     # Phase 5: no background reply poller in tests; they call poll_all()/run_cycle() explicitly.
     "SALES0_REPLY_POLL_MINUTES": "0",
+    # Security: the Host allowlist (DNS-rebinding guard) also accepts Starlette TestClient's default Host
+    # "testserver". Tests of the guard itself send an explicit foreign Host or turn this off.
+    "SALES0_ALLOW_TESTSERVER_HOST": "true",
 }
 _CLEARED_ENV = ("SALES0_LOG_FILE", "SALES0_HOST", "SALES0_APP_PASSWORD")
 

@@ -20,7 +20,7 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db, get_sessionmaker
 from sales0.errors import DomainError
 from sales0.jobs.scheduler import SheetSyncJob, get_scheduler
-from sales0.web.acting import clear_flash, pop_flash, set_flash
+from sales0.web.acting import clear_flash, pop_flash, require_admin, set_flash
 from sales0.web.context import is_htmx, render_fragment, render_page, toast_html
 from sales0.services.sheetsync import SqlStateStore
 from sales0.web.envelope import ok
@@ -134,7 +134,7 @@ def _respond(request: Request, message: str, kind: str = "ok") -> Response:
     return response
 
 
-@router.post("/sync/run")
+@router.post("/sync/run", dependencies=[Depends(require_admin)])
 def sync_run(request: Request) -> Response:
     job = _job()
     if not job.available():
@@ -144,7 +144,7 @@ def sync_run(request: Request) -> Response:
     return _respond(request, "Sync started.")
 
 
-@router.post("/sync/enable")
+@router.post("/sync/enable", dependencies=[Depends(require_admin)])
 def sync_enable(request: Request) -> Response:
     """One-click opt-in of the interval job (the same switch as /schedule)."""
     if get_settings().sheet_sync_minutes <= 0:
@@ -153,7 +153,7 @@ def sync_enable(request: Request) -> Response:
     return _respond(request, "Automatic sync enabled.")
 
 
-@router.post("/sync/disable")
+@router.post("/sync/disable", dependencies=[Depends(require_admin)])
 def sync_disable(request: Request) -> Response:
     get_scheduler().set_enabled(JOB, False)
     return _respond(request, "Automatic sync disabled.")
@@ -185,7 +185,7 @@ def _run_dry() -> dict[str, Any]:
     return {"at": datetime.now(UTC), "tabs": _tab_rows(report.to_dict()), "ok": report.ok, "total_changes": report.total_changes}
 
 
-@router.post("/sync/dry-run")
+@router.post("/sync/dry-run", dependencies=[Depends(require_admin)])
 def sync_dry_run(request: Request) -> Response:
     """Fetch and diff without writing anything; the result is shown on the page (in memory only)."""
     global _last_dry_run

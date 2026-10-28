@@ -236,3 +236,11 @@ Assumed:
 - Assumed: metrics 'LinkedIn profile watch' = `watch:<slug>` log rows (done/warning) of runs started that week, i.e. profiles actually visited (appended-to-discovery visits count too); manual `tracked_changed` events no longer count there (they still feed 'old prospects'). Watch log rows (keyword_id NULL, text `watch:*`) are excluded from the keyword yield (they showed up as deleted keywords on Metrics/Setup).
 - Assumed: timeline credit: member actions (track/untrack, run watch now) pass the acting member (and the admin-as-member pair) into the CRM; automated writers stay system actors (`system` for TrackedProfileHit notes and reply hooks, `sheet-sync` for sheet sync, `import`); unknown member = `team`.
 - Harness friction: two pre-existing hard-coded revision pins (p6 test, p7 retry test, watch migration test) made head/previous-relative; the audit test got EXEMPT entries for `/metrics/targets` and `/tracked/{id}/pause` (no actor column).
+
+## Security fixes (feature/sales0-fixsec, from AUDIT_SECURITY)
+- Assumed: Referrer-Policy is `same-origin` (not `no-referrer`): no-referrer makes browsers send `Origin: null` on form POSTs and the CSRF check rejects them.
+- Assumed: outreach "X as Y" audit stored as ` | by_member_id=<admin>` suffix in event detail (no migration); approved_by stays the owner Y.
+- Assumed: tracked/run, digest/build, suggestions/generate, metrics/targets, template preview left member-accessible.
+- Assumed: TestClient Host `testserver` allowed only with SALES0_ALLOW_TESTSERVER_HOST=true (set in tests/conftest.py).
+- Assumed: CSP keeps style-src-attr 'unsafe-inline' (4 style= attrs); script-src 'self' only. htmx 2.0.11 vendored: no known advisory, not verifiable offline. See docs/security.md.
+- Friction: e2e test_drift_and_cooldown flaked once under 3 concurrent suites, passed on rerun.
