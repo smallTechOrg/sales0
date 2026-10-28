@@ -4,7 +4,7 @@ Adapter, OAuth and operator checks for sending outreach through the user's own G
 Code: `src/sales0/integrations/gmail/`. Setup: `docs/gmail-setup.md`. No DB, no web routes.
 
 ## Behaviour
-- **Auth**: installed-app (Desktop) OAuth via `google-cli google-auth` (`python -m sales0.cli google-auth`),
+- **Auth**: installed-app (Desktop) OAuth via `python -m sales0.cli google-auth`,
   loopback redirect on a free port, offline access. Token JSON at `SALES0_GOOGLE_TOKEN_PATH`
   (default `data/google_token.json`, chmod 600, gitignored). Client secret at
   `SALES0_GOOGLE_CLIENT_SECRET_PATH` (default `data/google_client_secret.json`). Refresh is
