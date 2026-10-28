@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     fewshot_text_chars: int = Field(600, ge=50)
     triage_max_input_chars: int = Field(4000, ge=200)
 
+    # --- Google Sheet sync (read-only; Phase 2) ---
+    sheet_sync_minutes: int = Field(30, ge=0)  # 0 disables the interval scheduler
+    sheet_client_sourcing_id: str = "1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag"
+    sheet_metrics_id: str = "1tnwiBRMfp_QR0CmAkxZM_Chl-VAixmcWPxE1NCGED5w"
+    # Optional JSON list replacing the default tabs: [{"name","kind","gid","sheet_id"?}, ...]
+    sheet_tabs_json: str | None = None
+    sheet_fetch_timeout_s: float = Field(20.0, gt=0)
+    sheet_fetch_retries: int = Field(3, ge=0, le=10)
+    sheet_fetch_max_bytes: int = Field(20_000_000, ge=1000)
+
     # ------------------------------------------------------------------ validators
     @field_validator("linkedin_mode", "linkedin_browser_channel", "log_format", "scrape_date_filter", mode="before")
     @classmethod
@@ -161,6 +171,11 @@ class Settings(BaseSettings):
     @field_validator("google_client_secret_path", "google_token_path", mode="before")
     @classmethod
     def _strip_google_paths(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("sheet_client_sourcing_id", "sheet_metrics_id", "sheet_tabs_json", mode="before")
+    @classmethod
+    def _strip_sheet(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
     @field_validator("data_dir", "database_url", "test_database_url", "log_file", mode="before")

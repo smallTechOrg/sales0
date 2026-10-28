@@ -32,7 +32,7 @@ def test_downgrade_restores_the_narrow_check_and_drops_new_rows(db_url: str) -> 
         with engine.begin() as conn:
             conn.execute(text(INSERT), {"f": "research"})
             conn.execute(text(INSERT), {"f": "triage"})
-        command.downgrade(cfg, "0002_phase1_discovery")
+        command.downgrade(cfg, "0003_sheet_sync_state")
         with engine.begin() as conn:
             assert [r[0] for r in conn.execute(text("SELECT feature FROM llm_calls"))] == ["triage"]
         with pytest.raises(IntegrityError), engine.begin() as conn:

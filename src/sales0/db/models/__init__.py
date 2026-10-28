@@ -19,6 +19,7 @@ from sales0.db.models.offerings import Offering, OfferingGroup
 from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword
 from sales0.db.models.team import GmailConnection, TeamMember
+from sales0.db.models.sheet_sync import SheetSyncState
 from sales0.db.models.users import User
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "OutreachMessage",
     "ScrapeRun",
     "ScrapeRunKeyword",
+    "SheetSyncState",
     "StatusHistory",
     "TeamMember",
     "TriageDecision",

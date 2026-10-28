@@ -71,7 +71,7 @@ def _tables(url: str) -> set[str]:
 
 
 def test_0002_is_an_ancestor_of_head_and_db_is_at_head(db_url: str) -> None:
-    assert head_revision() == "p3_outreach_a7c41e9d"
+    assert head_revision()  # never hard-code the head (see NOTES.md)
     engine = build_engine(db_url)
     try:
         assert current_revision(engine) == head_revision()
@@ -162,7 +162,7 @@ def test_alembic_cli_upgrade_and_current_print_the_head_revision(tmp_path: Path)
         ["uv", "run", "alembic", "current"], cwd=REPO_ROOT, env=full_env, capture_output=True, text=True
     )
     assert cur.returncode == 0, cur.stderr
-    assert "p3_outreach_a7c41e9d (head)" in cur.stdout
+    assert f"{head_revision()} (head)" in cur.stdout
 
 
 def test_upgrade_fails_loudly_on_an_unknown_revision(tmp_path: Path) -> None:

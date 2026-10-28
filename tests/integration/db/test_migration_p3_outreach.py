@@ -47,7 +47,7 @@ def test_upgrade_creates_every_outreach_table_and_is_head(db_url: str) -> None:
 
 def test_downgrade_removes_only_the_outreach_tables(db_url: str) -> None:
     cfg = alembic_config(db_url)
-    command.downgrade(cfg, "0002_phase1_discovery")
+    command.downgrade(cfg, "0003_sheet_sync_state")
     remaining = _tables(db_url)
     assert remaining & P3_TABLES == set()
     assert {"enquiries", "keywords"} <= remaining

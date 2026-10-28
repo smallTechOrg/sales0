@@ -5,7 +5,7 @@ CRM references (prospect_id / enquiry_id / company_id / offering_id) are plain i
 NO foreign keys: the CRM tables do not exist on this branch (the integrator adds FKs at merge).
 
 Revision ID: p3_outreach_a7c41e9d
-Revises: 0002_phase1_discovery
+Revises: 0003_sheet_sync_state
 Create Date: 2026-10-28
 """
 
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "p3_outreach_a7c41e9d"
-down_revision: str | Sequence[str] | None = "0002_phase1_discovery"
+down_revision: str | Sequence[str] | None = "0003_sheet_sync_state"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
