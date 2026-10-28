@@ -45,6 +45,9 @@ TEST_PACING_ENV = {
     "SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S": "0.05",
     "SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S": "0.1",
     "SALES0_SCRAPE_MAX_RUNS_PER_DAY": "50",
+    # Phase 4: no background scheduler in e2e servers (it would build the daily digest, with an
+    # AI call, at boot); the /schedule page and Run now still work.
+    "SALES0_SCHEDULER_ENABLED": "false",
 }
 
 # architecture.md → E2E harness step 2 (Phase 1.1): safety stops run back to back, and the

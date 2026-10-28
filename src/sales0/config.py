@@ -140,6 +140,22 @@ class Settings(BaseSettings):
     sheet_fetch_retries: int = Field(3, ge=0, le=10)
     sheet_fetch_max_bytes: int = Field(20_000_000, ge=1000)
 
+    # --- Ops (Phase 4): spend cap, scheduler, digest, purge ---
+    # Monthly AI spend cap in USD (local calendar month). 0 = no cap. Over the cap every LLM
+    # feature stops (there is no "essential" call): runs keep their enquiries pending.
+    monthly_spend_cap_usd: float = Field(0.0, ge=0)
+    spend_cap_warn_pct: int = Field(80, ge=1, le=100)
+    scheduler_enabled: bool = True  # False = no background thread (pages still work)
+    scheduler_poll_s: float = Field(5.0, gt=0)
+    # Nightly discovery window in local time, "HH:MM"; the start time is jittered inside it.
+    scheduler_window_start: str = "01:00"
+    scheduler_window_end: str = "05:00"
+    scheduler_discovery_max_runs_per_day: int = Field(1, ge=1)  # also bounded by scrape_max_runs_per_day
+    scheduler_digest_time: str = "07:30"  # local time the daily digest is built
+    scheduler_purge_time: str = "04:15"
+    purge_retention_days: int = Field(90, ge=7)
+    digest_ai_summary: bool = True  # one Haiku call (feature "suggest") for the 5-line summary
+
     # ------------------------------------------------------------------ validators
     @field_validator("linkedin_mode", "linkedin_browser_channel", "log_format", "scrape_date_filter", mode="before")
     @classmethod
@@ -193,8 +209,21 @@ class Settings(BaseSettings):
             raise ValueError(f"Unknown timezone '{value}' — use an IANA name like Asia/Kolkata") from exc
         return value
 
+    @field_validator("scheduler_window_start", "scheduler_window_end", "scheduler_digest_time", "scheduler_purge_time", mode="before")
+    @classmethod
+    def _valid_hhmm(cls, value: Any) -> Any:
+        value = _clean_enum_value(value)
+        if isinstance(value, str):
+            parts = value.split(":")
+            if len(parts) != 2 or not all(p.isdigit() for p in parts) or not (0 <= int(parts[0]) < 24 and 0 <= int(parts[1]) < 60):
+                raise ValueError("use a 24-hour HH:MM time like 01:00")
+            return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+        return value
+
     @model_validator(mode="after")
     def _ranges(self) -> Settings:
+        if self.scheduler_window_start >= self.scheduler_window_end:
+            raise ValueError("SALES0_SCHEDULER_WINDOW_START must be earlier than SALES0_SCHEDULER_WINDOW_END (same day)")
         if self.scrape_delay_min_s > self.scrape_delay_max_s:
             raise ValueError("SALES0_SCRAPE_DELAY_MIN_S must be <= SALES0_SCRAPE_DELAY_MAX_S")
         if self.scrape_keyword_pause_min_s > self.scrape_keyword_pause_max_s:

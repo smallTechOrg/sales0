@@ -34,9 +34,23 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 item.add_marker(pytest.mark.timeout(E2E_TIMEOUT_S))
 
 
+def _free_port(start: int = 8766) -> int:
+    """First free loopback port >= 8766 (other builders/suites may hold 8766); never 8765."""
+    import socket
+
+    for port in range(start, start + 100):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError("no free port for the e2e server")
+
+
 @pytest.fixture
 def server(tmp_path: Path) -> Iterator[LiveServer]:
-    with live_server(tmp_path / "e2e") as srv:
+    with live_server(tmp_path / "e2e", port=_free_port()) as srv:
         yield srv
 
 

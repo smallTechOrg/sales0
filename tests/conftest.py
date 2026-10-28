@@ -43,6 +43,7 @@ _RESET_SEAMS = [
     ("sales0.db.engine", "reset_engine"),
     ("sales0.llm", "reset_llm_client"),
     ("sales0.jobs.runner", "reset_runner"),
+    ("sales0.jobs.scheduler", "reset_scheduler"),
     ("sales0.scraper.browser", "reset_browser_cache"),
     ("sales0.services.team.connections", "reset_client_factory"),
     ("sales0.services.team.oauth", "reset_state_store"),
@@ -51,6 +52,8 @@ _RESET_SEAMS = [
 # Fast, deterministic pacing + caps for tests (architecture.md → Conventions → Tests).
 TEST_ENV = {
     "SALES0_LINKEDIN_MODE": "live",
+    "SALES0_SCHEDULER_ENABLED": "false",  # no background thread; scheduler tests drive tick() themselves
+    "SALES0_MONTHLY_SPEND_CAP_USD": "0",
     "SALES0_LOG_FORMAT": "json",
     "SALES0_LOG_LEVEL": "INFO",
     "SALES0_SCRAPE_DELAY_MIN_S": "0.05",

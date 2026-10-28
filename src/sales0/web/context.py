@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from sales0.clock import ensure_utc, local_today, utcnow
 from sales0.config import get_settings
 from sales0.services import costs as costs_service
+from sales0.services import costs_report
 from sales0.services import runs as runs_service
 from sales0.services import session as session_service
 from sales0.services.team import acting as acting_service
@@ -46,6 +47,10 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Import", "/import", 2),
     ("Outreach", "/outreach", None),
     ("Metrics", "/metrics", 4),
+    ("Digest", "/digest", None),
+    ("Suggestions", "/suggestions", None),
+    ("Costs", "/costs", None),
+    ("Schedule", "/schedule", None),
     ("WhatsApp", "/whatsapp", 5),
 )
 
@@ -102,6 +107,7 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
         "active_run": runs_service.active_run(db),
         "nav": nav_items(request.url.path),
         "banner": banner_text(session),
+        "spend_cap": costs_report.spend_cap_status(db),
         "mode": get_settings().linkedin_mode,
         "light": status_light_view(session),
     }

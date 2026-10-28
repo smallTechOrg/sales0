@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Suggestions{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Suggestions</h1>
+      <p>The AI looks at which keywords find real enquiries and proposes changes. Nothing changes until you accept it.</p>
+    </div>
+    <form method="post" action="/suggestions/generate" onsubmit="var b=this.querySelector('button');if(b.dataset.busy){return false;}b.dataset.busy='1';b.textContent='Thinking...';">
+      <button class="btn btn--primary" id="generate-btn" type="submit">Find suggestions</button>
+    </form>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% if flash %}
+      <div class="flash flash--{{ flash.kind }}" id="suggestions-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    <section class="card" aria-labelledby="pending-title">
+      <div class="card__header"><h2 id="pending-title">Waiting for your decision</h2><span class="muted">{{ pending|length }} pending</span></div>
+      <div class="card__body stack">
+        {% for it in pending %}{% include "suggestions/_card.html" %}
+        {% else %}
+          <div class="empty-state empty-state--compact" id="suggestions-empty">
+            <p>No suggestions waiting. Press <strong>Find suggestions</strong> once a few genuine enquiries have come in from your searches.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="yield-title">
+      <div class="card__header"><h2 id="yield-title">Keyword yield</h2><span class="muted">Genuine = enquiries the AI judged real</span></div>
+      <div class="card__body table-wrap">
+        {% if yields %}
+        <table class="table" id="yield-table">
+          <thead><tr><th>Keyword</th><th>State</th><th>Posts scanned</th><th>Genuine</th><th>Genuine %</th><th>Runs</th><th>Last run</th></tr></thead>
+          <tbody>
+          {% for y in yields %}
+            <tr data-active="{{ 'true' if y.active else 'false' }}">
+              <td>{{ y.text }}{% if y.keyword_id is none %} <span class="muted">(removed)</span>{% endif %}</td>
+              <td>{{ "Active" if y.active else "Paused" }}</td>
+              <td>{{ y.scanned }}</td><td>{{ y.relevant }}</td><td>{{ "%.1f"|format(y.relevant_pct) }}%</td><td>{{ y.runs }}</td>
+              <td>{% if y.last_run_at %}{{ y.last_run_at|ago }}{% else %}never{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="yield-empty"><p>No keywords yet. Add some on the <a href="/setup">Setup page</a> and run a search.</p></div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="decided-title">
+      <div class="card__header"><h2 id="decided-title">Recently decided</h2></div>
+      <div class="card__body">
+        {% if decided %}
+        <ul class="item-list" id="decided-list">
+          {% for it in decided %}{% set s = it.row %}
+            <li>
+              <div class="item-list__main">
+                <strong>{{ s.text }}</strong>
+                <span class="muted">{{ "Add keyword" if s.kind == "new_keyword" else "Pause keyword" }} · {{ s.status }}{% if s.decided_at %} {{ s.decided_at|ago }}{% endif %}</span>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <p class="muted" id="decided-empty">Nothing decided yet.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -27,6 +27,7 @@ from tests.e2e._flows import (
     remove_keyword,
     run_now,
 )
+from tests.e2e.conftest import _free_port
 from tests.support.live_server import LiveServer, live_server
 
 COOLDOWN_ENV = {"SALES0_SAFETY_COOLDOWN_MIN": "60", "SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN": "15"}
@@ -38,7 +39,7 @@ DRIFT_ALERT = (
 
 @pytest.fixture
 def cooldown_server(tmp_path: Path) -> Iterator[LiveServer]:
-    with live_server(tmp_path / "e2e-cooldown", extra_env=COOLDOWN_ENV) as srv:
+    with live_server(tmp_path / "e2e-cooldown", port=_free_port(), extra_env=COOLDOWN_ENV) as srv:
         yield srv
 
 

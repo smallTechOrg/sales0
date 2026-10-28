@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Daily digest{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Daily digest</h1>
+      <p>What happened in the last 24 hours: new enquiries, outreach, discovery health and AI cost. Sending nothing; the Gmail button only creates a draft to yourself.</p>
+    </div>
+    <form method="post" action="/digest/build">
+      <button class="btn btn--primary" type="submit" id="build-digest">{{ "Rebuild now" if digest else "Build now" }}</button>
+    </form>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% if flash %}
+      <div class="flash flash--{{ flash.kind }}" id="digest-flash" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    {% if not digest %}
+      <section class="card" id="digest-empty" aria-label="No digest yet">
+        <div class="card__body stack">
+          <p><strong>No digest has been built yet.</strong></p>
+          <p class="muted">The digest is built automatically each morning when the scheduler is on. You can build today's now.</p>
+        </div>
+      </section>
+    {% else %}
+      {% include "digest/_digest.html" %}
+    {% endif %}
+
+    <section class="card" aria-labelledby="digest-history-title">
+      <div class="card__header"><h2 id="digest-history-title">Earlier digests</h2><span class="muted">{{ history|length }} stored</span></div>
+      <div class="card__body table-wrap">
+        {% if history %}
+          <table class="table" id="digest-history">
+            <thead><tr><th>Date</th><th>Built</th><th>How</th><th>Summary</th></tr></thead>
+            <tbody>
+              {% for h in history %}
+                <tr{% if digest and h.id == digest.id %} aria-current="true"{% endif %}>
+                  <td><a href="/digest/{{ h.id }}">{{ h.digest_date.strftime("%a %d %b %Y") }}</a></td>
+                  <td>{{ h.created_at|localdt }}</td>
+                  <td>{{ "Scheduled" if h.trigger == "scheduled" else "Manual" }}</td>
+                  <td>{{ "AI summary" if h.summary_text else "-" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="muted">Nothing stored yet.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}
