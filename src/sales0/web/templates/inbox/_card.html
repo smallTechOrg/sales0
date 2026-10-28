@@ -52,6 +52,7 @@
     <p id="enquiry-{{ card.id }}-summary" class="enquiry__summary">{{ card.requirement_summary or "No summary yet — the full post text is below." }}</p>
     <p class="enquiry__meta">
       <span>{{ card.author_name or "Unknown author" }}</span>
+      {% if card.author_profile_id %}{% include "tracked/_track_button.html" %}{% endif %}
       {% if card.author_headline %}<span aria-hidden="true">·</span><span>{{ card.author_headline }}</span>{% endif %}
       <span aria-hidden="true">·</span><span title="Date posted">{{ date_ago(card.date_posted) }}</span>
       {% for kw in card.keywords %}<span class="chip">{{ kw }}</span>{% endfor %}

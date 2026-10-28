@@ -9,7 +9,7 @@ from typing import Any, Literal
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, LlmCall, Offering, TriageDecision
+from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, LinkedinProfile, LlmCall, Offering, TriageDecision
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.llm import LLMAuthError, LLMModelNotFound
@@ -45,6 +45,15 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
     ).all():
         if text not in keywords[eid]:
             keywords[eid].append(text)
+
+    tracked_ids: set[int] = set(
+        db.scalars(
+            select(LinkedinProfile.id).where(
+                LinkedinProfile.tracked.is_(True),
+                LinkedinProfile.id.in_([e.author_profile_id for e in enquiries if e.author_profile_id is not None]),
+            )
+        )
+    )
 
     first_ref: dict[int, str] = {}
     for eid, ref in db.execute(
@@ -123,6 +132,8 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 posted_relative=e.posted_relative,
                 author_profile_url=e.author_profile_url,
                 ai_opportunity_type=e.ai_opportunity_type,
+                author_profile_id=e.author_profile_id,
+                author_tracked=e.author_profile_id in tracked_ids,
             )
         )
     return cards

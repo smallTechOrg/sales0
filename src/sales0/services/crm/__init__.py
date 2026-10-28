@@ -20,6 +20,7 @@ def install() -> None:
     events.subscribe(events.MessageSent, hooks.on_message_sent)
     events.subscribe(events.ReplyReceived, hooks.on_reply_received)
     events.subscribe(events.EnquiryDecided, hooks.on_enquiry_decided)
+    events.subscribe(events.TrackedProfileHit, hooks.on_tracked_profile_hit)
 
 
 def startup_backfill(db: Session) -> None:

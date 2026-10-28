@@ -198,6 +198,15 @@ class Settings(BaseSettings):
     scheduler_discovery_max_runs_per_day: int = Field(1, ge=1)  # also bounded by scrape_max_runs_per_day
     scheduler_digest_time: str = "07:30"  # local time the daily digest is built
     scheduler_purge_time: str = "04:15"
+    scheduler_watch_time: str = "05:30"  # profile_watch job (default disabled in the scheduler)
+
+    # --- Prospect watch ---
+    watch_max_profiles_per_run: int = Field(25, ge=1)
+    watch_min_days_between_checks: float = Field(3.0, ge=0)
+    watch_max_posts_per_profile: int = Field(15, ge=1)
+    watch_profile_pause_min_s: float = Field(20.0, ge=0)
+    watch_profile_pause_max_s: float = Field(60.0, ge=0)
+    watch_append_to_discovery: bool = False  # also visit due profiles at the end of each discovery run
     purge_retention_days: int = Field(90, ge=7)
     digest_ai_summary: bool = True  # one Haiku call (feature "suggest") for the 5-line summary
 
@@ -293,7 +302,7 @@ class Settings(BaseSettings):
             ) from exc
         return value
 
-    @field_validator("scheduler_window_start", "scheduler_window_end", "scheduler_digest_time", "scheduler_purge_time", mode="before")
+    @field_validator("scheduler_window_start", "scheduler_window_end", "scheduler_digest_time", "scheduler_purge_time", "scheduler_watch_time", mode="before")
     @classmethod
     def _valid_hhmm(cls, value: Any) -> Any:
         value = _clean_enum_value(value)

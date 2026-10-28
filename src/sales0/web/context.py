@@ -51,6 +51,7 @@ class NavItem:
 NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Inbox", "/inbox", None),
     ("Runs", "/runs", None),
+    ("Tracked", "/tracked", None),
     ("Setup", "/setup", None),
     ("Pipeline", "/pipeline", None),
     ("Contacts", "/contacts", None),

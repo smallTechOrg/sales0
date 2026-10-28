@@ -158,7 +158,8 @@ def test_p5_database_with_replies_survives_p6_and_a_round_trip(tmp_path: Path) -
         assert orphans == 0
 
         # downgrade / upgrade round trip loses nothing either
-        command.downgrade(cfg, "-1")
+        command.downgrade(cfg, "-1")  # watch
+        command.downgrade(cfg, P5)  # crm
         assert _table_counts(engine)["outreach_events"] == seed.events
         assert _table_counts(engine)["outreach_replies"] == seed.replies
         command.upgrade(cfg, "head")

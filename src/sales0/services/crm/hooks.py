@@ -187,8 +187,49 @@ def _open_lead_for_reply(db: Session, p: Prospect, ev: events.ReplyReceived, sta
         leads.convert(db, p.id, stage="meeting_scheduled", opened_by="reply", actor=SYSTEM, note=ev.intent, now=stamp)
 
 
+# ---------------------------------------------------------------------------- tracked profile hit (prospect watch)
+def _needs_follow_up(db: Session, p: Prospect) -> bool:
+    """Assumed rule: a hit on a prospect we had given up on (or ran out of reminders for) needs a human follow-up.
+
+    True for: closed as no_response / lost / not_interested; open at the final follow-up stage; converted whose
+    latest lead is lost / no_response. New / contacted / earlier follow-ups, open leads and won leads just get the note.
+    """
+    if p.status == "closed":
+        return p.closed_reason in prospects.UNTRACK_REASONS
+    if p.status == "open":
+        return p.stage == "final_follow_up"
+    ld = db.scalar(select(Lead).where(Lead.prospect_id == p.id).order_by(Lead.id.desc()).limit(1))
+    return ld is not None and ld.stage in ("lost", "no_response")
+
+
+def _on_tracked_profile_hit(db: Session, ev: events.TrackedProfileHit) -> None:
+    p = db.scalar(select(Prospect).where(Prospect.linkedin_profile_id == ev.profile_id))
+    e = db.get(Enquiry, ev.enquiry_id)
+    if p is None or e is None:
+        return
+    for t in db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "note")):
+        if (t.data or {}).get("watch_enquiry_id") == e.id:
+            return  # idempotent: one note per hit
+    if e.prospect_id is None and e.review_status == "accepted":
+        e.prospect_id = p.id  # a pending enquiry is linked by the normal accept flow (identity = the profile)
+    flagged = False
+    if _needs_follow_up(db, p) and flags._active(db, "prospect", p.id, "no_follow_up") is None:  # noqa: SLF001
+        flagged = True
+    timeline.add_event(
+        db, subject_type="prospect", subject_id=p.id, kind="note", prospect_id=p.id, enquiry_id=e.id, company_id=p.company_id,
+        body="New requirement from tracked profile" + (" - follow-up needed" if flagged else ""),
+        data={"system": True, "watch_enquiry_id": e.id, "run_id": ev.run_id, "follow_up_needed": flagged}, actor=SYSTEM,
+    )
+    if flagged:
+        followups.add_custom(
+            db, prospect_id=p.id, due_on=local_today(get_settings().tz), actor=SYSTEM,
+            note="New requirement from a tracked profile - follow up",
+        )
+
+
 on_enquiry_decided = _guarded(_on_enquiry_decided)
 on_message_sent = _guarded(_on_message_sent)
 on_reply_received = _guarded(_on_reply_received)
+on_tracked_profile_hit = _guarded(_on_tracked_profile_hit)
 
-__all__ = ["TEAM", "on_enquiry_decided", "on_message_sent", "on_reply_received"]
+__all__ = ["TEAM", "on_enquiry_decided", "on_message_sent", "on_reply_received", "on_tracked_profile_hit"]

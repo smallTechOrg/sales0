@@ -1,0 +1,9 @@
+{# Needs: card (EnquiryCardView) with author_profile_id / author_tracked. #}
+<span id="track-{{ card.id }}" class="track-toggle">
+  {% if card.author_tracked %}
+    <span class="chip" data-tracked="1">Tracking</span>
+    <button class="btn btn--ghost btn--sm" type="button" hx-post="/tracked/enquiry/{{ card.id }}/untrack" hx-target="#track-{{ card.id }}" hx-swap="outerHTML">Untrack</button>
+  {% else %}
+    <button class="btn btn--ghost btn--sm" type="button" data-action="track" hx-post="/tracked/enquiry/{{ card.id }}/track" hx-target="#track-{{ card.id }}" hx-swap="outerHTML">Track</button>
+  {% endif %}
+</span>

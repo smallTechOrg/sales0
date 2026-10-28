@@ -273,6 +273,47 @@ class DigestJob(DailyJob):
             return JobResult("ok", f"Built the digest for {view.digest_date}")
 
 
+class WatchJob(DailyJob):
+    name = "profile_watch"
+    label = "Prospect watch"
+    description = (
+        "Visits up to N tracked LinkedIn profiles (each at most once per few days, least recently checked first) "
+        "for new posts, and triages them like discovery. Never overlaps a discovery run; shares the safety "
+        "cool-down and the daily post cap."
+    )
+    default_enabled = False  # opt-in: it drives your logged-in LinkedIn account
+    time_setting = "scheduler_watch_time"
+
+    def schedule_text(self, ctx: Ctx) -> str:
+        s = ctx.settings
+        return (
+            f"daily at {s.scheduler_watch_time} {s.timezone}, up to {s.watch_max_profiles_per_run} profiles, "
+            f"each at most every {s.watch_min_days_between_checks:g} days"
+        )
+
+    def plan(self, ctx: Ctx, state: dict[str, Any], now: datetime) -> datetime | None:
+        """Today's slot if still ahead, else tomorrow's: unlike the digest this drives the LinkedIn
+        account, so enabling it after the time (or a finished day) never starts an immediate catch-up."""
+        retry = state.get("retry_at")
+        if retry:
+            return datetime.fromisoformat(retry)
+        today = local_day(ctx.settings, now)
+        slot = local_at(ctx.settings, today, self._at(ctx))
+        if state.get("last_date") == today.isoformat() or slot <= now:
+            slot = local_at(ctx.settings, today + timedelta(days=1), self._at(ctx))
+        return slot
+
+    def _run(self, ctx: Ctx, now: datetime) -> JobResult:
+        from sales0.jobs.scheduled_watch import start_scheduled_watch
+
+        outcome = start_scheduled_watch()
+        if outcome.started:
+            return JobResult("ok", f"Started watch run #{outcome.run_id}", outcome.run_id)
+        if outcome.code == "nothing_due":
+            return JobResult("ok", "No tracked profile is due for a check")
+        return JobResult("skipped", outcome.reason or outcome.code or "could not start")
+
+
 PurgeHook = Callable[[Session, datetime], int]
 _purge_hooks: dict[str, PurgeHook] = {}
 
@@ -421,7 +462,7 @@ class Scheduler:
             sessions = get_sessionmaker()
         self.ctx = Ctx(self.settings, sessions, rng or random.Random())
         self.now = now
-        self.defs: dict[str, JobDef] = {j.name: j for j in (jobs or [DiscoveryJob(), DigestJob(), SheetSyncJob(), PurgeJob()])}
+        self.defs: dict[str, JobDef] = {j.name: j for j in (jobs or [DiscoveryJob(), WatchJob(), DigestJob(), SheetSyncJob(), PurgeJob()])}
         self._lock = threading.RLock()  # one job body at a time (tick / run_now)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -634,6 +675,6 @@ def reset_scheduler() -> None:
 
 
 __all__ = [
-    "DiscoveryJob", "DigestJob", "JobResult", "JobView", "PurgeJob", "Scheduler", "SheetSyncJob",
+    "DiscoveryJob", "DigestJob", "JobResult", "JobView", "PurgeJob", "Scheduler", "SheetSyncJob", "WatchJob",
     "get_scheduler", "register_purge_hook", "reset_scheduler", "unregister_purge_hook",
 ]

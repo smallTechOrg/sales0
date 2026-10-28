@@ -36,3 +36,11 @@ class LinkedinProfile(Base):
     )
     # NULL = never tracked; Phase 2 sets true (and adds prospect_id) when a prospect is created.
     tracked: Mapped[bool | None] = mapped_column(Boolean)
+    # Prospect watch (columns on this table, not a separate watch_state table: one row per profile,
+    # no joins on the hot list query, and ADD COLUMN needs no SQLite table rebuild).
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    watch_checks: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    watch_hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    watch_last_status: Mapped[str | None] = mapped_column(String(20))
+    # Paused until (a far-future value = paused by the user); NULL = watchable.
+    watch_disabled_until: Mapped[datetime | None] = mapped_column(UTCDateTime())

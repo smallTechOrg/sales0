@@ -52,7 +52,7 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/competitors", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/replies", "/replies/suppressions"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 

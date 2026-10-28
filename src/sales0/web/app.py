@@ -41,6 +41,7 @@ from sales0.web.routes import (
     stubs,
     suggestions,
     sync,
+    tracked,
 )
 from sales0.web.templating import STATIC_DIR
 
@@ -109,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(digest.router)
     app.include_router(suggestions.router)
     app.include_router(replies.router)
-    for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router):
+    for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):
         app.include_router(r)
 
     if settings.linkedin_mode == "fixture":

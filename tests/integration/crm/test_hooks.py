@@ -33,7 +33,7 @@ def _reply(db, m, msg, *, kind="human", intent="interested"):
     return r
 
 
-def test_install_is_idempotent_and_subscribes_three_events(db, installed) -> None:
+def test_install_is_idempotent_and_subscribes_its_events(db, installed) -> None:
     from sales0.services import crm
 
     crm.install()
@@ -41,6 +41,7 @@ def test_install_is_idempotent_and_subscribes_three_events(db, installed) -> Non
     assert len(events.subscribers(events.MessageSent)) == 1
     assert len(events.subscribers(events.ReplyReceived)) == 1
     assert len(events.subscribers(events.EnquiryDecided)) == 1
+    assert len(events.subscribers(events.TrackedProfileHit)) == 1
 
 
 # ---------------------------------------------------------------- enquiry decided

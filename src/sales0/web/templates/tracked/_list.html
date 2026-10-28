@@ -1,0 +1,26 @@
+{# Needs: profiles (list[TrackedView]). #}
+<div id="tracked-list" class="table-wrap">
+{% if profiles %}
+  <table class="table" id="tracked-table">
+    <thead><tr><th scope="col">Profile</th><th scope="col">Headline</th><th scope="col">Last checked</th><th scope="col" class="num">Checks</th><th scope="col" class="num">Hits</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+    <tbody>
+    {% for p in profiles %}
+      <tr id="tracked-{{ p.id }}" data-slug="{{ p.slug }}" data-paused="{{ '1' if p.paused else '0' }}">
+        <td><a href="{{ p.profile_url }}" target="_blank" rel="noopener">{{ p.display_name or p.slug }}</a><br><span class="muted">{{ p.slug }}</span></td>
+        <td>{{ p.headline or "" }}</td>
+        <td>{% if p.last_checked_at %}{{ p.last_checked_at | ago }}{% else %}<span class="muted">Never</span>{% endif %}</td>
+        <td class="num">{{ p.watch_checks }}</td>
+        <td class="num">{{ p.watch_hits }}</td>
+        <td>{% if p.paused %}<span class="badge">Paused</span>{% elif p.watch_last_status %}<span class="badge badge--{{ 'ok' if p.watch_last_status in ('ok','no_posts') else 'warn' }}">{{ p.watch_last_status | replace("_", " ") }}</span>{% else %}<span class="muted">Not checked yet</span>{% endif %}</td>
+        <td>
+          <form method="post" action="/tracked/{{ p.id }}/pause" class="inline-form"><input type="hidden" name="paused" value="{{ '0' if p.paused else '1' }}"><button class="btn btn--sm" type="submit">{{ "Resume" if p.paused else "Pause" }}</button></form>
+          <form method="post" action="/tracked/{{ p.id }}/untrack" class="inline-form"><button class="btn btn--danger btn--sm" type="submit">Untrack</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="muted" id="tracked-empty">No profiles are tracked yet. Press Track next to an author in the inbox.</p>
+{% endif %}
+</div>
