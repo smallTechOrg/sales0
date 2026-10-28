@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -29,6 +30,27 @@ class ReplyReceived:
     from_addr: str = ""
     hard_bounce: bool = True  # only meaningful for kind == "bounce"
     failed_recipients: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class MessageSent:
+    """Published by ``outreach.messages._execute`` after ``state='sent'``, before the commit."""
+
+    outreach_message_id: int
+    member_id: int
+    to_addrs: tuple[str, ...]
+    sent_at: datetime
+
+
+@dataclass(frozen=True)
+class EnquiryDecided:
+    """Published by ``inbox.decide`` once per enquiry, after the row is updated and flushed."""
+
+    enquiry_id: int
+    decision: str  # "accept" | "discard"
+    previous_review_status: str
+    actor_user_id: int | None = None
+    actor_member_id: int | None = None
 
 
 Handler = Callable[[Session, Any], None]
@@ -76,4 +98,4 @@ def reset() -> None:
         _subscribers.clear()
 
 
-__all__ = ["ReplyReceived", "publish", "reset", "subscribe", "subscribers", "unsubscribe"]
+__all__ = ["EnquiryDecided", "MessageSent", "ReplyReceived", "publish", "reset", "subscribe", "subscribers", "unsubscribe"]

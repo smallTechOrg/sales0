@@ -14,6 +14,7 @@ from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.llm import LLMAuthError, LLMModelNotFound
 from sales0.scraper.urls import link_kind_of
+from sales0.services import events
 from sales0.services._common import clip, not_found, now_or, record_history
 from sales0.services.views import EnquiryCardView, InboxPage, InboxTab
 
@@ -237,6 +238,7 @@ def decide(
     actor_user_id: int | None = None,
     *,
     now: datetime | None = None,
+    actor_member_id: int | None = None,
 ) -> list[EnquiryCardView]:
     ids = list(dict.fromkeys(int(i) for i in (enquiry_ids or [])))
     if not ids or decision not in ("accept", "discard"):
@@ -255,8 +257,10 @@ def decide(
 
     stamp = now_or(now)
     preset = clip(discard_reason, 200)
+    previous: dict[int, str] = {}
     for eid in ids:
         e = rows[eid]
+        previous[eid] = e.review_status
         if decision == "accept":
             to_status, to_stage = "accepted", "prospect_new"
             is_override = e.ai_verdict == "discard"
@@ -288,6 +292,17 @@ def decide(
             )
         )
     db.flush()
+    for eid in ids:
+        events.publish(
+            db,
+            events.EnquiryDecided(
+                enquiry_id=eid,
+                decision=decision,
+                previous_review_status=previous[eid],
+                actor_user_id=actor_user_id,
+                actor_member_id=actor_member_id,
+            ),
+        )
     return _cards(db, [rows[i] for i in ids])
 
 

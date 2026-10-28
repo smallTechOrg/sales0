@@ -14,24 +14,33 @@ from sales0.db.engine import get_engine, session_scope
 from sales0.db.migrate_check import assert_at_head
 from sales0.jobs.reply_poller import get_poller
 from sales0.logging import configure_logging, get_logger
+from sales0.services import crm
+from sales0.services.crm import digest_sections as crm_digest_sections
 from sales0.services.keywords import seed_suggested_once
 from sales0.services.runs import recover_interrupted_runs_on_startup
+from sales0.services.sheetsync import sql_repository
 from sales0.services.team.members import seed_admin
+from sales0.web import auth as web_auth
 from sales0.web.envelope import install_exception_handlers
 from sales0.web.middleware import CsrfOriginMiddleware, RequestContextMiddleware
 from sales0.web.routes import (
+    contacts,
     costs,
     digest,
     health,
+    importer,
     inbox,
     oauth,
     outreach,
+    pipeline,
+    registries,
     replies,
     runs,
     schedule,
     setup,
     stubs,
     suggestions,
+    sync,
 )
 from sales0.web.templating import STATIC_DIR
 
@@ -52,6 +61,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with session_scope() as db:
             seed_suggested_once(db)  # Phase 1.4: the 60 suggested keywords, once
             seed_admin(db, settings)  # Phase 3: first admin from SALES0_ADMIN_EMAIL (idempotent)
+        crm.install()  # Phase 2: CRM event hooks, SQL sheet repository, CRM digest sections
+        sql_repository.install()
+        crm_digest_sections.register()
+        with session_scope() as db:
+            crm.startup_backfill(db)  # once per DB (app_meta crm_flags_backfilled_v1)
         log.info(
             "app_started",
             db_revision=revision,
@@ -72,8 +86,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("app_stopped")
 
     app = FastAPI(title="sales0", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(CsrfOriginMiddleware)  # inner: runs after request-id binding
-    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(CsrfOriginMiddleware)  # innermost
+    web_auth.install(app, settings)  # Phase 2 (S3): AuthMiddleware + login router; between CSRF and request-context
+    app.add_middleware(RequestContextMiddleware)  # outermost
     install_exception_handlers(app)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -89,6 +104,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(digest.router)
     app.include_router(suggestions.router)
     app.include_router(replies.router)
+    for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router):
+        app.include_router(r)
 
     if settings.linkedin_mode == "fixture":
         from sales0.linkedin_fixture.routes import router as fixture_router

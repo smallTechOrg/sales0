@@ -45,7 +45,7 @@ from sales0.integrations.gmail.errors import (
 from sales0.integrations.gmail.mime import DraftContent, validate_address
 from sales0.logging import get_logger
 from sales0.services._common import clip, not_found, now_or
-from sales0.services import suppressions
+from sales0.services import events, suppressions
 from sales0.services.outreach import decks, templates
 from sales0.services.outreach._shared import add_event, join_addrs, split_addrs
 from sales0.services.team import connections
@@ -501,6 +501,15 @@ def _execute(
     msg.send_outcome_unknown = False
     msg.updated_at = stamp
     add_event(db, msg.id, "sent", member.id, f"from {profile}; gmail_message={message_id}", stamp)
+    events.publish(
+        db,
+        events.MessageSent(
+            outreach_message_id=msg.id,
+            member_id=member.id,
+            to_addrs=tuple(split_addrs(msg.to_addrs)),
+            sent_at=stamp,
+        ),
+    )
     db.commit()
     log.info("message_sent", message_id=msg.id, member_id=member.id)
     return msg

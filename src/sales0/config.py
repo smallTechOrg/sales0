@@ -171,6 +171,20 @@ class Settings(BaseSettings):
     sheet_fetch_retries: int = Field(3, ge=0, le=10)
     sheet_fetch_max_bytes: int = Field(20_000_000, ge=1000)
 
+    # --- CRM / shared login (Phase 2) ---
+    # Shared password; unset (or empty) = open, loopback only. check_startup refuses a public host without it.
+    app_password: SecretStr | None = None
+    session_days: int = Field(14, ge=1, le=90)
+    login_max_attempts: int = Field(5, ge=1)
+    login_lockout_s: int = Field(60, ge=1)
+    followup_days_1: int = Field(3, ge=1)
+    followup_days_2: int = Field(7, ge=1)
+    followup_days_final: int = Field(14, ge=1)
+    stale_lead_days: int = Field(14, ge=1)
+    repeat_poster_min: int = Field(3, ge=2)
+    repeat_poster_days: int = Field(60, ge=1)
+    crm_page_size: int = Field(50, ge=5, le=500)
+
     # --- Ops (Phase 4): spend cap, scheduler, digest, purge ---
     # Monthly AI spend cap in USD (local calendar month). 0 = no cap. Over the cap every LLM
     # feature stops (there is no "essential" call): runs keep their enquiries pending.
@@ -239,6 +253,13 @@ class Settings(BaseSettings):
     @classmethod
     def _lower_admin_email(cls, value: Any) -> Any:
         return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("app_password", mode="before")
+    @classmethod
+    def _empty_password_is_unset(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("admin_name", "public_base_url", mode="before")
     @classmethod
@@ -375,6 +396,14 @@ class Settings(BaseSettings):
             return False
 
     @property
+    def app_password_set(self) -> bool:
+        return self.app_password is not None and bool(self.app_password.get_secret_value())
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        return (self.public_base_url or "").lower().startswith("https://")
+
+    @property
     def base_url(self) -> str:
         return f"http://{self.host}:{self.port}"
 
@@ -389,10 +418,8 @@ def check_startup(settings: Settings) -> None:
         raise StartupError(
             "SALES0_ANTHROPIC_API_KEY is missing — add it to .env in the repo root (see .env.example)."
         )
-    if not settings.is_loopback_host:
-        raise StartupError(
-            "Set SALES0_APP_PASSWORD (Phase 2) before binding to a public host"
-        )
+    if not settings.is_loopback_host and not settings.app_password_set:
+        raise StartupError("Set SALES0_APP_PASSWORD before binding to a public host")
 
 
 @lru_cache(maxsize=1)

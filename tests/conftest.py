@@ -76,7 +76,7 @@ TEST_ENV = {
     # Phase 5: no background reply poller in tests; they call poll_all()/run_cycle() explicitly.
     "SALES0_REPLY_POLL_MINUTES": "0",
 }
-_CLEARED_ENV = ("SALES0_LOG_FILE", "SALES0_HOST")
+_CLEARED_ENV = ("SALES0_LOG_FILE", "SALES0_HOST", "SALES0_APP_PASSWORD")
 
 # ----------------------------------------------------------------------- port isolation
 # The user's own sales0. Tests never connect to it (socket guard) and never default to it.
