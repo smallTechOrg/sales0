@@ -18,7 +18,7 @@
         <ul>
           {% if shell %}{% set nav = shell.nav %}{% else %}{% set nav = fallback_nav or [] %}{% endif %}
           {% for item in nav %}
-            <li>
+            <li{% if item.group_start and not loop.first %} class="site-nav__group-start"{% endif %}>
               <a href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>
                 {{ item.label }}{% if item.phase %} <span class="badge badge--stub" title="Not built — deferred by decision">Not built</span>{% endif %}{% if item.href == "/replies" and shell and shell.replies_unread %} <span class="nav-count" id="replies-unread" title="Replies waiting for you">{{ shell.replies_unread }}</span>{% endif %}
               </a>

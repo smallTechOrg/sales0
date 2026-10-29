@@ -44,6 +44,7 @@ CRM_PAGES = {
     "/companies": 'id="company-results"',
     "/companies?q=zzzz": "No companies match these filters.",
     "/competitors": 'id="competitor-list"',
+    "/criteria": 'id="exclude-list"',  # inbox feedback A3
     "/import": 'id="csv-form"',
     "/metrics": 'id="weekly-table"',
     "/metrics?weeks=4&mode=sheet": 'id="secondary-table"',
@@ -54,7 +55,7 @@ CRM_PAGES = {
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
-COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/import",
+COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}

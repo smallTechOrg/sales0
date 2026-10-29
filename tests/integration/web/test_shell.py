@@ -39,7 +39,8 @@ def test_header_shows_not_connected_light_zero_cost_and_nav_in_order(client: Tes
     assert re.search(r'id="cost-badge".*?AI today <strong>\$0\.00</strong> · month <strong>\$0\.00</strong>', html, re.S)
     nav = html.split('aria-label="Primary"', 1)[1].split("</nav>", 1)[0]
     labels = re.findall(r'<a href="(/[a-z]+)"', nav)
-    assert labels == ["/inbox", "/runs", "/tracked", "/setup", "/pipeline", "/contacts", "/companies", "/competitors", "/import", "/sync", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/users", "/whatsapp"]
+    assert labels == ["/inbox", "/runs", "/tracked", "/setup", "/criteria", "/pipeline", "/contacts", "/companies", "/competitors", "/import", "/sync", "/outreach", "/replies", "/metrics", "/digest", "/suggestions", "/costs", "/schedule", "/users", "/whatsapp"]
+    assert nav.count("site-nav__group-start") == 4  # CRM / outreach / insights / admin dividers
     assert nav.count("badge--stub") == 1  # only WhatsApp (Phase 5) is a stub now; Metrics is real
     assert 'href="/inbox" aria-current="page"' in nav
     assert 'id="alert-banner"' not in html

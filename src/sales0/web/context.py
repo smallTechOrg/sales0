@@ -45,6 +45,7 @@ class NavItem:
     href: str
     phase: int | None
     active: bool = False
+    group_start: bool = False  # first item of a nav group (find / CRM / outreach / insights / admin): a thin divider
 
 
 # (label, href, phase) — phase None = a real page; a number marks a page that is not built (deferred).
@@ -53,6 +54,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Runs", "/runs", None),
     ("Tracked", "/tracked", None),
     ("Setup", "/setup", None),
+    ("Criteria", "/criteria", None),
     ("Pipeline", "/pipeline", None),
     ("Contacts", "/contacts", None),
     ("Companies", "/companies", None),
@@ -69,6 +71,9 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Users", "/users", None),
     ("WhatsApp", "/whatsapp", 5),
 )
+# The nav is one flat list (it scrolls as a single row on phones); these hrefs open a visual group:
+# find leads (Inbox .. Criteria) | CRM (Pipeline .. Sync) | outreach (Outreach, Replies) | insights (Metrics .. Schedule) | admin.
+NAV_GROUP_STARTS = frozenset({"/pipeline", "/outreach", "/metrics", "/users"})
 
 OPPORTUNITY_LABELS = {
     "direct_buyer": "Direct buyer",
@@ -97,7 +102,7 @@ def nav_items(path: str, due: int = 0, *, admin: bool = False) -> list[NavItem]:
             shown = Markup(  # noqa: S704 - the number is an int, the label a constant
                 f'{label} <span class="nav-count" id="due-badge" title="Follow-ups due today or overdue">{int(due)}</span>'
             )
-        items.append(NavItem(label=shown, href=href, phase=phase, active=active))
+        items.append(NavItem(label=shown, href=href, phase=phase, active=active, group_start=href in NAV_GROUP_STARTS or (href == "/whatsapp" and not admin)))
     return items
 
 
@@ -276,6 +281,16 @@ def usd_precise(micros: int | None) -> str:
     return f"${value:,.2f}"
 
 
+LINK_LABELS = {"post": "View post", "profile": "View profile", "search": "Search results (no post link)"}
+
+
+def link_label(url: str | None) -> str:
+    """What an enquiry link really opens (inbox feedback A2): never call a profile or a search page "the post"."""
+    from sales0.scraper.urls import link_kind_of
+
+    return LINK_LABELS.get(link_kind_of(url) or "", "Open link")
+
+
 def opportunity_label(opportunity_type: str | None) -> str | None:
     """Chip text for the inbox card; ``other`` / unknown values show no chip."""
     return OPPORTUNITY_LABELS.get(opportunity_type or "")
@@ -336,6 +351,7 @@ HELPERS: dict[str, Any] = {
     "poster_label": poster_label,
     "opportunity_label": opportunity_label,
     "suggested_characteristics": suggested_characteristics,
+    "link_label": link_label,
     "usd_precise": usd_precise,
     "ago_text": ago_text,
     "cooldown_clock": cooldown_clock,

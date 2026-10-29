@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Date, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from sales0.db.base import Base
@@ -84,6 +84,15 @@ class Enquiry(Base):
     sheet_fields: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     # LinkedIn activity id (digits) parsed from the post link / urn; indexed lookup instead of LIKE '%id%' scans.
     activity_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # q14 (inbox feedback A1): the EXISTING pipeline entity this enquiry matched when it was created (plain ids, no FK:
+    # a merged/deleted prospect simply stops matching on read), how it matched, and the scrape run it was checked in.
+    pipeline_prospect_id: Mapped[int | None] = mapped_column(Integer)
+    pipeline_company_id: Mapped[int | None] = mapped_column(Integer)
+    pipeline_match: Mapped[str | None] = mapped_column(String(20))
+    pipeline_run_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    # q14: who discarded it when not the team: 'auto' = a system rule (repeat from an existing prospect). Such
+    # discards have no triage_decisions row, so they never feed the few-shot examples.
+    discard_source: Mapped[str | None] = mapped_column(String(10))
 
     review_status: Mapped[str] = mapped_column(
         String(20),

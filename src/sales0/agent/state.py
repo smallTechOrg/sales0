@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from sales0.agent.criteria import CriteriaSet
 from sales0.agent.schemas import DecisionExample, OfferingRef, TriageInput, TriageResult
 from sales0.llm.client import LLMResponse, StructuredRequest
 
@@ -22,3 +23,4 @@ class TriageState:
     attempts: int = 0  # LLM requests made (max 2)
     responses: list[LLMResponse] = field(default_factory=list)
     error: str | None = None
+    criteria: CriteriaSet | None = None  # None = the built-in default rules

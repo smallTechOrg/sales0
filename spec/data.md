@@ -572,6 +572,11 @@ A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_
 | digests | 4 | for_date, body, suggestions JSON |
 | users (populated) | 5 | password_hash, role |
 
+### Inbox feedback - migration q14_criteria_5b8e1f3a
+New tables `triage_criteria`, `triage_criteria_sets`; new columns `enquiries.pipeline_prospect_id / pipeline_company_id /
+pipeline_match / pipeline_run_id / discard_source`, `scrape_runs.posts_repeat_skipped`, `llm_calls.criteria_version`;
+seed of the 13 built-in rules; search-link backfill. See `capabilities/inbox-feedback.md`.
+
 ### Phase 4 - manual_metrics (migration p7_metrics_9a4f61c3)
 | Table | Columns |
 |---|---|

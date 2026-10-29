@@ -143,6 +143,8 @@ class RunView(_View):
     posts_relevant: int = 0
     posts_skipped_ai: int = 0
     permalinks_found: int = 0
+    # q14: genuine posts auto-discarded as repeats from an existing prospect (beyond the first in the run)
+    posts_repeat_skipped: int = 0
     # relevant / new x 100; None when no post was new
     relevance_pct: float | None = None
 
@@ -204,6 +206,12 @@ class EnquiryCardView(_View):
     # Prospect watch
     author_profile_id: int | None = None
     author_tracked: bool = False
+    # q14 (inbox feedback A1): the existing pipeline entity this enquiry matched ("Already in pipeline: <name>")
+    pipeline_name: str | None = None
+    pipeline_href: str | None = None
+    pipeline_match: str | None = None
+    # q14: 'auto' = discarded by a system rule (repeat), not by the team
+    discard_source: str | None = None
 
 
 class SkippedPostView(_View):

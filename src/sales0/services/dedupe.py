@@ -102,8 +102,13 @@ def _hash_for(post: ScrapedPost) -> str:
 
 
 def _source_url(post: ScrapedPost) -> str | None:
-    """enquiry_sources.source_url: the permalink when known, else where the post was seen."""
-    return post.url if post.link_kind == "post" else post.search_url
+    """enquiry_sources.source_url: the permalink when known, else the author's profile, else (only if neither)
+    the search page it was seen on (inbox feedback A2: never a search page when a profile is known)."""
+    if post.link_kind == "post":
+        return post.url
+    if post.author_profile_url:
+        return post.author_profile_url
+    return post.url or post.search_url
 
 
 def _by_activity_id(db: Session, activity: str | None) -> int | None:

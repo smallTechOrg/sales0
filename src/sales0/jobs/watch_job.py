@@ -21,13 +21,13 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from sales0.clock import utcnow
 from sales0.config import Settings, get_settings
 from sales0.db.engine import get_sessionmaker
-from sales0.db.models import LinkedinProfile, ScrapeRun, ScrapeRunKeyword, SeenPost, WatchRun
+from sales0.db.models import Enquiry, LinkedinProfile, ScrapeRun, ScrapeRunKeyword, SeenPost, WatchRun
 from sales0.jobs import discovery_job
 from sales0.jobs.discovery_job import SAFETY_LABELS, _Run
 from sales0.jobs.session_log import log_run_start
@@ -172,8 +172,12 @@ class _WatchRun(_Run):
         enquiry_ids = [
             int(e)
             for e in self.db.scalars(
-                select(SeenPost.enquiry_id).where(
-                    SeenPost.id.in_(seen_post_ids), SeenPost.verdict == "genuine", SeenPost.enquiry_id.is_not(None)
+                select(SeenPost.enquiry_id)
+                .join(Enquiry, Enquiry.id == SeenPost.enquiry_id)
+                .where(
+                    SeenPost.id.in_(seen_post_ids), SeenPost.verdict == "genuine", SeenPost.enquiry_id.is_not(None),
+                    # q14: a repeat the system auto-discarded is not a hit (its prospect timeline already notes it)
+                    or_(Enquiry.discard_source.is_(None), Enquiry.discard_source != "auto"),
                 )
             )
         ]

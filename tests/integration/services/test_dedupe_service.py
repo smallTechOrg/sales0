@@ -84,7 +84,7 @@ def _refs(db: Session, eid: int) -> list[str]:
                            .order_by(EnquirySource.id)))
 
 
-def test_new_sdui_post_stores_ck_ref_profile_link_and_search_url_as_source_url(db: Session) -> None:
+def test_new_sdui_post_stores_ck_ref_and_the_profile_link_never_the_search_url(db: Session) -> None:
     kind, eid = upsert_post(db, sdui_post("sxQ3v9LmP1aZ0k", LONG), make_run(), None, "ai workshop")
     assert kind == "new"
     e = db.get(Enquiry, eid)
@@ -92,7 +92,8 @@ def test_new_sdui_post_stores_ck_ref_profile_link_and_search_url_as_source_url(d
     assert e.source_url == "https://www.linkedin.com/in/priya-menon-fx/"
     assert e.author_profile_url == "https://www.linkedin.com/in/priya-menon-fx/"
     src = db.scalars(select(EnquirySource).where(EnquirySource.enquiry_id == eid)).one()
-    assert (src.source_ref, src.source_url) == ("ck:sxQ3v9LmP1aZ0k", SEARCH_URL)
+    # inbox feedback A2: post -> profile -> (only if neither) search; the author profile is known here
+    assert (src.source_ref, src.source_url) == ("ck:sxQ3v9LmP1aZ0k", "https://www.linkedin.com/in/priya-menon-fx/")
 
 
 def test_same_ck_ref_again_is_a_ref_duplicate(db: Session) -> None:

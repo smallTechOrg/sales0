@@ -28,6 +28,7 @@ from sales0.scraper.urls import (  # urn_from_href is re-exported (it lives in u
     canonical_post_url,
     link_kind_of,
     permalink,
+    same_site,
     urn_from_href,
 )
 
@@ -784,6 +785,40 @@ def raw_card_of(raw: dict[str, Any]) -> dict[str, Any] | None:
     return out or None
 
 
+_ANY_URN = re.compile(S.ANY_URN_RE)
+RESHARE_MARKER = "[Reshared post]"
+
+
+def card_post_urn(raw: dict[str, Any], base: str) -> str | None:
+    """The post's own URN read off what the card capture ALREADY holds (its links and outer HTML): no click, no extra
+    LinkedIn page load (inbox feedback A2: real post links instead of a search page).
+
+    Defensive: only when the card names exactly ONE post (one distinct activity id; else one ugcPost/share id), only
+    same-site links, and never for a reshare (its HTML also carries the original post's id). None otherwise."""
+    text = raw.get("text")
+    if isinstance(text, str) and RESHARE_MARKER in text:
+        return None
+    card = raw.get("card")
+    if not isinstance(card, dict):
+        return None
+    found: set[str] = set()
+    links = card.get("links")
+    for href in links if isinstance(links, list) else ():
+        if not isinstance(href, str) or not href:
+            continue
+        absolute = base.rstrip("/") + href if href.startswith("/") and not href.startswith("//") else href
+        if same_site(absolute, base):
+            urn = urn_from_href(absolute)
+            if urn:
+                found.add(urn)
+    html = card.get("outer_html")
+    if isinstance(html, str) and html:
+        found.update(m.group(0) for m in _ANY_URN.finditer(html))
+    activities = {u for u in found if u.startswith("urn:li:activity:")}
+    pool = activities or found
+    return next(iter(pool)) if len(pool) == 1 else None
+
+
 def post_from_raw(raw: dict[str, Any], base: str, today: date, search_url: str | None = None) -> ScrapedPost:
     """One raw card → a ``ScrapedPost`` (pure).
 
@@ -800,10 +835,14 @@ def post_from_raw(raw: dict[str, Any], base: str, today: date, search_url: str |
     profile = _profile_url(raw.get("author_profile_url"), base)
     urn = ref if ref.startswith("urn:li:") else None
     _, copied_post_url = canonical_post_url(raw.get("copied_url"), base)
+    card_urn = card_post_urn(raw, base) if urn is None and copied_post_url is None else None
+    # Link order (inbox feedback A2): post permalink -> author profile -> (only if neither) the search page.
     if urn is not None:
         url = permalink(base, urn)
     elif copied_post_url is not None:
         url = copied_post_url
+    elif card_urn is not None:
+        url = permalink(base, card_urn)  # identity (source_ref) unchanged: only the link improves
     elif profile is not None:
         url = profile
     elif isinstance(search_url, str) and search_url.strip():

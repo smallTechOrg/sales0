@@ -259,6 +259,29 @@ def test_a_sheet_row_adopts_an_existing_discovery_enquiry_and_keeps_its_crm_data
         assert e.prospect_id is not None
 
 
+def test_the_sheet_still_accepts_a_discovery_enquiry_the_system_auto_skipped_as_a_repeat(sync) -> None:  # type: ignore[no-untyped-def]
+    """Inbox feedback A1: a system auto-discard (repeat from an existing prospect) is not a human call; the sheet,
+    as the source of truth, still decides the row."""
+    from sales0.services.dedupe import content_hash
+
+    with session_scope() as db:
+        mine = Enquiry(
+            source="linkedin_post", content_hash=content_hash("scraped repeat"), raw_text="scraped repeat",
+            source_url="https://www.linkedin.com/posts/zz-activity-7000000000000000001-QQ", review_status="discarded",
+            discard_source="auto", discard_reason="Repeat from existing prospect Acme (already 1 this run)",
+            triage_status="done", ai_verdict="genuine", ai_reason="a real one", date_added=datetime(2026, 9, 1, tzinfo=UTC),
+            origin="discovery",
+        )
+        db.add(mine)
+        db.flush()
+        mine_id = mine.id
+    sync({"Active Enquiries": fx.active_csv()}, tabs=(ACTIVE,))
+    with session_scope() as db:
+        e = db.get(Enquiry, mine_id)
+        assert (e.origin, e.review_status, e.discard_source) == ("discovery", "accepted", None)
+        assert e.prospect_id is not None
+
+
 def test_seeded_competitors_and_existing_profile_prospects_are_adopted_not_duplicated(sync) -> None:  # type: ignore[no-untyped-def]
     from sales0.db.models import LinkedinProfile
 

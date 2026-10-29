@@ -355,6 +355,7 @@ class Persisted:
     enquiry_id: int | None
     cost_usd_micros: int
     triage_status: str
+    repeat_skipped: bool = False  # q14: the new enquiry was auto-discarded as a repeat from an existing prospect
 
 
 def _offering_or_none(db: Session, offering_id: int | None) -> int | None:
@@ -433,7 +434,8 @@ def _create_enquiry(
                 EnquirySource(
                     enquiry_id=enquiry.id,
                     source_ref=row.source_ref,
-                    source_url=row.post_url or searched,
+                    # post permalink -> author profile -> (only if neither) the search page (inbox feedback A2)
+                    source_url=row.post_url or profile_url or searched,
                     first_seen_run_id=row.first_run_id,
                     first_seen_at=row.first_seen_at,
                 )
@@ -456,7 +458,20 @@ def _create_enquiry(
     db.execute(update(LlmCall).where(LlmCall.seen_post_id == row.id).values(enquiry_id=enquiry.id))
     db.flush()
     profiles.mark_relevant(db, row.profile_id)
+    _pipeline_check(db, enquiry, run_id=run_id, now=now)
     return enquiry
+
+
+def _pipeline_check(db: Session, enquiry: Enquiry, *, run_id: int | None, now: datetime) -> None:
+    """Mark a match with the existing pipeline; inside a run, auto-discard repeats (services.crm.pipeline_match).
+    A failure here must never lose the enquiry: it is logged and the enquiry stays in To review."""
+    from sales0.services.crm import pipeline_match
+
+    try:
+        with db.begin_nested():
+            pipeline_match.apply(db, enquiry, run_id=run_id, now=now)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("pipeline_check_failed", enquiry_id=enquiry.id, error_type=type(exc).__name__)
 
 
 def persist_triage(
@@ -494,6 +509,7 @@ def persist_triage(
                     fewshot_count=outcome.fewshot_count,
                     status="ok",
                     request_id=resp.request_id[:100] if resp.request_id else None,
+                    criteria_version=outcome.criteria_version,
                     created_at=stamp,
                 )
             )
@@ -526,12 +542,14 @@ def persist_triage(
     row.poster_type = clip(result.poster_type, 40)
     row.ai_result = result.model_dump(mode="json")
     db.flush()
+    repeat = False
     if result.verdict == "genuine" and row.enquiry_id is None and row.raw_text:
-        _create_enquiry(
+        enquiry = _create_enquiry(
             db, row, result, run_id=run_id, keyword_id=keyword_id, prompt_version=outcome.prompt_version,
             triaged_at=stamp, now=stamp,
         )
-    return Persisted(row.id, row.verdict, row.enquiry_id, cost, "done")  # type: ignore[arg-type]
+        repeat = enquiry.discard_source == "auto"
+    return Persisted(row.id, row.verdict, row.enquiry_id, cost, "done", repeat)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------- permalinks
@@ -716,6 +734,7 @@ def retry_triage(db: Session, seen_post_id: int, llm: LLMClient | None = None) -
     """One synchronous real triage call for a failed seen post. Commits the outcome, even a failure."""
     from sales0.agent import TriageDeps, load_candidates, run_triage, select_examples
     from sales0.llm import get_llm_client
+    from sales0.services import criteria
     from sales0.services.triage import active_offering_refs
 
     row = db.get(SeenPost, seen_post_id)
@@ -735,7 +754,11 @@ def retry_triage(db: Session, seen_post_id: int, llm: LLMClient | None = None) -
         candidates = load_candidates(db, exclude_enquiry_id=0)
         examples = select_examples(candidates, settings.fewshot_max_examples, settings.fewshot_text_chars)
         outcome = run_triage(
-            inp, TriageDeps(llm=client, offerings=active_offering_refs(db), examples=examples, settings=settings)
+            inp,
+            TriageDeps(
+                llm=client, offerings=active_offering_refs(db), examples=examples, settings=settings,
+                criteria=criteria.active_set(db),
+            ),
         )
     except (LLMAuthError, LLMModelNotFound) as exc:
         persist_triage(db, row.id, None, error=exc.message, run_id=None, keyword_id=keyword_id)

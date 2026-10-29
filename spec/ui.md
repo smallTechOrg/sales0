@@ -34,13 +34,14 @@ The UI bar is `ui-ux.md`. Every view designs its empty, loading, error and popul
     - `post` → **"View post ↗"**
     - `profile` → **"Author profile (post link unavailable) ↗"**, followed (Phase 1.4) by the muted "· posted ~3h before sales0 found it" when `posted_relative` is known
     - Phase 1.4: a genuine post's link is captured right after triage for every card layout, so "View post ↗" is the common case; the profile fallback appears only when LinkedIn's menu gave no link (cap, 3 misses, or the card had no menu).
-    - `search` → **"Search results (post link unavailable) ↗"**
+    - `search` → **"Search results (post and profile links unavailable) ↗"**, shown only when no author profile is known (else the profile link; inbox feedback A2)
     - `other` → "Open link ↗"
     - no `source_url` → no link.
   - `<details>` "Full post text" with the raw text (`white-space: pre-wrap`).
   - Footer: checkbox (bulk), then **Accept** (primary), then **Discard** (opens an inline reason select: "Looking for individual trainers" / "Training agency / marketplace" / "Too specific / not our offering" / "Not a requirement" / "No response" / "Other — use AI reason"; it defaults to the AI reason when the AI said discard), then the muted cost text "AI $0.0011 · 1.3k tok".
   - When a decision disagreed with the AI, an "Overrode AI" badge is shown on Accepted and Discarded cards. Accepted cards show "Prospect · New". Discarded cards show the discard reason and an **Accept instead** button. Accepted cards show **Discard instead**.
   - Failed triage: the verdict area shows "AI triage failed — <error>" plus a **Retry triage** button, which shows a spinner "Asking AI…" while running.
+- **Inbox feedback** (`capabilities/inbox-feedback.md`): "Already in pipeline: <prospect>" line (`.enquiry__pipeline`) linking the prospect; "Auto-skipped: repeat" badge on system discards; the discard panel adds "Or your own reason" (`custom_reason`) and, for admins, "Save as a triage rule (exclude)" (`save_rule`).
 - **Bulk bar** (`.bulk-bar#bulk-bar`, sticky, appears when ≥1 is selected): "N selected" · **Accept selected** · **Discard selected** (+ reason select) · a "Select all on page" checkbox.
 - **Empty states**:
   - To review, with no runs ever: "No enquiries yet. Add keywords and connect LinkedIn in Setup, then press Run now." with a [Go to Setup] button.
@@ -109,6 +110,9 @@ Two cards: **Paste a post** (`#paste-form`: textarea ≥ 40 chars, optional link
 
 ## Sync (`/sync`) — Phase 2
 Heading "Google Sheet sync", a `.badge` "Read-only: sales0 never writes to your sheets". Panel `#sync-status`: state (Idle / Running… with spinner / Disabled — "SALES0_SHEET_SYNC_MINUTES is 0"), "Last sync 12 min ago (ok|partial|failed) · took 8s", "Next sync in ~18 min", last error in the error style. Button **Sync now** (`#sync-now`; disabled while running). Table `#sync-tabs`: Tab · Rows · Added · Updated · Unchanged · Removed · Errors · Warnings · Problem (fetch error / "removal blocked 6-of-10") — counts only. Empty: "No sync has run yet." Links: Schedule page (opt-in toggle for the interval job), Pipeline.
+
+## Criteria (`/criteria`) — inbox feedback A3
+Include list (`#include-list`), exclude list (`#exclude-list`), add form (`#new-rule`, admins), per-rule ↑ ↓ / Disable-Enable / Edit (admins), "Why posts were discarded" (`#discard-reasons`: Team / System / AI, 30 days, all time, example posts), recent versions (`#criteria-history`). Members see the lists and the breakdown only.
 
 ## Login (`/login`)
 Centered card: wordmark, **Email** field (`#login-email`) and **Password** field (`#login-password`, `autocomplete="current-password"`), Remember me, [Log in] (`#login-submit`), a hint saying which email to use (the admin email on a fresh install) and that an admin supplies set-password links; error in the error style above the field ("Wrong email or password." / "Too many attempts - try again in 42 seconds."); no nav, no header status; same CSS. Keyboard: Enter submits.

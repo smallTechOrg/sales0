@@ -15,6 +15,8 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | GET | `/outreach` | E | Stub "Coming in Phase 3" |
 | GET | `/metrics` | E | Stub "Coming in Phase 4" |
 | GET | `/whatsapp` | E | Stub "Coming in Phase 5" |
+| GET | `/criteria` | feedback | Triage criteria + discard-reason breakdown (JSON: `{version, rules}`) |
+| POST | `/criteria`, `/criteria/{id}`, `/criteria/{id}/active`, `/criteria/{id}/move` | feedback | Admin-only rule add / edit (text, kind) / enable-disable (`active`) / reorder (`direction=up\|down`); 303 + flash. Codes `criterion_invalid` 400, `criterion_exists` 409, `forbidden` 403. `/inbox/decide` also takes `custom_reason` and `save_rule` (admin) |
 
 ## Partials / actions
 

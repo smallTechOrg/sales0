@@ -492,6 +492,12 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
         # a profile-less enquiry has no other identity than itself: a prospect that already names it as its
         # origin (link lost, or a concurrent accept) is THE prospect (unique index uq_prospects_origin_enquiry)
         p = _by_origin(db, e.id)
+    if p is None:
+        # inbox feedback A1: an enquiry marked "Already in pipeline" when it was created (author profile, known contact,
+        # contact email, company name / page / email domain) joins that prospect instead of creating a duplicate.
+        from sales0.services.crm import pipeline_match
+
+        p = pipeline_match.prospect_for_accept(db, e)
     created = p is None
     if p is None:
         name = (e.company or "").strip() or (e.author_name or "").strip() or (e.contact_person or "").strip() or (

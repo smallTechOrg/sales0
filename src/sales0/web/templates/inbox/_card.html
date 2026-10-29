@@ -1,4 +1,5 @@
-{# One enquiry card. Needs: card (EnquiryCardView), tab, q, page, offerings, discard_reasons, priorities, first_urn. #}
+{# One enquiry card. Needs: card (EnquiryCardView), tab, q, page, offerings, discard_reasons, priorities, first_urn;
+   optional can_save_rule (admins: "save as rule" on a discard). #}
 {% set pending = card.triage_status == "pending" %}
 {% set failed = card.triage_status == "failed" %}
 <article id="enquiry-{{ card.id }}" class="card enquiry"
@@ -21,6 +22,7 @@
       {% endif %}
       {% if card.is_override and card.review_status != "pending_review" %}<span class="badge badge--warn">Overrode AI</span>{% endif %}
       {% if card.review_status == "accepted" %}<span class="badge badge--info">Prospect · New</span>{% endif %}
+      {% if card.discard_source == "auto" and card.review_status == "discarded" %}<span class="badge badge--warn" data-auto-discard>Auto-skipped: repeat</span>{% endif %}
     </div>
     {% if not pending %}
       <div class="enquiry__controls">
@@ -49,6 +51,14 @@
   </header>
 
   <div class="card__body">
+    {% if card.pipeline_name %}
+      <p class="enquiry__pipeline" data-pipeline-href="{{ card.pipeline_href }}">
+        <span class="badge badge--info">Already in pipeline</span>
+        <a href="{{ card.pipeline_href }}">{{ card.pipeline_name }}</a>
+        {% if card.pipeline_match %}<span class="muted">· {{ card.pipeline_match }}</span>{% endif %}
+        {% if card.review_status != "accepted" %}<span class="muted">· Accept adds it to this prospect</span>{% endif %}
+      </p>
+    {% endif %}
     <p id="enquiry-{{ card.id }}-summary" class="enquiry__summary">{{ card.requirement_summary or "No summary yet — the full post text is below." }}</p>
     <p class="enquiry__meta">
       <span>{{ card.author_name or "Unknown author" }}</span>
@@ -77,13 +87,18 @@
     {% endif %}
 
     <div class="row">
+      {# Link order (inbox feedback A2): post permalink -> author profile -> only if neither, the search page.
+         A search page is never labelled or shown as "the post". #}
       {% set link_labels = {"post": "View post ↗", "profile": "Author profile (post link unavailable) ↗",
-                            "search": "Search results (post link unavailable) ↗"} %}
-      {% if card.source_url and card.source_url.startswith(("http://", "https://")) %}
+                            "search": "Search results (post and profile links unavailable) ↗"} %}
+      {% set http = ("http://", "https://") %}
+      {% set has_source = card.source_url and card.source_url.startswith(http) %}
+      {% set has_profile = card.author_profile_url and card.author_profile_url.startswith(http) %}
+      {% if has_source and (card.link_kind != "search" or not has_profile) %}
         <a class="enquiry__link" href="{{ card.source_url }}" target="_blank" rel="noopener"
            data-link-kind="{{ card.link_kind or 'other' }}">{{ link_labels.get(card.link_kind, "Open link ↗") }}</a>
         {% if card.link_kind == "profile" and posted_hint(card.posted_relative) %}<span class="muted">· {{ posted_hint(card.posted_relative) }}</span>{% endif %}
-      {% elif card.author_profile_url and card.author_profile_url.startswith(("http://", "https://")) %}
+      {% elif has_profile %}
         <a class="enquiry__link" href="{{ card.author_profile_url }}" target="_blank" rel="noopener"
            data-link-kind="profile">{{ link_labels["profile"] }}</a>
         {% if posted_hint(card.posted_relative) %}<span class="muted">· {{ posted_hint(card.posted_relative) }}</span>{% endif %}
@@ -132,6 +147,12 @@
               {% for reason in discard_reasons %}<option value="{{ reason }}"{% if not ai_discard and loop.first %} selected{% endif %}>{{ reason }}</option>{% endfor %}
               <option value=""{% if ai_discard %} selected{% endif %}>Other — use AI reason</option>
             </select>
+            <label class="field__label" for="enquiry-{{ card.id }}-custom-reason">Or your own reason <span class="muted">(the AI learns from it)</span></label>
+            <input class="input" id="enquiry-{{ card.id }}-custom-reason" name="custom_reason" maxlength="200"
+                   placeholder="e.g. Agency reselling our workshop to its client">
+            {% if can_save_rule %}
+              <label class="enquiry__select"><input type="checkbox" name="save_rule" value="1"> Save as a triage rule (exclude)</label>
+            {% endif %}
             <button class="btn btn--danger btn--sm" type="submit">Confirm discard</button>
           </form>
         </details>

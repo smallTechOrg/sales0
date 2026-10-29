@@ -24,5 +24,6 @@
 | WhatsApp Ingestion | 5 | [whatsapp-ingest.md](whatsapp-ingest.md) | Linked-device bot feeding the same triage |
 | Per-User Accounts | 5 | [per-user-accounts.md](per-user-accounts.md) | Individual logins and attribution |
 | Reply Tracking | 5 | [reply-tracking.md](reply-tracking.md) | Detect email replies, mark responded (built; the Phase 2 CRM subscribes to its event) |
+| Inbox feedback | feedback | [inbox-feedback.md](inbox-feedback.md) | Pipeline repeat check (one per prospect per run), post -> profile -> search links, editable triage criteria + discard reasons (`/criteria`) |
 | Hosted Deployment | deploy | [hosted-deployment.md](hosted-deployment.md) | Cloud Run + Cloud SQL Postgres, no scheduler (manual request-bound actions), laptop `sales0 worker` scrapes and uploads |
 | CRM entity (team feedback) | 2+ | [crm-entity.md](crm-entity.md) | Characteristics on the entity (survive Prospect -> Lead -> Client), accept straight to client, Companies list + roll-up + merge, editable e-mails / phones, Add person to track |

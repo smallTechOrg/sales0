@@ -164,6 +164,13 @@ The tool is `record_draft(subject, body_markdown, deck_id | null)`. Guards: it m
 WhatsApp ingestion reuses Capability 1 unchanged: `source="whatsapp_group"`, with the same dedupe and the same triage. Reply tracking is deterministic (Gmail thread polling), with no LLM.
 
 
+## Inbox feedback - editable criteria (prompt stays `triage-v3`)
+The include / exclude rule lists of the system prompt come from `triage_criteria` (`TriageDeps.criteria`, a
+`CriteriaSet`; `None` = the built-in seed). The rest of the prompt is fixed. `TriageOutcome.criteria_version` ->
+`llm_calls.criteria_version`. System auto-discards (pipeline repeats) write no `triage_decisions`, so few-shot stays
+human-only; free-text discard reasons are stored as the decision reason and rendered in the examples as before.
+See `capabilities/inbox-feedback.md`.
+
 ## Phase 1.5 - recall-first triage (`PROMPT_VERSION = "triage-v3"`)
 
 Evidence: a live mini-run scanned 94 buyer-intent posts and discarded all of them, because rule 1 discarded every agency / edtech "trainer requirement". The team's own Active Enquiries sheet shows the opposite practice: it responds when a company or institute (even via an agency) asks a training PROVIDER / partner / organisation to deliver a programme.
