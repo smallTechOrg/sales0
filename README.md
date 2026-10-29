@@ -512,6 +512,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_FOLLOWUP_DAYS_1` | int | `3` | Days after the first email before follow-up 1 is due. |
 | `SALES0_FOLLOWUP_DAYS_2` | int | `7` | Days before follow-up 2. |
 | `SALES0_FOLLOWUP_DAYS_FINAL` | int | `14` | Days before the final follow-up. |
+| `SALES0_FOLLOWUP_DRAFT_BATCH` | int | `10` | AI calls per `Draft due follow-ups` click (hosted: click again for the rest) and per scheduled run. Drafts are never sent without a human click. |
 | `SALES0_STALE_LEAD_DAYS` | int | `14` | Days without activity before a lead counts as stale. |
 | `SALES0_REPEAT_POSTER_MIN` | int | `3` | Posts needed to flag someone as a repeat poster. |
 | `SALES0_REPEAT_POSTER_DAYS` | int | `60` | Window (days) for the repeat-poster count. |
@@ -526,6 +527,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_SCHEDULER_DIGEST_TIME` | str | `07:30` | Local time the daily digest is built. |
 | `SALES0_SCHEDULER_PURGE_TIME` | str | `04:15` | Local time of the nightly purge. |
 | `SALES0_SCHEDULER_WATCH_TIME` | str | `05:30` | Local time the `profile_watch` job (visit tracked profiles) runs; the job is disabled until enabled on /schedule. |
+| `SALES0_SCHEDULER_FOLLOWUP_DRAFTS_TIME` | str | `08:00` | Local time the opt-in `followup_drafts` job writes draft follow-up emails (disabled until enabled on /schedule; local mode only; it never sends). |
 | `SALES0_WATCH_MAX_PROFILES_PER_RUN` | int | `25` | Prospect watch: max tracked profiles visited per watch run. |
 | `SALES0_WATCH_MIN_DAYS_BETWEEN_CHECKS` | float | `3.0` | Prospect watch: minimum days before the same profile is visited again. |
 | `SALES0_WATCH_MAX_POSTS_PER_PROFILE` | int | `15` | Prospect watch: max posts read per profile visit (also bounded by the daily post cap). |
