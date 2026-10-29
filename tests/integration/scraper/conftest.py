@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import atexit
 import shutil
+import os
 import socket
 import tempfile
 import threading
@@ -113,18 +114,10 @@ def connected_settings(fixture_settings: Settings) -> Settings:
 
 @pytest.fixture(autouse=True)
 def _fast_fixture_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fixture LinkedIn is static and answers at once, so the human-looking settle waits in the
-    scraper (hover/scroll-into-view jitter of 250-700 ms per card, the 1.5 s "did the copy land" poll
-    per menu) only burn wall-clock. Shrink them; every functional wait (content-ready, scroll settle,
-    page debounce, click timeouts) keeps its real value."""
-    from sales0.linkedin_fixture import routes
-    from sales0.scraper import permalink, search
-    from sales0.scraper.pacing import Pacer
+    """The fixture LinkedIn is static and answers at once, so the scraper's human-looking waits (jitter, poll,
+    scroll settle, lazy reveal, menu copy poll) only burn wall-clock. ONE knob scales them all together, ratios
+    preserved (fixture mode only; src/sales0/scraper/pacing.py). Override with SALES0_TEST_PACE_SCALE."""
+    from sales0.config import reset_settings
 
-    monkeypatch.setattr(Pacer, "jitter_ms", lambda self, base_ms: max(1, int(base_ms * 0.08)))
-    monkeypatch.setattr(permalink, "TAKE_POLL_MS", 20)
-    # Lazy results: the fixture reveals the next card 700 ms after a scroll and the scraper waits up to 1.2 s
-    # (2.4 s on the first idle scroll) for it. Keep the ratio (reveal : settle = 7 : 12), halve both; the 250 ms
-    # poll (which also keeps successive wheel gestures outside the page's 200 ms debounce) is untouched.
-    monkeypatch.setattr(routes, "LAZY_REVEAL_DELAY_MS", 350)
-    monkeypatch.setattr(search, "scroll_settle_ms", lambda settings: 600 if settings.linkedin_mode == "fixture" else 2_500)
+    monkeypatch.setenv("SALES0_SCRAPE_PACE_SCALE", os.environ.get("SALES0_TEST_PACE_SCALE", "0.2"))
+    reset_settings()

@@ -10,6 +10,25 @@ from collections.abc import Callable
 from sales0.config import Settings
 
 
+PACE_SCALE_MIN = 0.05
+
+
+def pace_scale(settings: Settings) -> float:
+    """The factor applied to every scraper wait. 1.0 unless fixture mode (the localhost fake) sets
+    ``scrape_pace_scale``, clamped to [0.05, 1.0]. Outside fixture mode it can never be below 1.0 (Settings
+    rejects it; this re-checks so a hand-built Settings cannot speed up the real scraper either)."""
+    value = float(settings.scrape_pace_scale)
+    if settings.linkedin_mode != "fixture":
+        return max(1.0, value)
+    return min(1.0, max(PACE_SCALE_MIN, value))
+
+
+def scaled_ms(settings: Settings, base_ms: float) -> int:
+    """``base_ms`` times the pace scale (unchanged int when the scale is 1.0)."""
+    scale = pace_scale(settings)
+    return int(base_ms) if scale == 1.0 else max(1, int(base_ms * scale))
+
+
 class Pacer:
     def __init__(
         self,
@@ -17,6 +36,7 @@ class Pacer:
         max_s: float,
         rng: random.Random | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        scale: float = 1.0,
     ) -> None:
         if min_s < 0 or max_s < 0:
             raise ValueError("pacing bounds must be >= 0")
@@ -26,6 +46,7 @@ class Pacer:
         self.max_s = max_s
         self._rng = rng or random.Random()
         self._sleep = sleep
+        self.scale = scale  # multiplies jitter_ms; the delay bounds are scaled by the factories
 
     def delay(self) -> float:
         """Sleep a random duration in [min_s, max_s]; return it."""
@@ -45,7 +66,8 @@ class Pacer:
 
     def jitter_ms(self, base_ms: float) -> int:
         """``base_ms`` randomised to 60%..160% (never the same wait twice)."""
-        return max(1, int(base_ms * self._rng.uniform(0.6, 1.6)))
+        ms = max(1, int(base_ms * self._rng.uniform(0.6, 1.6)))
+        return ms if self.scale == 1.0 else max(1, int(ms * self.scale))
 
     def scroll_steps(self, total: int, compact: bool = False) -> list[tuple[int, int]]:
         """A human-ish scroll: ``total`` px split into 3-6 wheel steps as ``(delta_px, wait_ms_after)``.
@@ -74,11 +96,13 @@ class Pacer:
         cls, settings: Settings, rng: random.Random | None = None, sleep: Callable[[float], None] = time.sleep
     ) -> Pacer:
         """Delay between page actions (navigate, scroll, expand)."""
-        return cls(settings.scrape_delay_min_s, settings.scrape_delay_max_s, rng, sleep)
+        k = pace_scale(settings)
+        return cls(settings.scrape_delay_min_s * k, settings.scrape_delay_max_s * k, rng, sleep, k)
 
     @classmethod
     def for_keywords(
         cls, settings: Settings, rng: random.Random | None = None, sleep: Callable[[float], None] = time.sleep
     ) -> Pacer:
         """Longer pause between keywords (used by the discovery job)."""
-        return cls(settings.scrape_keyword_pause_min_s, settings.scrape_keyword_pause_max_s, rng, sleep)
+        k = pace_scale(settings)
+        return cls(settings.scrape_keyword_pause_min_s * k, settings.scrape_keyword_pause_max_s * k, rng, sleep, k)

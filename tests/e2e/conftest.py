@@ -6,6 +6,8 @@ Every test here gets the ``e2e``/``browser``/``llm`` markers and the 600s e2e ti
 
 from __future__ import annotations
 
+import os
+
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -43,7 +45,9 @@ _free_port = free_port  # re-exported for the journeys
 
 @pytest.fixture
 def server(tmp_path: Path) -> Iterator[LiveServer]:
-    with live_server(tmp_path / "e2e") as srv:
+    # SALES0_SCRAPE_PACE_SCALE: fixture-mode-only speed knob (the server runs the localhost fake LinkedIn).
+    env = {"SALES0_SCRAPE_PACE_SCALE": os.environ.get("SALES0_TEST_PACE_SCALE", "0.2")}
+    with live_server(tmp_path / "e2e", extra_env=env) as srv:
         yield srv
 
 

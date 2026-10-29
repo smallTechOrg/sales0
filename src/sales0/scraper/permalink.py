@@ -404,7 +404,8 @@ def _take(page: Page) -> list[str]:
     return [v for v in values if isinstance(v, str) and v.strip()]
 
 
-def _poll_copied(page: Page) -> str | None:
+def _poll_copied(page: Page, pacer: Pacer | None = None) -> str | None:
+    poll_ms = TAKE_POLL_MS if pacer is None or pacer.scale == 1.0 else max(1, int(TAKE_POLL_MS * pacer.scale))
     for poll in range(TAKE_POLLS):
         try:
             copied = _take(page)
@@ -413,7 +414,7 @@ def _poll_copied(page: Page) -> str | None:
         if copied:
             return copied[-1].strip()  # the last captured string
         if poll < TAKE_POLLS - 1:
-            page.wait_for_timeout(TAKE_POLL_MS)
+            page.wait_for_timeout(poll_ms)
     return None
 
 
@@ -467,7 +468,7 @@ def _attempt(
         checkpoint()
         # 3. Read what the page tried to copy.
         if outcome == "no_copy":
-            copied = _poll_copied(page)
+            copied = _poll_copied(page, pacer)
             if copied:
                 copied = resolve_short_link(copied, proxy_url=proxy_url, user_agent=user_agent)
                 if is_short_link(copied):

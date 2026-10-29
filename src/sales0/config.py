@@ -195,6 +195,9 @@ class Settings(BaseSettings):
     scrape_keyword_pause_min_s: float = Field(20.0, ge=0)
     scrape_keyword_pause_max_s: float = Field(60.0, ge=0)
     scrape_max_scrolls: int = Field(20, ge=0)
+    # Test-speed knob: multiplies every scraper wait (settle window, poll, delays, permalink waits) by this.
+    # Honoured ONLY in fixture mode (clamped to [0.05, 1.0]); live mode rejects < 1.0 at load time.
+    scrape_pace_scale: float = Field(1.0, gt=0, le=100)
     # Phase 1.4: consecutive scrolls without new cards that end a search pass.
     scrape_no_growth_scrolls: int = Field(2, ge=1)
     # Phase 1.4: latest = LinkedIn sortBy="date_posted"; relevance = LinkedIn's default ranking.
@@ -443,6 +446,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _ranges(self) -> Settings:
+        if self.linkedin_mode != "fixture" and self.scrape_pace_scale < 1.0:
+            raise ValueError(
+                "SALES0_SCRAPE_PACE_SCALE below 1.0 speeds the scraper up and is only allowed with "
+                "SALES0_LINKEDIN_MODE=fixture (never against the real LinkedIn)"
+            )
         if self.scheduler_window_start >= self.scheduler_window_end:
             raise ValueError("SALES0_SCHEDULER_WINDOW_START must be earlier than SALES0_SCHEDULER_WINDOW_END (same day)")
         if self.scrape_delay_min_s > self.scrape_delay_max_s:

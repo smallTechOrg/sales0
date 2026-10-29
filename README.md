@@ -475,6 +475,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S` | float | `20.0` | Min pause between phrases (seconds). |
 | `SALES0_SCRAPE_KEYWORD_PAUSE_MAX_S` | float | `60.0` | Max pause between phrases (seconds). |
 | `SALES0_SCRAPE_MAX_SCROLLS` | int | `20` | Max scrolls per search pass. |
+| `SALES0_SCRAPE_PACE_SCALE` | float | `1.0` | Test-speed multiplier on every scraper wait (default 1.0 = unchanged). Honoured only with SALES0_LINKEDIN_MODE=fixture (clamped 0.05-1.0); any value below 1.0 is rejected at startup in live mode. |
 | `SALES0_SCRAPE_NO_GROWTH_SCROLLS` | int | `2` | Consecutive scrolls without new cards that end a pass. |
 | `SALES0_SCRAPE_SORT` | latest \| relevance | `latest` | `latest` or `relevance` search ordering. |
 | `SALES0_SCRAPE_DATE_FILTERS` | list | `past-week,past-month` | Comma list of date filters, one search pass each: `past-24h`, `past-week`, `past-month`. |

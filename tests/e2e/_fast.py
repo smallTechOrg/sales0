@@ -50,6 +50,7 @@ def live_server(
     root: Path, *, port: int | None = None, extra_env: dict[str, str] | None = None, real_llm: bool = False
 ) -> Iterator[LiveServer]:
     env = dict(extra_env or {})
+    env.setdefault("SALES0_SCRAPE_PACE_SCALE", os.environ.get("SALES0_TEST_PACE_SCALE", "0.2"))  # fixture-mode-only speed knob
     if not (real_llm or real_llm_forced()):
         env["SALES0_E2E_FAKE_LLM"] = "1"
         env.setdefault("SALES0_ANTHROPIC_API_KEY", "sk-fake-e2e-not-a-real-key")  # startup needs a key; the oracle never calls out

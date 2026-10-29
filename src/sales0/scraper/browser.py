@@ -40,6 +40,7 @@ from playwright.sync_api import BrowserContext, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
 from sales0.config import Settings
+from sales0.scraper.pacing import scaled_ms
 from sales0.logging import get_logger
 from sales0.scraper.errors import BrowserUnavailable
 
@@ -455,4 +456,5 @@ def wait_timeout_ms(settings: Settings) -> int:
 
 def scroll_settle_ms(settings: Settings) -> int:
     """How long to wait for new result cards after a scroll before concluding the end."""
-    return 1_200 if settings.linkedin_mode == "fixture" else 2_500
+    base = 1_200 if settings.linkedin_mode == "fixture" else 2_500
+    return scaled_ms(settings, base)

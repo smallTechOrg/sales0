@@ -69,7 +69,7 @@ from sales0.scraper.detection import (
 )
 from sales0.scraper.errors import AccountSafetyStop, SafetyKind, ScrapeError, SessionMissing
 from sales0.scraper import selectors as S
-from sales0.scraper.pacing import Pacer
+from sales0.scraper.pacing import Pacer, scaled_ms
 from sales0.scraper.parsing import (
     CARD_ARGS,
     COUNT_CARDS_JS,
@@ -98,6 +98,11 @@ log = get_logger("sales0.scraper.search")
 
 _POLL_MS = 250
 
+
+def poll_ms(settings: Settings) -> int:
+    """Interval between "did more cards appear" polls (scaled by the fixture-only pace knob)."""
+    return scaled_ms(settings, _POLL_MS)
+
 # verify_in_context reason → the stop it means at run start (no_cookie / error handled separately).
 _SESSION_STOP: dict[str, SafetyKind] = {
     "redirected_login": "logout",
@@ -114,7 +119,8 @@ def content_timeout_ms(settings: Settings) -> int:
 
 def scroll_settle_ms(settings: Settings) -> int:
     """How long to wait for more cards after a scroll before concluding the end of results."""
-    return 1_200 if settings.linkedin_mode == "fixture" else 2_500
+    base = 1_200 if settings.linkedin_mode == "fixture" else 2_500
+    return scaled_ms(settings, base)
 
 
 # The point to hover before a wheel: the centre of the visible part of the SDUI lazy column
@@ -585,7 +591,10 @@ class LinkedInSearcher:
         try:
             point = page.evaluate(SCROLL_TARGET_JS, S.SDUI_SCROLL_CONTAINER)
             if point:
-                page.mouse.move(float(point["x"]), float(point["y"]), steps=self._pacer.randint(4, 12))
+                steps = self._pacer.randint(4, 12)
+                if self._pacer.scale != 1.0:  # fixture-only speed knob: fewer interpolation steps (each is a round-trip)
+                    steps = max(1, round(steps * self._pacer.scale))
+                page.mouse.move(float(point["x"]), float(point["y"]), steps=steps)
         except PlaywrightError:
             self._raise_if_latched()  # the wheel and the next checkpoint decide the rest
 
@@ -609,7 +618,7 @@ class LinkedInSearcher:
         extended = False
         while True:
             try:
-                page.wait_for_timeout(_POLL_MS)  # also pumps Playwright events (the latches)
+                page.wait_for_timeout(poll_ms(self._settings))  # also pumps Playwright events (the latches)
             except PlaywrightError as exc:
                 self._raise_if_latched()
                 raise ScrapeError(f"Page closed while scrolling: {exc}") from exc
