@@ -49,12 +49,14 @@ def test_send_then_human_reply_walks_the_prospect_to_a_lead(db: Session, team: T
     db.expire_all()
     assert fresh(db, sent).reply_status == "replied"
     p = prospects.get_prospect(db, v.id)
-    assert p.status == "converted" and p.open_lead_id is not None and p.responded_at is not None
-    lead = db.get(Lead, p.open_lead_id)
-    assert lead.stage == "meeting_scheduled" and lead.opened_by == "reply"
+    assert p.status == "open" and p.open_lead_id is None and p.responded_at is not None  # suggested, never auto-moved
+    from sales0.db.models import Company
+    from sales0.services.crm import lifecycle
+
+    assert lifecycle.active_suggestion(db.get(Company, p.company_id)) is not None
     assert p.replies and p.replies[0].intent == "interested" and p.messages and p.messages[0].state == "sent"
     kinds = [t.kind for t in p.timeline]
-    assert {"created", "enquiry_linked", "stage_change", "email_sent", "reply_received", "lead_created"} <= set(kinds)
+    assert {"created", "enquiry_linked", "stage_change", "email_sent", "reply_received"} <= set(kinds)
 
 
 def test_unsubscribe_reply_through_the_poller_flags_the_prospect(db: Session, team: Team, installed) -> None:

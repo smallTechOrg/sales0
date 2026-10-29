@@ -37,16 +37,15 @@ def test_company_timeline_unions_prospects_enquiries_and_phase1_history(db) -> N
     db.add(StatusHistory(entity_type="enquiry", entity_id=e1.id, field="review_status", from_value="pending_review",
                          to_value="accepted", changed_at=h.T0 - timedelta(hours=1)))
     db.flush()
-    assert v1.company_id == v2.company_id
+    assert v1.company_id == v2.company_id and v1.id == v2.id  # one outreach record per company
     items = timeline.list_timeline(db, company_id=v1.company_id)
     kinds = [i.kind for i in items]
-    assert kinds.count("created") == 3 and kinds.count("enquiry_linked") == 2 and "stage_change" in kinds
+    assert kinds.count("created") == 2 and kinds.count("enquiry_linked") == 2
     assert [i.occurred_at for i in items] == sorted((i.occurred_at for i in items), reverse=True)  # newest first
     hist = next(i for i in items if i.data and i.data.get("source") == "status_history")
     assert hist.id < 0 and hist.actor == "team" and "pending_review" in (hist.body or "")
     # the prospect's own page merges the history of its enquiries too
     assert any(i.id < 0 for i in timeline.list_timeline(db, prospect_id=v1.id))
-    assert not any(i.id < 0 for i in timeline.list_timeline(db, prospect_id=v2.id))
 
 
 def test_list_requires_exactly_one_scope(db) -> None:

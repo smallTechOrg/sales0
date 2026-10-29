@@ -488,6 +488,13 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
         raise not_found()
     stamp = now_or(now)
     comp = companies.get_or_create_row(db, e.company, now=stamp, actor=actor)
+    if comp is None and e.company_id is None:
+        # company model: an accepted enquiry always belongs to a company; a poster without one is a company of one
+        # (named after the person) until someone fills the real name in
+        fallback = (e.author_name or e.contact_person or "").strip() or f"Unnamed company (enquiry {e.id})"
+        comp = companies.get_or_create_row(db, fallback, now=stamp, actor=actor)
+    elif comp is None and e.company_id is not None:
+        comp = db.get(Company, e.company_id)
     if e.company_id is None and comp is not None:
         e.company_id = comp.id
     # --- already linked: heal missing pieces, reopen a discarded-closed prospect, change nothing else
@@ -517,6 +524,12 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
         from sales0.services.crm import pipeline_match
 
         p = pipeline_match.prospect_for_accept(db, e)
+    if p is None and comp is not None:
+        # company model: ONE outreach record per company - a second person / enquiry at a company we already work
+        # with joins it instead of starting a parallel cadence (the person is kept as a contact below)
+        from sales0.services.crm import lifecycle
+
+        p = lifecycle.primary_prospect(db, comp.id)
     created = p is None
     if p is None:
         name = (e.company or "").strip() or (e.author_name or "").strip() or (e.contact_person or "").strip() or (
@@ -617,6 +630,9 @@ def create_manual(
     src = source if source in ("sheet", "manual", "import") else "manual"
     origin = {"sheet": "sheet", "import": "import"}.get(src, "manual")
     comp = companies.get_or_create_row(db, company, website=website, now=stamp)
+    named_company = comp is not None
+    if comp is None:  # company model: a person we reach out to without a company is a company of one, named after them
+        comp = companies.get_or_create_row(db, clean, now=stamp)
     slug = _keys.linkedin_slug_of(linkedin_url)
     linkedin_url = f"https://www.linkedin.com/{slug}/" if slug else None
     profile_id = profiles.ensure_profile(db, linkedin_url, name=clean, now=stamp) if linkedin_url else None
@@ -636,6 +652,10 @@ def create_manual(
         existing = db.scalar(
             select(Prospect).where(Prospect.contact_id == contact_row.id).order_by((Prospect.status == "open").desc(), Prospect.id).limit(1)
         )
+    if existing is None and named_company and comp is not None:
+        from sales0.services.crm import lifecycle
+
+        existing = lifecycle.primary_prospect(db, comp.id)  # ONE outreach record per company
     if existing is not None:
         if comp is not None and existing.company_id is None:
             existing.company_id = comp.id
@@ -648,7 +668,7 @@ def create_manual(
             contacts.link(db, contact_row.id, "prospect", existing.id, None)
         return _view(db, existing)
     p = Prospect(
-        kind="company_enquiry" if comp is not None else "outreach_person", name=clean, linkedin_profile_id=profile_id,
+        kind="company_enquiry" if named_company else "outreach_person", name=clean, linkedin_profile_id=profile_id,
         company_id=comp.id if comp else None, contact_id=contact_row.id if contact_row else None, stage="new",
         stage_source="app", status="open", source=src, actor=actor.label[:80],
         actor_member_id=actor.member_id, created_at=stamp, updated_at=stamp,

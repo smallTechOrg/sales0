@@ -818,6 +818,7 @@ def _link_prospect(ctx: Ctx, rec: SheetEnquiry, enquiry: Enquiry, new_o: dict[st
         sheet_status, date_email_sent=enquiry.date_email_sent, date_proposal_sent=enquiry.date_proposal_sent
     )
     extra += _apply_outcome(ctx, prospect, outcome, enquiry=enquiry, sheet_status=sheet_status, date_added=_as_date(new_o.get("date_added")))
+    extra += _apply_deal_status(ctx, enquiry, outcome, cell_changed=key_text(new_o.get("sheet_status")) != key_text(old_o.get("sheet_status")))
     return extra
 
 
@@ -867,11 +868,43 @@ def _apply_outcome(
         prospect.contacted_at = local_midnight_utc(sent) or ctx.now
         prospect.contacted_estimated = True
         changed.append("contacted_at")
-    if outcome.lead_stage is not None:
+    if outcome.lead_stage in ("meeting_scheduled", "proposal_sent") and enquiry is not None:
+        # company model: only a PERSON moves a company to Lead. An enquiry row saying "meeting scheduled" / "proposal
+        # sent" sets the enquiry's own status and shows the "suggested: Lead" hint on the company.
+        if prospect.company_id is not None:
+            from sales0.services.crm import lifecycle
+
+            lifecycle.suggest_lead(db, prospect.company_id, "enquiry", f"sheet status {outcome.lead_stage}", now=ctx.now)
+    elif outcome.lead_stage is not None:
         changed += _apply_lead(ctx, prospect, outcome, enquiry, date_added, scopes)
     db.flush()
     _log_unmoved_status(ctx, prospect, sheet_status, outcome, scopes, moved=True)
     return changed
+
+
+def _deal_status_of(outcome: StatusOutcome) -> str | None:
+    """The hand-set deal status a sheet status means (None = the company's cadence drives it)."""
+    if outcome.lead_stage is not None:
+        return outcome.lead_stage
+    if outcome.prospect_status == "closed":
+        return "no_response" if outcome.closed_reason == "no_response" else "on_hold"
+    return None
+
+
+def _apply_deal_status(ctx: Ctx, enquiry: Enquiry, outcome: StatusOutcome, *, cell_changed: bool) -> list[str]:
+    """Active Enquiries -> the enquiry's deal status. The sheet owns it until a person sets it in the app; an app value
+    survives until the sheet's status cell itself changes (the changed-cell pattern)."""
+    from sales0.services.crm import deals
+
+    target = _deal_status_of(outcome)
+    if target is None or enquiry.review_status != "accepted":
+        return []
+    if enquiry.deal_status_source == "app" and not cell_changed:
+        return []
+    if enquiry.deal_status == target:
+        return []
+    deals.set_status(ctx.db, enquiry.id, target, actor=ctx.actor, source="sheet" if ctx.is_sheet else "app", now=ctx.now)  # type: ignore[arg-type]
+    return ["deal_status"]
 
 
 def _would_change(db: Session, prospect: Prospect, outcome: StatusOutcome) -> bool:
@@ -1010,6 +1043,8 @@ def _apply_person(ctx: Ctx, rec: _Person, previous: dict[str, Any] | None) -> Ap
     old_o, new_o, _mine = overlays(ctx, rec, "prospect", None if prospect is None else prospect.id, previous)
     changed: list[str] = []
     company = company_for(db, new_o.get("company"), website=new_o.get("website"))
+    if company is None and prospect is None and (rec.name or rec.company):
+        company = company_for(db, rec.name or rec.company)  # company model: a sheet person without one is a company of one
     if prospect is None:
         prospect = Prospect(
             kind="outreach_person", name=clip(rec.name or rec.company or "(unnamed)", 200) or "(unnamed)",

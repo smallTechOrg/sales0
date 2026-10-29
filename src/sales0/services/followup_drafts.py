@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from sales0.clock import local_today
 from sales0.config import get_settings
-from sales0.db.models import Contact, Enquiry, Flag, FollowUp, OutreachMessage, OutreachReply, Prospect, TeamMember
+from sales0.db.models import Company, Contact, Enquiry, Flag, FollowUp, OutreachMessage, OutreachReply, Prospect, TeamMember
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound
 from sales0.logging import get_logger
@@ -173,6 +173,8 @@ def check(db: Session, f: FollowUp, member: TeamMember | None, *, today: date | 
     p = db.get(Prospect, f.prospect_id)
     if p is None:
         return Eligibility(False, "the prospect no longer exists")
+    if p.company_id is not None and db.scalar(select(Company.off_ramp).where(Company.id == p.company_id)) == "do_not_contact":
+        return Eligibility(False, "the company is marked Do not contact")
     if p.status != "open":
         return Eligibility(False, f"the prospect is {p.status}" + (" (a lead now)" if p.status == "converted" else ""))
     if db.scalar(select(Flag.id).where(Flag.entity_type == "prospect", Flag.entity_id == p.id, Flag.kind == "no_follow_up",

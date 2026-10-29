@@ -196,6 +196,9 @@ def generate_draft(
     ``deck_id=None`` picks the deck mapped to the offering. ``requirement`` is the enquiry text.
     """
     suppressions.assert_not_suppressed(db, to, cc)
+    from sales0.services.crm import lifecycle
+
+    lifecycle.ensure_contactable(db, company_id=company_id, prospect_id=prospect_id)  # Do not contact blocks all drafting
     stamp = now_or(now)
     ensure_within_spend_cap(db, stamp)  # Phase 4: no LLM call over the monthly cap
     company = " ".join(company.split())

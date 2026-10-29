@@ -177,23 +177,30 @@ def _contacted(db):
     return m, v, msg
 
 
-def test_interested_reply_to_a_contacted_prospect_opens_a_lead(db, installed) -> None:
+def test_interested_reply_to_a_contacted_prospect_only_suggests_a_lead(db, installed) -> None:
+    from sales0.db.models import Company
+    from sales0.services.crm import lifecycle
+
     m, v, msg = _contacted(db)
     r = _reply(db, m, msg)
     p = prospects.get_prospect(db, v.id)
-    assert p.status == "converted" and p.responded_at == REPLY_AT
-    lead = db.scalar(select(Lead).where(Lead.prospect_id == v.id))
-    assert lead.stage == "meeting_scheduled" and lead.opened_by == "reply" and lead.actor == "system"
+    assert p.status == "open" and p.responded_at == REPLY_AT  # the app never moves the company by itself
+    assert db.scalar(select(Lead).where(Lead.prospect_id == v.id)) is None
+    co = db.get(Company, p.company_id)
+    assert co.stage == "prospect" and lifecycle.active_suggestion(co)["kind"] == "reply"
     reply_ev = [t for t in p.timeline if t.kind == "reply_received"]
     assert len(reply_ev) == 1 and reply_ev[0].data["reply_id"] == r.id and reply_ev[0].data["intent"] == "interested"
-    assert followups.due_count(db, today=h.day(10)) == 0  # reminders were cancelled
 
 
-def test_question_and_not_now_open_leads_too(db, installed) -> None:
+def test_question_and_not_now_suggest_leads_too(db, installed) -> None:
+    from sales0.db.models import Company
+    from sales0.services.crm import lifecycle
+
     for intent in ("question", "not_now"):
         m, v, msg = _contacted(db)
         _reply(db, m, msg, intent=intent)
-        assert db.scalar(select(Lead.stage).where(Lead.prospect_id == v.id)) == "meeting_scheduled", intent
+        assert db.scalar(select(Lead.stage).where(Lead.prospect_id == v.id)) is None, intent
+        assert lifecycle.active_suggestion(db.get(Company, prospects.get_prospect(db, v.id).company_id)) is not None, intent
 
 
 def test_reply_to_a_never_contacted_prospect_records_but_opens_no_lead(db, installed) -> None:
@@ -232,24 +239,27 @@ def test_auto_reply_and_bounce_never_count(db, installed) -> None:
     assert db.scalar(select(func.count(FollowUp.id)).where(FollowUp.cancelled_at.is_(None))) == 3  # reminders intact
 
 
-def test_a_second_interested_reply_does_not_open_a_second_lead_and_redelivery_is_idempotent(db, installed) -> None:
+def test_a_second_interested_reply_opens_no_lead_and_redelivery_is_idempotent(db, installed) -> None:
     m, v, msg = _contacted(db)
     r = _reply(db, m, msg)
     _reply(db, m, msg)
     events.publish(db, events.ReplyReceived(outreach_message_id=msg.id, kind="human", intent="interested", reply_id=r.id))
-    assert db.scalar(select(func.count(Lead.id))) == 1
+    assert db.scalar(select(func.count(Lead.id))) == 0
     assert [t.kind for t in prospects.get_prospect(db, v.id).timeline].count("reply_received") == 2
 
 
-def test_reply_after_a_lost_lead_can_open_a_new_one(db, installed) -> None:
-    from sales0.services.crm import leads
+def test_reply_after_a_lost_lead_suggests_again_but_opens_nothing(db, installed) -> None:
+    from sales0.db.models import Company
+    from sales0.services.crm import leads, lifecycle
 
     m, v, msg = _contacted(db)
-    _reply(db, m, msg)
+    p = prospects.get_prospect(db, v.id)
+    lifecycle.mark_lead(db, p.company_id, now=h.T0)  # a person decided
     lid = db.scalar(select(Lead.id).where(Lead.prospect_id == v.id))
     leads.move_stage(db, lid, "lost", now=h.T0)
     _reply(db, m, msg, intent="interested")
-    assert db.scalar(select(func.count(Lead.id)).where(Lead.prospect_id == v.id)) == 2
+    assert db.scalar(select(func.count(Lead.id)).where(Lead.prospect_id == v.id)) == 1
+    assert db.get(Company, p.company_id).off_ramp == "not_interested"
 
 
 def test_reply_to_a_message_without_a_prospect_is_ignored(db, installed) -> None:

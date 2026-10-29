@@ -188,10 +188,10 @@ def test_status_rules_end_to_end(sync) -> None:  # type: ignore[no-untyped-def]
         assert (p.status, lead.stage) == ("converted", "lost")
         _, p, lead = _by_company(db, "Cygnus")
         assert lead.stage == "no_response"
-        _, p, lead = _by_company(db, "Draco")
-        assert lead.stage == "meeting_scheduled" and lead.closed_at is None
-        _, p, lead = _by_company(db, "Eridanus")
-        assert lead.stage == "proposal_sent" and lead.proposal_sent_on == date(2026, 7, 10)
+        e, p, lead = _by_company(db, "Draco")  # meeting scheduled: the enquiry's status + a "suggested: Lead" hint, no lead
+        assert lead is None and e.deal_status == "meeting_scheduled"
+        e, p, lead = _by_company(db, "Eridanus")
+        assert lead is None and e.deal_status == "proposal_sent" and e.date_proposal_sent == date(2026, 7, 10)
         _, p, lead = _by_company(db, "Fornax")  # Email Sent
         assert (p.stage, p.status, lead) == ("contacted", "open", None) and p.contacted_estimated
         _, p, lead = _by_company(db, "Gemini")  # plain Closed: a closed prospect, never a false client
@@ -209,15 +209,16 @@ def test_status_rules_end_to_end(sync) -> None:  # type: ignore[no-untyped-def]
         assert sc and all(e.actor == "sheet-sync" for e in sc)
 
 
-def test_a_status_edit_moves_the_lead_in_place(sync) -> None:  # type: ignore[no-untyped-def]
+def test_a_status_edit_moves_the_enquiry_status_in_place(sync) -> None:  # type: ignore[no-untyped-def]
     sync({"Active Enquiries": matrix_csv()}, tabs=(ACTIVE,))
     sync({"Active Enquiries": matrix_csv().replace("Meeting Scheduled", "Proposal Sent")}, tabs=(ACTIVE,))
     with session_scope() as db:
-        _, p, lead = _by_company(db, "Draco")
-        assert lead.stage == "proposal_sent"
-        assert db.scalar(select(func.count()).select_from(Lead).where(Lead.prospect_id == p.id)) == 1
-        ev = db.scalars(select(TimelineEvent).where(TimelineEvent.kind == "lead_stage", TimelineEvent.prospect_id == p.id)).all()
-        assert len(ev) == 1 and ev[0].actor == "sheet-sync"
+        e, p, lead = _by_company(db, "Draco")
+        assert e.deal_status == "proposal_sent" and e.deal_status_source == "sheet" and lead is None
+        assert db.scalar(select(func.count()).select_from(Lead).where(Lead.prospect_id == p.id)) == 0
+        ev = db.scalars(select(TimelineEvent).where(TimelineEvent.subject_type == "enquiry", TimelineEvent.subject_id == e.id,
+                                                    TimelineEvent.kind == "stage_change")).all()
+        assert len(ev) == 2 and all(x.actor == "sheet-sync" for x in ev)
 
 
 def test_a_stage_set_in_the_app_is_never_overwritten(sync) -> None:  # type: ignore[no-untyped-def]

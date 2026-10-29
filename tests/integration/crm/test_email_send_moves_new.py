@@ -115,14 +115,15 @@ def test_prospect_reached_through_the_company_link(db: Session, team: Team, inst
     _assert_contacted(db, p.id)
 
 
-def test_two_open_prospects_in_the_company_are_not_guessed(db: Session, team: Team, installed) -> None:
+def test_two_people_at_one_company_share_its_single_outreach_record(db: Session, team: Team, installed) -> None:
     a = prospects.create_manual(db, name="A Person", company="Twin Co")
-    prospects.create_manual(db, name="B Person", company="Twin Co")
+    b = prospects.create_manual(db, name="B Person", company="Twin Co")
+    assert a.id == b.id  # company model: ONE outreach record per company, the second person is a contact of it
     msg = make_message(db, team.ann, to="x@elsewhere.example")
     msg.company_id = db.get(Prospect, a.id).company_id
     db.commit()
     _send(db, team, msg)
-    assert db.get(Prospect, a.id).stage == "new"
+    _assert_contacted(db, a.id)
 
 
 def test_enquiry_linked_outreach_without_a_prospect_ensures_one(db: Session, team: Team, installed) -> None:

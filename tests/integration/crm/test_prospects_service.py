@@ -43,9 +43,11 @@ def test_accepting_the_same_enquiry_twice_changes_nothing(db) -> None:
     assert again.id == v.id and db.scalar(select(func.count(TimelineEvent.id))) == before
 
 
-def test_without_a_profile_each_enquiry_gets_its_own_prospect(db) -> None:
+def test_without_a_profile_enquiries_of_one_company_share_its_prospect(db) -> None:
     a, b = h.enquiry(db, company="Beta Ltd"), h.enquiry(db, company="Beta Ltd")
-    assert prospects.ensure_for_enquiry(db, a.id).id != prospects.ensure_for_enquiry(db, b.id).id
+    assert prospects.ensure_for_enquiry(db, a.id).id == prospects.ensure_for_enquiry(db, b.id).id
+    c = h.enquiry(db, company="Gamma Ltd")
+    assert prospects.ensure_for_enquiry(db, c.id).id != prospects.ensure_for_enquiry(db, a.id).id
 
 
 def test_profile_is_created_from_the_author_url_when_missing(db) -> None:

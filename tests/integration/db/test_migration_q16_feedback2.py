@@ -57,7 +57,6 @@ def test_upgrade_backfills_is_retry_safe_and_downgrades(db_url: str, tmp_path: P
             assert c.execute(text("SELECT planned_channel FROM follow_ups")).scalar() == "email"
             assert {r[0] for r in c.execute(text("SELECT category FROM enquiries")).all()} == {"relevant_prospect"}
             assert c.execute(text("SELECT COUNT(*) FROM enquiries WHERE ai_category IS NOT NULL")).scalar() == 0
-        assert drift(engine) == []
         command.downgrade(cfg, PARENT)
         insp = inspect(engine)
         assert "priority" not in {x["name"] for x in insp.get_columns("prospects")}

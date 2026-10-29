@@ -256,6 +256,9 @@ def approve(db: Session, msg_id: int, member: TeamMember, *, now: datetime | Non
         except InvalidMessage as exc:
             raise DomainError("invalid_address", f"{exc}", 409) from exc
     suppressions.assert_not_suppressed(db, to, msg.cc_addrs)
+    from sales0.services.crm import lifecycle
+
+    lifecycle.ensure_contactable(db, company_id=msg.company_id, prospect_id=msg.prospect_id)
     if not msg.subject.strip() or not msg.body.strip():
         raise DomainError("empty_message", "The subject and body must not be empty.", 409)
     content = _build_content(db, msg)
@@ -368,6 +371,9 @@ def _preflight(db: Session, msg: OutreachMessage, member: TeamMember, now: datet
     if not member.active:
         raise DomainError("member_inactive", "This team member is deactivated and cannot send.", 403)
     suppressions.assert_not_suppressed(db, msg.to_addrs, msg.cc_addrs)  # final guard, before any Gmail call
+    from sales0.services.crm import lifecycle
+
+    lifecycle.ensure_contactable(db, company_id=msg.company_id, prospect_id=msg.prospect_id)  # Do not contact: never sent
     view = connections.connection_status(db, member.id)
     if not view.usable:
         raise DomainError(

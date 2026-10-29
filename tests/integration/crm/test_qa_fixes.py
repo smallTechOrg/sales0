@@ -39,7 +39,7 @@ def _kinds(db, pid):
 
 
 # ------------------------------------------------------------------------------------------------ B1
-def test_b1_email_to_closed_prospect_then_interested_reply_opens_a_lead(db, installed) -> None:
+def test_b1_email_to_closed_prospect_then_interested_reply_only_suggests(db, installed) -> None:
     m = h.member(db)
     v, e, prof = _accepted(db)
     prospects.close(db, v.id, "not_interested")
@@ -50,12 +50,11 @@ def test_b1_email_to_closed_prospect_then_interested_reply_opens_a_lead(db, inst
     _reply(db, m, msg)
     db.expire_all()
     p = db.get(Prospect, v.id)
-    assert p.status == "converted" and p.responded_at is not None
-    lead = db.scalar(select(Lead).where(Lead.prospect_id == v.id))
-    assert lead is not None and lead.closed_at is None and lead.opened_by == "reply"
-    notes = [t.body for t in prospects.get_prospect(db, v.id).timeline if t.kind == "note"]
-    assert any("Reopened automatically" in (b or "") and "not interested" in (b or "") for b in notes)
-    assert db.get(LinkedinProfile, prof.id).tracked is True
+    assert p.status == "closed" and p.responded_at is not None  # a closed company is never reopened by the app
+    assert db.scalar(select(Lead).where(Lead.prospect_id == v.id)) is None
+    from sales0.db.models import Company
+
+    assert db.get(Company, p.company_id).lead_suggestion["kind"] == "reply"
 
 
 def test_b1_closed_prospect_reply_without_recorded_contact_is_explained_not_silent(db, installed) -> None:
@@ -65,17 +64,17 @@ def test_b1_closed_prospect_reply_without_recorded_contact_is_explained_not_sile
     prospects.close(db, v.id, "duplicate")
     _reply(db, m, msg, intent="question")
     notes = [t.body for t in prospects.get_prospect(db, v.id).timeline if t.kind == "note"]
-    assert any("no lead opened" in (b or "") for b in notes)
+    assert any("no lead suggested" in (b or "") for b in notes)
     assert db.scalar(select(Lead.id).where(Lead.prospect_id == v.id)) is None
 
 
-def test_b1_not_now_reply_after_close_also_reopens(db, installed) -> None:
+def test_b1_not_now_reply_after_close_stays_closed(db, installed) -> None:
     m = h.member(db)
     v, e, _ = _accepted(db)
     msg = _send(db, m, e)
     prospects.close(db, v.id, "no_response")
     _reply(db, m, msg, intent="not_now")
-    assert db.get(Prospect, v.id).status == "converted"
+    assert db.get(Prospect, v.id).status == "closed"
 
 
 # ------------------------------------------------------------------------------------------------ M1
@@ -146,10 +145,13 @@ def test_m3_reply_after_lost_reopens_a_lead_and_restores_tracking(db, installed)
     v, e, prof = _accepted(db)
     msg = _send(db, m, e)
     _reply(db, m, msg)
+    from sales0.services.crm import lifecycle
+
+    lifecycle.mark_lead(db, db.get(Prospect, v.id).company_id)  # a person decides
     first = db.scalar(select(Lead))
     leads.move_stage(db, first.id, "lost")
     assert db.get(LinkedinProfile, prof.id).tracked is False
-    _reply(db, m, msg, intent="question", at=REPLY_AT + timedelta(days=3))
+    lifecycle.mark_lead(db, db.get(Prospect, v.id).company_id)  # and again, after the loss
     db.expire_all()
     assert len(list(db.scalars(select(Lead).where(Lead.prospect_id == v.id)))) == 2
     assert db.get(LinkedinProfile, prof.id).tracked is True
@@ -159,6 +161,9 @@ def test_m3_moving_a_lead_back_from_lost_or_no_response_restores_tracking(db, in
     m = h.member(db)
     v, e, prof = _accepted(db)
     _reply(db, m, _send(db, m, e))
+    from sales0.services.crm import lifecycle
+
+    lifecycle.mark_lead(db, db.get(Prospect, v.id).company_id)
     lead = db.scalar(select(Lead))
     for terminal in ("lost", "no_response"):
         leads.move_stage(db, lead.id, terminal)

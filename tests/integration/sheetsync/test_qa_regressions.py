@@ -51,12 +51,18 @@ def test_negated_proposal_statuses_make_no_lead_and_are_and_are_not_unknown(sync
     assert report.tabs["Active Enquiries"].unknown_statuses == 0  # negated phrases and temperature words are understood
 
 
-def test_proposal_date_opens_a_lead_with_estimated_contact_and_response(sync) -> None:  # type: ignore[no-untyped-def]
+def test_proposal_date_suggests_a_lead_and_sets_the_enquiry_status(sync) -> None:  # type: ignore[no-untyped-def]
     sync(active([row(1, status="New", proposal="10 July"), row(2, status="Closed", proposal="10 July"),
                  row(3, status="No response", sent="10 July")]), tabs=(ACTIVE,))
     with session_scope() as db:
         p, lead = lead_of(db, "New")
-        assert lead.stage == "proposal_sent" and p.contacted_at and p.contacted_estimated and p.responded_at
+        # company model: a proposal date only SUGGESTS a lead (a person decides); the enquiry shows Proposal sent
+        from sales0.db.models import Company
+
+        assert lead is None and p.status == "open"
+        co = db.get(Company, p.company_id)
+        assert co.stage == "prospect" and co.lead_suggestion and co.lead_suggestion["kind"] == "enquiry"
+        assert db.scalar(select(Enquiry.deal_status).where(Enquiry.sheet_status == "New")) == "proposal_sent"
         _, lost = lead_of(db, "Closed")
         assert lost.stage == "lost" and lost.closed_at is not None
         p3, nr = lead_of(db, "No response")

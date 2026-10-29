@@ -73,7 +73,7 @@ def test_accept_with_characteristics_and_as_client(web: TestClient) -> None:
     assert 'data-traits="Partner"' in page and 'id="characteristics"' in page
     assert 'data-traits="Partner"' in web.get(f"/pipeline/prospects/{pid}").text
     # a plain accept without extras still works and adds nothing
-    other = _pending("P2")
+    other = _pending("P2", company="Globex Ltd", email="g@globex.example")
     web.post("/inbox/decide", data={"enquiry_ids": str(other), "decision": "accept"}, headers=HX)
     with session_scope() as db:
         p2 = db.scalar(select(Enquiry.prospect_id).where(Enquiry.id == other))

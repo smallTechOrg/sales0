@@ -74,7 +74,7 @@ def test_two_different_rows_are_not_merged_by_adoption(sync) -> None:  # type: i
     a = linkless(1, summary="Co1 - Topic A - City | Online", email="a@x.example", company="Same", person="Pat", added="12 July")
     b = linkless(2, summary="Co1 - Topic B - City | Online", email="b@x.example", company="Same", person="Pat", added="12 July")
     sync(active([a, b, filler(1), filler(2)]), tabs=(ACTIVE,))
-    assert counts() == (4, 4)
+    assert counts() == (4, 3)  # two enquiries; the company model keeps ONE outreach record for the company "Same"
 
 
 def test_removed_row_closes_an_untouched_prospect_and_flags_one_with_human_history(sync) -> None:  # type: ignore[no-untyped-def]

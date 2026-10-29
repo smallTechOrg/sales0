@@ -18,7 +18,7 @@ from sales0.db.models import Enquiry, FollowUp, Lead, OutreachMessage, OutreachR
 from sales0.logging import get_logger
 from sales0.services import events
 from sales0.services._common import record_history
-from sales0.services.crm import contacts, flags, followups, leads, priority, prospects, timeline
+from sales0.services.crm import contacts, flags, followups, lifecycle, priority, prospects, timeline
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor, actor_for
 
 log = get_logger("sales0.crm.hooks")
@@ -211,29 +211,25 @@ def _on_reply_received(db: Session, ev: events.ReplyReceived) -> None:
 
 
 def _open_lead_for_reply(db: Session, p: Prospect, ev: events.ReplyReceived, stamp: Any) -> None:
-    """A human reply after contact opens a lead (reopening a closed prospect); never a silent skip."""
+    """A human reply after contact SUGGESTS a lead (the "suggested: Lead" hint on the company); a person accepts or
+    dismisses it. Nothing moves the company by itself, and a closed company is not reopened."""
     db.refresh(p)
-    if db.scalar(select(Lead.id).where(Lead.prospect_id == p.id, Lead.closed_at.is_(None))) is not None:
-        return
     if p.contacted_at is None:
         timeline.add_event(
             db, subject_type="prospect", subject_id=p.id, kind="note", actor=SYSTEM, occurred_at=stamp,
-            body="Reply recorded but no lead opened: the prospect has no recorded contact.",
+            body="Reply recorded but no lead suggested: the company has no recorded contact.",
             data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent},
         )
         return
-    if p.status == "closed":
-        was = p.closed_reason
-        prospects.reopen(db, p.id, actor=SYSTEM, now=stamp)
+    if p.company_id is None:
+        return
+    if lifecycle.suggest_lead(db, p.company_id, "reply", f"{ev.intent} reply", now=stamp):
         timeline.add_event(
-            db, subject_type="prospect", subject_id=p.id, kind="note", actor=SYSTEM, occurred_at=stamp,
-            body=f"Reopened automatically: a {ev.intent.replace('_', ' ')} reply arrived after the prospect was closed"
-            + (f" ({was.replace('_', ' ')})." if was else "."),
-            data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent, "was_closed_reason": was},
+            db, subject_type="company", subject_id=p.company_id, kind="note", actor=SYSTEM, occurred_at=stamp,
+            company_id=p.company_id, prospect_id=p.id,
+            body=f"Suggested: Lead - a {ev.intent.replace('_', ' ')} reply arrived. A person decides (Mark as lead).",
+            data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent, "suggested": "lead"},
         )
-        db.refresh(p)
-    if p.status in ("open", "converted"):
-        leads.convert(db, p.id, stage="meeting_scheduled", opened_by="reply", actor=SYSTEM, note=ev.intent, now=stamp)
 
 
 # ---------------------------------------------------------------------------- tracked profile hit (prospect watch)
