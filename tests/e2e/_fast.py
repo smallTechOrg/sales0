@@ -17,7 +17,6 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 from tests.support.live_server import LiveServer
 from tests.support.ports import free_port as _free_port
