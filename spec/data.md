@@ -597,3 +597,16 @@ New indexes: `ix_seen_posts_first_seen_at`, `ix_timeline_events_kind_occurred`, 
 - `prospect_notes`: id, prospect_id (FK CASCADE), body, author_member_id (FK SET NULL), author, source (`app` | `migrated`), created_at, updated_at. Backfill: a non-empty `prospects.notes` -> one `migrated` note; the column stays as legacy (no longer written).
 - `worker_tasks`: id, kind (`company_page`), status (`queued` | `claimed` | `done` | `failed` | `cancelled`), prospect_id / company_id / linkedin_account_id / requested_by_member_id (FK SET NULL), target_url (`https://www.linkedin.com/company/<slug>/`), worker_name, outcome, error, page_loads (counted in the account's daily page loads), result_title / result_url / result_text (<= 20k chars), created_at, claimed_at, finished_at.
 - `llm_calls.web_search_requests` (int, default 0); `llm_calls.feature` CHECK gains `summary` (SQLite: four-step rebuild like p9_reply_feat; downgrade maps summary -> research).
+
+## Feedback round 2 (migration `q16_feedback2_a41c7e92`, down_revision `q15_research_7d3a9c21`)
+| Table.column | Type | Notes |
+|---|---|---|
+| `follow_ups.planned_channel` | varchar(10) NOT NULL default `email` | how the reminder is PLANNED (whatsapp / linkedin / email / call); `channel` stays how it was DONE |
+| `outreach_messages.follow_up_id` | int NULL, indexed, no FK | the reminder a drafted follow-up email is for; sending it marks THAT reminder done (email) |
+| `enquiries.ai_category` | varchar(20) NULL | Haiku's suggestion |
+| `enquiries.category` | varchar(20) NOT NULL default `relevant_prospect`, indexed | relevant_prospect / channel_partner / competitor; service-validated (no CHECK) |
+| `prospects.priority` | varchar(10) NULL, indexed | high / medium / low |
+| `prospects.priority_source` | varchar(10) NOT NULL default `derived` | `derived` or `manual` (a manual value is never overwritten) |
+
+Backfill: `prospects.priority` = the highest priority among the prospect's linked enquiries (source `derived`). Plain ADD
+COLUMN / CREATE INDEX, retry-safe, SQLite and PostgreSQL; downgrade drops them.

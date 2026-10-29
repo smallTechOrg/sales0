@@ -16,6 +16,7 @@
 | Shared Login | 2 | [shared-login.md](shared-login.md) | One team password, signed session cookie, VPS-ready |
 | Profile Outreach Discovery | 3 | [profile-outreach-discovery.md](profile-outreach-discovery.md) | Shortlist people from LinkedIn profiles |
 | Company Research | 3 | [company-research.md](company-research.md) | ReAct agent writes a company brief |
+| Follow-up email drafts | 2/3 | [followup-email-drafts.md](followup-email-drafts.md) | AI drafts the due Email follow-ups (never sent without a human; planned channel per follow-up) |
 | Email Outreach | 3 | [email-outreach.md](email-outreach.md) | Template + deck + AI draft + human approval + Gmail send (built; Phase 2 adds "Draft email" from a prospect and the send hook) |
 | Metrics Dashboard | 4 | [metrics-dashboard.md](metrics-dashboard.md) | Weekly + Secondary sheets automated, funnel, yield (merges the Phase 2 `sheet_metrics` baseline) |
 | Cost View | 4 | [cost-view.md](cost-view.md) | AI spend per day/month/feature |

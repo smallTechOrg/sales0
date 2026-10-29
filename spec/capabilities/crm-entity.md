@@ -80,3 +80,43 @@ entity at a later stage**, not a different thing. "Training provider", "Partner"
 - [x] Add person to track: valid URL tracked (row created, no network), company / search / non-LinkedIn URLs refused with
       the reason, repeat says "already tracked".
 - [x] Migration `q12_traits_9d2c4a71`: seeds, backfill, no drift, re-runnable, downgrade.
+
+## Feedback round 2 (migration `q16_feedback2_a41c7e92`)
+
+### E1 Email send moves a NEW prospect to Contacted (every send path)
+`services/crm/hooks._on_message_sent` runs after every successful Gmail send (`messages.send`, `messages.retry_send`) inside
+the same transaction. The prospect is resolved from the message's `prospect_id`, else its enquiry's prospect (an ACCEPTED
+enquiry without one gets one: `ensure_for_enquiry`), else the recipient's contact (primary or linked), else - new - the
+message's company when that company has exactly ONE open prospect (never a guess between several). Then, for an open
+prospect in stage `new`: stage `contacted` (a `stage_change` timeline entry with channel `email`), `contacted_at` = the send
+time, the three follow-ups scheduled (Log contact planned dates win: nothing is duplicated when reminders are already
+open), the enquiry's `date_email_sent` set and a `status_history` row (`date_email_sent`) written, the recipient added as a
+contact. Fixed in this round: a sheet-imported prospect whose `contacted_at` was only an **estimate** moved to Contacted
+but got no reminders; leaving `new` is now always the first contact. An email for an enquiry nobody has accepted yet leaves
+a visible note on the enquiry instead of nothing. Assumed: a closed/converted prospect only records the contact (no stage
+move, no reminders), as before.
+
+### E4 Priority on the entity
+`prospects.priority` (high | medium | low | none) + `priority_source` (`derived` | `manual`). Derived = the highest priority of
+the prospect's linked, not-discarded enquiries, recomputed when an enquiry is linked, edited in the Inbox, triaged,
+discarded or changed by a sheet sync (the sheet's Priority column already reaches the enquiry through the changed-cell
+rule; the prospect follows it). A value set on the prospect page (`#priority-select`, `POST /pipeline/prospects/{id}/priority`)
+is `manual` and is never overwritten; choosing "Automatic" returns to `derived`. Shown as a coloured chip (`.chip-priority`,
+the word is always shown) on board cards, list rows, the prospect/lead/client headers, the company page and the Companies
+list (highest of its open prospects). Pipeline filters: `priority=high|medium|low|none`, `category=...`, `sort=priority`
+(checkbox "Highest priority first"), combinable with stage / status / flag / characteristic; same on Leads and Clients.
+Backfill (migration): the highest enquiry priority per prospect, source `derived`. Assumed: the sheet does not carry a
+priority column for people-only prospects, so only enquiry-backed priorities flow.
+
+### E3 Enquiry category
+`enquiries.category` (`relevant_prospect` default | `channel_partner` | `competitor`) and `ai_category` (Haiku's
+suggestion). See `agent.md` (triage-v4) and `services/categories.py`. Chip on Inbox cards and the prospect header, a
+select on the card and per linked enquiry on the prospect page, Inbox filter (`/inbox?category=`) and Pipeline filter
+(`category=` = has a non-discarded enquiry of that category). **Channel partner**: accepting ticks the existing "Partner"
+characteristic (pre-ticked on the Accept form; also done by the accept hook, so bulk accepts get it; changing the
+category on an accepted enquiry ticks it too). **Competitor**: the card offers *File in Competitors* (admin; the registry
+is admin-managed) instead of Accept - creates or reuses the competitor (by name / website), links the enquiry to it as
+evidence (`competitor_mentions`, source user), discards the enquiry with "Filed as competitor: X" (it stays searchable on
+the Discarded tab) and closes a still-untouched prospect (`competitor`); *Accept as a prospect anyway* resets the category
+to Relevant prospect. A plain Accept of a competitor-categorised enquiry is refused (409 `category_competitor`).
+Assumed: categories are a code enum, not a registry table (adding one is a prompt line + a tuple entry; no CHECK).

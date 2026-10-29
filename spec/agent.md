@@ -187,3 +187,16 @@ Evidence: a live mini-run scanned 94 buyer-intent posts and discarded all of the
 - Ground-truth eval: `uv run python -m sales0.cli eval-triage` fetches the real Active / Discarded sheets as public CSV at runtime (never stored), labels Active rows `genuine`, Discarded rows `discard` except "No Response"/"Rejected"/"not replying" (genuine-but-lost), runs real Haiku, and prints confusion counts, recall, discard-correct rate, and miss row numbers with scrubbed one-line reasons (no post text or contact data). Targets: recall >= 0.85 on Active rows, discard-correct >= 0.75. Discarded rows without `Full Enquiry` text fall back to the one-line Requirement Summary (low fidelity). `tests/eval/` wraps it under the `eval` marker (excluded from the default run).
 - Search diversification: `scraper/variants.py` plans up to `SALES0_SCRAPE_MAX_PASSES_PER_KEYWORD` passes per phrase (baseline date-filter passes, then a daily-rotating mix of other sort, quote-wrapped, #hashtag, `urgent`/`requirement`/`enquiry` suffixes, `past-24h`); live mode only.
 - Permalinks: LinkedIn now copies `https://lnkd.in/p/<code>`; `permalink.resolve_short_link` follows that single redirect anonymously (HEAD, no cookies) and stores `/feed/update/urn:li:activity:N/`.
+
+## Feedback round 2 - category suggestion (`PROMPT_VERSION = "triage-v4"`)
+`record_triage` gained `category` (`relevant_prospect` | `channel_partner` | `competitor`; default and fallback
+`relevant_prospect`), explained in a static `## Category` section of `triage_system.md` with two more built-in examples (O
+channel partner, P competitor). It is a SUGGESTION in the same call (no extra LLM call per post): stored as
+`enquiries.ai_category` and copied to the editable `category`; it changes neither verdict nor priority. The section is part
+of the fixed scaffold (before the rules, independent of the post), so the system block stays identical across posts and
+prompt caching is unaffected; the rules still come from the DB criteria page (`criteria_version` is separate and unchanged).
+Version bump: `triage-v3` -> `triage-v4` (stamped on `enquiries.prompt_version` / `llm_calls.prompt_version`).
+
+## Feedback round 2 - follow-up email drafting (`draft-followup-v1`)
+Capability 3 gained a follow-up variant (`prompts/draft_followup_system.md`, thread block in `draft_user.md.j2`); the first
+email prompt stays `draft-v2`. See `capabilities/followup-email-drafts.md`.

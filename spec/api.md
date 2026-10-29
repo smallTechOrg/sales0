@@ -219,3 +219,10 @@ All: acting member required; htmx -> out-of-band card + toast; plain form -> 303
 ### Worker API additions (bearer token)
 - `POST /api/worker/claim`: request may carry `capabilities: ["company_page"]`; the answer then may carry `task: {task_id, kind: "company_page", slug: "company/<x>"}`. Without capabilities the answer has NO `task` key (old strict workers).
 - `POST /api/worker/tasks/{id}/result`: `{outcome: done|safety_stop|session_missing|open_failed|page_error|crashed, kind?, title?, url?, text? (<= 30k), page_loads?, error?}` -> `{status}`; idempotent.
+
+## Feedback round 2 (q16)
+- `POST /pipeline/prospects/{id}/priority` (`priority` = high|medium|low, blank = automatic); `GET /pipeline?priority=&category=&sort=priority`.
+- `POST /inbox/{id}/fields` accepts `set_category`; `POST /inbox/{id}/competitor` (admin: `name`, `website`) files the company in Competitors; `GET /inbox?category=`; `POST /inbox/decide` refuses a competitor-categorised accept unless `as_prospect=1` (409 `category_competitor`).
+- `POST /pipeline/prospects/{pid}/enquiries/{eid}/category`.
+- `POST /pipeline/followups/{id}/channel` (planned channel), `POST /pipeline/followups/{id}/draft` (one AI draft), `POST /pipeline/followups/draft-due` (`next`, optional `prospect_id`; JSON: `drafted / skipped / failed / remaining / stopped / outcomes[]`). Log contact accepts `channel_follow_up_1|2`, `channel_final_follow_up`.
+- DomainError codes: `category_invalid`, `category_competitor`, `priority_invalid`, `followup_not_draftable` (409), `follow_up_stopped` (409, send refused).
