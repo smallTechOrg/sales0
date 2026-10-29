@@ -10,7 +10,6 @@ from sales0.services import events
 
 # The fixture-LinkedIn server fixtures (uvicorn thread, fixture mode).
 from tests.integration.scraper.conftest import (  # noqa: F401
-    _fast_fixture_waits,
     connected_settings,
     fixture_linkedin_server,
     fixture_settings,

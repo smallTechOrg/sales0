@@ -9,7 +9,6 @@ from sales0.db.engine import session_scope
 
 # Slice C's fixture-LinkedIn server fixtures (uvicorn thread on a free port; fixture mode).
 from tests.integration.scraper.conftest import (  # noqa: F401
-    _fast_fixture_waits,
     connected_settings,
     fixture_linkedin_server,
     fixture_settings,
