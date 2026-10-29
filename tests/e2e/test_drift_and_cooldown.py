@@ -27,7 +27,8 @@ from tests.e2e._flows import (
     run_now,
 )
 from tests.e2e.conftest import _free_port
-from tests.support.live_server import LiveServer, live_server
+from tests.e2e._fast import live_server
+from tests.support.live_server import LiveServer
 
 COOLDOWN_ENV = {"SALES0_SAFETY_COOLDOWN_MIN": "60", "SALES0_SAFETY_COOLDOWN_CHECKPOINT_MIN": "15"}
 DRIFT_ALERT = (

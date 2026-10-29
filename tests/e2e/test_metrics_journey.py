@@ -10,7 +10,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e._flows import add_keyword, connect_linkedin, run_now
 from tests.e2e.conftest import _free_port
-from tests.support.live_server import live_server
+from tests.e2e._fast import live_server
 
 
 def test_metrics_reflect_a_real_run_and_manual_entry(tmp_path: Path, ui: Page) -> None:
