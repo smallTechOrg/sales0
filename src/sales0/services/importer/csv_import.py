@@ -295,7 +295,11 @@ def _import_clients(db: Session, rows: list[_LocalRow], tally: _Tally, issues: l
             with db.begin_nested():
                 company_id = companies.get_or_create(db, company).id if company else None
                 stmt = select(Client).where(func.lower(Client.name) == name.casefold())
-                stmt = stmt.where(Client.company_id.is_(None) if company_id is None else Client.company_id == company_id)
+                if company_id is None:  # company model: a client typed in without a company is a company of one, named after it
+                    own = companies.by_name(db, name)
+                    stmt = stmt.where(Client.company_id.is_(None) if own is None else (Client.company_id.is_(None) | (Client.company_id == own.id)))
+                else:
+                    stmt = stmt.where(Client.company_id == company_id)
                 existing = db.scalars(stmt.order_by(Client.id).limit(1)).first()
                 if existing is not None:
                     outcome = "unchanged" if existing.source == "legacy_import" else "merged"
