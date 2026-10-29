@@ -27,7 +27,7 @@ from sales0.db.models import (
     TeamMember,
     TimelineEvent,
 )
-from sales0.services._common import clip, now_or, not_found
+from sales0.services._common import now_or, not_found
 from sales0.services.crm import _keys, timeline
 from sales0.services.crm._common import UNSET, invalid, page_params
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
