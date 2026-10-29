@@ -160,7 +160,7 @@ class AnthropicClient:
     def structured(self, req: StructuredRequest) -> LLMResponse:
         params: dict[str, Any] = {
             "model": self._settings.llm_model,
-            "system": _system_blocks(req.system),
+            "system": _system_blocks(req.system) if req.cache_system else req.system,
             "messages": req.messages,
             "tools": [
                 *[dict(t) for t in req.server_tools],

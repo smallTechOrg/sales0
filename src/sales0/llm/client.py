@@ -28,6 +28,9 @@ class StructuredRequest(BaseModel):
     # "max_uses": 3}). With any, set ``tool_choice="auto"``: a forced tool would skip them.
     server_tools: list[dict[str, Any]] = Field(default_factory=list)
     tool_choice: Literal["tool", "auto"] = "tool"
+    # False: send the system prompt uncached. With server tools the API otherwise adds its own cache WRITE after the
+    # (large) search results, billed at 1.25x, for a request that is never repeated.
+    cache_system: bool = True
 
 
 class LLMResponse(BaseModel):

@@ -124,6 +124,7 @@ def search_web(
         prompt_version=PROMPT_VERSION,
         server_tools=[server_tool(max_uses)],
         tool_choice="auto",
+        cache_system=False,  # one-off request: no cache write over the search results
         log_context={"enquiry_id": enquiry_id, "input_summary": f"web search {company_name[:60]}"},
     )
     now = datetime.now(UTC)
