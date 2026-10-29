@@ -10,6 +10,9 @@
     {% include "pipeline/_prospect_header.html" %}
     <div class="grid-2">
       <div class="stack">
+        {% include "pipeline/_summary.html" %}
+        {% include "pipeline/_research.html" %}
+        {% include "pipeline/_notes.html" %}
         {% with timeline=p.timeline, base="/pipeline/prospects/%d" % p.id %}{% include "pipeline/_timeline.html" %}{% endwith %}
       </div>
       <div class="stack">

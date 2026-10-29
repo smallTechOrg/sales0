@@ -179,6 +179,29 @@ def brief_view(row: CompanyBrief) -> dict[str, Any]:
     }
 
 
+def doc_brief_view(doc: Any) -> dict[str, Any]:
+    """The compose brief panel for a prospect research VERSION (``services.research.docs.DocView``)."""
+    data = doc.data or {}
+    return {
+        "id": doc.id,
+        "field": "research_doc_id",
+        "company": data.get("company_name") or "",
+        "status": doc.status,
+        "error": doc.error,
+        "what_they_do": data.get("what_they_do"),
+        "size_hints": data.get("size_hints"),
+        "needs": data.get("ai_training_needs") or [],
+        "suggested_offering": data.get("suggested_offering"),
+        "hooks": data.get("personalisation_hooks") or [],
+        "sources": [s.url for s in doc.sources if s.url],
+        "limited": bool(data.get("limited_information")),
+        "cost_usd_micros": doc.cost_usd_micros,
+        "version": doc.version,
+        "origin_label": doc.origin_label,
+        "prospect_id": doc.prospect_id,
+    }
+
+
 # ---------------------------------------------------------------------- outbox
 @router.get("/outreach", response_class=HTMLResponse)
 def outbox(
@@ -266,8 +289,16 @@ def _prospect_prefill(db: Session, prospect_id: int) -> dict[str, Any]:
         "contact_name": (contact.full_name if contact else None) or prospect.name or "",
         "email": (contact.email if contact else None) or "",
         "company": prospect.company_name or "",
+        "website": _company_website(db, prospect.company_id),
         "requirement": ((newest.requirement_summary if newest else None) or "").strip(),
     }
+
+
+def _company_website(db: Session, company_id: int | None) -> str:
+    from sales0.db.models import Company
+
+    company = db.get(Company, company_id) if company_id else None
+    return (company.website or "") if company is not None else ""
 
 
 def _prefill(db: Session, enquiry_id: int | None, prospect_id: int | None = None) -> dict[str, Any]:
@@ -307,7 +338,14 @@ def compose(
     member: TeamMember = Depends(get_acting_member),
 ) -> HTMLResponse:
     form = _prefill(db, _opt_int(enquiry_id), _opt_int(prospect_id))
+    current_brief = None
+    if form["prospect_id"]:
+        from sales0.services.research import prospect as prospect_research
+
+        _, doc = prospect_research.brief_for_drafting(db, form["prospect_id"])
+        current_brief = doc_brief_view(doc) if doc is not None else None
     ctx = {
+        "current_brief": current_brief,
         "form": form, "offerings": offerings_service.list_offerings(db), "section": "compose",
         "recipients": recipients_service.for_prospect(db, form["prospect_id"], form["company_id"]),
         "connection": connections_service.connection_status(db, member.id), "cap": _cap_info(db, member),
@@ -350,11 +388,15 @@ def run_research(
     website: str = Form(""),
     requirement: str = Form(""),
     enquiry_id: str = Form(""),
+    prospect_id: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
     llm: LLMClient = Depends(get_llm),
 ) -> HTMLResponse:
     company = " ".join(company.split())
+    pid = _opt_int(prospect_id)
+    if pid is not None:
+        return _research_prospect_from_compose(request, db, member, llm, pid)
     if not company:
         raise DomainError("company_required", "Enter the company name before researching it.", 400)
     url = _normalise_website(website)
@@ -383,6 +425,33 @@ def run_research(
     return HTMLResponse(body + cost_badge_oob(db) + toast)
 
 
+def _research_prospect_from_compose(request: Request, db: Session, member: TeamMember, llm: LLMClient, prospect_id: int) -> HTMLResponse:
+    """Compose's Research button for a CRM prospect: the same versioned research as the prospect page (website,
+    our records, the LinkedIn page text already fetched, web search), stored as the prospect's next version. It
+    does not queue a LinkedIn visit (that is the prospect page's button)."""
+    from sales0.services.crm.actor import Actor
+    from sales0.services.research import prospect as prospect_research
+
+    fetcher = _research_fetcher()
+    try:
+        doc, _ = prospect_research.research_prospect(
+            db, llm, member, prospect_id, actor=Actor.of_member(member), queue_linkedin=False, fetcher=fetcher
+        )
+    except (LLMAuthError, LLMModelNotFound) as exc:
+        db.commit()
+        raise DomainError("llm_unavailable", f"The AI service refused the request ({type(exc).__name__}) - check the API key and model in .env.", 502) from exc
+    except LLMError as exc:
+        raise DomainError("research_failed", "The AI service is unavailable right now. Try again in a minute.", 502) from exc
+    finally:
+        if fetcher is not None:
+            fetcher.close()
+    view = doc_brief_view(doc)
+    body = render_html(request, "outreach/_brief.html", {"brief": view})
+    kind, text = ("error", "Research could not find much. You can still draft from the requirement text.") if doc.status == "failed" else (
+        "ok", f"Research finished - saved as version {doc.version} on the prospect.")
+    return HTMLResponse(body + cost_badge_oob(db) + toast_html(text, kind))
+
+
 @router.post("/outreach/draft", response_model=None)
 def generate(
     request: Request,
@@ -396,6 +465,7 @@ def generate(
     template_id: str = Form(""),
     deck_id: str = Form(""),
     brief_id: str = Form(""),
+    research_doc_id: str = Form(""),
     enquiry_id: str = Form(""),
     prospect_id: str = Form(""),
     company_id: str = Form(""),
@@ -410,13 +480,22 @@ def generate(
     brief_row = db.get(CompanyBrief, _opt_int(brief_id)) if _opt_int(brief_id) else None
     if brief_row is not None:
         brief = research_service.brief_dict(brief_row)
+    account_summary: str | None = None
+    pid = _opt_int(prospect_id)
+    if pid is not None:
+        from sales0.services.research import prospect as prospect_research
+        from sales0.services.research import summary as summary_service
+
+        if brief is None:  # the prospect's research: the version shown on Compose, else its newest usable one
+            brief, _ = prospect_research.brief_for_drafting(db, pid, _opt_int(research_doc_id))
+        account_summary = summary_service.summary_for_drafting(db, pid)
     no_deck = deck_id == "none"
     try:
         msg = drafting.generate_draft(
             db, llm, member, to=to, cc=cc or None, offering_id=_opt_int(offering_id), template_id=_opt_int(template_id),
             first_name=(contact_name.split() or [""])[0], company=company, requirement=requirement.strip(), brief=brief,
             deck_id=None if no_deck else _opt_int(deck_id), enquiry_id=_opt_int(enquiry_id),
-            prospect_id=_opt_int(prospect_id), company_id=_opt_int(company_id),
+            prospect_id=_opt_int(prospect_id), company_id=_opt_int(company_id), account_summary=account_summary,
         )  # fmt: skip
     except (LLMAuthError, LLMModelNotFound) as exc:
         db.commit()

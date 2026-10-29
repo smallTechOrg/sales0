@@ -101,9 +101,7 @@
           <div class="field"><label class="field__label" for="ed-linkedin">Person's LinkedIn profile</label>
             <input class="input" id="ed-linkedin" name="linkedin_url" value="{{ p.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
         </div>
-        <p class="hint">E-mails and phone numbers are edited per person in the Contacts card below.</p>
-        <div class="field"><label class="field__label" for="ed-notes">Notes</label>
-          <textarea class="input" id="ed-notes" name="notes" rows="3" maxlength="4000">{{ p.notes or "" }}</textarea></div>
+        <p class="hint">E-mails and phone numbers are edited per person in the Contacts card below. Notes are dated entries in the Our notes card.</p>
         <div><button class="btn btn--primary" type="submit">Save details</button></div>
       </form>
     </details>

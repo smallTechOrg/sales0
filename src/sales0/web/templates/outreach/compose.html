@@ -62,7 +62,8 @@
                     hx-target="#brief-panel" hx-swap="innerHTML" hx-indicator="#research-indicator" hx-disabled-elt="#draft-btn, #research-btn">Research company</button>
             <span class="htmx-indicator" id="research-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching the website... this can take up to a minute.</span>
           </div>
-          <div id="brief-panel" aria-live="polite"><p class="muted" id="brief-empty">No research yet. You can skip this and draft from the requirement alone.</p></div>
+          <div id="brief-panel" aria-live="polite">{% if current_brief %}{% with brief=current_brief %}{% include "outreach/_brief.html" %}{% endwith %}{% else %}<p class="muted" id="brief-empty">No research yet. You can skip this and draft from the requirement alone.</p>{% endif %}</div>
+          {% if form.prospect_id %}<p class="hint" id="summary-note">The prospect's latest account summary (if any) is also given to the draft as background.</p>{% endif %}
         </div>
       </section>
 

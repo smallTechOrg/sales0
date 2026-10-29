@@ -1,0 +1,42 @@
+{# Account summary card. Needs: pid, summary (DocView|None), summary_history; oob optional. #}
+<section class="card" id="summary-card" aria-labelledby="summary-title"{% if oob %} hx-swap-oob="outerHTML:#summary-card"{% endif %}>
+  <div class="card__header">
+    <h2 id="summary-title">Account summary</h2>
+    {% if summary %}<span class="badge {{ 'badge--info' if summary.origin == 'ai' else 'badge--genuine' }}" id="summary-origin">{{ "AI-generated" if summary.origin == "ai" else "Human-edited" }} · v{{ summary.version }}</span>{% endif %}
+  </div>
+  <div class="card__body stack">
+    <form method="post" action="/pipeline/prospects/{{ pid }}/summary" hx-post="/pipeline/prospects/{{ pid }}/summary" hx-swap="none"
+          hx-indicator="#summary-run-indicator" hx-disabled-elt="#btn-summary" class="row">
+      <button class="btn" id="btn-summary" type="submit">Refresh summary</button>
+      <span class="htmx-indicator" id="summary-run-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Writing the summary... a few seconds.</span>
+    </form>
+    <p class="hint">One AI call over everything we have: enquiries, contacts, research, our notes, emails and replies, follow-ups, timeline and the sheet. Drafting uses the newest version.</p>
+    {% if summary %}
+      <p class="muted">Version {{ summary.version }} · {{ summary.origin_label }} · {{ summary.created_at|localdt("%d %b %Y %H:%M") }}{% if summary.origin == "ai" and summary.cost_usd_micros %} · cost {{ summary.cost_usd_micros|usd }}{% endif %}</p>
+      {% if summary.status == "failed" %}<p class="notice" role="status" id="summary-failed">{{ summary.error or "The summary failed." }}</p>{% endif %}
+      {% if summary.body %}<div class="timeline__text summary-body" id="summary-body">{{ summary.body }}</div>{% endif %}
+      {% set editable = summary_history|selectattr("body")|first %}
+      <details class="inline-edit" id="summary-edit">
+        <summary>Edit summary</summary>
+        <form class="stack" method="post" action="/pipeline/prospects/{{ pid }}/summary/edit" hx-post="/pipeline/prospects/{{ pid }}/summary/edit" hx-swap="none">
+          <div class="field"><label class="field__label" for="sm-body">Summary</label><textarea class="input" id="sm-body" name="body" rows="10" maxlength="6000" required>{{ (summary.body or (editable.body if editable else "")) }}</textarea></div>
+          <p class="hint">Saving makes a new version marked as edited by you; the AI version stays in the history.</p>
+          <div><button class="btn btn--primary" type="submit">Save as new version</button></div>
+        </form>
+      </details>
+      {% if summary_history|length > 1 %}
+      <details class="inline-edit" id="summary-history">
+        <summary>History ({{ summary_history|length }} versions)</summary>
+        {% for v in summary_history %}
+          <details class="reply-item" id="summary-v{{ v.version }}">
+            <summary>v{{ v.version }} · {{ "AI" if v.origin == "ai" else "Edited" }} · {{ v.actor }} · {{ v.created_at|localdt("%d %b %Y %H:%M") }}{% if v.status != "done" %} · {{ v.status }}{% endif %}</summary>
+            <div class="timeline__text">{{ v.body or v.error or "" }}</div>
+          </details>
+        {% endfor %}
+      </details>
+      {% endif %}
+    {% else %}
+      <p class="muted" id="summary-empty">No summary yet - press Refresh summary.</p>
+    {% endif %}
+  </div>
+</section>

@@ -267,7 +267,14 @@ def _followups_ctx(p: Any, base: str, no_fu: bool) -> dict[str, Any]:
 
 
 @router.get("/pipeline/prospects/{prospect_id}", response_class=HTMLResponse)
-def prospect_page(request: Request, prospect_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
+def prospect_page(
+    request: Request,
+    prospect_id: PathId,
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> HTMLResponse:
+    from sales0.web.routes.prospect_research import research_ctx
+
     p = prospects_service.get_prospect(db, prospect_id)
     details = [contacts_service.get_contact(db, c.id) for c in p.contacts[:20]]
     no_fu = any(f.kind == "no_follow_up" for f in p.flags)
@@ -275,7 +282,7 @@ def prospect_page(request: Request, prospect_id: PathId, db: Session = Depends(g
     return _page(
         request, db, "pipeline/prospect.html",
         {**_header_ctx(db, p), "contact_details": details,
-         **{k: fu_ctx[k] for k in ("channels", "fu_plan", "needs_contact")}},
+         **{k: fu_ctx[k] for k in ("channels", "fu_plan", "needs_contact")}, **research_ctx(db, p.id, member)},
     )  # fmt: skip
 
 

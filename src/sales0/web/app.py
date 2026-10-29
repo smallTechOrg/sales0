@@ -145,6 +145,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(worker_api.router)  # hosted: the laptop worker (bearer token; 404 without SALES0_WORKER_TOKEN)
     for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):
         app.include_router(r)
+    from sales0.web.routes import prospect_research
+
+    app.include_router(prospect_research.router)  # q15: prospect research, account summary, our notes
 
     if settings.linkedin_mode == "fixture":
         from sales0.linkedin_fixture.routes import router as fixture_router
