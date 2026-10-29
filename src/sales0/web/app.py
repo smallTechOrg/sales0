@@ -30,6 +30,7 @@ from sales0.web.middleware import CsrfOriginMiddleware, HardeningMiddleware, Req
 from sales0.web.routes import (
     contacts,
     costs,
+    criteria,
     digest,
     health,
     importer,
@@ -140,6 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(replies.router)
     app.include_router(metrics.router)
     app.include_router(users.router)  # Phase 5: admin Users page
+    app.include_router(criteria.router)  # inbox feedback A3: editable triage criteria + discard reasons
     app.include_router(worker_api.router)  # hosted: the laptop worker (bearer token; 404 without SALES0_WORKER_TOKEN)
     for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):
         app.include_router(r)

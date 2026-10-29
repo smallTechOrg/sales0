@@ -20,6 +20,8 @@
               {% for reason in discard_reasons %}<option value="{{ reason }}">{{ reason }}</option>{% endfor %}
               <option value="">Other — use AI reason</option>
             </select>
+            <label class="visually-hidden" for="bulk-custom-reason">Or your own reason</label>
+            <input class="input" id="bulk-custom-reason" name="custom_reason" maxlength="200" placeholder="Or your own reason">
             <button class="btn btn--danger btn--sm" type="submit" name="decision" value="discard"
                     hx-post="/inbox/decide" hx-target="#inbox-list" hx-vals='{"decision": "discard"}'>Discard selected</button>
           {% endif %}

@@ -221,17 +221,13 @@ def view_for(db: Session, e: Enquiry) -> tuple[str, str] | None:
 
 
 def prospect_for_accept(db: Session, e: Enquiry) -> Prospect | None:
-    """The existing prospect an accepted DISCOVERY enquiry should join (recorded match, else a fresh lookup)."""
-    if e.origin != "discovery":
+    """The existing prospect an accepted enquiry joins: the one it was MARKED with when it was created ("Already in
+    pipeline"), if that prospect still counts. Unmarked enquiries (older ones, sheet rows) keep the CRM's own identity
+    rules (one prospect per LinkedIn profile, else per enquiry)."""
+    if e.pipeline_prospect_id is None or e.origin == "sheet":
         return None
-    if e.pipeline_prospect_id is not None:
-        p = db.get(Prospect, e.pipeline_prospect_id)
-        if _live(p):
-            return p
-    match = find_match(db, e)
-    if match is not None and match.prospect_id is not None:
-        return db.get(Prospect, match.prospect_id)
-    return None
+    p = db.get(Prospect, e.pipeline_prospect_id)
+    return p if _live(p) else None
 
 
 __all__ = ["MATCH_LABELS", "PipelineMatch", "apply", "find_match", "prospect_for_accept", "repeat_reason", "view_for"]

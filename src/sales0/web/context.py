@@ -53,6 +53,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Runs", "/runs", None),
     ("Tracked", "/tracked", None),
     ("Setup", "/setup", None),
+    ("Criteria", "/criteria", None),
     ("Pipeline", "/pipeline", None),
     ("Contacts", "/contacts", None),
     ("Competitors & Groups", "/competitors", None),
@@ -275,6 +276,16 @@ def usd_precise(micros: int | None) -> str:
     return f"${value:,.2f}"
 
 
+LINK_LABELS = {"post": "View post", "profile": "View profile", "search": "Search results (no post link)"}
+
+
+def link_label(url: str | None) -> str:
+    """What an enquiry link really opens (inbox feedback A2): never call a profile or a search page "the post"."""
+    from sales0.scraper.urls import link_kind_of
+
+    return LINK_LABELS.get(link_kind_of(url) or "", "Open link")
+
+
 def opportunity_label(opportunity_type: str | None) -> str | None:
     """Chip text for the inbox card; ``other`` / unknown values show no chip."""
     return OPPORTUNITY_LABELS.get(opportunity_type or "")
@@ -327,6 +338,7 @@ HELPERS: dict[str, Any] = {
     "clock_text": clock_text,
     "poster_label": poster_label,
     "opportunity_label": opportunity_label,
+    "link_label": link_label,
     "usd_precise": usd_precise,
     "ago_text": ago_text,
     "cooldown_clock": cooldown_clock,

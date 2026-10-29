@@ -13,12 +13,13 @@ from sqlalchemy.orm import Session
 from sales0.db.engine import get_db
 from sales0.db.models import TeamMember
 from sales0.errors import DomainError
+from sales0.services import criteria as criteria_service
 from sales0.services import inbox as inbox_service
 from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
-from sales0.web.acting import acted_by_id, get_acting_member_optional
+from sales0.web.acting import acted_by_id, get_acting_member_optional, require_admin
 from sales0.web.context import PathId
 from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
 
@@ -125,7 +126,27 @@ def _skipped_response(request: Request, db: Session, q: str, state: str, page: s
     return HTMLResponse(body)
 
 
-def _list_ctx(db: Session, inbox: InboxPage) -> dict:
+def _is_admin(request: Request, db: Session) -> bool:
+    """The real user may edit triage criteria (admins; open mode: the acting admin) - hides "save as rule" otherwise."""
+    try:
+        require_admin(request, db)
+    except DomainError:
+        return False
+    return True
+
+
+MAX_CUSTOM_REASON = 200
+
+
+def _discard_reason(preset: str, custom: str) -> str | None:
+    """The team's own words win over the preset; both empty = the AI's reason (service fallback)."""
+    text = " ".join((custom or "").split())
+    if len(text) > MAX_CUSTOM_REASON:
+        raise DomainError("decision_invalid", f"Keep the reason under {MAX_CUSTOM_REASON} characters.", 400)
+    return text or (preset.strip() or None)
+
+
+def _list_ctx(db: Session, inbox: InboxPage, request: Request | None = None) -> dict:
     pages = max(1, math.ceil(inbox.total / inbox.page_size)) if inbox.page_size else 1
     has_runs = bool(runs_service.list_runs(db, limit=1)) if inbox.tab == "review" and not inbox.total and not inbox.q else True
     return {
@@ -141,6 +162,7 @@ def _list_ctx(db: Session, inbox: InboxPage) -> dict:
         "discard_reasons": DISCARD_REASONS,
         "priorities": PRIORITIES,
         "first_urn": first_urn,
+        "can_save_rule": _is_admin(request, db) if request is not None else False,
     }
 
 
@@ -157,6 +179,7 @@ def _card_html(request: Request, db: Session, card: EnquiryCardView, tab: str, q
             "discard_reasons": DISCARD_REASONS,
             "priorities": PRIORITIES,
             "first_urn": first_urn,
+            "can_save_rule": _is_admin(request, db),
         },
     )
 
@@ -177,7 +200,7 @@ def inbox_page(
             return HTMLResponse(render_html(request, "inbox/_skipped.html", ctx))
         return render_page(request, db, "inbox/page.html", ctx)
     inbox = _load_page(db, _tab(tab), _q(q), _page_number(page))
-    return render_page(request, db, "inbox/page.html", _list_ctx(db, inbox))
+    return render_page(request, db, "inbox/page.html", _list_ctx(db, inbox, request))
 
 
 # ---------------------------------------------------------------------- actions
@@ -187,6 +210,8 @@ def decide(
     enquiry_ids: list[str] = Form(default_factory=list),
     decision: str = Form(""),
     discard_reason: str = Form(""),
+    custom_reason: str = Form(""),
+    save_rule: str = Form(""),
     tab: str = Form("review"),
     q: str = Form(""),
     page: str = Form("1"),
@@ -202,21 +227,32 @@ def decide(
     ids = list(dict.fromkeys(ids))
     if decision not in {"accept", "discard"} or not ids:
         raise DomainError("decision_invalid", DECISION_INVALID, 400)
-    reason = (discard_reason.strip() or None) if decision == "discard" else None
+    reason = _discard_reason(discard_reason, custom_reason) if decision == "discard" else None
+    wants_rule = decision == "discard" and save_rule.strip().lower() in ("1", "true", "on", "yes")
+    if wants_rule:
+        require_admin(request, db)  # 403 for members (the checkbox is only shown to admins)
+        if not reason:
+            raise DomainError("decision_invalid", "Write or pick a reason to save it as a triage rule.", 400)
     decided = inbox_service.decide(
         db, ids, decision, discard_reason=reason, actor_member_id=member.id if member else None,
         acted_by_member_id=acted_by_id(member),
     )  # type: ignore[arg-type]
+    rule_note = ""
+    if wants_rule and reason:
+        rule = criteria_service.rule_from_discard(
+            db, reason, enquiry_id=ids[0], actor_member_id=member.id if member else None
+        )
+        rule_note = " · saved as a triage rule" if rule is not None else " · that rule already exists"
     current_tab, query, page_no = _tab(tab), _q(q), _page_number(page)
     if not is_htmx(request):
         return redirect("/inbox", tab=current_tab, q=query, page=page_no if page_no > 1 else None)
     inbox = _load_page(db, current_tab, query, page_no)
-    ctx = _list_ctx(db, inbox)
+    ctx = _list_ctx(db, inbox, request)
     verb = "Accepted" if decision == "accept" else "Discarded"
     body = (
         render_html(request, "inbox/_list.html", ctx)
         + render_html(request, "inbox/_tabs.html", {**ctx, "oob": True})
-        + toast_html(f"{verb} {len(decided) or len(ids)}")
+        + toast_html(f"{verb} {len(decided) or len(ids)}{rule_note}")
     )
     return HTMLResponse(body)
 

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Criteria{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Triage criteria</h1>
+    <p>The rules the AI follows when it decides whether a LinkedIn post is a genuine enquiry. Active rules are written into the AI's instructions exactly as shown, in this order; the company description, priority and output rules around them are fixed. Team discard reasons also teach the AI directly (recent decisions are shown to it as examples).</p>
+    <p class="muted" id="criteria-version">Rule set in use: {% if version %}version {{ version }}{% else %}built-in defaults{% endif %}.{% if not can_edit %} Only an admin can change the rules.{% endif %}</p></div></div>
+{% endblock %}
+{% macro rule_table(rules, kind, title, lead) %}
+  <section class="card" id="{{ kind }}-rules" aria-labelledby="{{ kind }}-title">
+    <div class="card__header"><div><h2 id="{{ kind }}-title">{{ title }}</h2><p class="muted">{{ lead }}</p></div></div>
+    <div class="card__body table-wrap">
+      {% if rules %}
+        <table class="table" id="{{ kind }}-list">
+          <thead><tr><th scope="col" class="num">#</th><th scope="col">Rule</th><th scope="col">Source</th><th scope="col">State</th>{% if can_edit %}<th scope="col">Actions</th>{% endif %}</tr></thead>
+          <tbody>
+          {% set ns = namespace(n=0) %}
+          {% for r in rules %}
+            {% if r.active %}{% set ns.n = ns.n + 1 %}{% endif %}
+            <tr id="criterion-{{ r.id }}" data-active="{{ 1 if r.active else 0 }}" data-kind="{{ r.kind }}">
+              <td class="num">{{ ns.n if r.active else "–" }}</td>
+              <td>{{ r.text }}</td>
+              <td>{% if r.source == "seed" %}<span class="chip">Built-in</span>{% elif r.source == "discard" %}<span class="chip">From a discard</span>{% else %}<span class="chip">Team</span>{% endif %}
+                <div class="muted">{{ ago_text(r.updated_at) }}</div></td>
+              <td>{% if r.active %}<span class="badge badge--genuine">Active</span>{% else %}<span class="badge">Disabled</span>{% endif %}</td>
+              {% if can_edit %}
+                <td>
+                  <div class="row">
+                    <form method="post" action="/criteria/{{ r.id }}/move"><input type="hidden" name="direction" value="up">
+                      <button class="btn btn--sm" type="submit" aria-label="Move rule up"{% if loop.first %} disabled{% endif %}>↑</button></form>
+                    <form method="post" action="/criteria/{{ r.id }}/move"><input type="hidden" name="direction" value="down">
+                      <button class="btn btn--sm" type="submit" aria-label="Move rule down"{% if loop.last %} disabled{% endif %}>↓</button></form>
+                    <form method="post" action="/criteria/{{ r.id }}/active"><input type="hidden" name="active" value="{{ 'false' if r.active else 'true' }}">
+                      <button class="btn btn--sm{{ ' btn--danger' if r.active else '' }}" type="submit">{{ "Disable" if r.active else "Enable" }}</button></form>
+                  </div>
+                  <details class="inline-edit"><summary>Edit</summary>
+                    <form class="stack" method="post" action="/criteria/{{ r.id }}">
+                      <div class="field"><label class="field__label" for="ct-{{ r.id }}">Rule</label>
+                        <textarea class="input" id="ct-{{ r.id }}" name="text" rows="3" maxlength="600" required>{{ r.text }}</textarea></div>
+                      <div class="field"><label class="field__label" for="ck-{{ r.id }}">List</label>
+                        <select class="select" id="ck-{{ r.id }}" name="kind">
+                          <option value="include"{% if r.kind == "include" %} selected{% endif %}>Include: genuine when…</option>
+                          <option value="exclude"{% if r.kind == "exclude" %} selected{% endif %}>Exclude: discard when…</option>
+                        </select></div>
+                      <div><button class="btn btn--primary btn--sm" type="submit">Save</button></div>
+                    </form>
+                  </details>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">No rules in this list.</p>
+      {% endif %}
+    </div>
+  </section>
+{% endmacro %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    {{ rule_table(include, "include", "Include: genuine when ANY of these is true", "A post matching one of these goes to To review.") }}
+    {{ rule_table(exclude, "exclude", "Exclude: discard ONLY when one of these is clear", "A post matching one of these is skipped by the AI (see Inbox → Skipped by AI).") }}
+
+    {% if can_edit %}
+      <section class="card" aria-labelledby="new-rule-title">
+        <form class="card__body stack" id="new-rule" method="post" action="/criteria" aria-label="Add rule">
+          <h2 id="new-rule-title">Add a rule</h2>
+          <div class="field"><label class="field__label" for="new-kind">List</label>
+            <select class="select" id="new-kind" name="kind">
+              <option value="exclude">Exclude: discard when…</option>
+              <option value="include">Include: genuine when…</option>
+            </select></div>
+          <div class="field"><label class="field__label" for="new-text">Rule</label>
+            <textarea class="input" id="new-text" name="text" rows="3" maxlength="600" required placeholder="e.g. A college asking for free guest lectures or student workshops."></textarea></div>
+          <div><button class="btn btn--primary" type="submit">Add rule</button></div>
+        </form>
+      </section>
+    {% endif %}
+
+    <section class="card" id="discard-reasons" aria-labelledby="reasons-title">
+      <div class="card__header"><div><h2 id="reasons-title">Why posts were discarded</h2>
+        <p class="muted">Counts for the last 30 days and all time. Team = a person's discard (the AI learns from these); System = automatic repeat skips (not used for learning); AI = posts the AI skipped, by poster type.</p></div></div>
+      <div class="card__body table-wrap">
+        {% set groups = breakdown.team + breakdown.system + breakdown.ai %}
+        {% if groups %}
+          <table class="table" id="reason-list">
+            <thead><tr><th scope="col">Who</th><th scope="col">Reason</th><th scope="col" class="num">30 days</th><th scope="col" class="num">All time</th><th scope="col">Example posts</th></tr></thead>
+            <tbody>
+            {% for g in groups %}
+              <tr data-source="{{ g.source }}">
+                <td>{% if g.source == "team" %}<span class="badge badge--info">Team</span>{% elif g.source == "system" %}<span class="badge badge--warn">System</span>{% else %}<span class="badge">AI</span>{% endif %}</td>
+                <td>{{ g.label }}</td>
+                <td class="num">{{ g.count_30d }}</td>
+                <td class="num">{{ g.count_all }}</td>
+                <td>
+                  <details><summary>{{ g.examples | length }} example{{ "" if g.examples | length == 1 else "s" }}</summary>
+                    <ul class="stack">
+                      {% for ex in g.examples %}
+                        <li>{{ ex.snippet }}{% if ex.url and ex.url.startswith(("http://", "https://")) %} <a href="{{ ex.url }}" target="_blank" rel="noopener noreferrer">{{ link_label(ex.url) }} ↗</a>{% endif %}</li>
+                      {% endfor %}
+                    </ul>
+                  </details>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="muted">Nothing has been discarded yet.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% if history %}
+      <section class="card" id="criteria-history" aria-labelledby="history-title">
+        <div class="card__header"><h2 id="history-title">Recent changes</h2></div>
+        <div class="card__body table-wrap">
+          <table class="table">
+            <thead><tr><th scope="col" class="num">Version</th><th scope="col">Change</th><th scope="col" class="num">Active rules</th><th scope="col">When</th></tr></thead>
+            <tbody>
+            {% for h in history %}
+              <tr><td class="num">{{ h.version }}</td><td>{{ h.note or "—" }}</td><td class="num">{{ h.rules }}</td><td>{{ ago_text(h.created_at) }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}
