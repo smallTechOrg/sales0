@@ -107,6 +107,13 @@ def test_open_redirect_attempts_land_on_inbox(locked: TestClient, evil: str) -> 
     assert page.status_code == 303 and page.headers["location"] == "/inbox"
 
 
+def test_login_page_has_a_show_password_toggle_for_phones(locked: TestClient) -> None:
+    html = locked.get("/login").text
+    assert 'id="login-show-password"' in html and 'src="/static/js/show-password.js"' in html
+    assert 'type="password" data-pw' in html and 'autocapitalize="off"' in html
+    assert locked.get("/static/js/show-password.js").status_code == 200
+
+
 def test_login_page_never_echoes_offsite_next(locked: TestClient) -> None:
     r = locked.get("/login", params={"next": "//evil.example"})
     assert "evil.example" not in r.text and 'value="/inbox"' in r.text
