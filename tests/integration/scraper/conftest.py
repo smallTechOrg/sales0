@@ -60,6 +60,10 @@ def fixture_settings(fixture_linkedin_server: int, monkeypatch: pytest.MonkeyPat
     # Phase 1.4 depth tests (test_scan_bulk.py) override these.
     monkeypatch.setenv("SALES0_SCRAPE_DATE_FILTERS", "past-week")
     monkeypatch.setenv("SALES0_SCRAPE_NO_GROWTH_SCROLLS", "1")
+    # The fixture LinkedIn is static and answers at once, so the scraper's human-looking waits (jitter, polls,
+    # scroll settle, lazy reveal, menu copy poll) only burn wall-clock. ONE knob scales them all together, ratios
+    # preserved (fixture mode only; src/sales0/scraper/pacing.py). Override with SALES0_TEST_PACE_SCALE.
+    monkeypatch.setenv("SALES0_SCRAPE_PACE_SCALE", os.environ.get("SALES0_TEST_PACE_SCALE", "0.2"))
     reset_settings()
     return get_settings()
 
@@ -110,14 +114,3 @@ def connected_settings(fixture_settings: Settings) -> Settings:
     """Fixture settings whose persistent profile is logged in (as after Connect)."""
     log_in_profile(fixture_settings)
     return fixture_settings
-
-
-@pytest.fixture(autouse=True)
-def _fast_fixture_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fixture LinkedIn is static and answers at once, so the scraper's human-looking waits (jitter, poll,
-    scroll settle, lazy reveal, menu copy poll) only burn wall-clock. ONE knob scales them all together, ratios
-    preserved (fixture mode only; src/sales0/scraper/pacing.py). Override with SALES0_TEST_PACE_SCALE."""
-    from sales0.config import reset_settings
-
-    monkeypatch.setenv("SALES0_SCRAPE_PACE_SCALE", os.environ.get("SALES0_TEST_PACE_SCALE", "0.2"))
-    reset_settings()
