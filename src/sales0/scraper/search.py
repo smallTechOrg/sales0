@@ -591,7 +591,10 @@ class LinkedInSearcher:
         try:
             point = page.evaluate(SCROLL_TARGET_JS, S.SDUI_SCROLL_CONTAINER)
             if point:
-                page.mouse.move(float(point["x"]), float(point["y"]), steps=self._pacer.randint(4, 12))
+                steps = self._pacer.randint(4, 12)
+                if self._pacer.scale != 1.0:  # fixture-only speed knob: fewer interpolation steps (each is a round-trip)
+                    steps = max(1, round(steps * self._pacer.scale))
+                page.mouse.move(float(point["x"]), float(point["y"]), steps=steps)
         except PlaywrightError:
             self._raise_if_latched()  # the wheel and the next checkpoint decide the rest
 
