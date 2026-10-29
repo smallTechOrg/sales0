@@ -28,7 +28,8 @@
                   {% if e.company %}{{ e.company }} · {% endif %}{% if e.date_added %}{{ e.date_added|ago }}{% endif %}
                 </div>
                 <div class="row">
-                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">View post</a>{% endif %}
+                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ "Author profile" if e.link_kind == "profile" else "View post" }}</a>{% endif %}
+                  {% if e.author_profile_url and e.author_profile_url.startswith(("http://", "https://")) and e.author_profile_url != e.source_url %}<a href="{{ e.author_profile_url }}" rel="noopener noreferrer" target="_blank">Author profile</a>{% endif %}
                   <a href="/inbox?tab=accepted&q={{ (e.requirement_summary or '')[:40]|urlencode }}">Open in Inbox</a>
                   <a href="/outreach/compose?enquiry_id={{ e.id }}">Draft from this enquiry</a>
                 </div>
@@ -40,10 +41,29 @@
         <section class="card" id="prospect-contacts" aria-labelledby="ct-title">
           <div class="card__header"><h2 id="ct-title">Contacts</h2><span class="muted">{{ p.contacts|length }}</span></div>
           <div class="card__body">
-            {% for c in p.contacts %}
-              <div class="reply-item"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "Contact" }}</a>
-                <div class="muted">{{ c.email or "" }}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.title %} · {{ c.title }}{% endif %}</div></div>
-            {% else %}<p class="muted">No contact details yet. They are added when you send an email or accept an enquiry with an address.</p>{% endfor %}
+            {% for c in contact_details or p.contacts %}
+              <div class="reply-item" id="prospect-contact-{{ c.id }}"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "Contact" }}</a>
+                <div class="muted">{{ c.email or "" }}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.title %} · {{ c.title }}{% endif %}</div>
+                {% if c.email_items is defined %}
+                  <details class="inline-edit"><summary>Edit e-mail, phone, details</summary>
+                    {% with next_url="/pipeline/prospects/%d" % p.id, with_notes=False %}{% include "contacts/_editor.html" %}{% endwith %}
+                  </details>
+                {% endif %}
+              </div>
+            {% else %}<p class="muted">No contact details yet. They are added when you send an email or accept an enquiry with an address - or add a person here.</p>{% endfor %}
+            <details class="inline-edit" id="add-prospect-contact">
+              <summary>Add a person</summary>
+              <form class="stack" method="post" action="/pipeline/prospects/{{ p.id }}/contacts">
+                <div class="grid-2">
+                  <div class="field"><label class="field__label" for="apc-name">Name</label><input class="input" id="apc-name" name="full_name" maxlength="200"></div>
+                  <div class="field"><label class="field__label" for="apc-email">E-mail</label><input class="input" id="apc-email" type="email" name="email" maxlength="254"></div>
+                  <div class="field"><label class="field__label" for="apc-phone">Phone</label><input class="input" id="apc-phone" name="phone" maxlength="50"></div>
+                  <div class="field"><label class="field__label" for="apc-title">Title</label><input class="input" id="apc-title" name="title" maxlength="200"></div>
+                  <div class="field"><label class="field__label" for="apc-li">LinkedIn profile</label><input class="input" id="apc-li" name="linkedin_url" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+                </div>
+                <div><button class="btn" type="submit">Add person</button></div>
+              </form>
+            </details>
           </div>
         </section>
 
@@ -75,8 +95,8 @@
         <section class="card" id="sheet-panel" aria-labelledby="sheet-title">
           <div class="card__header"><h2 id="sheet-title">Synced from sheet</h2><span class="badge badge--info">Read-only</span></div>
           <div class="card__body">
-            <p class="lock">Synced from sheet - edits are overwritten</p>
-            <p class="hint">The sheet is the source of truth for the name, company, contact details and sheet status. Notes, stage changes you make here, follow-ups, flags and the timeline are yours and are never overwritten. sales0 never writes to Google.</p>
+            <p class="lock" id="sheet-lock">Synced from sheet - a sheet cell wins only when it changes</p>
+            <p class="hint">When a cell changes in the sheet, the next sync copies it here: the name, company, sheet status, sheet notes and reason / extra links (and, for enquiry rows, the enquiry's summary, e-mail, phone and status). Until that cell changes, your edits here stand. New e-mail addresses and phone numbers in the sheet are added to the contact; ones you removed or changed here are not put back unless the sheet cell itself changes. Notes, characteristics, stage changes you make here, follow-ups, flags and the timeline are yours and are never overwritten. sales0 never writes to Google.</p>
             <table class="table" id="sheet-sources">
               <thead><tr><th scope="col">Tab</th><th scope="col">Row</th><th scope="col">Sheet status</th><th scope="col">Last seen</th></tr></thead>
               <tbody>

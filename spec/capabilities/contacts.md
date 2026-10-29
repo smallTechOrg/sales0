@@ -38,3 +38,5 @@ Maintains shared person records (several emails and phones, LinkedIn) that can b
 - [ ] Merging B into A moves all of B's emails, tags, links and timeline to A and deletes B; self-merge → `merge_self` 400.
 - [ ] Search over 10 000 seeded contacts returns in under 300 ms (integration timing assertion).
 - [ ] The duplicates view lists two contacts that share a phone's last 10 digits only when their names loosely match.
+
+- CRM feedback (`crm-entity.md`): e-mails / phones / LinkedIn are editable (also inline on the prospect page); the Companies list + roll-up page, company matching by domain / LinkedIn page and company merge.

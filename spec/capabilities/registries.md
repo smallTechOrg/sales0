@@ -35,3 +35,5 @@ Maintains the Competitors list (website, name, approx #clients, client names, co
 - [ ] After a sheet sync of a fixture "Competitors" tab that contains "Future Labs", there are still 5 + (new rows) competitors, "Future Labs" has a sheet source, and deleting it returns `sheet_owned`.
 - [ ] A group with details `keep-low` shows the "Keep (low)" label and `keep_level = keep_low`.
 - [ ] A client linked to a competitor appears on the competitor's page.
+
+- CRM feedback (`crm-entity.md`): the **Characteristics** registry is a third card on `/competitors` (add, rename, turn off; seeded Training provider, Partner, Outreach client).

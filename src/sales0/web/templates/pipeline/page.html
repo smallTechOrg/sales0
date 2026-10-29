@@ -57,6 +57,12 @@
               <option value="overdue"{% if params.due == "overdue" %} selected{% endif %}>Overdue</option></select></div>
           <label class="enquiry__select"><input type="checkbox" name="show_removed" value="1"{% if params.show_removed %} checked{% endif %}> Show removed from sheet</label>
         {% endif %}
+        {% if characteristic_options %}
+          <div class="field"><label class="field__label" for="f-characteristic">Characteristic</label>
+            <select class="input" id="f-characteristic" name="characteristic"><option value="">Any</option>
+              {% for ch in characteristic_options %}<option value="{{ ch.id }}"{% if ch.id|string == params.characteristic %} selected{% endif %}>{{ ch.name }}{% if not ch.active %} (retired){% endif %}</option>{% endfor %}
+            </select></div>
+        {% endif %}
         <noscript><button class="btn" type="submit">Apply</button></noscript>
       </form>
       <div class="row">

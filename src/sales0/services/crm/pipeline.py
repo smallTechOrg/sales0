@@ -41,9 +41,9 @@ def summary(db: Session, *, today: date | None = None, now: datetime | None = No
 
 def board(
     db: Session, *, kind: str = "prospects", q: str | None = None, flag: str | None = None, per_column: int = 50,
-    now: datetime | None = None,
+    characteristic_id: int | None = None, now: datetime | None = None,
 ) -> Board:
-    from sales0.services.crm import leads, prospects
+    from sales0.services.crm import characteristics, leads, prospects
 
     if kind not in ("prospects", "leads"):
         raise invalid("stage_invalid", "The board shows prospects or leads.")
@@ -58,6 +58,8 @@ def board(
                                       Prospect.company_id.in_(select(Company.id).where(Company.name_key.like(like, escape="\\")))))
             if flag:
                 stmt = stmt.where(exists().where(Flag.entity_type == "prospect", Flag.entity_id == Prospect.id, Flag.kind == flag, Flag.cleared_at.is_(None)))
+            if characteristic_id:
+                stmt = stmt.where(characteristics.prospect_filter(characteristic_id))
             total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
             rows = list(db.scalars(stmt.order_by(Prospect.updated_at.desc(), Prospect.id.desc()).limit(per_column)))
             columns.append(BoardColumn(stage=stage, label=STAGE_LABELS[stage], total=total, cards=prospects.views_for(db, rows)))
@@ -73,6 +75,8 @@ def board(
                                       Prospect.company_id.in_(select(Company.id).where(Company.name_key.like(like, escape="\\")))))
             if flag:
                 stmt = stmt.where(exists().where(Flag.entity_type == "prospect", Flag.entity_id == Lead.prospect_id, Flag.kind == flag, Flag.cleared_at.is_(None)))
+            if characteristic_id:
+                stmt = stmt.where(characteristics.prospect_filter(characteristic_id, Lead.prospect_id))
             total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
             rows = list(db.scalars(stmt.order_by(Lead.updated_at.desc(), Lead.id.desc()).limit(per_column)))
             columns.append(BoardColumn(stage=stage, label=STAGE_LABELS[stage], total=total, cards=leads.views_for(db, rows, now=stamp)))

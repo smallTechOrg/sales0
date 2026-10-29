@@ -50,6 +50,7 @@ class TrackedView:
     paused_until: datetime | None
     posts_seen: int
     relevant_count: int
+    watch_note: str | None = None
 
 
 def _paused(row: LinkedinProfile, now: datetime) -> bool:
@@ -65,7 +66,7 @@ def _view(row: LinkedinProfile, now: datetime) -> TrackedView:
         headline=row.headline, last_checked_at=row.last_checked_at, next_due_at=due,
         watch_checks=row.watch_checks or 0, watch_hits=row.watch_hits or 0, watch_last_status=row.watch_last_status,
         paused=paused, paused_until=row.watch_disabled_until if paused else None,
-        posts_seen=row.posts_seen or 0, relevant_count=row.relevant_count or 0,
+        posts_seen=row.posts_seen or 0, relevant_count=row.relevant_count or 0, watch_note=row.watch_note,
     )  # fmt: skip
 
 
@@ -141,6 +142,86 @@ def set_paused(db: Session, profile_id: int, paused: bool) -> TrackedView:
     row.watch_disabled_until = PAUSED_FOREVER if paused else None
     db.flush()
     return _view(row, utcnow())
+
+
+_NOT_A_PROFILE = {
+    "company": "That is a company page. Tracking watches a person's posts - paste their profile link (linkedin.com/in/...).",
+    "school": "That is a school page. Tracking watches a person's posts - paste their profile link (linkedin.com/in/...).",
+    "pub": "That is an old-style public profile link. Open it on LinkedIn and copy the address that starts linkedin.com/in/...",
+}
+_OTHER_PAGES = {
+    "search": "That is a LinkedIn search page, not a person. Open the person's profile and copy its address (linkedin.com/in/...).",
+    "feed": "That is a post or feed link. Open the author's profile and copy its address (linkedin.com/in/...).",
+    "posts": "That is a post link. Open the author's profile and copy its address (linkedin.com/in/...).",
+    "jobs": "That is a job page. Paste a person's profile link (linkedin.com/in/...).",
+    "groups": "That is a group page. Paste a person's profile link (linkedin.com/in/...).",
+}
+
+
+def parse_profile_url(url: str | None) -> str:
+    """The ``in/<slug>`` of a pasted person profile link, or a DomainError that says what was pasted instead."""
+    from urllib.parse import urlsplit
+
+    from sales0.linkedin_url import canonical_linkedin
+
+    text = (url or "").strip()
+    if not text:
+        raise DomainError("profile_url_invalid", "Paste the person's LinkedIn profile link (linkedin.com/in/...).", 400)
+    if len(text) > 500:
+        raise DomainError("profile_url_invalid", "That link is too long.", 400)
+    found = canonical_linkedin(text, allow_fixture=get_settings().linkedin_mode == "fixture")
+    if found is not None:
+        kind, slug = found
+        if kind == "in":
+            return f"in/{slug}"
+        raise DomainError("profile_url_invalid", _NOT_A_PROFILE.get(kind, _NOT_A_PROFILE["company"]), 400)
+    probe = text if "://" in text else "https://" + text
+    try:
+        parts = urlsplit(probe)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        host, parts = "", None
+    if host == "lnkd.in":
+        raise DomainError("profile_url_invalid", "Short lnkd.in links cannot be resolved here - open it and copy the full profile address.", 400)
+    if parts is not None and (host == "linkedin.com" or host.endswith(".linkedin.com")):
+        first = next((seg for seg in parts.path.split("/") if seg), "").lower()
+        raise DomainError("profile_url_invalid", _OTHER_PAGES.get(first, "That LinkedIn link is not a person's profile (linkedin.com/in/...)."), 400)
+    raise DomainError("profile_url_invalid", "That is not a LinkedIn link. Paste the person's profile address (linkedin.com/in/...).", 400)
+
+
+@dataclass(frozen=True)
+class AddResult:
+    profile: TrackedView
+    created: bool
+    already_tracked: bool
+
+
+def add_by_url(
+    db: Session, url: str | None, *, name: str | None = None, note: str | None = None, actor_user_id: int | None = None,
+    acted_by_member_id: int | None = None,
+) -> AddResult:
+    """Track a person from a pasted profile link: the ``linkedin_profiles`` row is created when missing (no
+    LinkedIn request is made here - a watch run fills the details later), then it joins the tracked set."""
+    from sales0.services import profiles
+
+    slug = parse_profile_url(url)
+    existed = db.scalar(select(LinkedinProfile).where(LinkedinProfile.slug == slug))
+    clean_name = (name or "").strip()[:200] or None
+    profile_id = profiles.ensure_profile(db, f"https://www.linkedin.com/{slug}/", name=clean_name)
+    assert profile_id is not None
+    row = _get(db, profile_id)
+    was_tracked = bool(existed is not None and existed.tracked and not _paused(existed, utcnow()))
+    text = (note or "").strip()[:300] or None
+    if text:
+        row.watch_note = text
+    view = track(db, profile_id, actor_user_id=actor_user_id, acted_by_member_id=acted_by_member_id)
+    return AddResult(profile=view, created=existed is None, already_tracked=was_tracked)
+
+
+def profile_id_for_slug(db: Session, slug: str | None) -> int | None:
+    if not slug:
+        return None
+    return db.scalar(select(LinkedinProfile.id).where(LinkedinProfile.slug == slug))
 
 
 def track_author_of_enquiry(

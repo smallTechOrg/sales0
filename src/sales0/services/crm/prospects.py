@@ -29,9 +29,10 @@ from sales0.db.models import (
 )
 from sales0.db.models.enums_crm import PROSPECT_STAGES
 from sales0.errors import DomainError
+from sales0.scraper.urls import link_kind_of
 from sales0.services import profiles
 from sales0.services._common import clip, now_or, not_found
-from sales0.services.crm import _keys, companies, contacts, flags, followups, timeline
+from sales0.services.crm import _keys, characteristics, companies, contacts, flags, followups, timeline
 from sales0.services.crm._common import UNSET, invalid, page_params, today_local
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
 from sales0.services.crm.stages import stage_label, stage_rank
@@ -54,6 +55,8 @@ def linked_enquiry_view(e: Enquiry) -> LinkedEnquiryView:
     return LinkedEnquiryView(
         id=e.id, requirement_summary=e.requirement_summary, priority=e.priority, review_status=e.review_status,
         ai_verdict=e.ai_verdict, date_added=e.date_added, source_url=e.source_url, company=e.company, sheet_status=e.sheet_status,
+        prospect_id=e.prospect_id, author_name=e.author_name, author_profile_url=e.author_profile_url,
+        link_kind=link_kind_of(e.source_url),
     )
 
 
@@ -72,6 +75,7 @@ def views_for(db: Session, rows: Iterable[Prospect]) -> list[ProspectView]:
     )
     profs = {p.id: p for p in db.scalars(select(LinkedinProfile).where(LinkedinProfile.id.in_(prof_ids)))} if prof_ids else {}
     flag_map = flags.flags_for(db, "prospect", ids)
+    traits = characteristics.for_prospects(db, ids)
     open_leads = dict(db.execute(select(Lead.prospect_id, Lead.id).where(Lead.prospect_id.in_(ids), Lead.closed_at.is_(None))).all())
     tabs: dict[int, list[str]] = defaultdict(list)
     for tid, tab in db.execute(
@@ -99,7 +103,7 @@ def views_for(db: Session, rows: Iterable[Prospect]) -> list[ProspectView]:
                 tracked=prof.tracked if prof else None, contacted_at=r.contacted_at, contacted_estimated=r.contacted_estimated,
                 responded_at=r.responded_at, next_follow_up_on=r.next_follow_up_on, flags=flag_map.get(r.id, []),
                 sheet_status=r.sheet_status, sheet_removed_at=r.sheet_removed_at, sheet_tabs=tabs.get(r.id, []),
-                open_lead_id=open_leads.get(r.id), created_at=r.created_at,
+                open_lead_id=open_leads.get(r.id), created_at=r.created_at, characteristics=traits.get(r.id, []),
             )
         )
     return out
@@ -325,8 +329,10 @@ def set_tracked(db: Session, prospect_id: int, tracked: bool, *, actor: Actor = 
 
 def update(
     db: Session, prospect_id: int, *, name=UNSET, notes=UNSET, company=UNSET, actor: Actor = TEAM,  # type: ignore[no-untyped-def]
-    now: datetime | None = None,
+    website=UNSET, company_linkedin_url=UNSET, linkedin_url=UNSET, now: datetime | None = None,  # type: ignore[no-untyped-def]
 ) -> ProspectView:
+    """Edit the prospect's own fields; ``website`` / ``company_linkedin_url`` edit its company row and
+    ``linkedin_url`` links (or, blank, unlinks) the person's LinkedIn profile - the prospect's identity."""
     p = _get(db, prospect_id)
     changed: list[str] = []
     if name is not UNSET:
@@ -344,6 +350,17 @@ def update(
         if (comp.id if comp else None) != p.company_id:
             p.company_id = comp.id if comp else None
             changed.append("company")
+    company_fields = {k: v for k, v in (("website", website), ("linkedin_url", company_linkedin_url)) if v is not UNSET}
+    if company_fields:
+        if p.company_id is None:
+            if any(company_fields.values()):
+                raise invalid("prospect_invalid", "Add a company name first - the website belongs to the company.")
+        else:
+            before = companies._view(db.get(Company, p.company_id))  # noqa: SLF001
+            after = companies.update_company(db, p.company_id, actor=actor, now=now, **company_fields)
+            changed += [f"company {k}" for k in company_fields if getattr(before, k) != getattr(after, k)]
+    if linkedin_url is not UNSET:
+        changed += _relink_profile(db, p, linkedin_url, now=now)
     if changed:
         p.updated_at = now_or(now)
         _stamp_actor(p, actor)
@@ -351,6 +368,47 @@ def update(
         timeline.add_event(db, subject_type="prospect", subject_id=p.id, kind="note", body="Details edited: " + ", ".join(changed),
                            data={"system": True, "fields": changed}, actor=actor, occurred_at=now)
     return _view(db, p)
+
+
+def _relink_profile(db: Session, p: Prospect, url: str | None, *, now: datetime | None) -> list[str]:
+    text = (url or "").strip()
+    if not text:
+        if p.linkedin_profile_id is None:
+            return []
+        p.linkedin_profile_id = None
+        return ["linkedin profile"]
+    slug = _keys.linkedin_slug_of(text)
+    if not slug or not slug.startswith("in/"):
+        raise invalid("prospect_invalid", "Use the person's LinkedIn profile link (linkedin.com/in/...).")
+    profile_id = profiles.ensure_profile(db, f"https://www.linkedin.com/{slug}/", name=p.name, now=now)
+    if profile_id == p.linkedin_profile_id:
+        return []
+    owner = db.scalar(select(Prospect.id).where(Prospect.linkedin_profile_id == profile_id, Prospect.id != p.id))
+    if owner is not None:
+        raise DomainError("prospect_invalid", f"That LinkedIn profile already belongs to prospect #{owner}.", 409)
+    p.linkedin_profile_id = profile_id
+    return ["linkedin profile"]
+
+
+def add_contact(
+    db: Session, prospect_id: int, *, full_name: str | None = None, email: str | None = None, phone: str | None = None,
+    title: str | None = None, linkedin_url: str | None = None, actor: Actor = TEAM, now: datetime | None = None,
+):  # type: ignore[no-untyped-def]
+    """Add (or match) a person and link them to the prospect; the first one becomes its primary contact."""
+    p = _get(db, prospect_id)
+    if linkedin_url and not (_keys.linkedin_slug_of(linkedin_url) or "").startswith("in/"):
+        raise invalid("contact_invalid", "Use the person's LinkedIn profile link (linkedin.com/in/...).")
+    if email and not _keys.first_email(email):
+        raise invalid("email_invalid", "That is not a valid e-mail address.")
+    row, _ = contacts.upsert_row(
+        db, full_name=full_name, email=email, phone=phone, title=title, linkedin_url=linkedin_url, company_id=p.company_id,
+        origin="manual", actor=actor, now=now,
+    )
+    contacts.link(db, row.id, "prospect", p.id, None)
+    if p.contact_id is None:
+        p.contact_id = row.id
+        db.flush()
+    return contacts.views_for(db, [row])[0]
 
 
 # ---------------------------------------------------------------------------- creation
@@ -470,6 +528,23 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
     )
     flags.on_enquiry_linked(db, e.id, now=stamp)
     return _view(db, p)
+
+
+def apply_accept_choices(
+    db: Session, enquiry_id: int, *, characteristic_ids: Iterable[int] = (), as_client: bool = False,
+    actor: Actor = TEAM, now: datetime | None = None,
+) -> ProspectView:
+    """The Inbox Accept form's extras, after the decision: tick characteristics on the enquiry's prospect and,
+    for an enquiry from an existing client, take it straight to Client (through the lead -> client path)."""
+    view = ensure_for_enquiry(db, enquiry_id, actor=actor, now=now)  # idempotent; the accept hook normally ran it
+    ids = [int(i) for i in characteristic_ids]
+    if ids:
+        characteristics.add_to(db, "prospect", view.id, ids, actor=actor, now=now)
+    if as_client:
+        from sales0.services.crm import leads as leads_mod
+
+        leads_mod.promote_to_client(db, view.id, actor=actor, note="Accepted from the Inbox as an existing client", now=now)
+    return _view(db, _get(db, view.id))
 
 
 def create_manual(
@@ -596,16 +671,21 @@ def get_prospect(db: Session, prospect_id: int) -> ProspectDetail:
 
 
 def _client_view(c: Client) -> ClientView:
-    return ClientView(id=c.id, name=c.name, company_id=c.company_id, status=c.status, source=c.source,
-                      started_on=c.started_on, lead_id=c.lead_id, prospect_id=c.prospect_id)
+    from sales0.services.crm import clients as clients_mod
+
+    db = Session.object_session(c)
+    return clients_mod.views_for(db, [c])[0] if db is not None else clients_mod.view_of(c)
 
 
 def list_prospects(
     db: Session, *, stage: str | None = None, status: str = "open", q: str | None = None, company_id: int | None = None,
-    source: str | None = None, flag: str | None = None, due: str | None = None, page: int = 1, page_size: int | None = None,
+    source: str | None = None, flag: str | None = None, due: str | None = None, characteristic_id: int | None = None,
+    page: int = 1, page_size: int | None = None,
 ) -> ProspectPage:
     page, size = page_params(page, page_size)
     stmt = select(Prospect)
+    if characteristic_id:
+        stmt = stmt.where(characteristics.prospect_filter(characteristic_id))
     if status and status != "all":
         stmt = stmt.where(Prospect.status == status)
     if stage:
@@ -663,7 +743,7 @@ def local_today(now: datetime | None = None) -> date:
 
 
 __all__ = [
-    "SYSTEM", "advance_to", "close", "create_manual", "ensure_for_enquiry", "get_prospect", "linked_enquiry_view",
+    "SYSTEM", "add_contact", "advance_to", "apply_accept_choices", "close", "create_manual", "ensure_for_enquiry", "get_prospect", "linked_enquiry_view",
     "list_prospects", "mark_contacted", "move_stage", "record_email_contact", "record_response", "reopen", "resolve_for_message", "set_tracked",
     "update", "views_for",
 ]

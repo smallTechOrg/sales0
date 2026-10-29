@@ -60,6 +60,29 @@ class TagView(_View):
     count: int = 0
 
 
+class CharacteristicView(_View):
+    """One registry entry (Training provider, Partner, ...); ``count`` = assignments (registry page only)."""
+
+    id: int
+    name: str
+    system_key: str | None = None
+    active: bool = True
+    count: int = 0
+
+
+class ContactEmailView(_View):
+    id: int
+    email: str
+    is_primary: bool = False
+    suppressed: bool = False
+
+
+class ContactPhoneView(_View):
+    id: int
+    phone: str
+    is_primary: bool = False
+
+
 class ContactView(_View):
     id: int
     full_name: str | None = None
@@ -84,6 +107,10 @@ class ContactLinkView(_View):
 class ContactDetail(ContactView):
     emails: list[str] = Field(default_factory=list)
     phones: list[str] = Field(default_factory=list)
+    email_items: list[ContactEmailView] = Field(default_factory=list)
+    phone_items: list[ContactPhoneView] = Field(default_factory=list)
+    linkedin_profile_id: int | None = None
+    tracked: bool | None = None
     notes: str | None = None
     links: list[ContactLinkView] = Field(default_factory=list)
     timeline: list[TimelineItemView] = Field(default_factory=list)
@@ -99,6 +126,19 @@ class CompanyView(_View):
     name: str
     website: str | None = None
     city: str | None = None
+    linkedin_url: str | None = None
+    notes: str | None = None
+
+
+class CompanyRow(CompanyView):
+    """A row of the Companies list: the roll-up counts and the union of its entities' characteristics."""
+
+    prospects: int = 0
+    clients: int = 0
+    contacts: int = 0
+    enquiries: int = 0
+    open_follow_ups: int = 0
+    characteristics: list[CharacteristicView] = Field(default_factory=list)
 
 
 class SheetSourceView(_View):
@@ -120,6 +160,10 @@ class LinkedEnquiryView(_View):
     source_url: str | None = None
     company: str | None = None
     sheet_status: str | None = None
+    prospect_id: int | None = None
+    author_name: str | None = None
+    author_profile_url: str | None = None
+    link_kind: str | None = None
 
 
 class LinkedMessageView(_View):
@@ -166,6 +210,7 @@ class ProspectView(_View):
     sheet_tabs: list[str] = Field(default_factory=list)
     open_lead_id: int | None = None
     created_at: datetime
+    characteristics: list[CharacteristicView] = Field(default_factory=list)
 
 
 class LeadView(_View):
@@ -183,6 +228,8 @@ class LeadView(_View):
     outcome_note: str | None = None
     flags: list[FlagView] = Field(default_factory=list)
     days_since_activity: int | None = None
+    company_id: int | None = None
+    characteristics: list[CharacteristicView] = Field(default_factory=list)
 
 
 class ClientView(_View):
@@ -194,6 +241,8 @@ class ClientView(_View):
     started_on: date | None = None
     lead_id: int | None = None
     prospect_id: int | None = None
+    company_name: str | None = None
+    characteristics: list[CharacteristicView] = Field(default_factory=list)
 
 
 class ProspectDetail(ProspectView):
@@ -263,6 +312,12 @@ class CompanyDetail(CompanyView):
     enquiries: list[LinkedEnquiryView] = Field(default_factory=list)
     contacts: list[ContactView] = Field(default_factory=list)
     timeline: list[TimelineItemView] = Field(default_factory=list)
+    leads: list[LeadView] = Field(default_factory=list)
+    clients: list[ClientView] = Field(default_factory=list)
+    messages: list[LinkedMessageView] = Field(default_factory=list)
+    replies: list[LinkedReplyView] = Field(default_factory=list)
+    characteristics: list[CharacteristicView] = Field(default_factory=list)
+    open_follow_ups: int = 0
 
 
 class PipelineSummary(_View):
@@ -316,7 +371,7 @@ class ContactPage(_View):
 
 
 class CompanyPage(_View):
-    items: list[CompanyView] = Field(default_factory=list)
+    items: list[CompanyRow] = Field(default_factory=list)
     total: int = 0
     page: int = 1
     page_size: int = 50

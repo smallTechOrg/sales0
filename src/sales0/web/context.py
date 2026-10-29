@@ -55,6 +55,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Setup", "/setup", None),
     ("Pipeline", "/pipeline", None),
     ("Contacts", "/contacts", None),
+    ("Companies", "/companies", None),
     ("Competitors & Groups", "/competitors", None),
     ("Import", "/import", None),
     ("Sync", "/sync", None),
@@ -286,6 +287,13 @@ def poster_label(poster_type: str | None) -> str | None:
     return POSTER_TYPE_LABELS.get(poster_type, poster_type.replace("_", " ").capitalize())
 
 
+def suggested_characteristics(poster_type: str | None, opportunity_type: str | None) -> set[str]:
+    """``system_key``s the Inbox Accept form pre-ticks from the AI's hints (a suggestion; the human decides)."""
+    from sales0.services.crm.characteristics import suggested_keys
+
+    return suggested_keys(poster_type, opportunity_type)
+
+
 def pct_text(part: int | None, whole: int | None) -> str:
     """'1.5%' for part/whole (one decimal below 10%, whole numbers above); '—' when whole is 0."""
     if not whole:
@@ -327,6 +335,7 @@ HELPERS: dict[str, Any] = {
     "clock_text": clock_text,
     "poster_label": poster_label,
     "opportunity_label": opportunity_label,
+    "suggested_characteristics": suggested_characteristics,
     "usd_precise": usd_precise,
     "ago_text": ago_text,
     "cooldown_clock": cooldown_clock,

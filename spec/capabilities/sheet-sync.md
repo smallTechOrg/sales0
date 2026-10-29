@@ -61,3 +61,5 @@ The engine is unchanged except that it collects `repo.drain_errors()` after each
 - [x] The same person in Outreach and Prospects is one `prospect` with two sources.
 - [x] No write is possible (transport guard + source scan tests).
 - [x] Live read-only dry-run on both real sheets: Active Enquiries > 0 rows, 0 parse errors.
+
+- CRM feedback (`crm-entity.md` B3): a sheet-fed contact gets only the e-mails / phones its cell newly lists (an address removed or changed in the app is not re-added), the contact LinkedIn link only when that cell changed, and a person row's company only when the prospect is new / has none / the Company cell changed.

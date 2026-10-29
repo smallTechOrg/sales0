@@ -15,14 +15,17 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     false,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sales0.db.base import Base
 from sales0.db.models._types import UTCDateTime, in_check, now_utc
 from sales0.db.models.enums_crm import (
+    CHARACTERISTIC_ENTITY_TYPES,
     CLIENT_SOURCES,
     CLIENT_STATUSES,
     FLAG_ENTITY_TYPES,
@@ -47,6 +50,10 @@ class Company(Base):
     name_key: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     website: Mapped[str | None] = mapped_column(String(300))
     website_key: Mapped[str | None] = mapped_column(String(200), index=True)
+    # q12: matching keys besides the name - the bare host of the website (``acme.com``) and the company page
+    # slug of ``linkedin_url`` (``company/acme``); set by ``services.crm.companies`` (see ``_keys.domain_key``).
+    domain_key: Mapped[str | None] = mapped_column(String(200), index=True)
+    linkedin_key: Mapped[str | None] = mapped_column(String(200), index=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(500))
     city: Mapped[str | None] = mapped_column(String(100))
     notes: Mapped[str | None] = mapped_column(Text)
@@ -225,4 +232,41 @@ class Flag(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
 
 
-__all__ = ["Client", "Company", "Flag", "FollowUp", "Lead", "Prospect"]
+class Characteristic(Base):
+    """Editable registry of entity characteristics ("Training provider", "Partner", "Outreach client", ...).
+
+    ``system_key`` marks the seeded rows so a rename keeps the AI pre-tick hint working; ``active = false``
+    hides a characteristic from pickers (existing assignments stay and still show)."""
+
+    __tablename__ = "characteristics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    system_key: Mapped[str | None] = mapped_column(String(30), unique=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+class EntityCharacteristic(Base):
+    """A characteristic on THE entity: the prospect (a lead and a won client read their prospect's), or a
+    client that has no prospect (legacy / typed-in). Polymorphic like ``contact_links`` (no FK on entity_id)."""
+
+    __tablename__ = "entity_characteristics"
+    __table_args__ = (
+        UniqueConstraint("characteristic_id", "entity_type", "entity_id", name="uq_entity_characteristics_entity"),
+        Index("ix_entity_characteristics_entity", "entity_type", "entity_id"),
+        in_check("entity_type", CHARACTERISTIC_ENTITY_TYPES, "entity_type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    characteristic_id: Mapped[int] = mapped_column(ForeignKey("characteristics.id", ondelete="CASCADE"), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor: Mapped[str] = mapped_column(String(80), nullable=False, default="system", server_default="system")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
+
+
+__all__ = ["Characteristic", "Client", "Company", "EntityCharacteristic", "Flag", "FollowUp", "Lead", "Prospect"]

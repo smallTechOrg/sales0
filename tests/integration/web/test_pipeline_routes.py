@@ -457,7 +457,7 @@ def test_sheet_fed_prospect_shows_the_read_only_sheet_panel_and_removed_banner(w
         )  # fmt: skip
     html = web.get(f"/pipeline/prospects/{pid}").text
     assert 'id="sheet-panel"' in html and "Read-only" in html
-    assert "Synced from sheet" in html and "edits are overwritten" in html
+    assert "Synced from sheet" in html and "a sheet cell wins only when it changes" in html
     assert "Outreach" in html and ">14<" in html and "Replied" in html
     assert 'id="sheet-removed"' in html and "Removed from the Google Sheet on" in html
     board = web.get("/pipeline").text

@@ -13,6 +13,7 @@ from sales0.services import tracked_profiles as tracked
 from sales0.services.runs import ACTIVE_STATUSES, get_run
 from sales0.db.models import TeamMember
 from sales0.web.acting import acted_by_id, clear_flash, get_acting_member_optional, pop_flash, set_flash
+from sales0.errors import DomainError
 from sales0.web.context import is_htmx, render_html, render_page
 
 router = APIRouter()
@@ -61,28 +62,64 @@ def watch_progress(request: Request, run_id: int, db: Session = Depends(get_db))
     return HTMLResponse(render_html(request, "tracked/_panel.html", ctx), headers={} if ctx["active"] else {"HX-Trigger": "session-changed"})
 
 
-def _back(message: str) -> RedirectResponse:
-    response = RedirectResponse("/tracked", status_code=303)
-    set_flash(response, message, "ok")
+def _safe_next(value: str | None) -> str:
+    """Where to come back to after a Track / Untrack button (same-site CRM pages only; else /tracked)."""
+    text = (value or "").strip()
+    if text.startswith(("/tracked", "/contacts/", "/pipeline/", "/companies/")) and not text.startswith("//") and "\\" not in text:
+        return text
+    return "/tracked"
+
+
+def _back(message: str, path: str = "/tracked", kind: str = "ok") -> RedirectResponse:
+    response = RedirectResponse(path, status_code=303)
+    set_flash(response, message, kind)
     return response
+
+
+@router.post("/tracked/add")
+def add_profile(
+    profile_url: str = Form(""),
+    name: str = Form(""),
+    note: str = Form(""),
+    next: str = Form(""),  # noqa: A002 - form field name
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> RedirectResponse:
+    """"Add person to track": a pasted profile link becomes a tracked ``linkedin_profiles`` row (no LinkedIn call)."""
+    back = _safe_next(next)
+    try:
+        result = tracked.add_by_url(
+            db, profile_url, name=name, note=note, actor_user_id=member.id if member else None,
+            acted_by_member_id=acted_by_id(member),
+        )
+    except DomainError as exc:
+        db.rollback()
+        return _back(exc.message, back, "error")
+    db.commit()
+    who = result.profile.display_name or result.profile.slug
+    if result.already_tracked:
+        return _back(f"{who} is already tracked.", back)
+    return _back(f"Now tracking {who}. The next watch run checks their recent posts.", back)
 
 
 @router.post("/tracked/{profile_id}/untrack")
 def untrack(
-    profile_id: int, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+    profile_id: int, next: str = Form(""), db: Session = Depends(get_db),  # noqa: A002
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> RedirectResponse:
     tracked.untrack(db, profile_id, actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member))
     db.commit()
-    return _back("Profile untracked.")
+    return _back("Profile untracked.", _safe_next(next))
 
 
 @router.post("/tracked/{profile_id}/track")
 def track(
-    profile_id: int, db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional)
+    profile_id: int, next: str = Form(""), db: Session = Depends(get_db),  # noqa: A002
+    member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> RedirectResponse:
     tracked.track(db, profile_id, actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member))
     db.commit()
-    return _back("Profile tracked.")
+    return _back("Profile tracked.", _safe_next(next))
 
 
 @router.post("/tracked/{profile_id}/pause")

@@ -2,22 +2,39 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Client, CompetitorMention, Competitor, Lead, Prospect
+from sales0.db.models import Client, Company, CompetitorMention, Competitor, Lead, Prospect
 from sales0.services._common import clip, now_or, not_found
-from sales0.services.crm import _keys, companies, contacts, timeline
+from sales0.services.crm import _keys, characteristics, companies, contacts, timeline
 from sales0.services.crm._common import UNSET, invalid, page_params, today_local
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
 from sales0.services.crm.views import ClientDetail, ClientPage, ClientView, CompetitorView
 
 
 def view_of(c: Client) -> ClientView:
+    """Plain view (no company name / characteristics); prefer :func:`views_for` when a session is at hand."""
     return ClientView(id=c.id, name=c.name, company_id=c.company_id, status=c.status, source=c.source,
                       started_on=c.started_on, lead_id=c.lead_id, prospect_id=c.prospect_id)
+
+
+def views_for(db: Session, rows: Iterable[Client]) -> list[ClientView]:
+    rows = list(rows)
+    if not rows:
+        return []
+    cids = {r.company_id for r in rows if r.company_id}
+    names = dict(db.execute(select(Company.id, Company.name).where(Company.id.in_(cids))).all()) if cids else {}
+    traits = characteristics.for_clients(db, rows)
+    return [
+        ClientView(id=c.id, name=c.name, company_id=c.company_id, status=c.status, source=c.source, started_on=c.started_on,
+                   lead_id=c.lead_id, prospect_id=c.prospect_id, company_name=names.get(c.company_id),
+                   characteristics=traits.get(c.id, []))
+        for c in rows
+    ]
 
 
 def _get(db: Session, client_id: int) -> Client:
@@ -49,7 +66,7 @@ def create_from_lead(db: Session, lead_id: int, *, actor: Actor = SYSTEM, now: d
         db, subject_type="client", subject_id=c.id, kind="client_created", body=f"Client created from won lead: {c.name}",
         data={"lead_id": ld.id, "prospect_id": p.id}, actor=actor, occurred_at=stamp,
     )
-    return view_of(c)
+    return views_for(db, [c])[0]
 
 
 def create_legacy(
@@ -94,7 +111,7 @@ def get_client(db: Session, client_id: int) -> ClientDetail:
                        contact=k.contact, email=k.email, notes=k.notes, active=k.active, sheet_synced=False, mention_count=0)
         for k in rows
     ]
-    return ClientDetail(**view_of(c).model_dump(), notes=c.notes, timeline=tl, competitors=comps)
+    return ClientDetail(**views_for(db, [c])[0].model_dump(), notes=c.notes, timeline=tl, competitors=comps)
 
 
 def update_client(
@@ -128,16 +145,21 @@ def update_client(
     return view_of(c)
 
 
-def list_clients(db: Session, *, status: str | None = None, q: str | None = None, page: int = 1, page_size: int | None = None) -> ClientPage:
+def list_clients(
+    db: Session, *, status: str | None = None, q: str | None = None, characteristic_id: int | None = None, page: int = 1,
+    page_size: int | None = None,
+) -> ClientPage:
     page, size = page_params(page, page_size)
     stmt = select(Client)
     if status:
         stmt = stmt.where(Client.status == status)
+    if characteristic_id:
+        stmt = stmt.where(characteristics.client_filter(characteristic_id))
     if q and q.strip():
         stmt = stmt.where(func.lower(Client.name).like(f"%{_keys.like_escape(_keys.name_key(q))}%", escape="\\"))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = db.scalars(stmt.order_by(Client.created_at.desc(), Client.id.desc()).limit(size).offset((page - 1) * size))
-    return ClientPage(items=[view_of(r) for r in rows], total=total, page=page, page_size=size)
+    return ClientPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 
 
-__all__ = ["create_from_lead", "create_legacy", "get_client", "list_clients", "update_client", "view_of"]
+__all__ = ["create_from_lead", "create_legacy", "get_client", "list_clients", "update_client", "view_of", "views_for"]

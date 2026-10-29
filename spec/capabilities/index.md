@@ -25,3 +25,4 @@
 | Per-User Accounts | 5 | [per-user-accounts.md](per-user-accounts.md) | Individual logins and attribution |
 | Reply Tracking | 5 | [reply-tracking.md](reply-tracking.md) | Detect email replies, mark responded (built; the Phase 2 CRM subscribes to its event) |
 | Hosted Deployment | deploy | [hosted-deployment.md](hosted-deployment.md) | Cloud Run + Cloud SQL Postgres, no scheduler (manual request-bound actions), laptop `sales0 worker` scrapes and uploads |
+| CRM entity (team feedback) | 2+ | [crm-entity.md](crm-entity.md) | Characteristics on the entity (survive Prospect -> Lead -> Client), accept straight to client, Companies list + roll-up + merge, editable e-mails / phones, Add person to track |

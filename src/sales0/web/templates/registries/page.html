@@ -142,5 +142,44 @@
       </form>
     </section>
 
+    <section class="card" id="characteristics-registry" aria-labelledby="chr-title">
+      <div class="card__header"><h2 id="chr-title">Characteristics</h2><span class="muted">What kind of entity a prospect / client is</span></div>
+      <div class="card__body table-wrap">
+        <p class="hint">Tick these on a prospect, lead or client (or when accepting an enquiry). One entity can have several. They stay with it from Prospect to Lead to Client, and the pipeline, clients and companies lists can be filtered by them. Turning one off hides it from the pickers; entities that have it keep it.</p>
+        {% if characteristics %}
+          <table class="table" id="characteristic-list">
+            <thead><tr><th scope="col">Name</th><th scope="col" class="num">In use</th><th scope="col">Active</th><th scope="col">Rename</th></tr></thead>
+            <tbody>
+            {% for ch in characteristics %}
+              <tr id="characteristic-{{ ch.id }}" data-active="{{ 1 if ch.active else 0 }}">
+                <td><a href="/pipeline?tab=prospects&view=list&status=all&characteristic={{ ch.id }}">{{ ch.name }}</a></td>
+                <td class="num">{{ ch.count }}</td>
+                <td>
+                  <form method="post" action="/competitors/characteristic/{{ ch.id }}">
+                    <input type="hidden" name="active" value="{{ 'false' if ch.active else 'true' }}">
+                    <button class="btn btn--sm" type="submit" aria-pressed="{{ 'true' if ch.active else 'false' }}">{{ "Active - turn off" if ch.active else "Off - turn on" }}</button>
+                  </form>
+                </td>
+                <td>
+                  <form class="inline-form" method="post" action="/competitors/characteristic/{{ ch.id }}">
+                    <label class="visually-hidden" for="chn-{{ ch.id }}">New name for {{ ch.name }}</label>
+                    <input class="input" id="chn-{{ ch.id }}" name="name" value="{{ ch.name }}" required maxlength="60">
+                    <button class="btn btn--sm" type="submit">Rename</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="characteristics-empty"><p>No characteristics yet.</p></div>
+        {% endif %}
+      </div>
+      <form class="card__footer card__footer--form inline-form" id="new-characteristic" method="post" action="/competitors/characteristic" aria-label="Add characteristic">
+        <div class="field"><label class="field__label" for="newch-name">Add a characteristic</label><input class="input" id="newch-name" name="name" required maxlength="60" placeholder="e.g. Reseller"></div>
+        <button class="btn btn--primary" type="submit">Add</button>
+      </form>
+    </section>
+
   </div>
 {% endblock %}

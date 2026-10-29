@@ -577,3 +577,11 @@ A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_
 | `manual_metrics` | `id`; `iso_year`, `iso_week` int; `metric_key` `posts_published` \| `whatsapp_added`; `value` int >= 0; `updated_by` str(80) null; `updated_at`; unique (`iso_year`, `iso_week`, `metric_key`) |
 
 New indexes: `ix_seen_posts_first_seen_at`, `ix_timeline_events_kind_occurred`, `ix_outreach_messages_sent_at`. Target overrides live in `app_meta` (`metrics_target.<source>`).
+
+### CRM feedback (migration `q12_traits_9d2c4a71`, `down_revision = p11_rawcapture_a4d9c7e2`; see `capabilities/crm-entity.md`)
+| Table / column | Columns |
+|---|---|
+| `characteristics` | `id`; `name` str(60); `name_key` str(60) unique; `system_key` str(30) null unique (seeded rows: `training_provider`, `partner`, `outreach_client`); `active` bool default true; `sort_order` int; `created_at`, `updated_at` |
+| `entity_characteristics` | `id`; `characteristic_id` FK `characteristics` CASCADE; `entity_type` `prospect` \| `client` (CHECK); `entity_id` int (polymorphic, no FK); `actor` str(80); `created_at`; unique (`characteristic_id`, `entity_type`, `entity_id`); index (`entity_type`, `entity_id`). Stored on the prospect; a lead / a client with a prospect reads the prospect's rows; only a prospect-less client has `client` rows |
+| `companies.domain_key`, `companies.linkedin_key` | str(200) null, indexed: bare website host (generic hosts excluded) and `company/<slug>`; matching keys besides `name_key`; backfilled |
+| `linkedin_profiles.watch_note` | str(300) null: the note typed on "Add person to track" |
