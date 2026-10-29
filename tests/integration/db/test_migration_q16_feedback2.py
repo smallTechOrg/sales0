@@ -33,7 +33,7 @@ def _seed(url: str) -> None:
                 "VALUES (:i, :h, 'x', 'linkedin_post', :p, :pid, 'accepted', 'done', :d, 'discovery')"
             ), {"i": eid, "h": f"{eid:064d}", "p": prio, "pid": pid, "d": NOW})
         c.execute(text("INSERT INTO follow_ups (id, prospect_id, kind, due_on, auto, created_at, updated_at) "
-                       "VALUES (1, 1, 'follow_up_1', '2026-10-05', 1, :d, :d)"), {"d": NOW})
+                       "VALUES (1, 1, 'follow_up_1', '2026-10-05', TRUE, :d, :d)"), {"d": NOW})
     engine.dispose()
 
 

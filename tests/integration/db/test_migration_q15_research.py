@@ -68,6 +68,7 @@ def test_upgrade_backfills_is_retry_safe_and_downgrades(db_url: str, tmp_path: P
         with pytest.raises(IntegrityError), engine.begin() as c:
             c.execute(text("INSERT INTO prospect_docs (prospect_id, doc_type, version, origin, created_at) "
                            "VALUES (1, 'research', 1, 'ai', :d)"), {"d": NOW})
+        command.upgrade(cfg, "head")  # later revisions (q16 ...) add columns the models now carry
         assert drift(engine) == []
 
         command.downgrade(cfg, PARENT)

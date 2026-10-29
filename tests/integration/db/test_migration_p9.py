@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlalchemy as sa
+
 from datetime import UTC, date, datetime
 
 import pytest
@@ -16,7 +18,7 @@ from sqlalchemy.orm import Session
 from sales0.db.engine import build_engine
 from sales0.db.migrate_check import alembic_config, current_revision, head_revision
 from sales0.db.models import (
-    Client, ContactLink, Enquiry, Flag, FollowUp, Lead, OutreachMessage, Prospect,
+    Client, ContactLink, Enquiry, Flag, Lead, Prospect,
     SheetSource, TeamMember, TimelineEvent,
 )
 from tests.integration.db._drift import assert_inline_fks_cascade, drift
@@ -121,8 +123,15 @@ def _old_enquiry(s: Session, **kw: object) -> SimpleNamespace:
         "review_status": "accepted", "stage": "prospect_new", "triage_status": "done", "author_name": "Asha Rao",
         "date_added": datetime(2026, 10, 1, 9, 0, tzinfo=UTC), **kw,
     }
-    table = Enquiry.__table__
+    # a bare table of just these columns: Python-side defaults of columns added later (q14, q16 category ...) must not apply
+    table = sa.table("enquiries", sa.column("id"), *[sa.column(k) for k in values])
     return SimpleNamespace(id=s.execute(insert(table).values(**values).returning(table.c.id)).scalar_one())
+
+
+def _old_prospect(s: Session, **kw: object) -> SimpleNamespace:
+    """A prospect row written with Core and ONLY these columns (q16's priority does not exist at this revision)."""
+    table = sa.table("prospects", sa.column("id"), *[sa.column(k) for k in kw])
+    return SimpleNamespace(id=s.execute(insert(table).values(**kw).returning(table.c.id)).scalar_one())
 
 
 def _seed_duplicates(url: str) -> dict[str, int]:
@@ -133,28 +142,25 @@ def _seed_duplicates(url: str) -> dict[str, int]:
         s.add(m)
         e = _old_enquiry(s, company="Beta Corp")
         other = _old_enquiry(s, company="Solo Ltd")
-        keep = Prospect(name="Beta Corp", origin_enquiry_id=e.id, created_at=t, updated_at=t)
-        lose = Prospect(
-            name="Beta Corp", origin_enquiry_id=e.id, stage="contacted", status="open", contacted_at=t, notes="called once",
+        keep = _old_prospect(s, name="Beta Corp", origin_enquiry_id=e.id, created_at=t, updated_at=t)
+        lose = _old_prospect(
+            s, name="Beta Corp", origin_enquiry_id=e.id, stage="contacted", status="open", contacted_at=t, notes="called once",
             created_at=t, updated_at=t,
         )
-        lose2 = Prospect(name="Beta Corp", origin_enquiry_id=e.id, created_at=t, updated_at=t)
-        solo = Prospect(name="Solo Ltd", origin_enquiry_id=other.id, created_at=t, updated_at=t)
-        s.add_all([keep, lose, lose2, solo])
-        s.flush()
+        lose2 = _old_prospect(s, name="Beta Corp", origin_enquiry_id=e.id, created_at=t, updated_at=t)
+        solo = _old_prospect(s, name="Solo Ltd", origin_enquiry_id=other.id, created_at=t, updated_at=t)
         s.execute(update(Enquiry.__table__).where(Enquiry.__table__.c.id == e.id).values(prospect_id=lose.id))  # a LOSER
         k_lead = Lead(prospect_id=keep.id, opened_at=t)
         l_lead = Lead(prospect_id=lose.id, opened_at=t)  # second OPEN lead -> must be closed
         s.add_all([k_lead, l_lead])
         s.flush()
         # Core insert: the FollowUp model also maps q13's ``channel``, which does not exist yet at this revision.
-        s.execute(insert(FollowUp.__table__).values(
-            prospect_id=lose.id, kind="custom", due_on=date(2026, 11, 1), note="ring",
+        s.execute(insert(sa.table("follow_ups", *[sa.column(c) for c in ("prospect_id", "kind", "due_on", "note", "auto", "created_at", "updated_at")])).values(
+            prospect_id=lose.id, kind="custom", due_on=date(2026, 11, 1), note="ring", auto=False,
             created_at=t, updated_at=t,
         ))
         s.add_all([
             Client(name="Beta", prospect_id=lose2.id),
-            OutreachMessage(member_id=m.id, connection_email=m.email, from_addr=m.email, prospect_id=lose.id),
             TimelineEvent(subject_type="prospect", subject_id=lose.id, prospect_id=lose.id, kind="note", body="hist",
                           actor="system", occurred_at=t, created_at=t),
             TimelineEvent(subject_type="lead", subject_id=l_lead.id, prospect_id=lose.id, kind="lead_created",
@@ -164,6 +170,8 @@ def _seed_duplicates(url: str) -> dict[str, int]:
             SheetSource(entity="prospect", key="k", target_type="prospect", target_id=lose.id, sheet_id="s", gid="0",
                            tab_name="T", row_number=2, row_hash="x"),
         ])
+        om = sa.table("outreach_messages", *[sa.column(x) for x in ("member_id", "connection_email", "from_addr", "prospect_id", "created_at", "updated_at")])
+        s.execute(insert(om).values(member_id=m.id, connection_email=m.email, from_addr=m.email, prospect_id=lose.id, created_at=t, updated_at=t))
         c = _old_enquiry(s)  # a contact link target
         from sales0.db.models import Contact
 
@@ -209,8 +217,8 @@ def test_duplicates_are_merged_into_the_oldest_with_all_history_then_the_index_e
     engine = build_engine(url)
     try:
         with Session(engine) as s, pytest.raises(IntegrityError):
-            s.add(Prospect(name="again", origin_enquiry_id=ids["solo"]))
-            s.flush()
+            now = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+            _old_prospect(s, name="again", origin_enquiry_id=ids["solo"], created_at=now, updated_at=now)
     finally:
         engine.dispose()
     command.downgrade(cfg, P_ACT)
@@ -223,9 +231,10 @@ def test_the_dedupe_is_a_noop_without_duplicates_and_upgrade_is_retry_safe(at_p8
     engine = build_engine(url)
     with Session(engine) as s:
         e = _old_enquiry(s)
-        s.add(Prospect(name="One", origin_enquiry_id=e.id))
-        s.add(Prospect(name="Free", origin_enquiry_id=None))
-        s.add(Prospect(name="Free2", origin_enquiry_id=None))  # NULL origins never collide
+        now = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+        _old_prospect(s, name="One", origin_enquiry_id=e.id, created_at=now, updated_at=now)
+        _old_prospect(s, name="Free", origin_enquiry_id=None, created_at=now, updated_at=now)
+        _old_prospect(s, name="Free2", origin_enquiry_id=None, created_at=now, updated_at=now)  # NULL origins never collide
         s.commit()
     engine.dispose()
     command.upgrade(cfg, P_UQ)
