@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Client, Company, Enquiry, Flag, Lead, Prospect, TeamMember
+from sales0.db.models import Client, Company, Contact, Enquiry, Flag, Lead, Prospect, TeamMember
 from sales0.db.models.enums_crm import COMPANY_STAGES, COMPANY_SUB_STATUSES, ENQUIRY_DEAL_STATUSES, PROSPECT_STAGES
 from sales0.services.crm import _keys, characteristics, companies, deals, lifecycle, priority
 from sales0.services.crm._common import page_params
@@ -75,6 +75,10 @@ class EnquiryCard(BaseModel):
     date_added: object | None = None
     source_url: str | None = None
     is_origin: bool = False  # the enquiry that brought its company in: it may also be set to contacted / follow-up N
+    contact_id: int | None = None
+    person_name: str | None = None  # always shown: the contact on the enquiry, else the contact person / post author
+    person_title: str | None = None
+    company_card: CompanyCard | None = None  # stage, owner, characteristics, next follow-up of the company (same as its card)
 
 
 class EnquiryColumn(BaseModel):
@@ -255,8 +259,8 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
                   category: str | None = None, per_column: int = 50) -> EnquiryBoard:
     cols: list[EnquiryColumn] = []
     for status in (*ENQUIRY_ACTIVE_STATUSES, *ENQUIRY_CLOSED_STATUSES):
-        stmt = select(Enquiry, Company.name).outerjoin(Company, Company.id == Enquiry.company_id).where(
-            Enquiry.review_status == "accepted", Enquiry.deal_status == status)
+        stmt = select(Enquiry, Company.name, Contact.full_name, Contact.title).outerjoin(Company, Company.id == Enquiry.company_id).outerjoin(
+            Contact, Contact.id == Enquiry.contact_id).where(Enquiry.review_status == "accepted", Enquiry.deal_status == status)
         if q and q.strip():
             like = f"%{_keys.like_escape(_keys.name_key(q))}%"
             stmt = stmt.where(or_(func.lower(func.coalesce(Company.name, "")).like(like, escape="\\"),
@@ -270,12 +274,17 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
             stmt = stmt.where(Enquiry.company_id.in_(companies_with_trait(characteristic_id)))
         total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
         rows = db.execute(stmt.order_by(priority.rank_order(Enquiry.priority), Enquiry.date_added.desc(), Enquiry.id.desc()).limit(per_column)).all()
-        origins = _origin_ids(db, {e.company_id for e, _ in rows if e.company_id})
+        origins = _origin_ids(db, {e.company_id for e, *_ in rows if e.company_id})
+        company_ids = {e.company_id for e, *_ in rows if e.company_id}
+        by_company = {c.id: c for c in cards_for(db, list(db.scalars(select(Company).where(Company.id.in_(company_ids))))) } if company_ids else {}
         cols.append(EnquiryColumn(key=status, label=deals.deal_label(status), total=total, cards=[
             EnquiryCard(id=e.id, summary=e.requirement_summary, company_id=e.company_id, company_name=name or e.company,
                         deal_status=e.deal_status, priority=e.priority, category=e.category or "relevant_prospect",
-                        date_added=e.date_added, source_url=e.source_url, is_origin=origins.get(e.company_id) == e.id)
-            for e, name in rows
+                        date_added=e.date_added, source_url=e.source_url, is_origin=origins.get(e.company_id) == e.id,
+                        contact_id=e.contact_id, person_name=cname or e.contact_person or e.author_name,
+                        person_title=ctitle or (e.author_headline if not cname and not e.contact_person else None),
+                        company_card=by_company.get(e.company_id))
+            for e, name, cname, ctitle in rows
         ]))
     return EnquiryBoard(columns=cols)
 
