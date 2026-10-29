@@ -96,6 +96,7 @@ HELP: dict[str, str] = {
     "scrape_keyword_pause_min_s": "Min pause between phrases (seconds).",
     "scrape_keyword_pause_max_s": "Max pause between phrases (seconds).",
     "scrape_max_scrolls": "Max scrolls per search pass.",
+    "scrape_pace_scale": "Test-speed multiplier on every scraper wait (default 1.0 = unchanged). Honoured only with SALES0_LINKEDIN_MODE=fixture (clamped 0.05-1.0); any value below 1.0 is rejected at startup in live mode.",
     "scrape_no_growth_scrolls": "Consecutive scrolls without new cards that end a pass.",
     "scrape_sort": "`latest` or `relevance` search ordering.",
     "scrape_date_filters": "Comma list of date filters, one search pass each: `past-24h`, `past-week`, `past-month`.",

@@ -105,6 +105,15 @@ def _sdui_page(
 REJECTED_COOKIE_PREFIXES = ("invalid", "expired", "revoked")
 
 
+def _lazy_delay_ms(request: Request) -> int:
+    """The lazy-reveal delay, scaled by the same pace factor as the scraper's settle window (so it always stays
+    shorter than that window). Unchanged (700) at the default scale."""
+    from sales0.config import get_settings
+    from sales0.scraper.pacing import scaled_ms
+
+    return scaled_ms(get_settings(), LAZY_REVEAL_DELAY_MS)
+
+
 def _logged_in(request: Request) -> bool:
     value = request.cookies.get(SESSION_COOKIE)
     return bool(value) and not value.lower().startswith(REJECTED_COOKIE_PREFIXES)
@@ -253,7 +262,7 @@ def search(
             return _to(request, "fixture_checkpoint")  # LinkedIn challenges the next page load
         cards = sdui_cards(posts_for(plan.source_keyword), key)
         lazy = {
-            "delay_ms": LAZY_REVEAL_DELAY_MS,
+            "delay_ms": _lazy_delay_ms(request),
             "checkpoint_at": plan.checkpoint_at_scroll,
             "next_page_url": str(request.url.include_query_params(page=2)),
             "voyager_url": str(request.url_for("fixture_voyager_clusters")) if plan.background_rate_limit else None,
