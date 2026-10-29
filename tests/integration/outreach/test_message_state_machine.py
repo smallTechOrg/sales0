@@ -51,7 +51,7 @@ def test_approve_then_send_delivers_once_with_the_deck_and_records_everything(db
     assert messages.member_sends_today(db, team.ann.id) == 1
 
 
-def test_hash_binds_to_deck_bytes_and_a_changed_deck_file_blocks_the_send(db: Session, team: Team, deck) -> None:
+def test_hash_binds_to_deck_bytes_and_a_changed_deck_blocks_the_send(db: Session, team: Team, deck) -> None:
     plain = make_message(db, team.ann)
     with_deck = make_message(db, team.ann, deck_id=deck.id)
     messages.approve(db, plain.id, team.ann)
@@ -62,7 +62,7 @@ def test_hash_binds_to_deck_bytes_and_a_changed_deck_file_blocks_the_send(db: Se
 
     (get_settings().data_path / deck.stored_path).write_bytes(PDF + b"swapped after approval")
     out = messages.send(db, with_deck.id, team.ann)
-    assert out.state == "failed" and out.send_outcome_unknown is False and "changed on disk" in (out.error or "")
+    assert out.state == "failed" and out.send_outcome_unknown is False and "does not match its hash" in (out.error or "")
     assert team.gmail[team.ann.id].sent == [] and not any(c[0] == "create_draft" for c in team.gmail[team.ann.id].calls)
 
 

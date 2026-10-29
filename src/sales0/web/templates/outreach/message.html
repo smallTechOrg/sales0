@@ -31,7 +31,14 @@
       </div>
     {% endif %}
     {% if msg.state == "sent" %}
-      <div class="flash flash--ok" id="sent-notice" role="status">Sent {{ msg.sent_at|localdt }} from {{ msg.from_addr }}. Gmail message id <span class="mono">{{ msg.gmail_message_id }}</span>, thread <span class="mono">{{ msg.gmail_thread_id }}</span>. It cannot be sent again.</div>
+      <div class="flash flash--ok" id="sent-notice" role="status">Sent {{ msg.sent_at|localdt }} from {{ msg.from_addr }}. Gmail message id <span class="mono">{{ msg.gmail_message_id }}</span>, thread <span class="mono">{{ msg.gmail_thread_id }}</span>. It cannot be sent again. Attachment: <strong id="sent-attachment">{{ attachment or "none" }}</strong>.</div>
+    {% endif %}
+    {% if msg.state in ("draft", "edited", "approved", "failed") %}
+      {% if deck_missing %}
+        <div class="flash flash--error" id="attachment-missing" role="alert">The attached deck <strong>{{ deck.filename }}</strong> has no file (file missing - <a href="/outreach/decks">upload it again</a>). It cannot be approved or sent until you upload it again or pick another deck.</div>
+      {% elif not deck %}
+        <div class="flash flash--error" id="no-attachment-warning" role="alert"><strong>No attachment.</strong> This email will go out without a deck. {% if can_edit %}Pick one under "Attached deck" and save if it should have one.{% endif %}</div>
+      {% endif %}
     {% endif %}
     {% if msg.state == "rejected" %}<div class="flash flash--error" id="rejected-notice" role="status">Rejected - this message will not be sent.</div>{% endif %}
     {% if msg.state == "failed" %}
@@ -62,7 +69,7 @@
               <div class="field"><label class="field__label" for="deck_id">Attached deck</label>
                 <select class="input" id="deck_id" name="deck_id">
                   <option value="none"{% if not msg.deck_id %} selected{% endif %}>No attachment</option>
-                  {% for d in decks %}<option value="{{ d.id }}"{% if d.id == msg.deck_id %} selected{% endif %}>{{ d.name }} ({{ d.filename }})</option>{% endfor %}
+                  {% for d in decks %}<option value="{{ d.id }}"{% if d.id == msg.deck_id %} selected{% endif %}{% if d.content_missing and d.id != msg.deck_id %} disabled{% endif %}>{{ d.name }} ({{ d.filename }}, {{ (d.size_bytes / 1024)|round|int }} KB){% if d.content_missing %} - file missing, upload again{% endif %}</option>{% endfor %}
                   {% if deck and not deck.active %}<option value="{{ deck.id }}" selected>{{ deck.name }} (deleted)</option>{% endif %}
                 </select></div>
               <div><button class="btn" type="submit" id="save-btn">Save changes</button></div>
@@ -73,11 +80,11 @@
               <dt>Cc</dt><dd>{{ msg.cc_addrs or "-" }}</dd>
               <dt>From</dt><dd>{{ msg.from_addr }}</dd>
               <dt>Subject</dt><dd>{{ msg.subject }}</dd>
-              <dt>Attachment</dt><dd>{% if deck %}{{ deck.filename }}{% else %}none{% endif %}</dd>
+              <dt>Attachment</dt><dd id="attachment-kv">{{ attachment or "none" }}</dd>
             </dl>
             <pre class="mail-body" id="message-body">{{ msg.body }}</pre>
           {% endif %}
-          {% if deck %}<p class="muted">Attached: <a href="/outreach/decks/{{ deck.id }}/file" target="_blank" rel="noopener">{{ deck.filename }}</a> ({{ (deck.size_bytes / 1024)|round|int }} KB)</p>{% endif %}
+          {% if deck %}<p class="muted" id="attachment-line">Attached: <a href="/outreach/decks/{{ deck.id }}/file" target="_blank" rel="noopener">{{ deck.filename }}</a> ({{ (deck.size_bytes / 1024)|round|int }} KB){% if deck_missing %} - <strong>file missing, upload again</strong>{% endif %}</p>{% endif %}
         </div>
       </section>
 
@@ -90,10 +97,11 @@
               <form method="post" action="/outreach/messages/{{ msg.id }}/approve">
                 <button class="btn btn--primary" id="approve-btn" type="submit"{% if placeholders %} disabled{% endif %}>Approve this exact version{% if hash_prefix %} (hash {{ hash_prefix }}){% endif %}</button>
               </form>
+              <p id="approve-attachment">Attachment: <strong>{{ attachment or "none - no deck will be attached" }}</strong></p>
               <p class="muted">Approving locks in the current text, recipients and deck. Any later edit cancels the approval.</p>
             {% endif %}
             {% if msg.state == "approved" %}
-              <p id="approved-note"><span class="badge badge--info">Approved</span> by {{ owner_name }}{% if msg.approved_at %} {{ msg.approved_at|localdt }}{% endif %}, content hash <span class="mono" id="approved-hash">{{ approved_hash }}</span>.</p>
+              <p id="approved-note"><span class="badge badge--info">Approved</span> by {{ owner_name }}{% if msg.approved_at %} {{ msg.approved_at|localdt }}{% endif %}, content hash <span class="mono" id="approved-hash">{{ approved_hash }}</span>. Attachment: <strong id="approved-attachment">{{ attachment or "none" }}</strong>.</p>
             {% endif %}
             {% if can_send %}
               <form method="post" action="/outreach/messages/{{ msg.id }}/send" id="send-form" data-busy-submit data-busy-disable data-busy-text="Sending...">

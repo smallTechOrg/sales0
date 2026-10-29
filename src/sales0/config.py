@@ -121,7 +121,12 @@ class Settings(BaseSettings):
     admin_email: str = "admin@smalltech.in"
     admin_name: str = "Admin"
     gmail_daily_send_cap: int = Field(40, ge=0)  # 0 = sending disabled
-    deck_max_bytes: int = Field(10 * 1024 * 1024, gt=0)  # max size of one uploaded deck PDF
+    # max size of one uploaded deck PDF (stored ONCE per sha256). Capped at 10 MB: base64 in the email stays well under
+    # Gmail's 25 MB and the upload under Cloud Run's 32 MB request limit; keeps storage small.
+    deck_max_bytes: int = Field(10 * 1024 * 1024, gt=0, le=10 * 1024 * 1024)
+    # Google Cloud Storage bucket for deck PDFs (hosted: REQUIRED, uploads/sends refuse without it). Unset locally:
+    # decks are files under <data_dir>/decks/.
+    attachments_bucket: str | None = None
     # Only for a non-loopback deployment (e.g. https://sales.example.com); locally the OAuth
     # redirect URI is built from the request's own loopback host and port.
     public_base_url: str | None = None
@@ -394,7 +399,7 @@ class Settings(BaseSettings):
             )
         return raw
 
-    @field_validator("data_dir", "database_url", "test_database_url", "log_file", "db_host", "worker_server_url", "worker_name", mode="before")
+    @field_validator("data_dir", "database_url", "test_database_url", "log_file", "db_host", "worker_server_url", "worker_name", "attachments_bucket", mode="before")
     @classmethod
     def _strip_whitespace(cls, value: Any) -> Any:
         # No comment stripping here: URLs and paths may legitimately contain '#'.

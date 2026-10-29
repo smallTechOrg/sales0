@@ -7,6 +7,8 @@ second ``link`` pass (see ``sales0.services.data_import``). Re-running is safe (
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import shutil
 import tempfile
@@ -85,12 +87,64 @@ def push(
             if current_revision(engine) != head_revision():
                 out("Source schema is behind; upgrading the COPY (your original file is untouched)...")
                 command.upgrade(alembic_config(url), "head")
-            return _push_engine(engine, client, dry_run, out)
+            return _push_engine(engine, client, dry_run, out, legacy_dirs=_legacy_dirs(source))
         finally:
             engine.dispose()
 
 
-def _push_engine(engine: Any, client: WorkerClient | None, dry_run: bool, out: Callable[[str], None]) -> bool:
+def _legacy_dirs(source: Path) -> list[Path]:
+    """Where the local deck files are (``<dir>/decks/<sha>.pdf``): next to the database, then SALES0_DATA_DIR."""
+    dirs = [source.resolve().parent]
+    try:
+        from sales0.config import get_settings
+
+        dirs.append(get_settings().data_path)
+    except Exception:  # noqa: BLE001 - no settings: the database's own directory is enough
+        pass
+    return list(dict.fromkeys(dirs))
+
+
+def deck_bytes(conn: Any, legacy_dirs: list[Path]) -> Iterator[tuple[int, str, str, bytes | None]]:
+    """(id, filename, sha256, bytes or None) of every local deck: its file ``<dir>/<stored_path>`` with the right hash."""
+    for deck_id, filename, sha, stored_path in conn.execute(text("SELECT id, filename, sha256, stored_path FROM decks ORDER BY id")):
+        data: bytes | None = None
+        if stored_path and not Path(stored_path).is_absolute() and ".." not in Path(stored_path).parts:
+            for base in legacy_dirs:
+                try:
+                    found = (base / stored_path).read_bytes()
+                except OSError:
+                    continue
+                if hashlib.sha256(found).hexdigest() == sha:
+                    data = found
+                    break
+        yield int(deck_id), str(filename), str(sha), data
+
+
+def push_decks(conn: Any, client: WorkerClient, out: Callable[[str], None], legacy_dirs: list[Path]) -> int:
+    """Send every deck's PDF in ``DECK_CHUNK_BYTES`` pieces (the rows went first). Returns how many are on the server."""
+    done = 0
+    for deck_id, filename, sha, data in deck_bytes(conn, legacy_dirs):
+        if not data:
+            out(f"  decks: '{filename}' has no file locally - it stays 'file missing' on the server; upload it again there.")
+            continue
+        step = plan.DECK_CHUNK_BYTES
+        skipped = False
+        for offset in range(0, len(data), step):
+            res = client.import_deck_chunk(p.ImportDeckChunkRequest(
+                deck_id=deck_id, sha256=sha, offset=offset, total=len(data),
+                data_b64=base64.b64encode(data[offset:offset + step]).decode("ascii"),
+            ))  # fmt: skip
+            skipped = res.skipped
+            if res.skipped or res.complete:
+                break
+        done += 1
+        out(f"  decks: '{filename}' ({len(data) // 1024} KB) {'already there' if skipped else 'uploaded'}")
+    return done
+
+
+def _push_engine(
+    engine: Any, client: WorkerClient | None, dry_run: bool, out: Callable[[str], None], legacy_dirs: list[Path] | None = None
+) -> bool:
     counts: dict[str, int] = {}
     with engine.connect() as conn:
         emails = {str(r[0]): r[1] for r in conn.execute(text("SELECT id, email FROM team_members"))}
@@ -103,6 +157,9 @@ def _push_engine(engine: Any, client: WorkerClient | None, dry_run: bool, out: C
             if n:
                 out(f"  {name:28} {n:>7}")
         out("Never pushed (hosted keeps its own): " + ", ".join(f"{n}({c})" for n, c in skipped.items() if c))
+        if counts.get("decks"):
+            have = sum(1 for *_, data in deck_bytes(conn, legacy_dirs or []) if data is not None)
+            out(f"Deck files (sent one at a time, in pieces): {have} of {counts['decks']} found locally")
         if dry_run or client is None:
             out("Dry run: nothing was sent.")
             return True
@@ -114,6 +171,8 @@ def _push_engine(engine: Any, client: WorkerClient | None, dry_run: bool, out: C
                 client.import_batch(p.ImportBatchRequest(table=table.name, phase="insert", rows=chunk, member_emails=emails))
                 sent += len(chunk)
                 out(f"  {table.name}: {sent}/{counts[table.name]}")
+        if counts.get("decks"):
+            push_decks(conn, client, out, legacy_dirs or [])
         for table in order:
             deferred = list(plan.deferred_columns(table.name))
             if not deferred or not counts[table.name]:

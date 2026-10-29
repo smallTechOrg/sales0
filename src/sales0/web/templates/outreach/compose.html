@@ -21,6 +21,14 @@
       <section class="card" aria-labelledby="recipient-title">
         <div class="card__header"><h2 id="recipient-title">1. Recipient</h2></div>
         <div class="card__body stack">
+          <div class="grid-2" id="recipient-picker">
+            <div class="field"><label class="field__label" for="recipient-pick">Pick a saved contact{% if form.prospect_id or form.company_id %} of this prospect / company{% endif %}</label>
+              {% with selected_email=form.email %}{% include "outreach/_recipients.html" %}{% endwith %}
+              <p class="muted" id="recipient-help">Choosing one fills Email and Contact name. Suppressed addresses are shown but cannot be picked. Someone new? Just type the address.</p></div>
+            <div class="field"><label class="field__label" for="contact_q">Search all contacts</label>
+              <input class="input" id="contact_q" name="contact_q" type="search" maxlength="100" placeholder="name, email or company"
+                     hx-get="/outreach/compose/contacts" hx-trigger="input changed delay:300ms, search" hx-target="#recipient-pick" hx-swap="outerHTML" hx-include="this"></div>
+          </div>
           <div class="grid-2">
             <div class="field"><label class="field__label" for="contact_name">Contact name</label>
               <input class="input" id="contact_name" name="contact_name" maxlength="200" value="{{ form.contact_name }}" placeholder="Priya Sharma"></div>

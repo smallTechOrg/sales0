@@ -193,6 +193,22 @@ class ImportBatchResponse(_Strict):
     updated: int
 
 
+class ImportDeckChunkRequest(_Strict):
+    """One piece of a deck PDF (``decks.content``), base64; pieces are sent in order."""
+
+    deck_id: int = Field(ge=1)
+    sha256: str = Field(min_length=64, max_length=64)
+    offset: int = Field(ge=0)
+    total: int = Field(ge=1)
+    data_b64: str = Field(max_length=7 * 1024 * 1024)
+
+
+class ImportDeckChunkResponse(_Strict):
+    stored: int
+    complete: bool
+    skipped: bool = False
+
+
 class ImportFinalizeRequest(_Strict):
     counts: dict[str, int]  # table -> rows the laptop read
 

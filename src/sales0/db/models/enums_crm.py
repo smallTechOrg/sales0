@@ -16,6 +16,8 @@ LEAD_OPENED_BY: tuple[str, ...] = ("reply", "manual", "sheet")
 CLIENT_STATUSES: tuple[str, ...] = ("active", "legacy")
 CLIENT_SOURCES: tuple[str, ...] = ("lead", "legacy_import", "manual", "sheet")
 FOLLOW_UP_KINDS: tuple[str, ...] = ("follow_up_1", "follow_up_2", "final_follow_up", "custom")
+# How a contact / follow-up was made (follow_ups.channel and timeline data["channel"]). No CHECK (no table rebuild).
+FOLLOW_UP_CHANNELS: tuple[str, ...] = ("whatsapp", "linkedin", "email", "call")
 FLAG_ENTITY_TYPES: tuple[str, ...] = ("prospect", "enquiry", "contact", "company", "client", "lead")
 FLAG_KINDS: tuple[str, ...] = ("repeat_poster", "competitor_mention", "no_follow_up", "source_row_removed")
 FLAG_SOURCES: tuple[str, ...] = ("auto", "user")

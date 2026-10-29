@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +27,7 @@ from sales0.db.models import (
     SheetSource,
     TeamMember,
 )
+from sales0.config import get_settings
 from sales0.db.models.enums_crm import PROSPECT_STAGES
 from sales0.errors import DomainError
 from sales0.scraper.urls import link_kind_of
@@ -134,7 +135,7 @@ def _require_open(p: Prospect) -> None:
 # ---------------------------------------------------------------------------- stage engine
 def _set_stage(
     db: Session, p: Prospect, stage: str, *, actor: Actor, now: datetime | None, note: str | None = None,
-    when: datetime | None = None, extra: dict | None = None, schedule: bool = True,
+    when: datetime | None = None, extra: dict | None = None, schedule: bool = True, due_dates: dict | None = None,
 ) -> bool:
     """Move ``p`` to ``stage`` (any direction). Returns False when nothing changed."""
     stamp = now_or(now)
@@ -158,7 +159,7 @@ def _set_stage(
             actor=actor, occurred_at=stamp,
         )
     if first_contact and schedule:
-        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp)  # type: ignore[arg-type]
+        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates)  # type: ignore[arg-type]
     if stage != "new":
         followups.complete_up_to(db, p.id, stage, actor=actor, now=stamp)
     followups.refresh_next(db, p.id)
@@ -176,31 +177,62 @@ def move_stage(
     return _view(db, p)
 
 
-def advance_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, now: datetime | None, reason: str | None = None) -> None:
+def advance_to(
+    db: Session, prospect_id: int, stage: str, *, actor: Actor, now: datetime | None, reason: str | None = None,
+    extra: dict | None = None,
+) -> None:
     """Move forward only (never back), and only an open prospect; used by completed reminders."""
     p = db.get(Prospect, prospect_id)
     if p is None or p.status != "open" or stage not in PROSPECT_STAGES or stage_rank(stage) <= stage_rank(p.stage):
         return
-    _set_stage(db, p, stage, actor=actor, now=now, note=reason)
+    _set_stage(db, p, stage, actor=actor, now=now, note=reason, extra=extra)
 
 
 def mark_contacted(
     db: Session, prospect_id: int, *, when: datetime | None = None, actor: Actor = TEAM, channel: str = "manual",
-    note: str | None = None, now: datetime | None = None,
+    note: str | None = None, now: datetime | None = None, due_dates: dict | None = None,
 ) -> ProspectView:
     p = _get(db, prospect_id)
     _require_open(p)
     stamp = now_or(now)
     if p.stage == "new":
-        _set_stage(db, p, "contacted", actor=actor, now=stamp, note=note, when=when, extra={"channel": channel})
+        _set_stage(db, p, "contacted", actor=actor, now=stamp, note=note, when=when, extra={"channel": channel}, due_dates=due_dates)
     elif p.contacted_at is None or p.contacted_estimated:
         p.contacted_at, p.contacted_estimated, p.updated_at = (when or stamp), False, stamp
         db.flush()
         timeline.add_event(db, subject_type="prospect", subject_id=p.id, kind="stage_change",
                            body="Contact date recorded" + (f" - {note.strip()}" if note and note.strip() else ""),
                            data={"channel": channel, "contacted_at": p.contacted_at.isoformat()}, actor=actor, occurred_at=stamp)
-        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp)
+        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates)
     return _view(db, p)
+
+
+def log_contact(
+    db: Session, prospect_id: int, *, channel: str, note: str | None = None, contacted_on: date | None = None,
+    due_dates: dict | None = None, actor: Actor = TEAM, now: datetime | None = None,
+) -> ProspectView:
+    """The FIRST contact made by hand (WhatsApp / LinkedIn / Email / Call): New -> Contacted, the contact date recorded
+    and the three follow-ups scheduled (the agent's dates, else contact day + offsets). The stage_change timeline entry
+    carries the channel and the note."""
+    ch = followups.check_channel(channel, required=True)
+    p = _get(db, prospect_id)
+    _require_open(p)
+    if p.stage != "new" and p.contacted_at is not None and not p.contacted_estimated:
+        raise invalid("already_contacted", "This prospect is already contacted - mark its follow-ups done instead.")
+    stamp = now_or(now)
+    tz = get_settings().tz
+    today = today_local(stamp)
+    day = contacted_on or today
+    if not isinstance(day, date) or day > today or day.year < 2000:
+        raise invalid("contact_invalid", "The contact date must be today or earlier.")
+    when = stamp if day == today else datetime.combine(day, time(12, 0), tzinfo=tz).astimezone(UTC)
+    for kind, value in (due_dates or {}).items():
+        if value is not None and value < day:
+            raise invalid("followup_invalid", f"{followups.KIND_LABELS.get(kind, kind)} cannot be before the contact date.")
+    return mark_contacted(
+        db, p.id, when=when, actor=actor, channel=ch or "manual", note=(note or "").strip() or None, now=stamp,
+        due_dates={k: v for k, v in (due_dates or {}).items() if v is not None} or None,
+    )  # fmt: skip
 
 
 def record_email_contact(
@@ -743,7 +775,8 @@ def local_today(now: datetime | None = None) -> date:
 
 
 __all__ = [
-    "SYSTEM", "add_contact", "advance_to", "apply_accept_choices", "close", "create_manual", "ensure_for_enquiry", "get_prospect", "linked_enquiry_view",
+    "SYSTEM", "add_contact", "advance_to", "apply_accept_choices", "close", "create_manual", "ensure_for_enquiry", "get_prospect",
+    "linked_enquiry_view", "log_contact",
     "list_prospects", "mark_contacted", "move_stage", "record_email_contact", "record_response", "reopen", "resolve_for_message", "set_tracked",
     "update", "views_for",
 ]

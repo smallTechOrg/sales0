@@ -149,7 +149,7 @@ def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
             .order_by(FollowUp.due_on, FollowUp.id).limit(1)
         )
         if earliest is not None:
-            followups.complete(db, earliest.id, actor=actor, note="follow-up email sent", now=ev.sent_at)
+            followups.complete(db, earliest.id, actor=actor, note="follow-up email sent", channel="email", now=ev.sent_at)
 
 
 # ---------------------------------------------------------------------------- reply received

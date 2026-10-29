@@ -34,7 +34,7 @@ def body_limit(method: str, path: str) -> tuple[int, str, str]:
     if method == "POST" and path == "/outreach/decks":
         limit = get_settings().deck_max_bytes
         return limit + MULTIPART_OVERHEAD, "deck_too_large", f"That deck is over {limit // (1024 * 1024)} MB."
-    if method == "POST" and path == "/api/worker/import/batch":
+    if method == "POST" and path in ("/api/worker/import/batch", "/api/worker/import/deck-chunk"):
         return 8 * 1024 * 1024, "payload_too_large", "That import batch is over 8 MB."
     return DEFAULT_BODY_LIMIT, "payload_too_large", "That request is too large."
 

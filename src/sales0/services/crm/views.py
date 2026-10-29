@@ -33,6 +33,11 @@ class FollowUpView(_View):
     due_on: date
     note: str | None = None
     overdue: bool = False
+    auto: bool = False
+    done: bool = False
+    done_at: datetime | None = None
+    channel: str | None = None  # whatsapp | linkedin | email | call
+    channel_label: str | None = None
 
 
 class DuePanel(_View):

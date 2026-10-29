@@ -1,25 +1,72 @@
-{# Needs: follow_ups (list[FollowUpView]), base ("/pipeline/prospects/3"), today; oob optional. #}
+{# Needs: follow_ups (list[FollowUpView]), base ("/pipeline/prospects/3"), today, can_act; oob optional.
+   Prospect pages also pass channels [(key, label)], needs_contact and fu_plan [(kind, label, date)]. #}
+{% set channels = channels if channels is defined and channels else [("whatsapp", "WhatsApp"), ("linkedin", "LinkedIn"), ("email", "Email"), ("call", "Call")] %}
+{% set open_fus = follow_ups|rejectattr("done")|list %}
+{% set done_fus = follow_ups|selectattr("done")|list %}
 <section class="card" id="follow-ups" aria-labelledby="fu-title"{% if oob %} hx-swap-oob="outerHTML:#follow-ups"{% endif %}>
   <div class="card__header"><h2 id="fu-title">Follow-ups</h2></div>
   <div class="card__body">
-    {% if follow_ups %}
-      {% for f in follow_ups %}
-        <div class="due-row{% if f.overdue %} due-row--overdue{% endif %}" id="fu-{{ f.id }}">
-          <div class="due-row__main"><strong>{{ f.kind_label }}</strong> <span class="due-date">{{ f.due_on.strftime("%d %b %Y") }}{% if f.overdue %} (overdue){% endif %}</span>
-            {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}</div>
-          {% if can_act %}
-          <div class="due-row__actions">
-            <form method="post" action="/pipeline/followups/{{ f.id }}/done" hx-post="/pipeline/followups/{{ f.id }}/done" hx-swap="none"><button class="btn btn--sm btn--primary" type="submit">Done</button></form>
-            <form method="post" action="/pipeline/followups/{{ f.id }}/snooze" hx-post="/pipeline/followups/{{ f.id }}/snooze" hx-swap="none">
-              <label class="visually-hidden" for="fu-snooze-{{ f.id }}">Snooze until</label>
-              <input class="input input--date" id="fu-snooze-{{ f.id }}" type="date" name="due_on" required min="{{ today.isoformat() }}" value="{{ (today + one_day).isoformat() }}">
-              <button class="btn btn--sm" type="submit">Snooze</button></form>
-          </div>
-          {% endif %}
+    {% if needs_contact is defined and needs_contact %}
+      {# Not contacted yet: the three follow-ups are planned from the contact day; they become live when the contact is logged. #}
+      <form class="stack" id="log-contact-form" method="post" action="{{ base }}/contact" hx-post="{{ base }}/contact" hx-swap="none">
+        <p class="muted" id="fu-planned-note">Not contacted yet. Log the first contact (or send an email from sales0) and these three follow-ups start. Adjust the dates now if you like.</p>
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="lc-channel">How did you contact them?</label>
+            <select class="select" id="lc-channel" name="channel" required>
+              <option value="">Choose...</option>
+              {% for key, label in channels %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label class="field__label" for="lc-date">Contact date</label>
+            <input class="input input--date" id="lc-date" type="date" name="contacted_on" max="{{ today.isoformat() }}" value="{{ today.isoformat() }}"></div>
         </div>
-      {% endfor %}
-    {% else %}
+        <div class="field"><label class="field__label" for="lc-note">Note (optional)</label>
+          <input class="input" id="lc-note" name="note" maxlength="300" placeholder="What you sent / what they said"></div>
+        <div class="grid-2" id="fu-plan">
+          {% for kind, label, due in fu_plan %}
+            <div class="field"><label class="field__label" for="lc-{{ kind }}">{{ label }} (planned)</label>
+              <input class="input input--date" id="lc-{{ kind }}" type="date" name="due_{{ kind }}" value="{{ due.isoformat() }}" data-planned="{{ kind }}"></div>
+          {% endfor %}
+        </div>
+        <div><button class="btn btn--primary" id="btn-log-contact" type="submit">Log contact</button></div>
+      </form>
+    {% endif %}
+
+    {% for f in open_fus %}
+      <div class="due-row{% if f.overdue %} due-row--overdue{% endif %}" id="fu-{{ f.id }}">
+        <div class="due-row__main"><strong>{{ f.kind_label }}</strong> <span class="due-date">{{ f.due_on.strftime("%d %b %Y") }}{% if f.overdue %} (overdue){% endif %}</span>
+          {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}</div>
+        {% if can_act %}
+        <div class="due-row__actions">
+          <form class="inline-form" method="post" action="/pipeline/followups/{{ f.id }}/done" hx-post="/pipeline/followups/{{ f.id }}/done" hx-swap="none" id="fu-done-{{ f.id }}">
+            <label class="visually-hidden" for="fu-ch-{{ f.id }}">How was {{ f.kind_label }} done</label>
+            <select class="select" id="fu-ch-{{ f.id }}" name="channel" required>
+              <option value="">How?</option>
+              {% for key, label in channels %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select>
+            <label class="visually-hidden" for="fu-note-{{ f.id }}">Note</label>
+            <input class="input" id="fu-note-{{ f.id }}" name="note" maxlength="300" placeholder="Note (optional)">
+            <button class="btn btn--sm btn--primary" type="submit">Mark done</button></form>
+          <form class="inline-form" method="post" action="/pipeline/followups/{{ f.id }}/snooze" hx-post="/pipeline/followups/{{ f.id }}/snooze" hx-swap="none" id="fu-date-{{ f.id }}">
+            <label class="visually-hidden" for="fu-snooze-{{ f.id }}">Due date of {{ f.kind_label }}</label>
+            <input class="input input--date" id="fu-snooze-{{ f.id }}" type="date" name="due_on" required value="{{ f.due_on.isoformat() }}">
+            <button class="btn btn--sm" type="submit">Change date</button></form>
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+    {% if not open_fus and not (needs_contact is defined and needs_contact) %}
       <p class="muted" id="fu-empty">No open follow-ups.{% if no_follow_up %} This prospect is marked Do not follow up.{% endif %}</p>
+    {% endif %}
+    {% if done_fus %}
+      <div class="stack" id="fu-done-list">
+        {% for f in done_fus %}
+          <div class="due-row due-row--done" id="fu-{{ f.id }}">
+            <div class="due-row__main"><strong>{{ f.kind_label }}</strong> <span class="badge">Done{% if f.channel_label %} via {{ f.channel_label }}{% endif %}</span>
+              <span class="muted">{{ f.done_at|localdt("%d %b %Y") if f.done_at else "" }}</span>
+              {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}</div>
+          </div>
+        {% endfor %}
+      </div>
     {% endif %}
     {% if can_act %}
     <form class="inline-form" method="post" action="{{ base }}/followup" hx-post="{{ base }}/followup" hx-swap="none" data-reset-on-success>

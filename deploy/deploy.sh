@@ -3,12 +3,13 @@
 #
 #   deploy/deploy.sh                 DRY RUN (default): prints every command, executes nothing, touches no cloud resource
 #   deploy/deploy.sh --apply         runs them (the orchestrator does this after the resource list is approved)
-#   deploy/deploy.sh --step secrets  only one step: secrets | db-user | deploy | verify  (repeatable)
+#   deploy/deploy.sh --step secrets  only one step: secrets | db-user | bucket | deploy | verify  (repeatable)
 #   deploy/deploy.sh rollback [REVISION]   print (or with --apply run) the traffic switch back to a revision
 #
 # Idempotent: every command is guarded ("create only if missing"), so re-running never rotates a secret or
 # re-creates a role. Secret VALUES are generated on the fly and piped into Secret Manager; they are never printed.
-# Creates ONLY: role sales0_app on ai-agent-db, secrets sales0-*, Cloud Run service sales0. No Cloud Scheduler, no new
+# Creates ONLY: role sales0_app on ai-agent-db, secrets sales0-*, bucket sales0-attachments-<project number> (deck
+# PDFs; objectAdmin on THAT bucket only for the runtime SA), Cloud Run service sales0. No Cloud Scheduler, no new
 # Cloud SQL instance. The database `sales0` itself is created by the app at first boot (see docs/deploy.md).
 set -euo pipefail
 
@@ -23,6 +24,7 @@ DB_NAME="${DB_NAME:-sales0}"
 DB_USER="${DB_USER:-sales0_app}"
 PUBLIC_URL="${PUBLIC_URL:-https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app}"   # deterministic Cloud Run URL form
 GOOGLE_CLIENT_SECRET_FILE="${GOOGLE_CLIENT_SECRET_FILE:-data/google_client_secret.json}"
+BUCKET="${BUCKET:-sales0-attachments-${PROJECT_NUMBER}}"   # outreach attachments (deck PDFs), SALES0_ATTACHMENTS_BUCKET
 
 APPLY=0
 STEPS=()
@@ -38,7 +40,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-[ ${#STEPS[@]} -eq 0 ] && STEPS=(secrets db-user deploy verify)
+[ ${#STEPS[@]} -eq 0 ] && STEPS=(secrets db-user bucket deploy verify)
 
 if [ "$APPLY" -eq 1 ]; then echo "# MODE: APPLY (executing)"; else echo "# MODE: DRY RUN (nothing is executed; pass --apply to run)"; fi
 echo "# project=$PROJECT region=$REGION instance=$INSTANCE service=$SERVICE db=$DB_NAME role=$DB_USER"
@@ -80,6 +82,14 @@ step_db_user() {
   run "gcloud sql users list --instance $INSTANCE --project $PROJECT --format='value(name)' | grep -qx $DB_USER || gcloud sql users create $DB_USER --instance $INSTANCE --project $PROJECT --password \"\$(gcloud secrets versions access latest --secret sales0-db-password --project $PROJECT)\""
 }
 
+step_bucket() {
+  note "step: bucket (deck PDFs; create-if-missing: $REGION, Standard, uniform access, public access prevention enforced,"
+  note "default soft delete kept; roles/storage.objectAdmin for $SA on THIS bucket only; env var on the service)"
+  run "gcloud storage buckets describe gs://$BUCKET --project $PROJECT >/dev/null 2>&1 || gcloud storage buckets create gs://$BUCKET --project $PROJECT --location $REGION --default-storage-class STANDARD --uniform-bucket-level-access --public-access-prevention"
+  run "gcloud storage buckets add-iam-policy-binding gs://$BUCKET --project $PROJECT --member=serviceAccount:$SA --role=roles/storage.objectAdmin >/dev/null"
+  run "gcloud run services describe $SERVICE --project $PROJECT --region $REGION >/dev/null 2>&1 && gcloud run services update $SERVICE --project $PROJECT --region $REGION --update-env-vars SALES0_ATTACHMENTS_BUCKET=$BUCKET || true"
+}
+
 step_deploy() {
   note "step: deploy (Cloud Build from ./Dockerfile into Artifact Registry repo cloud-run-source-deploy, then Cloud Run)"
   note "Direct VPC egress to the private Cloud SQL IP, same as glitch-api: --network/--subnet default, private-ranges-only"
@@ -88,7 +98,7 @@ step_deploy() {
     --allow-unauthenticated --port 8080 \\
     --min-instances 0 --max-instances 1 --timeout 900 --concurrency 10 --cpu 1 --memory 1Gi --cpu-boost \\
     --network default --subnet default --vpc-egress private-ranges-only \\
-    --set-env-vars SALES0_MODE=hosted,SALES0_DB_HOST=$DB_HOST,SALES0_DB_NAME=$DB_NAME,SALES0_DB_USER=$DB_USER,SALES0_DB_SSLMODE=require,SALES0_PUBLIC_BASE_URL=$PUBLIC_URL,SALES0_GOOGLE_CLIENT_SECRET_PATH=/secrets/google/google_client_secret.json \\
+    --set-env-vars SALES0_MODE=hosted,SALES0_DB_HOST=$DB_HOST,SALES0_DB_NAME=$DB_NAME,SALES0_DB_USER=$DB_USER,SALES0_DB_SSLMODE=require,SALES0_PUBLIC_BASE_URL=$PUBLIC_URL,SALES0_GOOGLE_CLIENT_SECRET_PATH=/secrets/google/google_client_secret.json,SALES0_ATTACHMENTS_BUCKET=$BUCKET \\
     --set-secrets SALES0_DB_PASSWORD=sales0-db-password:latest,SALES0_SECRET_KEY=sales0-secret-key:latest,SALES0_WORKER_TOKEN=sales0-worker-token:latest,SALES0_APP_PASSWORD=sales0-app-password:latest,SALES0_ANTHROPIC_API_KEY=sales0-anthropic-api-key:latest,SALES0_ANTHROPIC_WORKSPACE_ID=sales0-anthropic-workspace-id:latest,/secrets/google/google_client_secret.json=sales0-google-client-secret:latest"
 }
 
@@ -116,6 +126,7 @@ for s in "${STEPS[@]}"; do
   case "$s" in
     secrets) step_secrets ;;
     db-user) step_db_user ;;
+    bucket) step_bucket ;;
     deploy) step_deploy ;;
     verify) step_verify ;;
     *) echo "unknown step: $s" >&2; exit 2 ;;

@@ -414,8 +414,9 @@ Index `(stage, closed_at)`.
 | due_on | date | local-calendar date |
 | note | str(300) null, auto bool | `auto` = scheduled by the system |
 | done_at, done_actor, cancelled_at, cancel_reason | datetime / str / datetime / str(80) null | open = both `done_at` and `cancelled_at` NULL |
+| channel | str(10) null | how it was done: `whatsapp` \| `linkedin` \| `email` \| `call` (migration q13; validated in the service, no CHECK); also stored as `data.channel` on the `follow_up_done` / `stage_change` timeline events |
 Index `(due_on, done_at, cancelled_at)`, `prospect_id`, `lead_id`.
-**Schedule rule (config in Settings):** when a prospect is observed `contacted` at `T` (the app saw a send, or a human moved it) the service creates three open reminders: `follow_up_1` at `T + SALES0_FOLLOWUP_DAYS_1` (3), `follow_up_2` at `T + SALES0_FOLLOWUP_DAYS_2` (7), `final_follow_up` at `T + SALES0_FOLLOWUP_DAYS_FINAL` (14), calendar days from the contact date (not from the previous follow-up). Completing a reminder moves the prospect to that reminder's stage (and completes earlier open ones); moving the prospect to a later stage completes the reminders up to it. A recorded response, a lead, a close, or the `no_follow_up` flag cancels the open ones. Sheet-derived stages and the migration backfill create NO reminders.
+**Schedule rule (config in Settings):** when a prospect is observed `contacted` at `T` (the app saw a send, or a human moved it) the service creates three open reminders: `follow_up_1` at `T + SALES0_FOLLOWUP_DAYS_1` (3), `follow_up_2` at `T + SALES0_FOLLOWUP_DAYS_2` (7), `final_follow_up` at `T + SALES0_FOLLOWUP_DAYS_FINAL` (14), calendar days from the contact date (not from the previous follow-up). Completing a reminder moves the prospect to that reminder's stage (and completes earlier open ones); moving the prospect to a later stage completes the reminders up to it. A recorded response, a lead, a close, or the `no_follow_up` flag cancels the open ones. Sheet-derived stages and the migration backfill create NO reminders. Before the first contact the three dates are only a plan (contact day + offsets, editable in the prospect page's **Log contact** form); "Log contact" (channel required, optional note, contact date <= today, optional per-reminder dates >= contact date) moves `new -> contacted` and creates them with those dates. Open reminders' dates are editable inline (`snooze`).
 
 ### flags
 | Field | Type | Notes |
@@ -564,7 +565,7 @@ A lead created by rules 1-5 gets `opened_by='sheet'`, `opened_at` = `date_email_
 
 | Entity | Phase | Key fields |
 |---|---|---|
-| outreach_templates / decks / email_drafts / sent_emails | 3 | per-offering template (subject, body with placeholders); deck PDF path + offering_id/group_id; draft (prospect_id, version, subject, body, deck_id, status `draft` \| `approved` \| `sent` \| `failed`, approved_by, approved_at); gmail message/thread ids |
+| outreach_templates / decks / email_drafts / sent_emails | 3 | per-offering template (subject, body with placeholders); deck metadata (`decks`: name, filename, sha256, size_bytes, `stored_path` = object key `decks/<sha256>.pdf`, `storage` `local` \| `gcs`, `content_missing` bool - migration q13; the bytes live in the attachment store, never in the DB) + offering_id/group_id; draft (prospect_id, version, subject, body, deck_id, status `draft` \| `approved` \| `sent` \| `failed`, approved_by, approved_at); gmail message/thread ids |
 | profile_candidates | 3 | name, linkedin_url unique, company, headline, reason_post_url, status (`message_sent` \| `connection_request_sent` \| `closed` \| `new`), notes |
 | weekly_targets | 4 | metric_key, target (seed: linkedin_scrape 15, whatsapp_scrape 5, linkedin_outreach 5, messages_sent 25, first_followups 20) |
 | schedules | 4 | kind `discovery_run`, cron-like times (≤3/day), enabled |
