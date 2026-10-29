@@ -8,8 +8,8 @@
 #
 # Idempotent: every command is guarded ("create only if missing"), so re-running never rotates a secret or
 # re-creates a role. Secret VALUES are generated on the fly and piped into Secret Manager; they are never printed.
-# Creates ONLY: role sales0_app on ai-agent-db, secrets sales0-*, bucket sales0-attachments-<project number> (deck
-# PDFs; objectAdmin on THAT bucket only for the runtime SA), Cloud Run service sales0. No Cloud Scheduler, no new
+# Creates ONLY: role sales0_app on ai-agent-db, secrets sales0-*, bucket sales0-files (deck
+# PDFs; objectAdmin on THAT bucket only for the runtime SA; bucket + IAM already exist, the step only checks them), Cloud Run service sales0. No Cloud Scheduler, no new
 # Cloud SQL instance. The database `sales0` itself is created by the app at first boot (see docs/deploy.md).
 set -euo pipefail
 
@@ -24,7 +24,7 @@ DB_NAME="${DB_NAME:-sales0}"
 DB_USER="${DB_USER:-sales0_app}"
 PUBLIC_URL="${PUBLIC_URL:-https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app}"   # deterministic Cloud Run URL form
 GOOGLE_CLIENT_SECRET_FILE="${GOOGLE_CLIENT_SECRET_FILE:-data/google_client_secret.json}"
-BUCKET="${BUCKET:-sales0-attachments-${PROJECT_NUMBER}}"   # outreach attachments (deck PDFs), SALES0_ATTACHMENTS_BUCKET
+BUCKET="${BUCKET:-sales0-files}"   # outreach attachments (deck PDFs), SALES0_ATTACHMENTS_BUCKET (bucket exists)
 
 APPLY=0
 STEPS=()
@@ -83,10 +83,10 @@ step_db_user() {
 }
 
 step_bucket() {
-  note "step: bucket (deck PDFs; create-if-missing: $REGION, Standard, uniform access, public access prevention enforced,"
-  note "default soft delete kept; roles/storage.objectAdmin for $SA on THIS bucket only; env var on the service)"
+  note "step: bucket (deck PDFs in gs://$BUCKET - already created with its IAM; describe-or-create keeps a re-run a no-op:"
+  note "$REGION, Standard, uniform access, public access prevention enforced; roles/storage.objectAdmin for $SA on THIS bucket only; env var on the service)"
   run "gcloud storage buckets describe gs://$BUCKET --project $PROJECT >/dev/null 2>&1 || gcloud storage buckets create gs://$BUCKET --project $PROJECT --location $REGION --default-storage-class STANDARD --uniform-bucket-level-access --public-access-prevention"
-  run "gcloud storage buckets add-iam-policy-binding gs://$BUCKET --project $PROJECT --member=serviceAccount:$SA --role=roles/storage.objectAdmin >/dev/null"
+  run "gcloud storage buckets get-iam-policy gs://$BUCKET --project $PROJECT --format=json | grep -q 'serviceAccount:$SA' || gcloud storage buckets add-iam-policy-binding gs://$BUCKET --project $PROJECT --member=serviceAccount:$SA --role=roles/storage.objectAdmin >/dev/null"
   run "gcloud run services describe $SERVICE --project $PROJECT --region $REGION >/dev/null 2>&1 && gcloud run services update $SERVICE --project $PROJECT --region $REGION --update-env-vars SALES0_ATTACHMENTS_BUCKET=$BUCKET || true"
 }
 

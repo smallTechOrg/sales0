@@ -551,7 +551,7 @@ directory").
 
 - Put **`SALES0_DATA_DIR`** (an absolute path, for example `/var/lib/sales0`) on a persistent
   disk or volume. It holds the SQLite database (`sales0.db`, plus `-wal` and `-shm`), uploaded
-  decks (`decks/<sha256>.pdf`; the hosted app keeps them in the Cloud Storage bucket `SALES0_ATTACHMENTS_BUCKET`
+  decks (`decks/<sha256>.pdf`; the hosted app keeps them in the Cloud Storage bucket `SALES0_ATTACHMENTS_BUCKET` = `sales0-files`
   instead, see `docs/deploy.md` section 5b), the generated `secret.key` (when `SALES0_SECRET_KEY` is unset), Chrome profiles for
   LinkedIn accounts, and logs if you point `SALES0_LOG_FILE` there. Relative paths resolve
   against the repo root, so set absolute paths on a server.

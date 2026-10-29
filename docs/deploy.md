@@ -42,7 +42,7 @@ and scraping happens on a laptop running `sales0 worker`.
 | Database (created by the app itself at first boot, owned by `sales0_app`) | `sales0` |
 | Secret Manager secrets | `sales0-db-password`, `sales0-secret-key`, `sales0-worker-token`, `sales0-app-password`, `sales0-anthropic-api-key`, `sales0-anthropic-workspace-id`, `sales0-google-client-secret` |
 | IAM | `secretmanager.secretAccessor` for `870371939888-compute@developer.gserviceaccount.com` on those 7 secrets only |
-| Cloud Storage bucket | `sales0-attachments-870371939888` (us-central1, Standard, uniform bucket-level access, public access prevention enforced, default soft delete) - outreach attachments (deck PDFs) |
+| Cloud Storage bucket | `sales0-files` (already created; us-central1, Standard, uniform bucket-level access, public access prevention enforced, default soft delete) - outreach attachments (deck PDFs) |
 | IAM (bucket) | `roles/storage.objectAdmin` for the same service account on **that bucket only** |
 | Cloud Run service | `sales0` (min 0, max 1, timeout 900 s, Direct VPC egress `default`/`default`, `private-ranges-only`) |
 | Artifact Registry image | pushed by `gcloud run deploy --source` into the existing repo `cloud-run-source-deploy` |
@@ -88,7 +88,7 @@ Set by the image / `deploy.sh` (nothing to do by hand):
 | `SALES0_MODE=hosted` | image | enables hosted behaviour and the boot-time refusals below |
 | `SALES0_HOST=0.0.0.0`, `SALES0_PORT` (from `$PORT`) | image | bind address |
 | `SALES0_DATA_DIR=/tmp/sales0` | image | scratch only (nothing persistent lives on disk: it is in-memory and wiped on every restart / scale to zero) |
-| `SALES0_ATTACHMENTS_BUCKET=sales0-attachments-870371939888` | env (`deploy.sh`) | **where deck PDFs (email attachments) live**: object `decks/<sha256>.pdf`, read with the service account's Application Default Credentials (no key file). Required in hosted mode: without it deck upload / approve / send refuse with `attachments_not_configured` instead of silently writing to `/tmp` |
+| `SALES0_ATTACHMENTS_BUCKET=sales0-files` | env (`deploy.sh`) | **where deck PDFs (email attachments) live**: object `decks/<sha256>.pdf`, read with the service account's Application Default Credentials (no key file). Required in hosted mode: without it deck upload / approve / send refuse with `attachments_not_configured` instead of silently writing to `/tmp` |
 | `SALES0_AUTO_MIGRATE=true` | image | create database + `alembic upgrade head` at boot |
 | `SALES0_DB_HOST=10.110.112.7`, `SALES0_DB_NAME=sales0`, `SALES0_DB_USER=sales0_app`, `SALES0_DB_SSLMODE=require` | env | PostgreSQL connection (pool 2 + 2 overflow, recycled every 5 min) |
 | `SALES0_PUBLIC_BASE_URL` | env | https URL of the service |
