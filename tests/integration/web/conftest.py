@@ -18,7 +18,7 @@ import uvicorn
 from fastapi.testclient import TestClient
 
 from sales0.services.session import get_session_row
-from sales0.clock import utcnow
+from sales0.clock import local_today, utcnow
 from sales0.config import REPO_ROOT, get_settings, reset_settings
 from sales0.db.engine import session_scope
 from sales0.db.models import (
@@ -102,7 +102,7 @@ def make_enquiry(
             author_name=post["author_name"],
             author_headline=post["author_headline"],
             source_url=f"https://www.linkedin.com/feed/update/{urn}/",
-            date_posted=date.today() - timedelta(days=1),
+            date_posted=local_today(get_settings().tz) - timedelta(days=1),
             date_added=utcnow() + timedelta(seconds=added_offset_s),
             **fields,
         )
