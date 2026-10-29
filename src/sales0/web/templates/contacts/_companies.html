@@ -1,0 +1,31 @@
+{# Needs: page (CompanyPage of CompanyRow), params. Swapped by the filter form (htmx). #}
+{% from "pipeline/_macros.html" import trait_chips, pager with context %}
+<div id="company-results">
+  <section class="card" aria-label="Companies">
+    <div class="card__body table-wrap">
+      {% if page.items %}
+        <table class="table" id="company-list">
+          <thead><tr><th scope="col">Company</th><th scope="col">Characteristics</th><th scope="col" class="num">Prospects</th><th scope="col" class="num">Clients</th><th scope="col" class="num">Contacts</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
+          <tbody>
+          {% for co in page.items %}
+            <tr id="company-{{ co.id }}">
+              <td><a href="/companies/{{ co.id }}">{{ co.name }}</a>{% if co.website %}<div class="muted">{{ co.website }}</div>{% endif %}</td>
+              <td>{{ trait_chips(co.characteristics) }}</td>
+              <td class="num">{{ co.prospects }}</td>
+              <td class="num">{{ co.clients }}</td>
+              <td class="num">{{ co.contacts }}</td>
+              <td class="num">{{ co.enquiries }}</td>
+              <td class="num">{{ co.open_follow_ups }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% elif params.q or params.characteristic %}
+        <div class="empty-state empty-state--compact" id="companies-empty"><p>No companies match these filters.</p><a class="btn" href="/companies">Clear filters</a></div>
+      {% else %}
+        <div class="empty-state" id="companies-empty"><p>No companies yet. They are created when you accept an enquiry that names a company, or add a prospect or contact with one.</p></div>
+      {% endif %}
+    </div>
+  </section>
+  {{ pager("/companies", params, page.page, page.page_size, page.total, "companies") }}
+</div>

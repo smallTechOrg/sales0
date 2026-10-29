@@ -108,6 +108,16 @@
           <button class="btn {{ 'btn--primary' if card.review_status == 'pending_review' else '' }}" type="submit">
             {{ "Accept" if card.review_status == "pending_review" else "Accept instead" }}
           </button>
+          {% if characteristic_options %}
+            {% set hint = suggested_characteristics(card.ai_poster_type, card.ai_opportunity_type) %}
+            <fieldset class="accept-options" id="accept-options-{{ card.id }}">
+              <legend class="muted">Accept as (optional)</legend>
+              {% for ch in characteristic_options %}
+                <label class="accept-options__item"><input type="checkbox" name="characteristic_ids" value="{{ ch.id }}"{% if ch.system_key and ch.system_key in hint %} checked data-ai-suggested="1"{% endif %}> {{ ch.name }}{% if ch.system_key and ch.system_key in hint %} <span class="muted">(AI suggestion)</span>{% endif %}</label>
+              {% endfor %}
+              <label class="accept-options__item" title="Skips Prospect and Lead: opens a lead and marks it Won, which creates the client"><input type="checkbox" name="as_client" value="1"> Already a client</label>
+            </fieldset>
+          {% endif %}
         </form>
       {% endif %}
       {% if card.review_status != "discarded" %}

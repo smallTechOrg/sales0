@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sales0.db.engine import get_db
 from sales0.db.models import TeamMember
 from sales0.errors import DomainError
+from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import clients as clients_service
 from sales0.services.crm import registries as registries_service
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
@@ -82,9 +83,12 @@ def registries_page(request: Request, q: str = "", db: Session = Depends(get_db)
     query = q.strip()[:200]
     competitors = registries_service.list_competitors(db, q=query or None)
     groups = registries_service.list_groups(db)
+    traits = characteristics_service.list_characteristics(db, with_counts=True)
     if wants_json(request):
-        return envelope_ok({"competitors": [_dump(c) for c in competitors], "groups": [_dump(g) for g in groups]})
-    return _page(request, db, "registries/page.html", {"competitors": competitors, "groups": groups, "q": query, "platforms": PLATFORMS})
+        return envelope_ok({"competitors": [_dump(c) for c in competitors], "groups": [_dump(g) for g in groups],
+                            "characteristics": [_dump(t) for t in traits]})
+    return _page(request, db, "registries/page.html", {"competitors": competitors, "groups": groups, "q": query, "platforms": PLATFORMS,
+                                                       "characteristics": traits})
 
 
 @router.get("/competitors/competitor/{competitor_id}", response_class=HTMLResponse)
@@ -280,3 +284,41 @@ def delete_group(
         return crm_done(request, BACK, "Group deleted.")
 
     return crm_guard(request, BACK, run, db)
+
+
+# ---------------------------------------------------------------------- characteristics (CRM slice B1)
+TRAITS_BACK = "/competitors#characteristics-registry"
+
+
+@router.post("/competitors/characteristic", response_model=None, dependencies=[Depends(require_admin)])
+def create_characteristic(request: Request, name: str = Form(""), db: Session = Depends(get_db)) -> Response:
+    def run() -> Response:
+        view = characteristics_service.create(db, name=name)
+        if wants_json(request):
+            return envelope_ok(_dump(view), 201)
+        return crm_done(request, TRAITS_BACK, f"Added characteristic {view.name}.")
+
+    return crm_guard(request, TRAITS_BACK, run, db)
+
+
+@router.post("/competitors/characteristic/{characteristic_id}", response_model=None, dependencies=[Depends(require_admin)])
+def update_characteristic(
+    request: Request,
+    characteristic_id: PathId,
+    name: str | None = Form(None),
+    active: list[str] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+) -> Response:
+    def run() -> Response:
+        fields: dict[str, Any] = {}
+        if name is not None:
+            fields["name"] = name
+        if active:
+            fields["active"] = _flag(active)
+        view = characteristics_service.update(db, characteristic_id, **fields)
+        if wants_json(request):
+            return envelope_ok(_dump(view))
+        state = "" if "active" not in fields else (" (on)" if view.active else " (off)")
+        return crm_done(request, TRAITS_BACK, f"Saved {view.name}{state}.")
+
+    return crm_guard(request, TRAITS_BACK, run, db)

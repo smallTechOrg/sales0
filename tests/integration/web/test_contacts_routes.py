@@ -157,7 +157,7 @@ def test_duplicates_and_merge_flow(web: TestClient) -> None:
     assert "contact merged" in web.get(f"/contacts/{a}").text.lower() or "merged" in web.get(f"/contacts/{a}").text.lower()
 
 
-def test_company_page_is_read_only_with_timeline(web: TestClient) -> None:
+def test_company_page_rolls_up_with_timeline(web: TestClient) -> None:
     enquiry_id = make_enquiry("P1", **triaged("genuine", "Buyer", summary="GenAI workshop"), review_status="accepted",
                               company="Acme Logistics", email="priya@acme.example", contact_person="Priya Menon")
     with session_scope() as db:
@@ -167,7 +167,8 @@ def test_company_page_is_read_only_with_timeline(web: TestClient) -> None:
     html = web.get(f"/companies/{company_id}").text
     main = _main(html)
     assert "Acme Logistics" in main and 'id="company-prospects"' in main and 'id="company-timeline"' in main
-    assert "<form" not in main  # read-only
+    assert 'id="company-contacts"' in main and "priya@acme.example" in main  # the roll-up lists the people with their e-mail
+    assert f'action="/companies/{company_id}"' in main  # company details are editable (CRM feedback B3)
     filtered = web.get(f"/contacts?company_id={company_id}").text
     assert "Company: <strong>Acme Logistics</strong>" in filtered and "Priya Menon" in filtered
     assert web.get("/companies/99999").status_code == 404

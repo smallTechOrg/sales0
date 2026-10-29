@@ -17,6 +17,8 @@ from sales0.services import inbox as inbox_service
 from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
+from sales0.services.crm import characteristics as characteristics_service
+from sales0.services.crm import prospects as prospects_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
 from sales0.web.acting import acted_by_id, get_acting_member_optional
 from sales0.web.context import PathId
@@ -141,6 +143,7 @@ def _list_ctx(db: Session, inbox: InboxPage) -> dict:
         "discard_reasons": DISCARD_REASONS,
         "priorities": PRIORITIES,
         "first_urn": first_urn,
+        "characteristic_options": characteristics_service.list_characteristics(db, active_only=True),
     }
 
 
@@ -157,6 +160,7 @@ def _card_html(request: Request, db: Session, card: EnquiryCardView, tab: str, q
             "discard_reasons": DISCARD_REASONS,
             "priorities": PRIORITIES,
             "first_urn": first_urn,
+            "characteristic_options": characteristics_service.list_characteristics(db, active_only=True),
         },
     )
 
@@ -190,6 +194,8 @@ def decide(
     tab: str = Form("review"),
     q: str = Form(""),
     page: str = Form("1"),
+    characteristic_ids: list[str] = Form(default_factory=list),
+    as_client: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -207,6 +213,9 @@ def decide(
         db, ids, decision, discard_reason=reason, actor_member_id=member.id if member else None,
         acted_by_member_id=acted_by_id(member),
     )  # type: ignore[arg-type]
+    to_client = as_client.strip().lower() in ("1", "true", "on", "yes")
+    if decision == "accept" and (characteristic_ids or to_client):
+        _accept_extras(db, ids, characteristic_ids, to_client, member)
     current_tab, query, page_no = _tab(tab), _q(q), _page_number(page)
     if not is_htmx(request):
         return redirect("/inbox", tab=current_tab, q=query, page=page_no if page_no > 1 else None)
@@ -219,6 +228,22 @@ def decide(
         + toast_html(f"{verb} {len(decided) or len(ids)}")
     )
     return HTMLResponse(body)
+
+
+def _accept_extras(db: Session, ids: list[int], raw_traits: list[str], to_client: bool, member: TeamMember | None) -> None:
+    """The Accept form's characteristics / "Already a client" choices (CRM slice B1), applied after the decision."""
+    from sales0.web.context import actor_of
+
+    trait_ids: list[int] = []
+    for raw in raw_traits:
+        try:
+            trait_ids.append(int(raw))
+        except (TypeError, ValueError):
+            raise DomainError("characteristic_invalid", "That characteristic no longer exists - refresh the page.", 400) from None
+    for enquiry_id in ids:
+        prospects_service.apply_accept_choices(
+            db, enquiry_id, characteristic_ids=trait_ids, as_client=to_client, actor=actor_of(member),
+        )
 
 
 # ---------------------------------------------------------------------- Skipped by AI (Phase 1.4)

@@ -1,5 +1,5 @@
-{# Needs: p (ProspectDetail), prospect_stage_options, close_reasons; oob optional. #}
-{% from "pipeline/_macros.html" import flag_badges, source_chips %}
+{# Needs: p (ProspectDetail), prospect_stage_options, close_reasons, characteristic_options, company (CompanyView|None); oob optional. #}
+{% from "pipeline/_macros.html" import flag_badges, source_chips, trait_editor %}
 {% set is_open = p.status == "open" %}
 {% set no_fu = p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0 %}
 <section class="card" id="prospect-header" aria-labelledby="prospect-title"{% if oob %} hx-swap-oob="outerHTML:#prospect-header"{% endif %}>
@@ -19,7 +19,7 @@
     </div>
     <div class="row">{{ source_chips(p) }}
       {% if p.sheet_status %}<span class="chip chip--sheet" id="sheet-status" title="Status in the Google Sheet (read-only)">Sheet status: {{ p.sheet_status }}</span>{% endif %}
-      {% if p.tracked is none %}<span class="tracked">No LinkedIn profile linked</span>
+      {% if p.tracked is none %}<span class="tracked" id="tracked-state">No LinkedIn profile linked</span> <span class="hint" id="track-hint">To track this person, add their LinkedIn profile link under Edit details.</span>
       {% else %}
         <form method="post" action="/pipeline/prospects/{{ p.id }}/tracked" hx-post="/pipeline/prospects/{{ p.id }}/tracked" hx-swap="none" class="actions">
           <input type="hidden" name="tracked" value="{{ 'false' if p.tracked else 'true' }}">
@@ -28,6 +28,8 @@
         </form>
       {% endif %}
     </div>
+    {{ trait_editor("/pipeline/prospects/%d/characteristics" % p.id, p.characteristics, characteristic_options or [],
+                    note="Characteristics stay with this entity when it becomes a lead and a client.") }}
     {% if p.sheet_removed_at %}
       <div class="notice" id="sheet-removed" role="status">Removed from the Google Sheet on {{ p.sheet_removed_at|localdt("%d %b %Y") }}. It stays here with its full history; if the row returns it is restored automatically.</div>
     {% endif %}
@@ -88,11 +90,18 @@
       <summary>Edit details</summary>
       <form class="stack" method="post" action="/pipeline/prospects/{{ p.id }}/edit" hx-post="/pipeline/prospects/{{ p.id }}/edit" hx-swap="none">
         <div class="grid-2">
-          <div class="field"><label class="field__label" for="ed-name">Name{% if p.sheet_tabs %} <span class="lock">Synced from sheet - edits are overwritten</span>{% endif %}</label>
+          <div class="field"><label class="field__label" for="ed-name">Name{% if p.sheet_tabs %} <span class="lock">Sheet cell wins when it changes</span>{% endif %}</label>
             <input class="input" id="ed-name" name="name" value="{{ p.name }}" required maxlength="200"></div>
-          <div class="field"><label class="field__label" for="ed-company">Company</label>
+          <div class="field"><label class="field__label" for="ed-company">Company{% if p.sheet_tabs %} <span class="lock">Sheet cell wins when it changes</span>{% endif %}</label>
             <input class="input" id="ed-company" name="company" value="{{ p.company_name or '' }}" maxlength="200"></div>
+          <div class="field"><label class="field__label" for="ed-website">Company website</label>
+            <input class="input" id="ed-website" name="website" value="{{ company.website if company and company.website else '' }}" maxlength="300" placeholder="acme.com"></div>
+          <div class="field"><label class="field__label" for="ed-company-li">Company LinkedIn page</label>
+            <input class="input" id="ed-company-li" name="company_linkedin_url" value="{{ company.linkedin_url if company and company.linkedin_url else '' }}" maxlength="500" placeholder="https://www.linkedin.com/company/..."></div>
+          <div class="field"><label class="field__label" for="ed-linkedin">Person's LinkedIn profile</label>
+            <input class="input" id="ed-linkedin" name="linkedin_url" value="{{ p.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
         </div>
+        <p class="hint">E-mails and phone numbers are edited per person in the Contacts card below.</p>
         <div class="field"><label class="field__label" for="ed-notes">Notes</label>
           <textarea class="input" id="ed-notes" name="notes" rows="3" maxlength="4000">{{ p.notes or "" }}</textarea></div>
         <div><button class="btn btn--primary" type="submit">Save details</button></div>

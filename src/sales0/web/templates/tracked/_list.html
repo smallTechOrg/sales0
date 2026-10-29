@@ -6,7 +6,7 @@
     <tbody>
     {% for p in profiles %}
       <tr id="tracked-{{ p.id }}" data-slug="{{ p.slug }}" data-paused="{{ '1' if p.paused else '0' }}">
-        <td><a href="{{ p.profile_url }}" target="_blank" rel="noopener">{{ p.display_name or p.slug }}</a><br><span class="muted">{{ p.slug }}</span></td>
+        <td><a href="{{ p.profile_url }}" target="_blank" rel="noopener">{{ p.display_name or p.slug }}</a><br><span class="muted">{{ p.slug }}</span>{% if p.watch_note %}<div class="muted tracked-note">{{ p.watch_note }}</div>{% endif %}</td>
         <td>{{ p.headline or "" }}</td>
         <td>{% if p.last_checked_at %}{{ p.last_checked_at | ago }}{% else %}<span class="muted">Never</span>{% endif %}</td>
         <td class="num">{{ p.watch_checks }}</td>
@@ -21,6 +21,9 @@
     </tbody>
   </table>
 {% else %}
-  <p class="muted" id="tracked-empty">No profiles are tracked yet. Press Track next to an author in the inbox.</p>
+  <div class="empty-state empty-state--compact" id="tracked-empty">
+    <p>Nobody is tracked yet. Paste a person's LinkedIn profile link in "Add person to track" above, or press Track next to a post's author in the Inbox, or on a contact or prospect page.</p>
+    <p class="muted">Accepting an enquiry tracks its author automatically.</p>
+  </div>
 {% endif %}
 </div>

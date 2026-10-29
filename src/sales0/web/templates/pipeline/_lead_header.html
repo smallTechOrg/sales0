@@ -1,5 +1,5 @@
-{# Needs: l (LeadDetail), lead_stage_options, today; oob optional. #}
-{% from "pipeline/_macros.html" import flag_badges %}
+{# Needs: l (LeadDetail), lead_stage_options, today, characteristic_options; oob optional. #}
+{% from "pipeline/_macros.html" import flag_badges, trait_editor %}
 {% set order = lead_stage_options|map(attribute=0)|list %}
 {% set open_steps = ["meeting_scheduled", "proposal_sent"] %}
 <section class="card" id="lead-header" aria-labelledby="lead-title"{% if oob %} hx-swap-oob="outerHTML:#lead-header"{% endif %}>
@@ -10,10 +10,12 @@
       {{ flag_badges(l.flags) }}
     </div>
     <div class="pcard__meta">
-      {% if l.company_name %}{{ l.company_name }} · {% endif %}opened {{ l.opened_at|ago }}
+      {% if l.company_name %}{% if l.company_id %}<a href="/companies/{{ l.company_id }}">{{ l.company_name }}</a>{% else %}{{ l.company_name }}{% endif %} · {% endif %}opened {{ l.opened_at|ago }}
       {% if l.closed_at %} · closed {{ l.closed_at|ago }}{% endif %}
       · <a href="/pipeline/prospects/{{ l.prospect_id }}">Open prospect</a>
     </div>
+    {{ trait_editor("/pipeline/leads/%d/characteristics" % l.id, l.characteristics, characteristic_options or [],
+                    note="Saved on the prospect, so they stay when the lead becomes a client.") }}
     <ol class="stepper" id="lead-stepper" aria-label="Lead stages">
       {% for key, label in lead_stage_options %}
         <li{% if key == l.stage %} aria-current="step"{% elif order.index(key) < order.index(l.stage) and key in open_steps %} class="is-done"{% endif %}>{{ label }}</li>

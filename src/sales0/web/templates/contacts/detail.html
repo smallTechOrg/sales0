@@ -16,11 +16,18 @@
           {% if c.company_id %}<a href="/companies/{{ c.company_id }}">{{ c.company_name }}</a>{% elif c.company_name %}{{ c.company_name }}{% endif %}
           {% if c.linkedin_url and c.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ c.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn</a>{% endif %}
         </div>
-        <div class="grid-2">
-          <div><h2 class="group-heading">Emails</h2>
-            <ul class="item-list" id="contact-emails">{% for e in c.emails %}<li>{{ e }}{% if loop.first %} <span class="badge">Primary</span>{% endif %}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
-          <div><h2 class="group-heading">Phones</h2>
-            <ul class="item-list" id="contact-phones">{% for e in c.phones %}<li>{{ e }}{% if loop.first %} <span class="badge">Primary</span>{% endif %}</li>{% else %}<li class="muted">None</li>{% endfor %}</ul></div>
+        <div class="row" id="contact-track">
+          {% if c.linkedin_profile_id and c.tracked %}
+            <span class="tracked tracked--on" id="tracked-state">Tracked</span>
+            <form method="post" action="/tracked/{{ c.linkedin_profile_id }}/untrack"><input type="hidden" name="next" value="/contacts/{{ c.id }}"><button class="btn btn--sm" type="submit">Stop tracking</button></form>
+          {% elif c.linkedin_url %}
+            <form method="post" action="/tracked/add"><input type="hidden" name="profile_url" value="{{ c.linkedin_url }}"><input type="hidden" name="name" value="{{ c.full_name or '' }}"><input type="hidden" name="next" value="/contacts/{{ c.id }}">
+              <button class="btn btn--sm" id="btn-track" type="submit">Track this person</button></form>
+            <span class="hint">Tracking checks their new LinkedIn posts for fresh requirements.</span>
+          {% else %}<span class="hint" id="track-hint">Add a LinkedIn profile link below to be able to track this person's posts.</span>{% endif %}
+        </div>
+        <div id="contact-emails-phones">
+          {% with next_url="/contacts/%d" % c.id, with_notes=True %}{% include "contacts/_editor.html" %}{% endwith %}
         </div>
         <div id="contact-tags">
           <h2 class="group-heading">Tags</h2>
@@ -38,18 +45,6 @@
             <button class="btn" type="submit">Add tag</button>
           </form>
         </div>
-        <details class="inline-edit">
-          <summary>Edit contact</summary>
-          <form class="stack" method="post" action="/contacts/{{ c.id }}">
-            <div class="grid-2">
-              <div class="field"><label class="field__label" for="ec-name">Name</label><input class="input" id="ec-name" name="full_name" value="{{ c.full_name or '' }}" maxlength="200"></div>
-              <div class="field"><label class="field__label" for="ec-title">Title</label><input class="input" id="ec-title" name="title" value="{{ c.title or '' }}" maxlength="200"></div>
-              <div class="field"><label class="field__label" for="ec-company">Company</label><input class="input" id="ec-company" name="company" value="{{ c.company_name or '' }}" maxlength="200"></div>
-            </div>
-            <div class="field"><label class="field__label" for="ec-notes">Notes</label><textarea class="input" id="ec-notes" name="notes" rows="3" maxlength="4000">{{ c.notes or "" }}</textarea></div>
-            <div><button class="btn btn--primary" type="submit">Save contact</button></div>
-          </form>
-        </details>
         {% if c.notes %}<p class="timeline__text" id="contact-notes">{{ c.notes }}</p>{% endif %}
       </div>
     </section>

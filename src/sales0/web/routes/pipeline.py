@@ -28,7 +28,10 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db
 from sales0.db.models import TeamMember
 from sales0.errors import DomainError
+from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import clients as clients_service
+from sales0.services.crm import companies as companies_service
+from sales0.services.crm import contacts as contacts_service
 from sales0.services.crm import flags as flags_service
 from sales0.services.crm import followups as followups_service
 from sales0.services.crm import leads as leads_service
@@ -131,8 +134,18 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
         "source": raw.get("source") if raw.get("source") in SOURCES else "",
         "due": raw.get("due") if raw.get("due") in ("today", "overdue") else "",
         "show_removed": "1" if raw.get("show_removed") in ("1", "true", "on", True) else "",
+        "characteristic": str(raw.get("characteristic") or "") if str(raw.get("characteristic") or "").isdigit() else "",
         "page": page_number(raw.get("page")),
     }
+
+
+def _trait_id(params: dict[str, Any]) -> int | None:
+    value = params.get("characteristic") or ""
+    return int(value) if value.isdigit() and 0 < int(value) < 2**31 else None
+
+
+def _trait_options(db: Session) -> list[Any]:
+    return characteristics_service.list_characteristics(db)
 
 
 def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
@@ -142,10 +155,11 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     valid_stages = {k for k, _ in stage_options}
     if params["stage"] not in valid_stages:
         params["stage"] = ""
-    ctx: dict[str, Any] = {"tab": tab, "params": params, "stage_options": stage_options}
+    ctx: dict[str, Any] = {"tab": tab, "params": params, "stage_options": stage_options, "characteristic_options": _trait_options(db)}
+    trait = _trait_id(params)
 
     if tab == "clients":
-        page = clients_service.list_clients(db, q=params["q"] or None, page=params["page"])
+        page = clients_service.list_clients(db, q=params["q"] or None, characteristic_id=trait, page=params["page"])
         ctx.update(view="list", forced_list=False, items=page.items, total=page.total, page=page.page, page_size=page.page_size)
     else:
         filtered = bool(
@@ -158,18 +172,21 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
         ctx.update(view=view, forced_list=forced)
         if view == "board":
             board = pipeline_service.board(
-                db, kind=tab, q=params["q"] or None, flag=(params["flag"] or None) if tab == "prospects" else None
+                db, kind=tab, q=params["q"] or None, flag=(params["flag"] or None) if tab == "prospects" else None,
+                characteristic_id=trait,
             )
             ctx["board"] = board
         elif tab == "prospects":
             page = prospects_service.list_prospects(
                 db, stage=params["stage"] or None, status=params["status"], q=params["q"] or None,
-                source=params["source"] or None, flag=params["flag"] or None, due=params["due"] or None, page=params["page"],
+                source=params["source"] or None, flag=params["flag"] or None, due=params["due"] or None,
+                characteristic_id=trait, page=params["page"],
             )  # fmt: skip
             ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
         else:
             page = leads_service.list_leads(
-                db, stage=params["stage"] or None, open_only=params["status"] == "open", q=params["q"] or None, page=params["page"]
+                db, stage=params["stage"] or None, open_only=params["status"] == "open", q=params["q"] or None,
+                characteristic_id=trait, page=params["page"],
             )  # fmt: skip
             ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
     ctx["view_param"] = params["view"]
@@ -218,12 +235,18 @@ def _board_refresh(request: Request, db: Session, next_url: str, message: str) -
 # ---------------------------------------------------------------------- prospect detail
 
 
+def _header_ctx(db: Session, p: Any) -> dict[str, Any]:
+    company = companies_service.get_or_none(db, p.company_id) if p.company_id else None
+    return {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS,
+            "characteristic_options": _trait_options(db), "company": company}
+
+
 def _prospect_parts(db: Session, prospect_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     p = prospects_service.get_prospect(db, prospect_id)
     base = f"/pipeline/prospects/{p.id}"
     no_fu = any(f.kind == "no_follow_up" for f in p.flags)
     parts = [
-        ("pipeline/_prospect_header.html", {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS}),
+        ("pipeline/_prospect_header.html", _header_ctx(db, p)),
         ("pipeline/_timeline.html", {"timeline": p.timeline, "base": base}),
         (
             "pipeline/_followups.html",
@@ -236,10 +259,8 @@ def _prospect_parts(db: Session, prospect_id: PathId) -> tuple[Any, list[tuple[s
 @router.get("/pipeline/prospects/{prospect_id}", response_class=HTMLResponse)
 def prospect_page(request: Request, prospect_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     p = prospects_service.get_prospect(db, prospect_id)
-    return _page(
-        request, db, "pipeline/prospect.html",
-        {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS},
-    )  # fmt: skip
+    details = [contacts_service.get_contact(db, c.id) for c in p.contacts[:20]]
+    return _page(request, db, "pipeline/prospect.html", {**_header_ctx(db, p), "contact_details": details})
 
 
 def _prospect_action(
@@ -422,18 +443,72 @@ def prospect_edit(
     name: str = Form(""),
     company: str = Form(""),
     notes: str = Form(""),
+    website: str | None = Form(None),
+    company_linkedin_url: str | None = Form(None),
+    linkedin_url: str | None = Form(None),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def act() -> str:
         if not name.strip():
             raise DomainError("prospect_invalid", "A prospect needs a name.", 400)
+        extra = {k: opt_str(v) for k, v in (("website", website), ("company_linkedin_url", company_linkedin_url),
+                                            ("linkedin_url", linkedin_url)) if v is not None}
         prospects_service.update(
-            db, prospect_id, name=name.strip(), notes=opt_str(notes), company=opt_str(company), actor=actor_of(member)
+            db, prospect_id, name=name.strip(), notes=opt_str(notes), company=opt_str(company), actor=actor_of(member), **extra
         )
         return "Details saved."
 
     return _prospect_action(request, db, prospect_id, act)
+
+
+def _trait_ids(raw: list[str]) -> list[int]:
+    out: list[int] = []
+    for value in raw:
+        number = opt_int(value, "characteristic")
+        if number is not None:
+            out.append(number)
+    return out
+
+
+def _set_traits(db: Session, entity_type: str, entity_id: int, raw: list[str], member: TeamMember | None) -> str:
+    current = characteristics_service.set_for(db, entity_type, entity_id, _trait_ids(raw), actor=actor_of(member))
+    return "Characteristics saved: " + (", ".join(c.name for c in current) if current else "none") + "."
+
+
+@router.post("/pipeline/prospects/{prospect_id}/characteristics", response_model=None)
+def prospect_characteristics(
+    request: Request,
+    prospect_id: PathId,
+    characteristic_ids: list[str] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _prospect_action(request, db, prospect_id, lambda: _set_traits(db, "prospect", prospect_id, characteristic_ids, member))
+
+
+@router.post("/pipeline/prospects/{prospect_id}/contacts", response_model=None)
+def prospect_add_contact(
+    request: Request,
+    prospect_id: PathId,
+    full_name: str = Form(""),
+    email: str = Form(""),
+    phone: str = Form(""),
+    title: str = Form(""),
+    linkedin_url: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    back = f"/pipeline/prospects/{prospect_id}"
+
+    def run() -> Response:
+        view = prospects_service.add_contact(
+            db, prospect_id, full_name=opt_str(full_name), email=opt_str(email), phone=opt_str(phone), title=opt_str(title),
+            linkedin_url=opt_str(linkedin_url), actor=actor_of(member),
+        )  # fmt: skip
+        return crm_done(request, back, f"Added {view.full_name or view.email or 'the person'}.", view.model_dump(mode="json"))
+
+    return crm_guard(request, back, run, db)
 
 
 # ---------------------------------------------------------------------- notes (prospect / lead / client)
@@ -539,7 +614,8 @@ def _lead_parts(db: Session, lead_id: PathId) -> tuple[Any, list[tuple[str, dict
     if lead.meeting_at is not None:
         meeting_local = ensure_utc(lead.meeting_at).astimezone(get_settings().tz).strftime("%Y-%m-%dT%H:%M")
     parts = [
-        ("pipeline/_lead_header.html", {"l": lead, "lead_stage_options": LEAD_STAGE_OPTIONS, "meeting_local": meeting_local}),
+        ("pipeline/_lead_header.html", {"l": lead, "lead_stage_options": LEAD_STAGE_OPTIONS, "meeting_local": meeting_local,
+                                         "characteristic_options": _trait_options(db)}),
         ("pipeline/_timeline.html", {"timeline": lead.timeline, "base": base}),
         ("pipeline/_followups.html", {"follow_ups": lead.follow_ups, "base": base, "can_act": lead.closed_at is None}),
     ]
@@ -592,6 +668,17 @@ def lead_stage(
     return _lead_action(request, db, lead_id, act, next_url=_safe_next(next))
 
 
+@router.post("/pipeline/leads/{lead_id}/characteristics", response_model=None)
+def lead_characteristics(
+    request: Request,
+    lead_id: PathId,
+    characteristic_ids: list[str] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _lead_action(request, db, lead_id, lambda: _set_traits(db, "lead", lead_id, characteristic_ids, member))
+
+
 @router.post("/pipeline/leads/{lead_id}/note", response_model=None)
 def lead_note(
     request: Request,
@@ -628,7 +715,7 @@ def lead_followup(
 def _client_parts(db: Session, client_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     client = clients_service.get_client(db, client_id)
     parts = [
-        ("pipeline/_client_header.html", {"c": client, "client_statuses": CLIENT_STATUSES}),
+        ("pipeline/_client_header.html", {"c": client, "client_statuses": CLIENT_STATUSES, "characteristic_options": _trait_options(db)}),
         ("pipeline/_timeline.html", {"timeline": client.timeline, "base": f"/pipeline/clients/{client.id}"}),
     ]
     return client, parts
@@ -637,7 +724,7 @@ def _client_parts(db: Session, client_id: PathId) -> tuple[Any, list[tuple[str, 
 @router.get("/pipeline/clients/{client_id}", response_class=HTMLResponse)
 def client_page(request: Request, client_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     client, parts = _client_parts(db, client_id)
-    return _page(request, db, "pipeline/client.html", {"c": client, "client_statuses": CLIENT_STATUSES})
+    return _page(request, db, "pipeline/client.html", parts[0][1])
 
 
 def _client_action(request: Request, db: Session, client_id: PathId, action: Callable[[], str]) -> Response:
@@ -697,6 +784,17 @@ def update_client(
         return "Client saved."
 
     return _client_action(request, db, client_id, act)
+
+
+@router.post("/pipeline/clients/{client_id}/characteristics", response_model=None)
+def client_characteristics(
+    request: Request,
+    client_id: PathId,
+    characteristic_ids: list[str] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _client_action(request, db, client_id, lambda: _set_traits(db, "client", client_id, characteristic_ids, member))
 
 
 @router.post("/pipeline/clients/{client_id}/note", response_model=None)

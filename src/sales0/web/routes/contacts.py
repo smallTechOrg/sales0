@@ -16,9 +16,11 @@ from sqlalchemy.orm import Session
 from sales0.db.engine import get_db
 from sales0.db.models import TeamMember
 from sales0.errors import DomainError
+from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import companies as companies_service
 from sales0.services.crm import contacts as contacts_service
-from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.services.crm._common import UNSET
+from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
 from sales0.web.context import PathId
 from sales0.web.context import (
     actor_of,
@@ -100,9 +102,88 @@ def contact_page(request: Request, contact_id: PathId, db: Session = Depends(get
     )  # fmt: skip
 
 
+def _safe_back(value: str | None, default: str) -> str:
+    """A same-site CRM page to return to (open-redirect safe), else ``default``."""
+    text = (value or "").strip()
+    if text.startswith(("/contacts/", "/pipeline/", "/companies/")) and not text.startswith("//") and "\\" not in text:
+        return text
+    return default
+
+
+@router.get("/companies", response_class=HTMLResponse)
+def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
+    raw = dict(request.query_params)
+    trait_raw = str(raw.get("characteristic") or "")
+    params = {
+        "q": (raw.get("q") or "").strip()[:200],
+        "characteristic": trait_raw if trait_raw.isdigit() and 0 < int(trait_raw) < 2**31 else "",
+        "page": page_number(raw.get("page")),
+    }
+    page = companies_service.list_companies(
+        db, q=params["q"] or None, characteristic_id=int(params["characteristic"]) if params["characteristic"] else None,
+        page=params["page"],
+    )
+    if wants_json(request):
+        return envelope_ok(_dump(page))
+    ctx = {"page": page, "params": params, "characteristic_options": characteristics_service.list_characteristics(db)}
+    if is_htmx(request) and request.headers.get("HX-Target") == "company-results":
+        return HTMLResponse(render_html(request, "contacts/_companies.html", ctx))
+    return _page(request, db, "contacts/companies.html", ctx)
+
+
 @router.get("/companies/{company_id}", response_class=HTMLResponse)
-def company_page(request: Request, company_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
-    return _page(request, db, "contacts/company.html", {"co": companies_service.get_company(db, company_id)})
+def company_page(request: Request, company_id: PathId, db: Session = Depends(get_db)) -> Response:
+    co = companies_service.get_company(db, company_id)
+    if wants_json(request):
+        return envelope_ok(_dump(co))
+    return _page(request, db, "contacts/company.html", {"co": co, "duplicates": companies_service.duplicate_candidates(db, company_id)})
+
+
+@router.post("/companies/{company_id}", response_model=None)
+def update_company(
+    request: Request,
+    company_id: PathId,
+    name: str | None = Form(None),
+    website: str | None = Form(None),
+    linkedin_url: str | None = Form(None),
+    city: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    back = f"/companies/{company_id}"
+
+    def run() -> Response:
+        fields = {k: (v.strip() if k == "name" else opt_str(v)) for k, v in
+                  (("name", name), ("website", website), ("linkedin_url", linkedin_url), ("city", city), ("notes", notes)) if v is not None}
+        view = companies_service.update_company(db, company_id, actor=actor_of(member), **fields)
+        if wants_json(request):
+            return envelope_ok(_dump(view))
+        return crm_done(request, back, "Company saved.")
+
+    return crm_guard(request, back, run, db)
+
+
+@router.post("/companies/{company_id}/merge", response_model=None, dependencies=[Depends(require_admin)])
+def merge_company(
+    request: Request,
+    company_id: PathId,
+    drop_id: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    back = f"/companies/{company_id}"
+
+    def run() -> Response:
+        drop = opt_int(drop_id, "company")
+        if drop is None:
+            raise DomainError("bad_request", "Choose the duplicate company to merge into this one.", 400)
+        view = companies_service.merge(db, company_id, drop, actor=actor_of(member))
+        if wants_json(request):
+            return envelope_ok(_dump(view))
+        return crm_done(request, back, f"Merged the duplicate into {view.name}.")
+
+    return crm_guard(request, back, run, db)
 
 
 # ---------------------------------------------------------------------- mutations
@@ -157,19 +238,24 @@ def merge_contacts(
 def update_contact(
     request: Request,
     contact_id: PathId,
-    full_name: str = Form(""),
-    title: str = Form(""),
-    notes: str = Form(""),
-    company: str = Form(""),
+    full_name: str | None = Form(None),
+    title: str | None = Form(None),
+    notes: str | None = Form(None),
+    company: str | None = Form(None),
+    linkedin_url: str | None = Form(None),
+    next: str = Form(""),  # noqa: A002 - form field name
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    back = f"/contacts/{contact_id}"
+    back = _safe_back(next, f"/contacts/{contact_id}")
+
+    def given(value: str | None) -> object:
+        return UNSET if value is None else opt_str(value)
 
     def run() -> Response:
         view = contacts_service.update_contact(
-            db, contact_id, full_name=opt_str(full_name), title=opt_str(title), notes=opt_str(notes),
-            company=opt_str(company), actor=actor_of(member),
+            db, contact_id, full_name=given(full_name), title=given(title), notes=given(notes), company=given(company),
+            linkedin_url=given(linkedin_url), actor=actor_of(member),
         )  # fmt: skip
         if wants_json(request):
             return envelope_ok(_dump(view))
@@ -215,3 +301,92 @@ def remove_tag(
         return crm_done(request, back, "Tag removed.")
 
     return crm_guard(request, back, run, db)
+
+
+# ---------------------------------------------------------------------- e-mails & phones (CRM slice B3)
+def _contact_edit(request: Request, db: Session, contact_id: int, next_url: str, action, message: str) -> Response:  # type: ignore[no-untyped-def]
+    back = _safe_back(next_url, f"/contacts/{contact_id}")
+
+    def run() -> Response:
+        view = action()
+        if wants_json(request):
+            return envelope_ok(_dump(view))
+        return crm_done(request, back, message)
+
+    return crm_guard(request, back, run, db)
+
+
+def _on(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "on", "yes")
+
+
+@router.post("/contacts/{contact_id}/emails", response_model=None)
+def add_email(
+    request: Request, contact_id: PathId, email: str = Form(""), primary: str = Form(""), next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.add_email(
+        db, contact_id, email, primary=_on(primary), actor=actor_of(member)), "E-mail added.")
+
+
+@router.post("/contacts/{contact_id}/emails/{email_id}", response_model=None)
+def update_email(
+    request: Request, contact_id: PathId, email_id: PathId, email: str = Form(""), next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.update_email(
+        db, contact_id, email_id, email, actor=actor_of(member)), "E-mail saved.")
+
+
+@router.post("/contacts/{contact_id}/emails/{email_id}/delete", response_model=None)
+def remove_email(
+    request: Request, contact_id: PathId, email_id: PathId, next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.remove_email(
+        db, contact_id, email_id, actor=actor_of(member)), "E-mail removed.")
+
+
+@router.post("/contacts/{contact_id}/emails/{email_id}/primary", response_model=None)
+def primary_email(
+    request: Request, contact_id: PathId, email_id: PathId, next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.set_primary_email(
+        db, contact_id, email_id, actor=actor_of(member)), "Primary e-mail changed.")
+
+
+@router.post("/contacts/{contact_id}/phones", response_model=None)
+def add_phone(
+    request: Request, contact_id: PathId, phone: str = Form(""), primary: str = Form(""), next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.add_phone(
+        db, contact_id, phone, primary=_on(primary), actor=actor_of(member)), "Phone added.")
+
+
+@router.post("/contacts/{contact_id}/phones/{phone_id}", response_model=None)
+def update_phone(
+    request: Request, contact_id: PathId, phone_id: PathId, phone: str = Form(""), next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.update_phone(
+        db, contact_id, phone_id, phone, actor=actor_of(member)), "Phone saved.")
+
+
+@router.post("/contacts/{contact_id}/phones/{phone_id}/delete", response_model=None)
+def remove_phone(
+    request: Request, contact_id: PathId, phone_id: PathId, next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.remove_phone(
+        db, contact_id, phone_id, actor=actor_of(member)), "Phone removed.")
+
+
+@router.post("/contacts/{contact_id}/phones/{phone_id}/primary", response_model=None)
+def primary_phone(
+    request: Request, contact_id: PathId, phone_id: PathId, next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    return _contact_edit(request, db, contact_id, next, lambda: contacts_service.set_primary_phone(
+        db, contact_id, phone_id, actor=actor_of(member)), "Primary phone changed.")
