@@ -4,7 +4,7 @@ A new discovery enquiry is checked against the EXISTING pipeline before it lands
 
 1. ``find_match`` - the first hit wins: author LinkedIn profile -> prospect; author profile -> known contact ->
    prospect; post email -> known contact -> prospect; author is a company page -> company (by its LinkedIn URL);
-   AI-extracted company name -> company (``name_key``); company email domain -> company (``website_key``). A company
+   AI-extracted company name -> company (``name_key``); company email domain -> company (``domain_key``). A company
    hit is attached to its newest live prospect when it has one. Prospects closed only because their enquiry was
    discarded do not count (they never were real pipeline).
 2. ``apply`` (called by ``seen_posts.persist_triage`` for every enquiry a run creates): the enquiry records the match
@@ -26,9 +26,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Company, Contact, ContactEmail, ContactLink, Enquiry, Prospect
-from sales0.linkedin_url import profile_slug
 from sales0.services._common import clip, now_or, record_history
-from sales0.services.crm import _keys, timeline
+from sales0.services.crm import _keys, companies, timeline
 from sales0.services.crm.actor import SYSTEM
 
 MATCH_LABELS: dict[str, str] = {
@@ -97,29 +96,16 @@ def _contact_by_email(db: Session, email: str | None) -> Contact | None:
     return contact if contact is not None and contact.merged_into_id is None else None
 
 
-def _company_by_page(db: Session, slug: str | None) -> Company | None:
-    if not slug or not slug.startswith("company/"):
-        return None
-    tail = slug.split("/", 1)[1]
-    for c in db.scalars(select(Company).where(Company.linkedin_url.is_not(None), Company.linkedin_url.contains(tail))):
-        if profile_slug(c.linkedin_url, allow_fixture=True) == slug:
-            return c
-    return None
-
-
 def _company_by_domain(db: Session, email: str | None) -> Company | None:
+    """The company whose website host is the e-mail's domain (the CRM's own ``domain_key`` matcher); free-mail
+    providers never identify a company."""
     value = (email or "").strip().lower()
     if "@" not in value:
         return None
     domain = value.rsplit("@", 1)[1].removeprefix("www.")
-    if not domain or domain in FREE_MAIL or "." not in domain:
+    if not domain or domain in FREE_MAIL:
         return None
-    return db.scalar(
-        select(Company)
-        .where(or_(Company.website_key == domain, Company.website_key.startswith(domain + "/")))
-        .order_by(Company.id)
-        .limit(1)
-    )
+    return companies.by_domain(db, domain)
 
 
 def _prospect_hit(p: Prospect, kind: str) -> PipelineMatch:
@@ -147,10 +133,10 @@ def find_match(db: Session, e: Enquiry) -> PipelineMatch | None:
             p = _prospect_for_contact(db, e, contact.id)
             if p is not None:
                 return _prospect_hit(p, kind)
-    key = _keys.name_key(e.company)
+    # Company keys are the CRM's (services.crm.companies.by_*): LinkedIn page, name, then e-mail domain.
     candidates = (
-        ("company_page", _company_by_page(db, slug)),
-        ("company", db.scalar(select(Company).where(Company.name_key == key[:200])) if key else None),
+        ("company_page", companies.by_linkedin(db, e.author_profile_url)),
+        ("company", companies.by_name(db, e.company)),
         ("website", _company_by_domain(db, e.email)),
     )
     for kind, company in candidates:

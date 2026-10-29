@@ -49,27 +49,35 @@ def _view(c: Company) -> CompanyView:
 
 
 # ---------------------------------------------------------------------------- matching
+# One key per fact, shared with the inbox's pipeline check (services.crm.pipeline_match): name -> ``name_key``,
+# website / e-mail domain -> ``domain_key``, LinkedIn company page -> ``linkedin_key`` (helpers in ``_keys``).
+def by_name(db: Session, name: str | None) -> Company | None:
+    key = _keys.name_key(name)
+    return db.scalar(select(Company).where(Company.name_key == key[:200])) if key else None
+
+
+def by_domain(db: Session, website: str | None) -> Company | None:
+    """Same website host (``_keys.domain_key``); generic hosts (linkedin.com, gmail.com, ...) never match."""
+    dk = _keys.domain_key(website)
+    if not dk:
+        return None
+    return db.scalar(select(Company).where(Company.domain_key == dk).order_by(Company.id).limit(1))
+
+
+def by_linkedin(db: Session, linkedin_url: str | None) -> Company | None:
+    """Same LinkedIn company page (``_keys.company_linkedin_key``: ``company/<slug>``)."""
+    lk = _keys.company_linkedin_key(linkedin_url)
+    if not lk:
+        return None
+    return db.scalar(select(Company).where(Company.linkedin_key == lk).order_by(Company.id).limit(1))
+
+
 def find_match(
     db: Session, name: str | None = None, *, website: str | None = None, linkedin_url: str | None = None
 ) -> Company | None:
     """The existing company for these facts: same name key, else same website domain, else same LinkedIn company
     page. Generic hosts (linkedin.com, gmail.com, ...) never match (see ``_keys.domain_key``)."""
-    key = _keys.name_key(name)
-    if key:
-        row = db.scalar(select(Company).where(Company.name_key == key[:200]))
-        if row is not None:
-            return row
-    dk = _keys.domain_key(website)
-    if dk:
-        row = db.scalar(select(Company).where(Company.domain_key == dk).order_by(Company.id).limit(1))
-        if row is not None:
-            return row
-    lk = _keys.company_linkedin_key(linkedin_url)
-    if lk:
-        row = db.scalar(select(Company).where(Company.linkedin_key == lk).order_by(Company.id).limit(1))
-        if row is not None:
-            return row
-    return None
+    return by_name(db, name) or by_domain(db, website) or by_linkedin(db, linkedin_url)
 
 
 def _set_website(row: Company, website: str | None) -> None:

@@ -106,10 +106,11 @@ def test_author_profile_match_wins_and_uses_the_prospect_name(db: Session) -> No
 def test_company_email_domain_and_company_page_match(db: Session) -> None:
     from sales0.services.crm import companies
 
-    acme = companies.get_or_create_row(db, "Helio Payments Pvt Ltd", website="https://www.heliopay.example/")
-    assert acme is not None
-    acme.linkedin_url = "https://www.linkedin.com/company/helio-payments-fx/"
-    db.flush()
+    acme = companies.get_or_create_row(
+        db, "Helio Payments Pvt Ltd", website="https://www.heliopay.example/",
+        linkedin_url="https://www.linkedin.com/company/helio-payments-fx/",
+    )
+    assert acme is not None and acme.linkedin_key == "company/helio-payments-fx"
     run_id = new_run(db)
     _, by_mail = enquiry_for(db, 0, run_id, company=None, email="l-and-d@heliopay.example")
     assert (by_mail.pipeline_company_id, by_mail.pipeline_match, by_mail.pipeline_prospect_id) == (acme.id, "website", None)
