@@ -34,6 +34,7 @@ dev = [
     "pytest>=8.2",
     "pytest-playwright>=0.5",
     "pytest-timeout>=2.3",
+    "pytest-xdist>=3.6",
 ]
 
 [build-system]
@@ -49,7 +50,7 @@ default-groups = ["dev"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-ra -m 'not eval'"
+addopts = "-ra -m 'not eval' --dist loadgroup"
 timeout = 120
 markers = [
     "llm: makes a real Anthropic (Haiku) call using the key from .env",
@@ -58,5 +59,6 @@ markers = [
     "eval: ground-truth triage eval against the real sheets (network + real Haiku); excluded from the default run",
     "chrome: needs the installed Google Chrome (real headless Chrome; Phase 1.1)",
     "unmigrated: the test needs a database that was never migrated (matters when SALES0_TEST_POSTGRES_URL clones a migrated template)",
+    "slow: a test that takes more than a few seconds; deselect with -m 'not slow' for the fast loop",
     "sqlite_only: asserts SQLite internals (PRAGMA, EXPLAIN QUERY PLAN, file dumps); skipped when SALES0_TEST_POSTGRES_URL is set",
 ]
