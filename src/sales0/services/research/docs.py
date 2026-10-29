@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Prospect, ProspectDoc
@@ -123,14 +124,13 @@ def add_version(
         company_brief_id=company_brief_id, author_member_id=actor.member_id, actor=actor.label[:80],
         created_at=now_or(now),
     )  # fmt: skip
-    db.add(row)
     try:
         with db.begin_nested():
+            db.add(row)
             db.flush()
-    except Exception as exc:  # noqa: BLE001 - IntegrityError on a concurrent version number
-        from sqlalchemy.exc import IntegrityError
-
-        if isinstance(exc, IntegrityError):
+    except IntegrityError as exc:
+        text = str(exc.orig).lower()
+        if "uq_prospect_docs_version" in text or "unique" in text:  # a concurrent writer took this version number
             raise DomainError("version_conflict", "Someone saved a newer version at the same time - reload and try again.", 409) from exc
         raise
     return view(row)

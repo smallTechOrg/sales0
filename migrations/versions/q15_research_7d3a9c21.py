@@ -194,7 +194,7 @@ def _backfill_briefs() -> None:
         "prospect_docs",
         *(sa.column(n) for n in ("prospect_id", "doc_type", "version", "origin", "status", "error", "data_json",
                                  "sources_json", "inputs_json", "cost_usd_micros", "company_brief_id", "actor")),
-        sa.column("created_at", sa.DateTime),
+        sa.column("created_at"),
     )
     for bid, pid, brief_json, sources_json, cost, created in rows:
         if bid in done:
@@ -238,7 +238,7 @@ def _backfill_notes() -> None:
     notes = sa.table(
         "prospect_notes",
         sa.column("prospect_id"), sa.column("body"), sa.column("author"), sa.column("source"),
-        sa.column("created_at", sa.DateTime), sa.column("updated_at", sa.DateTime),
+        sa.column("created_at"), sa.column("updated_at"),
     )
     rows = bind.execute(sa.text("SELECT id, notes, updated_at, created_at FROM prospects WHERE notes IS NOT NULL ORDER BY id")).all()
     batch = []
