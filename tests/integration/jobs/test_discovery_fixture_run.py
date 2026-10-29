@@ -18,7 +18,7 @@ from sales0.db.models import Enquiry, EnquiryKeywordHit, EnquirySource, Keyword,
 from sales0.jobs import discovery_job
 from sales0.jobs.runner import get_runner
 from sales0.linkedin_fixture.corpus import FixturePost, load_corpus
-from sales0.llm import reset_llm_client
+from sales0.llm import reset_llm_client, set_llm_client
 from sales0.services import inbox, keywords, offerings, runs
 from sales0.services.session import session_status
 from tests.integration.services.helpers import set_session_status
@@ -179,6 +179,7 @@ def test_checkpoint_during_scroll_aborts_at_the_scroll_checkpoint(connected: Set
 
 def test_layout_drift_keyword_is_a_warning_and_counts_as_a_layout_warning(connected: Settings) -> None:
     add_keywords("layout-drift-test", "ai consulting")
+    set_llm_client(FakeLLMClient(responder=lambda req: triage_answer()))  # only the scrape facts matter here
     d = detail(start_and_wait())
     assert d.run.status == "succeeded" and d.run.layout_warnings == 1
     by_kw = {k.keyword_text: k for k in d.keywords}
@@ -263,6 +264,7 @@ def test_fixture_run_logs_sdui_strategy_and_permalink_counts(connected: Settings
 
 def test_legacy_urn_keyword_still_identifies_posts_by_urn(connected: Settings) -> None:
     add_keywords("legacy-urn-test")
+    set_llm_client(FakeLLMClient(responder=lambda req: triage_answer()))  # only the scrape facts matter here
     d = detail(start_and_wait())
     assert d.run.status == "succeeded" and d.keywords[0].status == "done"
     assert d.run.posts_seen == 10
