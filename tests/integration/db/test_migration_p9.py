@@ -6,17 +6,19 @@ from datetime import UTC, date, datetime
 
 import pytest
 from alembic import command
-from sqlalchemy import func, select, text
+import itertools
+from types import SimpleNamespace
+
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sales0.db.engine import build_engine
 from sales0.db.migrate_check import alembic_config, current_revision, head_revision
 from sales0.db.models import (
-    Client, ContactLink, Flag, FollowUp, Lead, OutreachMessage, Prospect,
+    Client, ContactLink, Enquiry, Flag, FollowUp, Lead, OutreachMessage, Prospect,
     SheetSource, TeamMember, TimelineEvent,
 )
-from tests.integration.crm import helpers as h
 from tests.integration.db._drift import assert_inline_fks_cascade, drift
 
 P8 = "p8_liaccts_b2e5f7a9"
@@ -107,14 +109,30 @@ def test_activity_id_is_backfilled_from_the_existing_references(at_p8) -> None: 
 
 
 # ----------------------------------------------------------------------------------------- origin dedupe
+_ENQ = itertools.count(1)
+
+
+def _old_enquiry(s: Session, **kw: object) -> SimpleNamespace:
+    """An enquiry row written with Core and ONLY these columns: the ORM model also maps columns that later
+    migrations add (e.g. q14's pipeline_*), which do not exist yet at this revision."""
+    n = next(_ENQ)
+    values: dict[str, object] = {
+        "content_hash": f"{n:064d}", "raw_text": f"We need AI training for our managers, post {n}.",
+        "review_status": "accepted", "stage": "prospect_new", "triage_status": "done", "author_name": "Asha Rao",
+        "date_added": datetime(2026, 10, 1, 9, 0, tzinfo=UTC), **kw,
+    }
+    table = Enquiry.__table__
+    return SimpleNamespace(id=s.execute(insert(table).values(**values).returning(table.c.id)).scalar_one())
+
+
 def _seed_duplicates(url: str) -> dict[str, int]:
     engine = build_engine(url)
     t = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
     with Session(engine) as s:
         m = TeamMember(name="Pat", email="pat@team.example", role="member")
         s.add(m)
-        e = h.enquiry(s, company="Beta Corp")
-        other = h.enquiry(s, company="Solo Ltd")
+        e = _old_enquiry(s, company="Beta Corp")
+        other = _old_enquiry(s, company="Solo Ltd")
         keep = Prospect(name="Beta Corp", origin_enquiry_id=e.id, created_at=t, updated_at=t)
         lose = Prospect(
             name="Beta Corp", origin_enquiry_id=e.id, stage="contacted", status="open", contacted_at=t, notes="called once",
@@ -124,7 +142,7 @@ def _seed_duplicates(url: str) -> dict[str, int]:
         solo = Prospect(name="Solo Ltd", origin_enquiry_id=other.id, created_at=t, updated_at=t)
         s.add_all([keep, lose, lose2, solo])
         s.flush()
-        e.prospect_id = lose.id  # the enquiry points at a LOSER
+        s.execute(update(Enquiry.__table__).where(Enquiry.__table__.c.id == e.id).values(prospect_id=lose.id))  # a LOSER
         k_lead = Lead(prospect_id=keep.id, opened_at=t)
         l_lead = Lead(prospect_id=lose.id, opened_at=t)  # second OPEN lead -> must be closed
         s.add_all([k_lead, l_lead])
@@ -142,7 +160,7 @@ def _seed_duplicates(url: str) -> dict[str, int]:
             SheetSource(entity="prospect", key="k", target_type="prospect", target_id=lose.id, sheet_id="s", gid="0",
                            tab_name="T", row_number=2, row_hash="x"),
         ])
-        c = h.enquiry(s)  # a contact link target
+        c = _old_enquiry(s)  # a contact link target
         from sales0.db.models import Contact
 
         ct = Contact(full_name="Asha")
@@ -200,7 +218,7 @@ def test_the_dedupe_is_a_noop_without_duplicates_and_upgrade_is_retry_safe(at_p8
     command.upgrade(cfg, P_ACT)
     engine = build_engine(url)
     with Session(engine) as s:
-        e = h.enquiry(s)
+        e = _old_enquiry(s)
         s.add(Prospect(name="One", origin_enquiry_id=e.id))
         s.add(Prospect(name="Free", origin_enquiry_id=None))
         s.add(Prospect(name="Free2", origin_enquiry_id=None))  # NULL origins never collide
