@@ -254,3 +254,27 @@ class ImportTableReport(_Strict):
 class ImportFinalizeResponse(_Strict):
     tables: dict[str, ImportTableReport]
     ok: bool
+
+
+# --------------------------------------------------------------------------- read-only export (sales0 pull-data)
+class ExportTable(BaseModel):
+    name: str
+    rows: int
+    pk: list[str]
+
+
+class ExportManifest(BaseModel):
+    head: str | None  # the hosted database's Alembic revision
+    code_head: str | None = None
+    tables: list[ExportTable]  # parents before children
+    excluded: list[str] = Field(default_factory=list)
+    max_batch_rows: int = 1000
+    max_batch_bytes: int = 4 * 1024 * 1024
+
+
+class ExportBatch(BaseModel):
+    table: str
+    columns: list[str]
+    rows: list[dict[str, Any]]
+    next: str | None = None  # cursor of the following page; None = this was the last one
+    trimmed: int = 0  # rows whose raw_card/raw_text were dropped because the row alone exceeded the page cap

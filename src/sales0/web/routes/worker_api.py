@@ -21,7 +21,7 @@ from sales0.db.engine import get_db
 from sales0.errors import DomainError
 from sales0.llm import LLMClient, get_llm_client
 from sales0.logging import get_logger
-from sales0.services import data_import, worker_service
+from sales0.services import data_export, data_import, worker_service
 from sales0.web.envelope import ok
 from sales0.worker import protocol as p
 
@@ -101,7 +101,18 @@ def _require_hosted() -> None:
         raise DomainError("not_found", "That item no longer exists - refresh the page.", 404)
 
 
-@router.post("/import/batch", dependencies=[Depends(require_worker), Depends(_require_hosted)])
+@router.get("/export/manifest", dependencies=[Depends(require_worker), Depends(_require_hosted)])
+def export_manifest(db: Session = Depends(get_db)) -> JSONResponse:
+    """``sales0 pull-data``: schema revision, tables in FK-safe order and their row counts (read-only)."""
+    return _reply(p.ExportManifest.model_validate(data_export.manifest(db)))
+
+
+@router.get("/export/batch", dependencies=[Depends(require_worker), Depends(_require_hosted)])
+def export_batch(table: str, after: str | None = None, limit: int = data_export.DEFAULT_BATCH_ROWS, db: Session = Depends(get_db)) -> JSONResponse:
+    return _reply(p.ExportBatch.model_validate(data_export.batch(db, table, after, limit)))
+
+
+@router.post("/import/batch",dependencies=[Depends(require_worker), Depends(_require_hosted)])
 def import_batch(body: p.ImportBatchRequest, db: Session = Depends(get_db)) -> JSONResponse:
     stats = data_import.import_batch(db, body.table, body.phase, body.rows, body.member_emails)
     return _reply(p.ImportBatchResponse(**stats))

@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar
+from urllib.parse import urlencode
 
 import httpx
 from pydantic import BaseModel
@@ -142,6 +143,13 @@ class WorkerClient:
 
     def import_deck_chunk(self, request: p.ImportDeckChunkRequest) -> p.ImportDeckChunkResponse:
         return self._call("POST", "/api/worker/import/deck-chunk", request, p.ImportDeckChunkResponse)
+
+    def export_manifest(self) -> p.ExportManifest:
+        return self._call("GET", "/api/worker/export/manifest", None, p.ExportManifest)
+
+    def export_batch(self, table: str, after: str | None = None, limit: int = 500) -> p.ExportBatch:
+        query = {"table": table, "limit": str(limit), **({"after": after} if after else {})}
+        return self._call("GET", "/api/worker/export/batch?" + urlencode(query), None, p.ExportBatch)
 
     def import_finalize(self, request: p.ImportFinalizeRequest) -> p.ImportFinalizeResponse:
         return self._call("POST", "/api/worker/import/finalize", request, p.ImportFinalizeResponse)

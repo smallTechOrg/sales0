@@ -426,6 +426,42 @@ def _push_data(source: str, dry_run: bool) -> int:
         return 1
 
 
+def _pull_data(out: str, server_url: str | None, token: str | None, tables: str | None, force: bool) -> int:
+    """``sales0 pull-data``: copy the hosted database (read-only) into a fresh local SQLite file."""
+    from pathlib import Path
+    from urllib.parse import urlsplit
+
+    from sales0.config import get_settings
+    from sales0.worker.client import ServerUnavailable, WorkerApiError, WorkerClient
+    from sales0.worker.pull_data import ADMIN_EMAIL, PORT, PullError, pull
+
+    settings = get_settings()
+    url = server_url or settings.worker_server_url
+    secret = token or settings.worker_token_value
+    if not url or not secret:
+        print("sales0 pull-data: set SALES0_WORKER_SERVER_URL and SALES0_WORKER_TOKEN (or --server-url / --token), see docs/deploy.md.", file=sys.stderr)
+        return 2
+    parts = urlsplit(url)
+    if parts.scheme != "https" and (parts.hostname or "") not in ("127.0.0.1", "localhost", "::1"):
+        print("sales0 pull-data: the server URL must be https:// (the bearer token would travel in clear text).", file=sys.stderr)
+        return 2
+    wanted = [t.strip() for t in tables.split(",") if t.strip()] if tables else None
+    client = WorkerClient(url, secret, outage_budget_s=300.0)
+    try:
+        result = pull(client, Path(out), tables=wanted, force=force)
+    except (PullError, WorkerApiError, ServerUnavailable) as exc:
+        print(f"sales0 pull-data: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        client.close()
+    print(f"\nWrote {result.db_path}")
+    print("WARNING: this file contains real personal data (names, profiles, messages). Keep it on this laptop; never commit or share it.")
+    print(f"Local login:  {ADMIN_EMAIL}  /  {result.admin_password}   (shown once; it is only valid for this file)")
+    if result.run_script:
+        print(f"Start the app on http://127.0.0.1:{PORT} (scheduler off, fake LinkedIn, no email):\n  {result.run_script}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sales0.cli", description="sales0 operator commands")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -462,6 +498,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     pd = sub.add_parser("push-data", help="Hosted mode: copy a local SQLite database (read-only) into the hosted app's database")
     pd.add_argument("--source", required=True, metavar="SQLITE_FILE", help="e.g. data/sales0.db (copied first; never modified)")
     pd.add_argument("--dry-run", action="store_true", help="print the per-table row counts and send nothing")
+    pl = sub.add_parser("pull-data", help="Copy the hosted database (read-only, no secrets) into a fresh LOCAL SQLite file to work on real data")
+    pl.add_argument("--out", default="data/pulled/sales0.db", metavar="SQLITE_FILE", help="new file to create (default data/pulled/sales0.db)")
+    pl.add_argument("--server-url", default=None, help="default: SALES0_WORKER_SERVER_URL")
+    pl.add_argument("--token", default=None, help="default: SALES0_WORKER_TOKEN (prefer the env var; flags land in shell history)")
+    pl.add_argument("--tables", default=None, help="comma-separated subset of tables (default: all exportable tables)")
+    pl.add_argument("--force", action="store_true", help="replace an existing --out file")
     ed = sub.add_parser("env-docs", help="Print the Markdown table of every SALES0_* setting (or check/rewrite a README block)")
     mode = ed.add_mutually_exclusive_group()
     mode.add_argument("--check", metavar="FILE", default=None, help="exit 1 if FILE's env-docs block is out of date")
@@ -471,6 +513,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _worker(args.connect)
     if args.command == "push-data":
         return _push_data(args.source, args.dry_run)
+    if args.command == "pull-data":
+        return _pull_data(args.out, args.server_url, args.token, args.tables, args.force)
     if args.command == "env-docs":
         return _env_docs(args.check, args.write)
     if args.command == "sync-sheets":

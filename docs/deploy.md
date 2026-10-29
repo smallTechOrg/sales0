@@ -201,6 +201,41 @@ uv run sales0 push-data --source ~/path/to/sales0-run/data/sales0.db            
   is not found locally stays "file missing - upload again" on the hosted Decks page. Re-running skips files already
   in the bucket.
 
+### 5c. Work on the UI against real data (pull-data)
+
+The reverse of 5a, for developers: copy the hosted database into a LOCAL SQLite file and run the app on it. Read-only
+against production (`GET /api/worker/export/manifest` and `/export/batch`, hosted mode only, bearer
+`SALES0_WORKER_TOKEN`, constant-time compare; PostgreSQL transactions are `SET TRANSACTION READ ONLY`).
+
+```bash
+export SALES0_WORKER_SERVER_URL=https://...run.app SALES0_WORKER_TOKEN=...      # same two variables as push-data
+uv run sales0 pull-data --out data/pulled/sales0.db [--tables a,b] [--force]    # refuses to overwrite without --force
+data/pulled/run.sh                                                              # the app on http://127.0.0.1:8780
+```
+
+* **Same schema only.** The local file is created by `alembic upgrade head` of YOUR checkout; if the server's revision
+  differs, the pull stops before writing anything ("update the repo" / "the server is behind"). Deploy first or check
+  out the deployed commit.
+* **What comes across:** every table in the push-data plan, parent-first, paged by primary key (<= 1000 rows and ~4 MB of
+  JSON per page), with exact counts verified per table at the end (progress prints counts only, never row contents).
+  Rows are inserted with foreign keys off (the live server keeps changing between pages) and checked afterwards; a
+  handful of dangling references from changes made mid-pull is reported as a warning, re-run to refresh.
+  `raw_card` / `raw_text` are included; they are dropped only from a single row that alone exceeds the page cap.
+* **Never exported:** `team_members` (and so every password hash), `member_sessions`, `password_tokens`,
+  `gmail_connections`, `reply_poll_state`, `linkedin_accounts`, `linkedin_session`, `scheduled_jobs`, `workers`, `app_meta`,
+  `sheet_sources`, `sheet_sync_state` (the `data_import.SKIP` set). Deck PDFs stay in GCS: only the metadata rows come
+  across, so the local Decks page says "file missing". Actor columns ("who did this") all point at ONE local admin,
+  `admin@local.test`, whose random password is printed once.
+* **Cannot send or scrape.** `run.sh` sets `SALES0_MODE=local`, `SALES0_SCHEDULER_ENABLED=false`,
+  `SALES0_REPLY_POLL_MINUTES=0`, `SALES0_SHEET_SYNC_MINUTES=0` (no background work), `SALES0_LINKEDIN_MODE=fixture` (a
+  "run" talks to the built-in fake LinkedIn on localhost, never linkedin.com), `SALES0_GMAIL_DAILY_SEND_CAP=0`, and a data
+  directory (`data/pulled/`) with no Google token or client secret and no Gmail connection row. The Anthropic key defaults
+  to a dummy, so AI buttons fail harmlessly; `export SALES0_ANTHROPIC_API_KEY=...` before `run.sh` to use them (prompts then
+  contain the real data). Settings still come from your repo `.env` for anything `run.sh` does not set (an exported empty
+  value cannot blank a `.env` entry), so keep production credentials out of it.
+* **The file holds real personal data.** `data/` is git-ignored (`data/pulled/` explicitly); never commit, share or back it
+  up to a shared place. Delete it when done.
+
 ### 5b. Where attachments live
 
 Deck PDFs are stored once per content (`decks/<sha256>.pdf`): on the hosted app in the bucket

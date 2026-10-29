@@ -5,6 +5,7 @@
 
 # --- runtime data: SQLite DB, persistent Playwright/Chromium profiles, logs ---
 data/
+data/pulled/
 *.db
 *.db-wal
 *.db-shm

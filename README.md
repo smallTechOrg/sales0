@@ -818,6 +818,22 @@ Run **one worker at a time per LinkedIn account**: two laptops on the same accou
 account-safety caps (runs, posts and page loads per day, cool-downs after a warning) are enforced by the hosted app, so the
 whole team shares them. The token and the LinkedIn session stay on that laptop; keep them in a local `.env`, not a shared shell.
 
+### Work on the UI against real data (`pull-data`)
+
+The hosted database is unreachable from laptops, so `pull-data` copies it THROUGH the hosted app (read-only,
+`/api/worker/export/*`, same worker token) into a fresh local SQLite file you can run the app on:
+
+```bash
+uv run sales0 pull-data --out data/pulled/sales0.db        # add --force to replace, --tables a,b for a subset
+data/pulled/run.sh                                          # http://127.0.0.1:8780, log in as admin@local.test (password printed once)
+```
+
+The checkout must be at the same migration as the server (otherwise it refuses: update the repo / the server is behind).
+Team members, passwords, sessions, Gmail tokens, LinkedIn account state and sheet configuration are never exported; deck
+files stay in the bucket (the local Decks page shows "file missing"). `run.sh` turns the scheduler and pollers off, uses
+the built-in fake LinkedIn and caps Gmail sending at 0, so the local app cannot send email or touch linkedin.com. The file
+contains **personal data** (git-ignored under `data/`): keep it on your laptop. Details: docs/deploy.md.
+
 ## Roadmap and what is not supported
 
 Not supported today (do not rely on these):
