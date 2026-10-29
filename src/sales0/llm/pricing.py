@@ -36,3 +36,10 @@ def cost_usd_micros(
 
 def micros_to_usd(micros: int) -> float:
     return micros / 1_000_000
+
+
+def web_search_cost_usd_micros(searches: int, settings: Settings) -> int:
+    """Server-side web searches are billed per search (USD per 1,000): $10 / 1k = 10_000 micro-USD each."""
+    if searches < 0:
+        raise ValueError("searches must be non-negative")
+    return round(searches * settings.llm_price_web_search_usd_per_1k * 1000)

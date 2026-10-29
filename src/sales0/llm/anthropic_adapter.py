@@ -23,7 +23,7 @@ from sales0.llm.errors import (
     LLMTransientError,
     LLMWorkspaceRequired,
 )
-from sales0.llm.pricing import cost_usd_micros, micros_to_usd
+from sales0.llm.pricing import cost_usd_micros, micros_to_usd, web_search_cost_usd_micros
 from sales0.logging import get_logger
 
 log = get_logger("sales0.llm")
@@ -96,6 +96,21 @@ def _int_field(usage: Any, name: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
+def _web_results(content: Any) -> list[dict[str, Any]]:
+    """The results of one ``web_search_tool_result`` block. A failed search has an error OBJECT as content (not a
+    list) and yields nothing; the encrypted page content is never kept."""
+    if not isinstance(content, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in content:
+        get = item.get if isinstance(item, dict) else (lambda k, _i=item: getattr(_i, k, None))
+        url = get("url")
+        if isinstance(url, str) and url.startswith(("http://", "https://")):
+            title, age = get("title"), get("page_age")
+            out.append({"url": url[:1000], "title": str(title or "")[:300], "page_age": str(age)[:40] if age else None})
+    return out
+
+
 def _summarise_output(tool_input: dict[str, Any] | None, text: str | None) -> str:
     if tool_input is not None:
         picked = {k: tool_input[k] for k in ("verdict", "priority", "offering_id") if k in tool_input}
@@ -148,13 +163,14 @@ class AnthropicClient:
             "system": _system_blocks(req.system),
             "messages": req.messages,
             "tools": [
+                *[dict(t) for t in req.server_tools],
                 {
                     "name": req.tool_name,
                     "description": req.tool_description,
                     "input_schema": req.input_schema,
-                }
+                },
             ],
-            "tool_choice": {"type": "tool", "name": req.tool_name},
+            "tool_choice": {"type": "tool", "name": req.tool_name} if req.tool_choice == "tool" else {"type": "auto"},
             "max_tokens": req.max_tokens,
         }
         # Never send temperature / top_p / top_k / thinking: claude-haiku-5-5 rejects them (400).
@@ -255,6 +271,7 @@ class AnthropicClient:
         latency_ms = int((time.monotonic() - started) * 1000)
         tool_input: dict[str, Any] | None = None
         texts: list[str] = []
+        web_results: list[dict[str, Any]] = []
         for block in getattr(message, "content", None) or []:
             block_type = getattr(block, "type", None)
             if block_type == "tool_use" and (tool_name is None or getattr(block, "name", None) == tool_name):
@@ -263,13 +280,17 @@ class AnthropicClient:
                     tool_input = dict(raw)
             elif block_type == "text":
                 texts.append(getattr(block, "text", "") or "")
+            elif block_type == "web_search_tool_result":
+                web_results.extend(_web_results(getattr(block, "content", None)))
 
         usage = getattr(message, "usage", None)
         input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
         cache_write = _int_field(usage, "cache_creation_input_tokens")
         cache_read = _int_field(usage, "cache_read_input_tokens")
+        searches = _int_field(getattr(usage, "server_tool_use", None), "web_search_requests")
         cost = cost_usd_micros(input_tokens, output_tokens, self._settings, cache_write, cache_read)
+        cost += web_search_cost_usd_micros(searches, self._settings)
         text = "".join(texts) or None
         response = LLMResponse(
             tool_input=tool_input,
@@ -283,6 +304,8 @@ class AnthropicClient:
             latency_ms=latency_ms,
             request_id=getattr(message, "_request_id", None) or getattr(message, "id", None),
             stop_reason=getattr(message, "stop_reason", None),
+            web_search_requests=searches,
+            web_results=web_results,
         )
         self._log_call(
             feature=feature,
@@ -325,6 +348,7 @@ class AnthropicClient:
             output_summary=_summarise_output(response.tool_input, response.text) if response else None,
             attempts=attempts,
             stop_reason=response.stop_reason if response else None,
+            web_search_requests=response.web_search_requests if response else 0,
         )
         # Caller context must never break logging after a (paid) call: keys that collide
         # with a fixed field or a structlog-reserved key are kept under a ``ctx_`` prefix.

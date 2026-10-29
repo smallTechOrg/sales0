@@ -449,6 +449,12 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_GOOGLE_USERINFO_ENDPOINT` | str | `https://openidconnect.googleapis.com/v1/userinfo` | Google userinfo endpoint (override for tests/proxies). |
 | `SALES0_GOOGLE_REVOKE_ENDPOINT` | str | `https://oauth2.googleapis.com/revoke` | Google revoke endpoint (override for tests/proxies). |
 | `SALES0_RESEARCH_ALLOW_PRIVATE_HOSTS` | str | empty | Test only: hosts the research fetcher may reach although private. Ignored unless `SALES0_LINKEDIN_MODE=fixture`. |
+| `SALES0_RESEARCH_WEB_SEARCH` | bool | `True` | Prospect research also runs Anthropic's server-side web search (news / public mentions) in one extra Haiku request. `false` turns it off. |
+| `SALES0_RESEARCH_WEB_SEARCH_MAX_USES` | int | `3` | Most web searches one research run may make (billed per search). |
+| `SALES0_RESEARCH_WEB_SEARCH_TOOL` | str | `web_search_20250305` | Anthropic web search tool type sent with the research call (`web_search_20250305` works on Haiku). |
+| `SALES0_LLM_PRICE_WEB_SEARCH_USD_PER_1K` | float | `10.0` | Web search price (USD per 1,000 searches) used for the spend estimate. |
+| `SALES0_COMPANY_PAGE_MAX_PER_DAY` | int | `10` | LinkedIn company-page visits the laptop worker may make per LinkedIn account per day (prospect research; each also counts as a page load). `0` = never queue them. |
+| `SALES0_COMPANY_PAGE_STALE_S` | int | `600` | A claimed company-page task with no result after this many seconds is marked failed (worker lost). |
 | `SALES0_TIMEZONE` | str | `Asia/Kolkata` | IANA timezone for the scheduler, digest and daily caps. |
 | `SALES0_LOG_LEVEL` | DEBUG \| INFO \| WARNING \| ERROR \| CRITICAL | `INFO` | Log level. |
 | `SALES0_LOG_FORMAT` | json \| console | `json` | `json` or `console`. |

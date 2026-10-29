@@ -6,7 +6,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-Feature = Literal["triage", "ping", "research", "drafting", "suggest", "reply"]
+Feature = Literal["triage", "ping", "research", "drafting", "suggest", "reply", "summary"]
 # Anthropic ``output_config.effort``. None = the field is not sent (provider default).
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
@@ -24,6 +24,10 @@ class StructuredRequest(BaseModel):
     prompt_version: str
     log_context: dict[str, Any] = Field(default_factory=dict)  # enquiry_id, run_id, fewshot_count, input_summary
     effort: Effort | None = None  # sent as output_config={"effort": ...} only when set
+    # Anthropic server tools sent next to ``tool_name`` (e.g. {"type": "web_search_20250305", "name": "web_search",
+    # "max_uses": 3}). With any, set ``tool_choice="auto"``: a forced tool would skip them.
+    server_tools: list[dict[str, Any]] = Field(default_factory=list)
+    tool_choice: Literal["tool", "auto"] = "tool"
 
 
 class LLMResponse(BaseModel):
@@ -38,6 +42,10 @@ class LLMResponse(BaseModel):
     latency_ms: int
     request_id: str | None
     stop_reason: str | None
+    # Server-side web search (usage.server_tool_use.web_search_requests; its cost is in cost_usd_micros) and the
+    # results it returned: [{"url", "title", "page_age"}] (untrusted third-party data).
+    web_search_requests: int = 0
+    web_results: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @runtime_checkable

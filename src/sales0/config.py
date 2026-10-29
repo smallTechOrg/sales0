@@ -147,6 +147,17 @@ class Settings(BaseSettings):
     # TEST ONLY: comma-separated hosts (or 1/true = loopback) the research fetcher may reach even
     # though they are private. Ignored unless linkedin_mode == "fixture" (see ``research_private_hosts``).
     research_allow_private_hosts: str = ""
+    # --- Prospect research / account summary (q15) ---
+    # Anthropic's server-side web search on the research call (one extra Haiku request, at most N searches).
+    research_web_search: bool = True
+    research_web_search_max_uses: int = Field(3, ge=1, le=10)
+    # web_search_20250305 = the basic tool (Haiku); the _20260209 dynamic-filtering variant needs Opus/Sonnet.
+    research_web_search_tool: str = "web_search_20250305"
+    llm_price_web_search_usd_per_1k: float = Field(10.0, ge=0)  # USD per 1,000 web searches
+    # The laptop worker's LinkedIn company-page visits per account per local day (also counted as page loads).
+    company_page_max_per_day: int = Field(10, ge=0)
+    # A claimed company-page task with no result after this many seconds is marked failed (worker lost).
+    company_page_stale_s: int = Field(600, ge=60)
 
     # --- Time ---
     timezone: str = "Asia/Kolkata"
