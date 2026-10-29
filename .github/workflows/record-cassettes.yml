@@ -1,0 +1,71 @@
+name: Record LLM cassettes
+
+# The integration tests that call Haiku REPLAY recorded responses (tests/fixtures/llm_cassettes). Changing a prompt
+# (or anything that changes a request) makes a recorded response miss, and re-recording needs the real Anthropic key,
+# which cloud / PR sessions do not have. This workflow records against real Haiku using the repository secrets
+# ANTHROPIC_API_KEY and SALES0_ANTHROPIC_WORKSPACE_ID, commits the updated cassettes to the branch, and re-runs CI.
+#
+#   gh workflow run record-cassettes.yml --ref <your-branch>                      # every llm-marked integration test
+#   gh workflow run record-cassettes.yml --ref <your-branch> -f paths="tests/integration/agent/research"
+#
+# Costs real tokens (haiku only, cents). Never runs on main: record on a branch and merge it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      paths:
+        description: "Test paths to record (whole files; space separated)"
+        default: "tests/integration"
+        required: true
+
+permissions:
+  contents: write # commit the cassettes to the branch
+  actions: write  # start CI on the new commit (pushes made with GITHUB_TOKEN do not trigger workflows)
+
+concurrency:
+  group: record-cassettes-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  record:
+    if: ${{ github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run playwright install --with-deps chromium
+      - name: Allow Chromium's sandbox on the Ubuntu runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Record against real Haiku
+        env:
+          SALES0_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SALES0_ANTHROPIC_WORKSPACE_ID: ${{ secrets.SALES0_ANTHROPIC_WORKSPACE_ID }}
+          PATHS: ${{ inputs.paths }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          bash scripts/record_llm_cassettes.sh $PATHS
+      - name: Commit the cassettes
+        id: commit
+        run: |
+          git add tests/fixtures/llm_cassettes
+          if git diff --cached --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; echo "cassettes already up to date"; exit 0; fi
+          git diff --cached --stat | tail -15
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "tests: re-record LLM cassettes (record-cassettes workflow)"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Re-run CI on the new commit
+        if: ${{ steps.commit.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref "${GITHUB_REF_NAME}"

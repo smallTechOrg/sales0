@@ -284,6 +284,15 @@ Connect again.
   one-time steps (`deploy.sh --step secrets|db-user|bucket`) and are not re-run.
 - Migrations run on boot, so take a backup first for risky ones (section 8).
 
+### Re-recording LLM cassettes from GitHub (no local key needed)
+
+Tests that call Haiku replay recorded responses. If a prompt change makes CI fail with "no recorded LLM response", run
+`gh workflow run record-cassettes.yml --ref <branch>` (optionally `-f paths="tests/integration/agent/research"`). It records
+against real Haiku with the repository secrets `ANTHROPIC_API_KEY` and `SALES0_ANTHROPIC_WORKSPACE_ID` (copied from Secret Manager
+`sales0-anthropic-*`; rotate both places together), commits the updated cassettes to the branch and re-runs CI. It refuses to run on `main`.
+Anyone with write access to the repo can read these secrets through a workflow, so keep write access limited.
+
+
 ## 7. Rollback
 
 * **Code**: `deploy/deploy.sh rollback` lists the last revisions; `deploy/deploy.sh rollback sales0-00012-abc --apply`

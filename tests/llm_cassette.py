@@ -47,7 +47,10 @@ BOOT_DIR = Path(__file__).resolve().parent / "llm_cassette_boot"
 REFRESH_ENV = "SALES0_TEST_LLM_REFRESH"
 STRICT_ENV = "SALES0_TEST_LLM_STRICT"  # 1: a module without a cassette FAILS (CI) instead of skipping
 FILE_ENV = "SALES0_LLM_CASSETTE_FILE"  # exported for subprocesses
-RECORD_HINT = "re-record with: scripts/record_llm_cassettes.sh (SALES0_TEST_LLM_REFRESH=1, real key)"
+RECORD_HINT = (
+    "re-record with a real key: `gh workflow run record-cassettes.yml --ref <your-branch>` (GitHub secrets hold the key; "
+    "commits the updated cassettes to the branch), or locally scripts/record_llm_cassettes.sh (SALES0_TEST_LLM_REFRESH=1)"
+)
 
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\b[0-9a-f]{32}\b")
