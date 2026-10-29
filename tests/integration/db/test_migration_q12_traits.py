@@ -55,8 +55,13 @@ def test_upgrade_seeds_backfills_and_downgrades(tmp_path: Path) -> None:
         ("Training provider", "training_provider", True), ("Partner", "partner", True), ("Outreach client", "outreach_client", True)]
     assert keys[1] == "acme.example|company/acme-ltd"
     assert [tuple(r) for r in nulls] == [(None, None), (None, None)]  # gmail.com is a generic host, never a company key
+    engine.dispose()
+    if head_revision() != REV:  # later migrations (q13, q14) sit on top: drift is only meaningful at the head
+        command.upgrade(cfg, "head")
+    engine = build_engine(url)
     assert drift(engine) == []
     engine.dispose()
+    command.downgrade(cfg, REV)
 
     command.upgrade(cfg, REV)  # re-runnable, no duplicate seeds
     command.downgrade(cfg, PARENT)
@@ -71,5 +76,11 @@ def test_upgrade_seeds_backfills_and_downgrades(tmp_path: Path) -> None:
     engine.dispose()
 
 
-def test_it_is_the_single_linear_head() -> None:
-    assert head_revision() == REV
+def test_it_is_on_the_single_linear_history() -> None:
+    from alembic.script import ScriptDirectory
+
+    script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+    assert len(script.get_heads()) == 1
+    rev = script.get_revision(REV)
+    assert rev is not None and rev.down_revision == PARENT
+    assert REV in {r.revision for r in script.iterate_revisions(head_revision(), "base")}

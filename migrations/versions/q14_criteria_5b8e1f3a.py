@@ -16,7 +16,7 @@ Plain CREATE TABLE / ADD COLUMN, retry-safe (only what is missing). Downgrade dr
 link fix is not reverted (the old search links carried no information a profile link lacks).
 
 Revision ID: q14_criteria_5b8e1f3a
-Revises: p11_rawcapture_a4d9c7e2
+Revises: q13_followch_3e7a6c58
 Create Date: 2026-10-29
 """
 
@@ -31,7 +31,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "q14_criteria_5b8e1f3a"
-down_revision: str | Sequence[str] | None = "p11_rawcapture_a4d9c7e2"
+down_revision: str | Sequence[str] | None = "q13_followch_3e7a6c58"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

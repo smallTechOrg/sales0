@@ -11,7 +11,7 @@
 Plain ADD COLUMN (no table rebuild), retry-safe (each column added only when missing). Downgrade drops the columns.
 
 Revision ID: q13_followch_3e7a6c58
-Revises: p11_rawcapture_a4d9c7e2
+Revises: q12_traits_9d2c4a71
 Create Date: 2026-10-29
 """
 
@@ -25,7 +25,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "q13_followch_3e7a6c58"
-down_revision: str | Sequence[str] | None = "p11_rawcapture_a4d9c7e2"
+down_revision: str | Sequence[str] | None = "q12_traits_9d2c4a71"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

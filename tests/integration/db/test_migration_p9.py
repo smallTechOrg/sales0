@@ -147,8 +147,12 @@ def _seed_duplicates(url: str) -> dict[str, int]:
         l_lead = Lead(prospect_id=lose.id, opened_at=t)  # second OPEN lead -> must be closed
         s.add_all([k_lead, l_lead])
         s.flush()
+        # Core insert: the FollowUp model also maps q13's ``channel``, which does not exist yet at this revision.
+        s.execute(insert(FollowUp.__table__).values(
+            prospect_id=lose.id, kind="custom", due_on=date(2026, 11, 1), note="ring",
+            created_at=t, updated_at=t,
+        ))
         s.add_all([
-            FollowUp(prospect_id=lose.id, kind="custom", due_on=date(2026, 11, 1), note="ring"),
             Client(name="Beta", prospect_id=lose2.id),
             OutreachMessage(member_id=m.id, connection_email=m.email, from_addr=m.email, prospect_id=lose.id),
             TimelineEvent(subject_type="prospect", subject_id=lose.id, prospect_id=lose.id, kind="note", body="hist",

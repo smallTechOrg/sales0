@@ -15,7 +15,7 @@ from sales0.db.engine import build_engine
 from sales0.db.migrate_check import alembic_config, head_revision
 from tests.integration.db._drift import drift
 
-PARENT = "p11_rawcapture_a4d9c7e2"
+PARENT = "q13_followch_3e7a6c58"
 REV = "q14_criteria_5b8e1f3a"
 LI = "https://www.linkedin.com"
 SEARCH = f"{LI}/search/results/content/?keywords=ai%20workshop"

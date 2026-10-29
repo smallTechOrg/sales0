@@ -15,7 +15,7 @@ from sales0.config import get_settings, reset_settings
 from sales0.db.engine import build_engine
 from sales0.db.migrate_check import alembic_config, head_revision
 
-PARENT = "p11_rawcapture_a4d9c7e2"
+PARENT = "q12_traits_9d2c4a71"
 REV = "q13_followch_3e7a6c58"
 ON_DISK = b"%PDF-1.4\non disk\n%%EOF\n"
 LOST = b"%PDF-1.4\nlost on restart\n%%EOF\n"
