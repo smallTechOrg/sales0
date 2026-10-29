@@ -5,15 +5,14 @@
     <div class="card__body table-wrap">
       {% if page.items %}
         <table class="table" id="company-list">
-          <thead><tr><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Characteristics</th><th scope="col" class="num">Prospects</th><th scope="col" class="num">Clients</th><th scope="col" class="num">Contacts</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
+          <thead><tr><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Characteristics</th><th scope="col" class="num">People</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
           <tbody>
           {% for co in page.items %}
             <tr id="company-{{ co.id }}">
               <td><a href="/companies/{{ co.id }}">{{ co.name }}</a>{% if co.website %}<div class="muted">{{ co.website }}</div>{% endif %}</td>
               <td>{% if co.priority %}<span class="chip-priority" data-priority="{{ co.priority }}">{{ co.priority|capitalize }}</span>{% endif %}</td>
+              <td>{% if co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% if co.off_ramp %} <span class="badge badge--warn">{{ co.off_ramp|replace("_", " ")|capitalize }}</span>{% endif %}{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
               <td>{{ trait_chips(co.characteristics) }}</td>
-              <td class="num">{{ co.prospects }}</td>
-              <td class="num">{{ co.clients }}</td>
               <td class="num">{{ co.contacts }}</td>
               <td class="num">{{ co.enquiries }}</td>
               <td class="num">{{ co.open_follow_ups }}</td>
@@ -24,7 +23,7 @@
       {% elif params.q or params.characteristic %}
         <div class="empty-state empty-state--compact" id="companies-empty"><p>No companies match these filters.</p><a class="btn" href="/companies">Clear filters</a></div>
       {% else %}
-        <div class="empty-state" id="companies-empty"><p>No companies yet. They are created when you accept an enquiry that names a company, or add a prospect or contact with one.</p></div>
+        <div class="empty-state" id="companies-empty"><p>No companies yet. They are created when you accept an enquiry, add a company in the Pipeline, or add a person with one.</p></div>
       {% endif %}
     </div>
   </section>

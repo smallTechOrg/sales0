@@ -86,7 +86,7 @@ def test_empty_db_shows_setup_guidance_and_zero_counts(client: TestClient) -> No
 def test_after_runs_with_nothing_left_shows_all_caught_up_and_tab_empty_states(client: TestClient) -> None:
     make_run("succeeded")
     assert "All caught up — nothing to review." in client.get("/inbox").text
-    assert "Accepted enquiries become prospects here." in client.get("/inbox?tab=accepted").text
+    assert "Accepted enquiries start (or join) a company in the pipeline here." in client.get("/inbox?tab=accepted").text
     assert "Discarded enquiries are kept here and stay searchable." in client.get("/inbox?tab=discarded").text
     assert "All caught up" in client.get("/inbox?tab=bogus&page=-3").text  # bad params fall back, never break
 

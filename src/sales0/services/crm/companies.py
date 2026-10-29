@@ -46,7 +46,8 @@ _OPEN_FU = (FollowUp.done_at.is_(None), FollowUp.cancelled_at.is_(None))
 
 
 def _view(c: Company) -> CompanyView:
-    return CompanyView(id=c.id, name=c.name, website=c.website, city=c.city, linkedin_url=c.linkedin_url, notes=c.notes)
+    return CompanyView(id=c.id, name=c.name, website=c.website, city=c.city, linkedin_url=c.linkedin_url, notes=c.notes,
+                       stage=c.stage, sub_status=c.sub_status, off_ramp=c.off_ramp)
 
 
 # ---------------------------------------------------------------------------- matching

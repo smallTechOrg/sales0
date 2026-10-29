@@ -67,7 +67,7 @@
         <span class="badge badge--info">Already in pipeline</span>
         <a href="{{ card.pipeline_href }}">{{ card.pipeline_name }}</a>
         {% if card.pipeline_match %}<span class="muted">· {{ card.pipeline_match }}</span>{% endif %}
-        {% if card.review_status != "accepted" %}<span class="muted">· Accept adds it to this prospect</span>{% endif %}
+        {% if card.review_status != "accepted" %}<span class="muted">· Accept adds it to this company as another enquiry</span>{% endif %}
       </p>
     {% endif %}
     <p id="enquiry-{{ card.id }}-summary" class="enquiry__summary">{{ card.requirement_summary or "No summary yet — the full post text is below." }}</p>
@@ -140,7 +140,7 @@
         <form method="post" action="/inbox/decide" hx-post="/inbox/decide" hx-target="#inbox-list" hx-disabled-elt="find button">
           <input type="hidden" name="enquiry_ids" value="{{ card.id }}"><input type="hidden" name="decision" value="accept"><input type="hidden" name="as_prospect" value="1">
           <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="category" value="{{ category|default('') }}">
-          <button class="btn" type="submit">Accept as a prospect anyway</button>
+          <button class="btn" type="submit">Accept anyway (add the company)</button>
         </form>
       {% elif card.review_status != "accepted" %}
         <form method="post" action="/inbox/decide" hx-post="/inbox/decide" hx-target="#inbox-list" hx-disabled-elt="find button">
@@ -156,7 +156,7 @@
               {% for ch in characteristic_options %}
                 <label class="accept-options__item"><input type="checkbox" name="characteristic_ids" value="{{ ch.id }}"{% if ch.system_key and (ch.system_key in hint or (ch.system_key == "partner" and card.category == "channel_partner")) %} checked data-ai-suggested="1"{% endif %}> {{ ch.name }}{% if ch.system_key and (ch.system_key in hint or (ch.system_key == "partner" and card.category == "channel_partner")) %} <span class="muted">(AI suggestion)</span>{% endif %}</label>
               {% endfor %}
-              <label class="accept-options__item" title="Skips Prospect and Lead: opens a lead and marks it Won, which creates the client"><input type="checkbox" name="as_client" value="1"> Already a client</label>
+              <label class="accept-options__item" title="The company is already a client: it is marked Client (a person's decision) instead of starting as a Prospect"><input type="checkbox" name="as_client" value="1"> Already a client</label>
             </fieldset>
           {% endif %}
         </form>

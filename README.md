@@ -10,10 +10,10 @@ in a small CRM, and drafts and sends outreach email from each person's own Gmail
 |---|---|
 | **LinkedIn discovery + triage** | Searches LinkedIn posts with the team's own logged-in session (slowly, with caps and safety stops), merges duplicates, and asks Claude Haiku once per new post whether it is a genuine buyer enquiry (reason, summary, priority, offering, contact details). |
 | **Review inbox** | Only relevant posts are shown. Accept, discard (with a reason) or override; every decision is fed back into later triage as examples. |
-| **CRM pipeline** | Accepted enquiries become Prospects, then Leads, then Clients, with Contacts, Competitors & Groups, Import (paste a post or CSV), per-record timeline and a "Due today" follow-up list. |
+| **CRM pipeline** | A **company** is the main record: it is a Prospect, then a Lead (a person decides), then a Client (an enquiry marked Won), or it is closed (not interested, dormant, do not contact, lost client). Each company has people (with a role), enquiries (one specific requirement each, with its own status), outreach and follow-ups, a timeline and a "Due today" list; Competitors & Groups and Import (paste a post or CSV) complete it. |
 | **Google Sheet sync** | One-way, read-only import of the team's two Google Sheets into the CRM. sales0 never writes to Google. |
 | **Outreach email** | Company research, a drafted email, human approval, send through **each person's own Gmail** (OAuth), deck attachment, follow-ups at +3 / +7 / +14 days. |
-| **Reply tracking** | Read-only polling of each member's Gmail detects replies to sent outreach, classifies them and moves the prospect (for example to Lead). |
+| **Reply tracking** | Read-only polling of each member's Gmail detects replies to sent outreach, classifies them, records the response and shows a "Suggested: Lead" hint on the company for a person to accept or dismiss. |
 | **Digest, suggestions, costs** | Daily digest, proactive suggestions, AI spend view with an optional monthly cap. |
 | **Scheduler** | Background jobs (nightly discovery window, daily digest, purge, sheet sync, profile watch) switched on/off on the **Schedule** page; sheet sync and profile watch are opt-in (disabled by default). |
 | **Accounts and login** | Per-user email + password accounts with admin/member roles (see [Accounts and login](#accounts-and-login)), multiple LinkedIn accounts with per-account safety state. |
@@ -318,15 +318,18 @@ uv run alembic upgrade head          # once after pulling
 uv run python -m sales0              # the same run command as always
 ```
 
-**What you get.** Accept an enquiry in the Inbox and it appears in **Pipeline** as a
-*Prospect · New* (one prospect per LinkedIn profile: accepting a second enquiry from the same
-person adds to the same prospect). Press **Draft email** on it, approve and send as before:
-the prospect becomes **Contacted** and reminders are created at +3 / +7 / +14 days (the
-*Due today* panel at the top of Pipeline lists what is due). When the person replies
-"interested" (or you press **Response received**) it converts to a **Lead** (*Meeting
-scheduled → Proposal sent → Won / Lost / No response*); **Won** creates a **Client**. Every
-step is on the record's timeline, and you can add notes. **Contacts** is one shared address
-book (search, tags, merge duplicates); **Competitors & Groups** are flagged when an enquiry
+**What you get.** Accept an enquiry in the Inbox and its **company** appears in **Pipeline** as a
+*Prospect · New* (a company we already deal with just gets the enquiry attached; its stage is never
+lowered). Press **Draft email** on it, approve and send as before: the company becomes **Contacted**
+and reminders are created at +3 / +7 / +14 days (the *Due today* panel at the top of Pipeline lists
+what is due). When the person replies "interested" the company page shows *Suggested: Lead*; a
+person presses **Mark as lead** (*Meeting scheduled → Proposal sent*). Marking one of its enquiries
+**Won** (or pressing **Mark client**) makes the company a **Client**. Close a company as *Not
+interested*, *Dormant*, *Do not contact* (blocks all outreach; only an admin reopens it) or *Lost
+client*, and reopen it later. The Pipeline shows companies in Prospect | Lead | Client columns with a
+toggle to see the **enquiries** by status. Every step is on the company's timeline, and you can add
+notes. **People** is one shared address book (search, tags, merge duplicates; a person can belong to
+several companies, with a role at each); **Competitors & Groups** are flagged when an enquiry
 mentions a competitor; **Import** takes a single pasted post (triaged by Haiku like any
 scraped post) or a CSV of data that is not in your Sheets.
 
@@ -907,12 +910,16 @@ uv run pytest tests -q               # everything (the suites are also safe to r
   rate-limit cool-down surviving a Re-check and a restart. Port 8766 must be free; a full E2E
   run takes about 10 minutes.
 
+- `tests/e2e/test_company_journey.py` walks the company model without an LLM: accept two enquiries
+  (one company) -> Pipeline companies / enquiries toggle -> Mark as lead -> an enquiry marked Won
+  -> Client -> Lost client in the Closed lane -> reopen; the old `/leads`, `/clients` and
+  `/prospects/{id}` URLs redirect.
 - `tests/e2e/test_phase2_journey.py` (port **8792**, or the next free port) walks the whole CRM:
   login (redirect, wrong password, right password) -> accept two enquiries from one author in
-  the Inbox (one prospect) -> note -> Draft email (research and drafting with real Haiku) ->
+  the Inbox (one company) -> note -> Draft email (research and drafting with real Haiku) ->
   approve and send through a `FakeGmailClient` (Contacted, three reminders) -> a follow-up due
-  today -> a fake human reply classified by real Haiku -> Lead -> Proposal sent -> Won ->
-  Client; then Sync now with a synthetic static sheet (second run: 0 changes), Contacts
+  today -> a fake human reply classified by real Haiku -> "Suggested: Lead" -> Mark as lead ->
+  Proposal sent -> an enquiry Won -> Client; then Sync now with a synthetic static sheet (second run: 0 changes), Contacts
   (search, tag, merge), Competitors & Groups and Import (paste + CSV). Nothing is sent to Gmail
   and Google Sheets are never contacted.
 - `tests/integration/db/test_migration_realistic.py` upgrades synthetic populated databases

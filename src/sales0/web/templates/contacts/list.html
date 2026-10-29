@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "pipeline/_macros.html" import flash_banner %}
-{% block title %}Contacts{% endblock %}
+{% block title %}People{% endblock %}
 {% block page_header %}
   <div class="page__header">
-    <div><h1>Contacts</h1><p>One shared address book. People are added when you accept an enquiry or send an email, and each links to everything about them.</p></div>
+    <div><h1>People</h1><p>One shared address book. A person can belong to several companies or to none, with a role at each (decision maker, HR / L&amp;D, influencer, other); they are added when you accept an enquiry or send an email.</p></div>
     <div class="row">
       <a class="btn" id="link-duplicates" href="/contacts/duplicates">Possible duplicates{% if dup_count %} ({{ dup_count }}){% endif %}</a>
       <a class="btn btn--primary" href="#new-contact">New contact</a>

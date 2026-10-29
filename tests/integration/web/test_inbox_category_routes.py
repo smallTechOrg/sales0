@@ -50,7 +50,7 @@ def test_accepting_a_partner_ticks_partner_and_a_competitor_is_offered_the_regis
         assert [c.name for c in characteristics.for_prospects(db, [pid])[pid]] == ["Partner"]
     rival = _enq("P8", company="Rival Academy", category="competitor", ai_category="competitor")
     card = client.get("/inbox").text
-    assert f'id="file-competitor-{rival}"' in card and "File in Competitors" in card and "Accept as a prospect anyway" in card
+    assert f'id="file-competitor-{rival}"' in card and "File in Competitors" in card and "Accept anyway (add the company)" in card
     # the plain Accept is refused for a Competitor ...
     blocked = client.post("/inbox/decide", data={"enquiry_ids": rival, "decision": "accept"}, headers=HX)
     assert "categorised as Competitor" in blocked.text

@@ -137,6 +137,10 @@ class CompanyView(_View):
     city: str | None = None
     linkedin_url: str | None = None
     notes: str | None = None
+    # q17: the lifecycle (None stage = known company, not in the pipeline)
+    stage: str | None = None
+    sub_status: str | None = None
+    off_ramp: str | None = None
 
 
 class CompanyRow(CompanyView):
