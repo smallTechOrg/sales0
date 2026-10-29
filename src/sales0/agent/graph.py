@@ -17,7 +17,7 @@ from sales0.agent.state import TriageState
 
 def run_triage(inp: TriageInput, deps: TriageDeps) -> TriageOutcome:
     """One structured call (+ at most one repair). Raises LLMAuthError / LLMModelNotFound (fatal)."""
-    s = TriageState(inp, list(deps.offerings), list(deps.examples), PROMPT_VERSION)
+    s = TriageState(inp, list(deps.offerings), list(deps.examples), PROMPT_VERSION, criteria=deps.criteria)
     s = build_prompt(s, deps)
     while True:
         s = call_model(s, deps)  # fatal errors propagate

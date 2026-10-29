@@ -9,6 +9,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from pydantic import ValidationError
 
+from sales0.agent.criteria import DEFAULT_SET
 from sales0.agent.fewshot import truncate_words
 from sales0.agent.guards import apply_guards
 from sales0.agent.schemas import (
@@ -68,7 +69,15 @@ def _env() -> Environment:
 
 
 def render_system(state: TriageState) -> str:
-    return _env().get_template("triage_system.md").render(offerings=state.offerings).strip() + "\n"
+    """Fixed scaffolding + the ACTIVE criteria (rules change rarely, so the system block stays cacheable)."""
+    criteria = state.criteria or DEFAULT_SET
+    return (
+        _env()
+        .get_template("triage_system.md")
+        .render(offerings=state.offerings, include_rules=criteria.include, exclude_rules=criteria.exclude)
+        .strip()
+        + "\n"
+    )
 
 
 def render_user(state: TriageState, max_input_chars: int) -> str:
@@ -193,6 +202,7 @@ def finalize(state: TriageState, deps: TriageDeps) -> TriageOutcome:
         "llm_responses": list(state.responses),
         "fewshot_count": len(state.examples),
         "prompt_version": state.prompt_version,
+        "criteria_version": state.criteria.version if state.criteria is not None else None,
     }
     if state.error:
         # Transient: the generic retry message. A rejected request: a stable message (detail is logged).

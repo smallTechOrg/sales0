@@ -10,6 +10,7 @@ from sales0.db.models import enums, enums_crm
 from sales0.db.models.contacts import Contact, ContactEmail, ContactLink, ContactPhone, ContactTag, Tag
 from sales0.db.models.crm import Client, Company, Flag, FollowUp, Lead, Prospect
 from sales0.db.models._types import UTCDateTime
+from sales0.db.models.criteria import TriageCriteriaSet, TriageCriterion
 from sales0.db.models.decisions import TriageDecision
 from sales0.db.models.enquiries import Enquiry, EnquiryKeywordHit, EnquirySource
 from sales0.db.models.history import StatusHistory
@@ -88,6 +89,8 @@ __all__ = [
     "Suggestion",
     "Suppression",
     "TeamMember",
+    "TriageCriteriaSet",
+    "TriageCriterion",
     "TriageDecision",
     "UTCDateTime",
     "WatchRun",

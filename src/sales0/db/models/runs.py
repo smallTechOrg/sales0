@@ -51,6 +51,8 @@ class ScrapeRun(Base):
     posts_relevant: Mapped[int] = _counter()
     posts_skipped_ai: Mapped[int] = _counter()
     permalinks_found: Mapped[int] = _counter()
+    # q14: genuine posts auto-discarded as a repeat from an existing prospect (beyond the first one in this run)
+    posts_repeat_skipped: Mapped[int] = _counter()
     enquiries_triaged: Mapped[int] = _counter()
     triage_failed: Mapped[int] = _counter()
     errors_count: Mapped[int] = _counter()

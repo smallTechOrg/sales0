@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from sales0.agent.criteria import CriteriaSet
 from sales0.config import Settings
 from sales0.llm.client import LLMClient, LLMResponse
 
@@ -150,6 +151,8 @@ class TriageOutcome(BaseModel):
     llm_responses: list[LLMResponse]
     fewshot_count: int
     prompt_version: str
+    # q14: the triage_criteria_sets version whose rules were in the system prompt (None = built-in defaults)
+    criteria_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -158,3 +161,4 @@ class TriageDeps:
     offerings: list[OfferingRef]
     examples: list[DecisionExample]
     settings: Settings
+    criteria: CriteriaSet | None = None  # q14: the active include/exclude rules (None = built-in defaults)
