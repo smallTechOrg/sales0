@@ -298,11 +298,15 @@ def overlays(
 
 # ----------------------------------------------------------------------------- shared lookups
 def company_for(db: Session, name: str | None, *, website: str | None = None) -> Company | None:
+    """The company row for a sheet name: same name key, else the same website domain (q12), else a new row."""
+    from sales0.services.crm import _keys as crm_keys
+    from sales0.services.crm import companies as crm_companies
+
     name = clip(name, 200)
     if not name:
         return None
     key = key_text(name)
-    row = db.scalar(select(Company).where(Company.name_key == key))
+    row = crm_companies.find_match(db, name, website=website)
     if row is None:
         row = Company(name=name, name_key=key)
         db.add(row)
@@ -311,6 +315,7 @@ def company_for(db: Session, name: str | None, *, website: str | None = None) ->
         wk = v.website_key(website)
         row.website = clip(website, 300)
         row.website_key = clip(wk, 200)
+        row.domain_key = crm_keys.domain_key(website)
         db.flush()
     return row
 
@@ -775,17 +780,24 @@ def _link_prospect(ctx: Ctx, rec: SheetEnquiry, enquiry: Enquiry, new_o: dict[st
             if prospect.contact_id is None:
                 prospect.contact_id = contact.id
     elif contact is not None:
+        # add-only, and only what the sheet cell newly lists: an address the team removed or edited in the app is
+        # not re-added on every sync, only when the sheet cell itself changes to include it (audit #7 rule).
+        old_emails = {str(e).lower() for e in (old_o.get("emails") or [])}
+        old_digits = {_digits(str(ph)) for ph in (old_o.get("phones") or [])}
         for e in emails:
+            if e.lower() in old_emails:
+                continue
             if db.scalar(select(ContactEmail.id).where(ContactEmail.email == e.lower())) is None:
                 db.add(ContactEmail(contact_id=contact.id, email=e.lower(), is_primary=False))
         have = {p.digits for p in db.scalars(select(ContactPhone).where(ContactPhone.contact_id == contact.id))}
         for ph in phones:
             d = _digits(ph)
-            if d and d not in have:
+            if d and d not in have and d not in old_digits:
                 db.add(ContactPhone(contact_id=contact.id, phone=ph[:40], digits=d))
                 have.add(d)
     link = new_o.get("contact_link")
-    if contact is not None and link and _person_slug(link) and not contact.linkedin_slug:
+    link_changed = link != old_o.get("contact_link")
+    if contact is not None and link and link_changed and _person_slug(link) and not contact.linkedin_slug:
         taken = db.scalar(select(Contact.id).where(Contact.linkedin_slug == _person_slug(link)))
         if taken is None:
             contact.linkedin_slug, contact.linkedin_url = _person_slug(link), clip(link if link.startswith("http") else "https://" + link, 500)
@@ -1018,7 +1030,10 @@ def _apply_person(ctx: Ctx, rec: _Person, previous: dict[str, Any] | None) -> Ap
     w.pull("reason_text", None, lambda x: clip(x, 500))
     w.pull("extra_link", None, lambda x: clip(x, 1000))
     changed += w.changed
-    if company is not None and prospect.company_id != company.id:
+    # the company follows the sheet only when its cell changed (or the prospect has none yet): a company the team
+    # set in the app stands until the sheet's Company cell itself changes (was: reassigned on every sync).
+    company_cell_changed = key_text(new_o.get("company")) != key_text(old_o.get("company"))
+    if company is not None and prospect.company_id != company.id and (created or prospect.company_id is None or company_cell_changed):
         prospect.company_id = company.id
         changed.append("company")
     if ctx.is_sheet:

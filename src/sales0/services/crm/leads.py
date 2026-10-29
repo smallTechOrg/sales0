@@ -12,11 +12,11 @@ from sales0.db.models import Client, Company, Enquiry, Lead, OutreachMessage, Pr
 from sales0.db.models.enums_crm import LEAD_STAGES
 from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
-from sales0.services.crm import _keys, clients, contacts, flags, followups, timeline
+from sales0.services.crm import _keys, characteristics, clients, contacts, flags, followups, timeline
 from sales0.services.crm._common import invalid, page_params, today_local
 from sales0.services.crm.actor import TEAM, Actor
 from sales0.services.crm.stages import TERMINAL_LEAD_STAGES, stage_label
-from sales0.services.crm.views import LeadDetail, LeadPage, LeadView
+from sales0.services.crm.views import ClientView, LeadDetail, LeadPage, LeadView
 
 OPEN_START_STAGES = ("meeting_scheduled", "proposal_sent")
 
@@ -30,6 +30,7 @@ def views_for(db: Session, rows: Iterable[Lead], *, now: datetime | None = None)
     cids = {p.company_id for p in prospects.values() if p.company_id} | {r.company_id for r in rows if r.company_id}
     company_names = dict(db.execute(select(Company.id, Company.name).where(Company.id.in_(cids))).all()) if cids else {}
     flag_map = flags.flags_for(db, "prospect", list(pids))
+    traits = characteristics.for_prospects(db, pids)
     last = dict(
         db.execute(
             select(TimelineEvent.prospect_id, func.max(TimelineEvent.occurred_at)).where(TimelineEvent.prospect_id.in_(pids)).group_by(TimelineEvent.prospect_id)
@@ -47,6 +48,7 @@ def views_for(db: Session, rows: Iterable[Lead], *, now: datetime | None = None)
                 opened_at=r.opened_at, closed_at=r.closed_at, meeting_at=r.meeting_at, proposal_sent_on=r.proposal_sent_on,
                 value_estimate=r.value_estimate, outcome_note=r.outcome_note, flags=flag_map.get(r.prospect_id, []),
                 days_since_activity=max((stamp - seen).days, 0) if seen is not None else None,
+                company_id=r.company_id or p.company_id, characteristics=traits.get(r.prospect_id, []),
             )
         )
     return out
@@ -80,7 +82,10 @@ def _retrack(db: Session, p: Prospect) -> bool:
 def convert(
     db: Session, prospect_id: int, *, stage: str = "meeting_scheduled", meeting_at: datetime | None = None,
     opened_by: str = "manual", actor: Actor = TEAM, note: str | None = None, now: datetime | None = None,
+    require_contact: bool = True,
 ) -> LeadView:
+    """Open a lead. ``require_contact=False`` skips the contacted + response preconditions: only for an entity the
+    team already works with (Inbox "Accept as existing client", see :func:`promote_to_client`)."""
     p = db.get(Prospect, prospect_id)
     if p is None:
         raise not_found()
@@ -92,9 +97,9 @@ def convert(
         raise DomainError("lead_exists", "This prospect already has an open lead.", 409)
     if p.status == "closed":
         raise DomainError("prospect_closed", "This prospect is closed - reopen it first.", 409)
-    if p.contacted_at is None:
+    if require_contact and p.contacted_at is None:
         raise DomainError("lead_needs_contact", "This prospect has not been contacted yet - mark it Contacted first.", 409)
-    if p.responded_at is None:
+    if require_contact and p.responded_at is None:
         raise DomainError("lead_needs_response", "No response is recorded yet - press 'Response received' first.", 409)
     stamp = now_or(now)
     ld = Lead(
@@ -194,6 +199,31 @@ def move_stage(
     return views_for(db, [ld], now=stamp)[0]
 
 
+def promote_to_client(
+    db: Session, prospect_id: int, *, actor: Actor = TEAM, note: str | None = None, now: datetime | None = None,
+) -> ClientView:
+    """Make the prospect a client through the ONE lead -> client path: open (or reuse) its lead and mark it Won,
+    which creates the client (``clients.create_from_lead``). Idempotent: an existing client is returned."""
+    p = db.get(Prospect, prospect_id)
+    if p is None:
+        raise not_found()
+    existing = db.scalar(select(Client).where(Client.prospect_id == p.id).order_by(Client.id.desc()).limit(1))
+    if existing is not None:
+        return clients.views_for(db, [existing])[0]
+    stamp = now_or(now)
+    if p.status == "closed":
+        from sales0.services.crm import prospects
+
+        prospects.reopen(db, p.id, actor=actor, now=stamp)
+    lead_id = db.scalar(select(Lead.id).where(Lead.prospect_id == p.id, Lead.closed_at.is_(None)))
+    if lead_id is None:
+        lead_id = convert(db, p.id, actor=actor, note=note, now=stamp, require_contact=False).id
+    move_stage(db, lead_id, "won", actor=actor, now=stamp)
+    c = db.scalar(select(Client).where(Client.lead_id == lead_id))
+    assert c is not None
+    return clients.views_for(db, [c])[0]
+
+
 def get_lead(db: Session, lead_id: int) -> LeadDetail:
     from sales0.services.crm import prospects
 
@@ -215,18 +245,20 @@ def get_lead(db: Session, lead_id: int) -> LeadDetail:
         **base.model_dump(),
         timeline=timeline.list_timeline(db, prospect_id=ld.prospect_id),
         follow_ups=followups.for_lead(db, ld.id),
-        client=clients.view_of(c) if c else None,
+        client=clients.views_for(db, [c])[0] if c else None,
         enquiries=[prospects.linked_enquiry_view(e) for e in enq_rows],
         messages=[LinkedMessageView(id=m.id, subject=m.subject, state=m.state, sent_at=m.sent_at, reply_status=m.reply_status, owner_name=o) for m, o in msgs],
     )
 
 
 def list_leads(
-    db: Session, *, stage: str | None = None, open_only: bool = True, q: str | None = None, page: int = 1,
-    page_size: int | None = None,
+    db: Session, *, stage: str | None = None, open_only: bool = True, q: str | None = None,
+    characteristic_id: int | None = None, page: int = 1, page_size: int | None = None,
 ) -> LeadPage:
     page, size = page_params(page, page_size)
     stmt = select(Lead).join(Prospect, Prospect.id == Lead.prospect_id)
+    if characteristic_id:
+        stmt = stmt.where(characteristics.prospect_filter(characteristic_id, Lead.prospect_id))
     if open_only:
         stmt = stmt.where(Lead.closed_at.is_(None))
     if stage:
@@ -240,4 +272,4 @@ def list_leads(
     return LeadPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 
 
-__all__ = ["convert", "get_lead", "list_leads", "move_stage", "views_for"]
+__all__ = ["convert", "get_lead", "list_leads", "move_stage", "promote_to_client", "views_for"]

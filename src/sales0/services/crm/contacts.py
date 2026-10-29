@@ -22,13 +22,16 @@ from sales0.db.models import (
     TimelineEvent,
 )
 from sales0.db.models.enums_crm import LINK_ENTITY_TYPES, TAG_CATEGORIES
+from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
 from sales0.services.crm import _keys, companies, timeline
 from sales0.services.crm._common import UNSET, invalid, page_params
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
 from sales0.services.crm.views import (
     ContactDetail,
+    ContactEmailView,
     ContactLinkView,
+    ContactPhoneView,
     ContactPage,
     ContactView,
     DuplicateGroup,
@@ -251,13 +254,32 @@ def upsert(
 
 
 # ---------------------------------------------------------------------------- read
+def _email_rows(db: Session, contact_id: int) -> list[ContactEmail]:
+    return list(db.scalars(select(ContactEmail).where(ContactEmail.contact_id == contact_id).order_by(ContactEmail.is_primary.desc(), ContactEmail.id)))
+
+
+def _phone_rows(db: Session, row: Contact) -> list[ContactPhone]:
+    rows = list(db.scalars(select(ContactPhone).where(ContactPhone.contact_id == row.id).order_by(ContactPhone.id)))
+    primary = _keys.phone_digits(row.phone)
+    return sorted(rows, key=lambda r: (r.digits != primary, r.id))
+
+
 def get_contact(db: Session, contact_id: int) -> ContactDetail:
+    from sales0.db.models import LinkedinProfile
+    from sales0.services import suppressions
+
     row = _get(db, contact_id)
     base = _view(db, row)
-    emails = list(db.scalars(select(ContactEmail.email).where(ContactEmail.contact_id == row.id).order_by(ContactEmail.is_primary.desc(), ContactEmail.id)))
-    phones = list(db.scalars(select(ContactPhone.phone).where(ContactPhone.contact_id == row.id).order_by(ContactPhone.id)))
+    email_rows = _email_rows(db, row.id)
+    blocked = set(suppressions.suppressed_among(db, [e.email for e in email_rows])) if email_rows else set()
+    phone_rows = _phone_rows(db, row)
+    primary_digits = _keys.phone_digits(row.phone)
+    prof = db.scalar(select(LinkedinProfile).where(LinkedinProfile.slug == row.linkedin_slug)) if row.linkedin_slug else None
     return ContactDetail(
-        **base.model_dump(), emails=emails, phones=phones, notes=row.notes,
+        **base.model_dump(), emails=[e.email for e in email_rows], phones=[p.phone for p in phone_rows], notes=row.notes,
+        email_items=[ContactEmailView(id=e.id, email=e.email, is_primary=e.email == row.email, suppressed=e.email in blocked) for e in email_rows],
+        phone_items=[ContactPhoneView(id=p.id, phone=p.phone, is_primary=bool(primary_digits) and p.digits == primary_digits) for p in phone_rows],
+        linkedin_profile_id=prof.id if prof else None, tracked=prof.tracked if prof else None,
         links=_link_views(db, row.id), timeline=timeline.list_timeline(db, contact_id=row.id),
     )
 
@@ -318,10 +340,25 @@ def list_contacts(
 # ---------------------------------------------------------------------------- edit
 def update_contact(
     db: Session, contact_id: int, *, full_name=UNSET, title=UNSET, notes=UNSET, company=UNSET,  # type: ignore[no-untyped-def]
-    actor: Actor = TEAM, now: datetime | None = None,
+    linkedin_url=UNSET, actor: Actor = TEAM, now: datetime | None = None,  # type: ignore[no-untyped-def]
 ) -> ContactView:
     row = _get(db, contact_id)
     changed: list[str] = []
+    if linkedin_url is not UNSET:
+        text = (linkedin_url or "").strip()
+        slug = _keys.linkedin_slug_of(text) if text else None
+        if text and (not slug or not slug.startswith("in/")):
+            raise invalid("contact_invalid", "Use the person's LinkedIn profile link (linkedin.com/in/...).")
+        if slug != row.linkedin_slug:
+            if slug:
+                other = db.scalar(select(Contact.id).where(Contact.linkedin_slug == slug, Contact.id != row.id))
+                if other is not None:
+                    raise DomainError("contact_conflict", f"That LinkedIn profile already belongs to contact #{other} - merge the two instead.", 409)
+            if not slug and not row.full_name and not row.email:
+                raise invalid("contact_invalid", "A contact needs a name, an email or a LinkedIn URL.")
+            row.linkedin_slug = slug
+            row.linkedin_url = f"https://www.linkedin.com/{slug}/" if slug else None
+            changed.append("linkedin")
     if full_name is not UNSET:
         new = clip(_keys.collapse(full_name), 200)
         if not new and not row.email and not row.linkedin_slug:
@@ -343,6 +380,174 @@ def update_contact(
         timeline.add_event(db, subject_type="contact", subject_id=row.id, kind="note",
                            body="Details edited: " + ", ".join(changed), data={**_AUTO_NOTE, "fields": changed},
                            actor=actor, occurred_at=now)
+    return _view(db, row)
+
+
+# ---------------------------------------------------------------------------- e-mails & phones
+def _note_change(db: Session, row: Contact, body: str, change: str, actor: Actor, now: datetime | None) -> None:
+    row.updated_at = now_or(now)
+    _rebuild_search_text(db, row)
+    # the value itself stays out of the event body (personal data), like the sheet events
+    timeline.add_event(db, subject_type="contact", subject_id=row.id, kind="note", body=body,
+                       data={**_AUTO_NOTE, "change": change}, actor=actor, occurred_at=now)
+
+
+def _sync_primary_email(db: Session, row: Contact) -> None:
+    """Keep ``contacts.email`` (the display / primary address) equal to the single ``is_primary`` row."""
+    rows = _email_rows(db, row.id)
+    primary = next((e for e in rows if e.is_primary), None)
+    if primary is None and rows:
+        primary = rows[0]
+    for e in rows:
+        e.is_primary = e is primary
+    row.email = primary.email if primary else None
+    db.flush()
+
+
+def _email_of(db: Session, row: Contact, email_id: int) -> ContactEmail:
+    e = db.get(ContactEmail, email_id)
+    if e is None or e.contact_id != row.id:
+        raise not_found()
+    return e
+
+
+def _clean_email(raw: str | None) -> str:
+    text = (raw or "").strip().strip("<>").strip()
+    mail = _keys.first_email(text)
+    if not mail or mail != text.lower() or len(mail) > 254:
+        raise invalid("email_invalid", "That is not a valid e-mail address.")
+    return mail
+
+
+def _check_email_free(db: Session, row: Contact, mail: str, own_id: int | None = None) -> None:
+    other = db.scalar(select(ContactEmail).where(ContactEmail.email == mail))
+    if other is not None and other.id != own_id:
+        if other.contact_id == row.id:
+            raise invalid("email_invalid", "This contact already has that address.")
+        raise DomainError("contact_conflict", f"That address belongs to contact #{other.contact_id} - merge the two contacts instead.", 409)
+
+
+def add_email(db: Session, contact_id: int, email: str, *, primary: bool = False, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    mail = _clean_email(email)
+    _check_email_free(db, row, mail)
+    if primary:
+        for e in _email_rows(db, row.id):
+            e.is_primary = False
+    db.add(ContactEmail(contact_id=row.id, email=mail, is_primary=primary or row.email is None))
+    db.flush()
+    _sync_primary_email(db, row)
+    _note_change(db, row, "E-mail added" + (" (primary)" if row.email == mail else ""), "email_added", actor, now)
+    return _view(db, row)
+
+
+def update_email(db: Session, contact_id: int, email_id: int, email: str, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    e = _email_of(db, row, email_id)
+    mail = _clean_email(email)
+    if mail == e.email:
+        return _view(db, row)
+    _check_email_free(db, row, mail, e.id)
+    e.email = mail
+    db.flush()
+    _sync_primary_email(db, row)
+    _note_change(db, row, "E-mail changed", "email_changed", actor, now)
+    return _view(db, row)
+
+
+def remove_email(db: Session, contact_id: int, email_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    e = _email_of(db, row, email_id)
+    if len(_email_rows(db, row.id)) == 1 and not row.full_name and not row.linkedin_slug:
+        raise invalid("contact_invalid", "A contact needs a name, an email or a LinkedIn URL - add a name first.")
+    db.delete(e)
+    db.flush()
+    _sync_primary_email(db, row)
+    _note_change(db, row, "E-mail removed", "email_removed", actor, now)
+    return _view(db, row)
+
+
+def set_primary_email(db: Session, contact_id: int, email_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    target = _email_of(db, row, email_id)
+    if row.email == target.email:
+        return _view(db, row)
+    for e in _email_rows(db, row.id):
+        e.is_primary = e.id == target.id
+    db.flush()
+    _sync_primary_email(db, row)
+    _note_change(db, row, "Primary e-mail changed", "email_primary", actor, now)
+    return _view(db, row)
+
+
+def _phone_of(db: Session, row: Contact, phone_id: int) -> ContactPhone:
+    p = db.get(ContactPhone, phone_id)
+    if p is None or p.contact_id != row.id:
+        raise not_found()
+    return p
+
+
+def _clean_phone(raw: str | None) -> tuple[str, str]:
+    tel = _keys.display_phone(raw)
+    digits = _keys.phone_digits(tel)
+    if not tel or len(digits) < 6:
+        raise invalid("phone_invalid", "That is not a valid phone number.")
+    return tel[:40], digits
+
+
+def add_phone(db: Session, contact_id: int, phone: str, *, primary: bool = False, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    tel, digits = _clean_phone(phone)
+    if db.scalar(select(ContactPhone.id).where(ContactPhone.contact_id == row.id, ContactPhone.digits == digits)) is not None:
+        raise invalid("phone_invalid", "This contact already has that number.")
+    db.add(ContactPhone(contact_id=row.id, phone=tel, digits=digits))
+    if primary or not row.phone:
+        row.phone = tel
+    db.flush()
+    _note_change(db, row, "Phone added" + (" (primary)" if row.phone == tel else ""), "phone_added", actor, now)
+    return _view(db, row)
+
+
+def update_phone(db: Session, contact_id: int, phone_id: int, phone: str, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    p = _phone_of(db, row, phone_id)
+    tel, digits = _clean_phone(phone)
+    if tel == p.phone:
+        return _view(db, row)
+    dup = db.scalar(select(ContactPhone.id).where(ContactPhone.contact_id == row.id, ContactPhone.digits == digits, ContactPhone.id != p.id))
+    if dup is not None:
+        raise invalid("phone_invalid", "This contact already has that number.")
+    was_primary = _keys.phone_digits(row.phone) == p.digits
+    p.phone, p.digits = tel, digits
+    if was_primary:
+        row.phone = tel
+    db.flush()
+    _note_change(db, row, "Phone changed", "phone_changed", actor, now)
+    return _view(db, row)
+
+
+def remove_phone(db: Session, contact_id: int, phone_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    p = _phone_of(db, row, phone_id)
+    was_primary = _keys.phone_digits(row.phone) == p.digits
+    db.delete(p)
+    db.flush()
+    if was_primary:
+        rest = _phone_rows(db, row)
+        row.phone = rest[0].phone if rest else None
+        db.flush()
+    _note_change(db, row, "Phone removed", "phone_removed", actor, now)
+    return _view(db, row)
+
+
+def set_primary_phone(db: Session, contact_id: int, phone_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
+    row = _get(db, contact_id)
+    p = _phone_of(db, row, phone_id)
+    if _keys.phone_digits(row.phone) == p.digits:
+        return _view(db, row)
+    row.phone = p.phone
+    db.flush()
+    _note_change(db, row, "Primary phone changed", "phone_primary", actor, now)
     return _view(db, row)
 
 
@@ -543,6 +748,8 @@ def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: 
 
 
 __all__ = [
+    "add_email", "add_phone", "remove_email", "remove_phone", "set_primary_email", "set_primary_phone", "update_email",
+    "update_phone",
     "add_tag", "find_duplicates", "resolve_id", "get_contact", "link", "list_contacts", "list_tags", "merge", "remove_tag",
     "update_contact", "upsert", "upsert_row", "views_for",
 ]
