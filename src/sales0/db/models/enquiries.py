@@ -115,6 +115,10 @@ class Enquiry(Base):
     ai_poster_type: Mapped[str | None] = mapped_column(String(40))
     ai_opportunity_type: Mapped[str | None] = mapped_column(String(40))
     ai_priority: Mapped[str | None] = mapped_column(String(10))
+    # q16: the AI's suggested category (relevant_prospect | channel_partner | competitor); ``category`` is the team's
+    # (initialised from the suggestion; the default for anything not yet categorised is relevant_prospect)
+    ai_category: Mapped[str | None] = mapped_column(String(20))
+    category: Mapped[str] = mapped_column(String(20), nullable=False, default="relevant_prospect", server_default="relevant_prospect", index=True)
     ai_offering_id: Mapped[int | None] = mapped_column(
         ForeignKey("offerings.id", ondelete="RESTRICT")
     )

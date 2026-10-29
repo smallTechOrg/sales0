@@ -46,3 +46,15 @@ SHEET_TARGET_TYPES: tuple[str, ...] = ("enquiry", "prospect", "competitor", "cha
 METRIC_SETS: tuple[str, ...] = ("weekly", "secondary")
 CHARACTERISTIC_ENTITY_TYPES: tuple[str, ...] = ("prospect", "client")
 ENQUIRY_ORIGINS: tuple[str, ...] = ("discovery", "sheet", "manual", "import")
+
+# q16 (feedback round 2). Enquiry category: what KIND of poster/enquiry it is. ``relevant_prospect`` is a genuine
+# enquiry/prospect; the others are filed elsewhere. Assumed: an enum + service validation (no CHECK) so a new value
+# needs no table rebuild.
+ENQUIRY_CATEGORIES: tuple[str, ...] = ("relevant_prospect", "channel_partner", "competitor")
+DEFAULT_ENQUIRY_CATEGORY = "relevant_prospect"
+ENQUIRY_CATEGORY_LABELS: dict[str, str] = {
+    "relevant_prospect": "Relevant prospect", "channel_partner": "Channel partner", "competitor": "Competitor",
+}
+# Prospect priority: ``derived`` = the highest priority of its linked enquiries (recomputed); ``manual`` = a person
+# set it (never overwritten by an enquiry change or a sheet sync).
+PROSPECT_PRIORITY_SOURCES: tuple[str, ...] = ("derived", "manual")

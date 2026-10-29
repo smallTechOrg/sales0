@@ -103,6 +103,9 @@ class Prospect(Base):
     contacted_estimated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     responded_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     next_follow_up_on: Mapped[date | None] = mapped_column(Date, index=True)
+    # q16: high | medium | low; ``priority_source`` 'derived' (from the linked enquiries) or 'manual' (a person set it)
+    priority: Mapped[str | None] = mapped_column(String(10), index=True)
+    priority_source: Mapped[str] = mapped_column(String(10), nullable=False, default="derived", server_default="derived")
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="enquiry", server_default="enquiry")
     reason_url: Mapped[str | None] = mapped_column(String(1000))
     reason_text: Mapped[str | None] = mapped_column(String(500))
@@ -198,6 +201,8 @@ class FollowUp(Base):
     done_actor: Mapped[str | None] = mapped_column(String(80))
     # How it was done: whatsapp | linkedin | email | call (FOLLOW_UP_CHANNELS; validated in the service).
     channel: Mapped[str | None] = mapped_column(String(10))
+    # q16: how it is PLANNED to be done (whatsapp | linkedin | email | call); only ``email`` ones are AI-drafted
+    planned_channel: Mapped[str] = mapped_column(String(10), nullable=False, default="email", server_default="email")
     cancelled_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     cancel_reason: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)

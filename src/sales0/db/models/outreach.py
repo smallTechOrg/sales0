@@ -87,6 +87,9 @@ class OutreachMessage(Base):
     last_reply_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     # A follow-up draft points at the message it follows up; a reply stops pending follow-ups.
     follow_up_of_id: Mapped[int | None] = mapped_column(ForeignKey("outreach_messages.id", ondelete="SET NULL"), index=True)
+    # q16: the CRM reminder (follow_ups.id) this draft is the email for; sending it marks THAT reminder done (email).
+    # No FK (follow_ups is a CRM table; the draft outlives a cancelled reminder).
+    follow_up_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
 
 class OutreachEvent(Base):
