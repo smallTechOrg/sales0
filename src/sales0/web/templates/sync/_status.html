@@ -6,7 +6,7 @@
     <div class="card__body">
       <p id="sync-state">
         {% if panel.running %}<span class="badge badge--info" data-state="running"><span class="spinner" aria-hidden="true"></span> Running…</span>
-        {% elif panel.state == "disabled" %}<span class="badge" data-state="disabled">Disabled</span> <span class="muted">SALES0_SHEET_SYNC_MINUTES is 0</span>
+        {% elif panel.state == "disabled" %}<span class="badge" data-state="disabled">Manual sync only</span> <span class="muted">Press "Sync now" to pull the sheet. Automatic sync is off (SALES0_SHEET_SYNC_MINUTES is 0).</span>
         {% else %}<span class="badge badge--genuine" data-state="idle">Idle</span>{% endif %}
       </p>
       {% if panel.last_finished_at %}
