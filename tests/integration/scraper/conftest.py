@@ -6,10 +6,14 @@ so ``scraper.urls.base_url`` resolves to it. A real LinkedIn account is never to
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import socket
+import tempfile
 import threading
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 import uvicorn
@@ -59,12 +63,10 @@ def fixture_settings(fixture_linkedin_server: int, monkeypatch: pytest.MonkeyPat
     return get_settings()
 
 
-def log_in_profile(settings: Settings) -> None:
-    """Log the fixture-mode profile in through the ``/login?direct=1`` test shortcut.
+_LOGIN_TEMPLATES: dict[tuple[str, str, str], Path] = {}  # (channel, mode, base url) -> logged-in profile dir
 
-    Skips the 2FA pages (Connect's own tests walk those); the profile ends with a persistent
-    ``li_at`` cookie exactly as after a completed Connect.
-    """
+
+def _login_through_browser(settings: Settings) -> None:
     from sales0.scraper.browser import first_page, open_context
     from sales0.scraper.urls import base_url
 
@@ -76,8 +78,53 @@ def log_in_profile(settings: Settings) -> None:
         assert any(c["name"] == "li_at" and c["value"] for c in context.cookies(base))
 
 
+def log_in_profile(settings: Settings) -> None:
+    """Log the fixture-mode profile in through the ``/login?direct=1`` test shortcut.
+
+    Skips the 2FA pages (Connect's own tests walk those); the profile ends with a persistent
+    ``li_at`` cookie exactly as after a completed Connect.
+
+    The first call per process (and server/channel) really drives the browser through the login into a
+    scratch data dir; every later call copies that closed, logged-in profile into this test's profile
+    directory instead of launching Chromium again (~1.5-2 s per test).
+    """
+    from sales0.scraper.browser import profile_dir, resolve_browser
+    from sales0.scraper.urls import base_url
+
+    channel = resolve_browser(settings).channel
+    key = (channel, settings.linkedin_mode, base_url(settings))
+    template = _LOGIN_TEMPLATES.get(key)
+    if template is None:
+        root = Path(tempfile.mkdtemp(prefix="sales0-login-tpl-"))
+        atexit.register(shutil.rmtree, root, ignore_errors=True)
+        tpl_settings = settings.model_copy(update={"data_dir": str(root)})
+        _login_through_browser(tpl_settings)
+        template = _LOGIN_TEMPLATES[key] = profile_dir(tpl_settings, channel)
+    dest = profile_dir(settings, channel)
+    shutil.copytree(template, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("Singleton*", "lockfile"))
+
+
 @pytest.fixture
 def connected_settings(fixture_settings: Settings) -> Settings:
     """Fixture settings whose persistent profile is logged in (as after Connect)."""
     log_in_profile(fixture_settings)
     return fixture_settings
+
+
+@pytest.fixture(autouse=True)
+def _fast_fixture_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fixture LinkedIn is static and answers at once, so the human-looking settle waits in the
+    scraper (hover/scroll-into-view jitter of 250-700 ms per card, the 1.5 s "did the copy land" poll
+    per menu) only burn wall-clock. Shrink them; every functional wait (content-ready, scroll settle,
+    page debounce, click timeouts) keeps its real value."""
+    from sales0.linkedin_fixture import routes
+    from sales0.scraper import permalink, search
+    from sales0.scraper.pacing import Pacer
+
+    monkeypatch.setattr(Pacer, "jitter_ms", lambda self, base_ms: max(1, int(base_ms * 0.08)))
+    monkeypatch.setattr(permalink, "TAKE_POLL_MS", 20)
+    # Lazy results: the fixture reveals the next card 700 ms after a scroll and the scraper waits up to 1.2 s
+    # (2.4 s on the first idle scroll) for it. Keep the ratio (reveal : settle = 7 : 12), halve both; the 250 ms
+    # poll (which also keeps successive wheel gestures outside the page's 200 ms debounce) is untouched.
+    monkeypatch.setattr(routes, "LAZY_REVEAL_DELAY_MS", 350)
+    monkeypatch.setattr(search, "scroll_settle_ms", lambda settings: 600 if settings.linkedin_mode == "fixture" else 2_500)
