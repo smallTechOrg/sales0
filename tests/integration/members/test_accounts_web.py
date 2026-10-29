@@ -222,9 +222,10 @@ def test_member_decision_is_attributed_and_timeline_shows_name(admin: TestClient
 
         e = db.get(Enquiry, eid)
         assert e.actor_user_id == mid and e.prospect_id
+        company_id = e.company_id
         events = db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == e.prospect_id)).all()
         assert events and any(t.actor == "Meera Member" and t.actor_member_id == mid for t in events)
-    page = member.get(f"/pipeline/prospects/{e.prospect_id}")
+    page = member.get(f"/companies/{company_id}")
     assert page.status_code == 200 and "Meera Member" in page.text
 
 

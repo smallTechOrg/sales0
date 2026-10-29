@@ -175,6 +175,10 @@ class LinkedEnquiryView(_View):
     author_name: str | None = None
     author_profile_url: str | None = None
     link_kind: str | None = None
+    # q17: where this requirement stands (open .. won / lost / on_hold), and the label of it
+    deal_status: str | None = None
+    deal_label: str | None = None
+    deal_source: str | None = None
 
 
 class LinkedMessageView(_View):

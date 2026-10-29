@@ -107,9 +107,9 @@ def test_already_a_client_on_a_marked_enquiry(web: TestClient) -> None:
 def test_prospect_page_renders_every_slice_and_compose_follows_email_edits(web: TestClient) -> None:
     pid = _existing_prospect()
     page = web.get(f"/pipeline/prospects/{pid}").text
-    assert 'id="prospect-contacts"' in page and "contact-edit-" in page  # CRM contacts editor
+    assert 'id="company-people"' in page and "contact-edit-" in page  # CRM contacts editor
     assert 'id="follow-ups"' in page and 'id="log-contact-form"' in page and 'name="channel"' in page  # outreach
-    linked = page.split('id="linked-enquiries"', 1)[1].split("</section>", 1)[0]
+    linked = page.split('id="company-enquiries"', 1)[1].split("</section>", 1)[0]
     assert "View post" in linked  # inbox link label (post permalink)
     assert 'id="characteristics"' in page
     with session_scope() as db:

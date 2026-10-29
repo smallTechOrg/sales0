@@ -1,54 +1,30 @@
-{# Needs: tab, items, total, page, page_size, params, today. Prospect or lead table. #}
-{% from "pipeline/_macros.html" import category_chips, flag_badges, priority_chip, source_chips, trait_chips, pager with context %}
-<section class="card" aria-label="{{ 'Prospects' if tab == 'prospects' else 'Leads' }}">
+{# Needs: items (list[CompanyCard]), total, page, page_size, params, today. The company list. #}
+{% from "pipeline/_macros.html" import category_chips, priority_chip, trait_chips, pager with context %}
+<section class="card" aria-label="Companies">
   <div class="card__body table-wrap">
     {% if items %}
-      {% if tab == "prospects" %}
       <table class="table" id="pipeline-list">
-        <thead><tr><th scope="col">Name</th><th scope="col">Priority</th><th scope="col">Company</th><th scope="col">Stage</th><th scope="col">Last activity</th><th scope="col">Next follow-up</th><th scope="col">Flags</th><th scope="col">Source</th><th scope="col">Contact</th></tr></thead>
+        <thead><tr><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Status</th><th scope="col">Enquiries</th><th scope="col">Owner</th><th scope="col">Next follow-up</th></tr></thead>
         <tbody>
-        {% for p in items if params.show_removed or not p.sheet_removed_at %}
-          <tr id="prospect-{{ p.id }}" data-stage="{{ p.stage }}">
-            <td><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a> {{ category_chips(p.categories) }}{{ trait_chips(p.characteristics) }}</td>
-            <td>{{ priority_chip(p.priority, p.priority_source == "manual") }}</td>
-            <td>{% if p.company_id %}<a href="/companies/{{ p.company_id }}">{{ p.company_name }}</a>{% else %}{{ p.company_name or "—" }}{% endif %}</td>
-            <td><span class="badge stage-badge">{{ p.stage_label }}</span>{% if p.status != "open" %} <span class="badge">{{ p.status|capitalize }}</span>{% endif %}</td>
-            <td>{% if p.contacted_at %}contacted {{ p.contacted_at|ago }}{% else %}created {{ p.created_at|ago }}{% endif %}</td>
-            <td>{% if p.next_follow_up_on %}<span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% else %}—{% endif %}</td>
-            <td>{{ flag_badges(p.flags) }}</td>
-            <td>{{ source_chips(p) }}</td>
-            <td>{% if p.contact_id %}<a href="/contacts/{{ p.contact_id }}">{{ p.contact_name or "Contact" }}</a>{% else %}—{% endif %}</td>
+        {% for c in items %}
+          <tr id="company-{{ c.id }}" data-stage="{{ c.stage or '' }}">
+            <td><a href="/companies/{{ c.id }}">{{ c.name }}</a> {{ category_chips(c.categories) }}{{ trait_chips(c.characteristics) }}{% if c.suggested_lead %} <span class="badge badge--info">Suggested: Lead</span>{% endif %}</td>
+            <td>{{ priority_chip(c.priority, c.priority_source == "manual") }}</td>
+            <td><span class="badge stage-badge stage-badge--{{ c.stage or 'none' }}">{{ c.stage_label }}</span>{% if c.off_ramp %} <span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}</td>
+            <td>{{ c.sub_label or "—" }}</td>
+            <td>{{ c.enquiries }}</td>
+            <td>{{ c.owner or "—" }}</td>
+            <td>{% if c.next_follow_up_on %}<span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b %Y") }}</span>{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
-      {% else %}
-      <table class="table" id="pipeline-list">
-        <thead><tr><th scope="col">Name</th><th scope="col">Priority</th><th scope="col">Company</th><th scope="col">Stage</th><th scope="col">Opened</th><th scope="col">Last activity</th><th scope="col" class="num">Est. value</th><th scope="col">Flags</th></tr></thead>
-        <tbody>
-        {% for l in items %}
-          <tr id="lead-{{ l.id }}" data-stage="{{ l.stage }}">
-            <td><a href="/pipeline/leads/{{ l.id }}">{{ l.prospect_name }}</a> {{ trait_chips(l.characteristics) }}</td>
-            <td>{{ priority_chip(l.priority) }}</td>
-            <td>{% if l.company_id %}<a href="/companies/{{ l.company_id }}">{{ l.company_name }}</a>{% else %}{{ l.company_name or "—" }}{% endif %}</td>
-            <td><span class="badge stage-badge stage-badge--{{ l.stage }}">{{ l.stage_label }}</span></td>
-            <td>{{ l.opened_at|ago }}</td>
-            <td>{% if l.days_since_activity is not none %}{{ l.days_since_activity }}d ago{% else %}—{% endif %}</td>
-            <td class="num">{% if l.value_estimate %}₹{{ "{:,}".format(l.value_estimate) }}{% else %}—{% endif %}</td>
-            <td>{{ flag_badges(l.flags) }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
-    {% elif params.q or params.stage or params.flag or params.source or params.due or params.characteristic or params.priority or params.category %}
-      <div class="empty-state empty-state--compact" id="pipeline-empty"><p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ tab }}&view=list">Clear filters</a></div>
-    {% elif tab == "prospects" %}
-      <div class="empty-state" id="pipeline-empty"><p>No prospects yet — accept an enquiry in the Inbox, or add one.</p>
-        <div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-prospect">New prospect</a></div></div>
+    {% elif params.q or params.stage or params.flag or params.characteristic or params.priority or params.category %}
+      <div class="empty-state empty-state--compact" id="pipeline-empty"><p>Nothing matches these filters.</p><a class="btn" href="/pipeline?layout=list">Clear filters</a></div>
     {% else %}
-      <div class="empty-state" id="pipeline-empty"><p>No leads yet. A prospect becomes a lead once it has been contacted and has replied.</p></div>
+      <div class="empty-state" id="pipeline-empty"><p>No companies in the pipeline yet - accept an enquiry in the Inbox, or add a company.</p>
+        <div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-company">New company</a></div></div>
     {% endif %}
   </div>
 </section>
-{{ pager("/pipeline", params, page, page_size, total, "prospects" if tab == "prospects" else "leads") }}
+{{ pager("/pipeline", params, page, page_size, total, "companies") }}

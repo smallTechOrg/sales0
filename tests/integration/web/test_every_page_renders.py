@@ -33,11 +33,11 @@ STUB_PAGES = {
 # Phase 2 pages (real since slice S4) and their key text; "/sync" and "/login" belong to S2 / S3 and have their own tests.
 CRM_PAGES = {
     "/pipeline": 'id="pipeline-tabs"',
-    "/pipeline?tab=leads": "Gina Globex",
-    "/pipeline?tab=leads&view=list": 'id="pipeline-list"',
-    "/pipeline?tab=clients": "Old Customer Ltd",
-    "/pipeline?tab=prospects&view=list": 'id="pipeline-list"',
-    "/pipeline?tab=prospects&q=zzz": "Nothing matches these filters.",
+    "/pipeline?stage=lead": "Globex",
+    "/pipeline?layout=list": 'id="pipeline-list"',
+    "/pipeline?stage=client": "Old Customer Ltd",
+    "/pipeline?view=enquiries": 'id="pipeline-view"',
+    "/pipeline?stage=prospect&q=zzz": "Nothing matches these filters.",
     "/contacts": 'id="contact-list"',
     "/contacts?q=zzzz": "No contacts match 'zzzz'.",
     "/contacts/duplicates": 'id="merge-list"',
@@ -55,7 +55,7 @@ CRM_PAGES = {
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
-COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
+COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}
@@ -338,8 +338,8 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
         html = page(path, key)
         assert "Coming in Phase" not in _main_of(html), where(path)
     ids = state_crm_ids
-    page(f"/pipeline/prospects/{ids['prospect']}", "Priya Menon", ['id="timeline"', 'id="btn-draft"', 'id="follow-ups"'])
-    page(f"/pipeline/leads/{ids['lead']}", "Gina Globex", ['id="lead-stepper"', 'id="timeline"'])
+    page(f"/pipeline/prospects/{ids['prospect']}", "Acme Logistics", ['id="timeline"', 'id="btn-draft"', 'id="follow-ups"'])
+    page(f"/pipeline/leads/{ids['lead']}", "Globex", ['id="lead-stage-form"', 'id="timeline"'])
     page(f"/contacts/{ids['contact']}", "Ravi Kumar", ['id="tag-form"'])
     page(f"/competitors/competitor/{ids['competitor']}", "Rival Academy", ['id="link-client-form"'])
     page(f"/import/batches/{ids['batch']}", "Import summary", ['id="import-summary"'])

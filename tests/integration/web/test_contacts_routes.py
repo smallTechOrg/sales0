@@ -166,8 +166,8 @@ def test_company_page_rolls_up_with_timeline(web: TestClient) -> None:
     assert company_id is not None
     html = web.get(f"/companies/{company_id}").text
     main = _main(html)
-    assert "Acme Logistics" in main and 'id="company-prospects"' in main and 'id="company-timeline"' in main
-    assert 'id="company-contacts"' in main and "priya@acme.example" in main  # the roll-up lists the people with their e-mail
+    assert "Acme Logistics" in main and 'id="company-header"' in main and 'id="timeline-card"' in main
+    assert 'id="company-people"' in main and "priya@acme.example" in main  # the page lists the people with their e-mail
     assert f'action="/companies/{company_id}"' in main  # company details are editable (CRM feedback B3)
     filtered = web.get(f"/contacts?company_id={company_id}").text
     assert "Company: <strong>Acme Logistics</strong>" in filtered and "Priya Menon" in filtered

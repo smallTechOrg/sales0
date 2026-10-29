@@ -49,6 +49,11 @@ from sales0.services.crm.views import (
 )
 
 UNTRACK_REASONS = ("no_response", "lost", "not_interested")
+DEAL_LABELS = {
+    "open": "Open", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
+    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "proposal_sent": "Proposal sent",
+    "won": "Won", "lost": "Lost", "no_response": "No response", "on_hold": "On hold",
+}
 
 
 # ---------------------------------------------------------------------------- views
@@ -57,7 +62,8 @@ def linked_enquiry_view(e: Enquiry) -> LinkedEnquiryView:
         id=e.id, category=e.category or "relevant_prospect", requirement_summary=e.requirement_summary, priority=e.priority, review_status=e.review_status,
         ai_verdict=e.ai_verdict, date_added=e.date_added, source_url=e.source_url, company=e.company, sheet_status=e.sheet_status,
         prospect_id=e.prospect_id, author_name=e.author_name, author_profile_url=e.author_profile_url,
-        link_kind=link_kind_of(e.source_url),
+        link_kind=link_kind_of(e.source_url), deal_status=e.deal_status,
+        deal_label=DEAL_LABELS.get(e.deal_status or "") if e.deal_status else None, deal_source=e.deal_status_source,
     )
 
 

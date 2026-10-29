@@ -6,6 +6,7 @@
 | LinkedIn Discovery | 1 | [linkedin-discovery.md](linkedin-discovery.md) | Connect once, Run now with safe pacing, dedupe, run log, stop on any account-risk signal |
 | AI Triage | 1 | [ai-triage.md](ai-triage.md) | One Haiku call per enquiry: verdict + reason + extraction + priority + offering, few-shot from decisions, cost tracked |
 | Review Inbox | 1 | [review-inbox.md](review-inbox.md) | Accept → Prospect · New / Discard (kept, searchable) / Override, bulk, search |
+| Domain model (company / person / enquiry) | q17 | [domain-model.md](domain-model.md) | A COMPANY is the main record; Prospect / Lead / Client are its stages, with off-ramps; people have a role per company; enquiries have a deal status |
 | CRM Pipeline | 2 | [crm-pipeline.md](crm-pipeline.md) | One prospect per LinkedIn profile → Lead (after contact + response) → Client; driven by accept / send / reply events |
 | Contacts | 2 | [contacts.md](contacts.md) | Shared, taggable people (many emails/phones) linked to every entity; merge duplicates; thousands |
 | Timeline + Follow-ups | 2 | [timeline-followups.md](timeline-followups.md) | Full history per record; reminders +3/+7/+14 days; Due today / Overdue |

@@ -312,7 +312,7 @@ Counter meaning (per run and per keyword): `posts_seen` = **scanned** (every par
 - **`actor_user_id`** on every table: `SET NULL`.
 - **`name_key` / `text_key`** are set automatically by the model whenever `name`/`text` is assigned. Callers never set them. `name_key = lower(trim(name))` on offering_groups and offerings. On keywords, `text` is trimmed and inner whitespace collapsed, then `text_key = lower(text)`.
 
-## Lifecycle (binding vocabulary)
+## Lifecycle (binding vocabulary; the company model at the end of this file supersedes the Prospect / Lead / Client parts)
 
 ```
 Enquiry (scraped item)
@@ -610,3 +610,35 @@ New indexes: `ix_seen_posts_first_seen_at`, `ix_timeline_events_kind_occurred`, 
 
 Backfill: `prospects.priority` = the highest priority among the prospect's linked enquiries (source `derived`). Plain ADD
 COLUMN / CREATE INDEX, retry-safe, SQLite and PostgreSQL; downgrade drops them.
+
+## Glossary and the company model (migration `q17_company_model_c5e9a2d7`, after `q16_feedback2_a41c7e92`; see `capabilities/domain-model.md`)
+
+This section SUPERSEDES the Lifecycle block above wherever they differ. Words used in the UI, e-mails and docs:
+
+| Word | Meaning |
+|---|---|
+| **Company** | THE main record. Has a **stage** and a **status inside the stage**. |
+| **Prospect / Lead / Client** | Stages of one company, never separate records. Prospect: `new -> contacted -> follow_up_1 -> follow_up_2 -> final_follow_up`. Lead: `meeting_scheduled -> proposal_sent`. Client: `active`. |
+| **Closed (off-ramp)** | `not_interested`, `dormant`, `do_not_contact` (blocks all outreach; admin to reopen), `lost_client`. The stage it was in is kept (`resume_stage`, `resume_sub_status`) and restored on reopen. |
+| **Person** | A contact: belongs to several companies or none, has a role per company (`contact_links` entity `company`, `role`), is who outreach goes to. |
+| **Enquiry** | One specific requirement. Inbox review `pending_review -> accepted / discarded`; after accept a **deal status**. |
+| **Deal status** | `open, contacted, follow_up_1, follow_up_2, final_follow_up` (driven by the company's cadence) and `meeting_scheduled, proposal_sent, won, lost, no_response, on_hold` (hand / sheet). |
+| **Mark as lead / Mark client** | A person's decision. The app only *suggests* a lead. Won on any enquiry -> the company is a client and stays one. |
+
+| Table.column | Type | Notes |
+|---|---|---|
+| `companies.stage` | varchar(10) NULL, indexed | `prospect` / `lead` / `client`; NULL = a known company that is not in the pipeline (only someone's employer) |
+| `companies.sub_status` | varchar(20) NULL | the status inside the stage (vocabulary above) |
+| `companies.off_ramp` | varchar(20) NULL, indexed | set = the company is closed |
+| `companies.off_ramp_reason` / `off_ramp_at` | varchar(200) / datetime NULL | |
+| `companies.resume_stage` / `resume_sub_status` | varchar(10) / varchar(20) NULL | what Reopen restores |
+| `companies.stage_source` | varchar(6) NOT NULL default `app` | `app` (a person set it; the sheet never overwrites) / `sheet` |
+| `companies.stage_changed_at` | datetime NULL | |
+| `companies.lead_suggestion` | JSON NULL | `{kind: reply\|enquiry, detail, at, dismissed_at}`: the "Suggested: Lead" hint |
+| `companies.owner_member_id` | int NULL (no FK) | the team member who owns the account |
+| `enquiries.deal_status` | varchar(20) NULL, indexed | NULL until accepted |
+| `enquiries.deal_status_source` | varchar(6) NULL | `driven` (mirrors the cadence) / `app` / `sheet` |
+
+No CHECK constraints on the new columns (validated in `services/crm/lifecycle.py` / `deals.py`; no rebuild of the FK-referenced tables). `prospects`, `leads` and `clients` stay: they are the company's outreach + deal ledger and the only things follow-ups, outreach, research, notes, flags, characteristics and the timeline attach to. `db/company_projection.py` (Session `after_flush`) derives the company columns from them (client > open lead > open prospect > off-ramp from the latest closure) and mirrors the cadence onto the driven enquiry statuses; `do_not_contact` / `lost_client` are company-only and never overwritten. One outreach record per company for NEW data (an accepted enquiry or a manual add for a company that already has one joins it); existing duplicates are not merged (they roll up: the most advanced wins).
+
+Backfill (no row deleted or re-keyed): every prospect / client without a company gets one (matched by name key, else created from its name: this is where an `outreach_person` prospect becomes a company of one); `leads.company_id` and accepted `enquiries.company_id` are filled from the prospect; each company's lifecycle is derived from its rows; each accepted enquiry gets a deal status (lead stage if the prospect has a lead, `no_response` / `lost` / `on_hold` if closed, else the prospect stage). Downgrade drops the new columns and deletes nothing.

@@ -118,8 +118,8 @@ def test_csv_import_clients_summary_and_idempotent_reimport(web: TestClient) -> 
     assert 'id="import-summary"' in page and "clients.csv" in page
     assert re.search(r'id="sum-total">2<', page) and re.search(r'id="sum-new">2<', page) and re.search(r'id="sum-errors">0<', page)
     assert "Imported clients.csv: 2 new" in page
-    clients_tab = web.get("/pipeline?tab=clients").text
-    assert "Old Customer Ltd" in clients_tab and "Second Client" in clients_tab  # visible under Pipeline -> Clients
+    clients_tab = web.get("/pipeline?stage=client").text
+    assert "Old Customer Ltd" in clients_tab and "Second Co" in clients_tab  # visible under Pipeline -> Clients (as companies)
 
     again = _csv(web, "clients", CLIENTS_CSV, "clients.csv")
     page2 = web.get(again.headers["location"]).text

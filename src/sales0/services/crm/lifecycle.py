@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -329,6 +330,127 @@ def dismiss_suggestion(db: Session, company_id: int, *, actor: Actor = TEAM, now
 
 def accept_suggestion(db: Session, company_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> Company:
     return mark_lead(db, company_id, actor=actor, note="Accepted the suggestion", now=now)
+
+
+# ---------------------------------------------------------------------------- read model for the company page
+class LifeView(BaseModel):
+    company_id: int
+    name: str
+    website: str | None = None
+    linkedin_url: str | None = None
+    city: str | None = None
+    stage: str | None = None
+    stage_label: str
+    sub_status: str | None = None
+    sub_label: str | None = None
+    sub_options: list[tuple[str, str]] = Field(default_factory=list)
+    off_ramp: str | None = None
+    off_ramp_label: str | None = None
+    off_ramp_reason: str | None = None
+    off_ramp_options: list[tuple[str, str]] = Field(default_factory=list)
+    resume_label: str | None = None
+    suggestion: dict[str, Any] | None = None
+    owner_member_id: int | None = None
+    owner_name: str | None = None
+    open_lead_id: int | None = None
+    lead_proposal_sent_on: date | None = None
+    lead_meeting_at: datetime | None = None
+    lead_value_estimate: int | None = None
+    lead_outcome_note: str | None = None
+    client_since: date | None = None
+    primary_prospect_id: int | None = None
+    ledger_count: int = 0
+
+
+def life_view(db: Session, company_id: int) -> LifeView:
+    from sales0.db.models import TeamMember
+
+    co = company_row(db, company_id)
+    stage = co.stage
+    if stage == "prospect":
+        subs = [(s, SUB_LABELS[s]) for s in COMPANY_SUB_STATUSES["prospect"]]
+    elif stage == "lead":
+        subs = [(s, SUB_LABELS[s]) for s in COMPANY_SUB_STATUSES["lead"]]
+    else:
+        subs = []
+    ld = open_lead_of(db, company_id)
+    client = db.scalar(select(Client).where((Client.company_id == company_id) | Client.prospect_id.in_(
+        select(Prospect.id).where(Prospect.company_id == company_id))).order_by(Client.id).limit(1))
+    p = primary_prospect(db, company_id)
+    owner = db.get(TeamMember, co.owner_member_id) if co.owner_member_id else None
+    resume = None
+    if co.off_ramp in ("not_interested", "dormant") and co.resume_stage:
+        resume = f"{stage_label(co.resume_stage)} / {sub_label(co.resume_sub_status)}"
+    return LifeView(
+        company_id=co.id, name=co.name, website=co.website, linkedin_url=co.linkedin_url, city=co.city, stage=stage,
+        stage_label=stage_label(stage), sub_status=co.sub_status, sub_label=sub_label(co.sub_status) if co.sub_status else None,
+        sub_options=subs, off_ramp=co.off_ramp, off_ramp_label=OFF_RAMP_LABELS.get(co.off_ramp or ""),
+        off_ramp_reason=co.off_ramp_reason,
+        off_ramp_options=[(k, OFF_RAMP_LABELS[k]) for k in OFF_RAMPS_BY_STAGE.get(stage or "", ("do_not_contact",))],
+        resume_label=resume, suggestion=active_suggestion(co), owner_member_id=co.owner_member_id,
+        owner_name=owner.name if owner else None, open_lead_id=ld.id if ld else None,
+        lead_proposal_sent_on=ld.proposal_sent_on if ld else None, lead_meeting_at=ld.meeting_at if ld else None,
+        lead_value_estimate=ld.value_estimate if ld else None, lead_outcome_note=ld.outcome_note if ld else None,
+        client_since=client.started_on if client else None, primary_prospect_id=p.id if p else None,
+        ledger_count=len(ledger_prospects(db, company_id)),
+    )
+
+
+# ---------------------------------------------------------------------------- people of the company
+def _role_text(role: str | None) -> str | None:
+    text = " ".join((role or "").split())[:40]
+    return text or None
+
+
+def add_person(db: Session, company_id: int, *, full_name: str | None = None, email: str | None = None, phone: str | None = None,
+               title: str | None = None, linkedin_url: str | None = None, role: str | None = None, actor: Actor = TEAM,
+               now: datetime | None = None):  # type: ignore[no-untyped-def]
+    """Add (or match) a PERSON and link them to the company with a role (decision maker, HR / L&D, influencer, other -
+    free text allowed). A person can belong to several companies; the link is per company."""
+    company_row(db, company_id)
+    p = primary_prospect(db, company_id)
+    if p is not None:
+        view = prospects.add_contact(db, p.id, full_name=full_name, email=email, phone=phone, title=title,
+                                     linkedin_url=linkedin_url, actor=actor, now=now)
+    else:
+        from sales0.services.crm import contacts as contacts_mod
+
+        row, _ = contacts_mod.upsert_row(db, full_name=full_name, email=email, phone=phone, title=title,
+                                         linkedin_url=linkedin_url, company_id=company_id, origin="manual", actor=actor, now=now)
+        view = contacts_mod.views_for(db, [row])[0]
+    from sales0.services.crm import contacts as contacts_mod
+
+    contacts_mod.link(db, view.id, "company", company_id, _role_text(role))
+    return view
+
+
+def set_person_role(db: Session, company_id: int, contact_id: int, role: str | None) -> None:
+    """The person's role at THIS company (free text; the usual ones are in ``PERSON_ROLE_LABELS``)."""
+    from sales0.db.models import ContactLink
+    from sales0.services.crm import contacts as contacts_mod
+
+    company_row(db, company_id)
+    contacts_mod.link(db, contact_id, "company", company_id, None)
+    row = db.scalar(select(ContactLink).where(ContactLink.contact_id == contact_id, ContactLink.entity_type == "company",
+                                              ContactLink.entity_id == company_id))
+    assert row is not None
+    row.role = _role_text(role)
+    db.flush()
+
+
+def person_roles(db: Session, company_id: int) -> dict[int, str]:
+    """contact id -> role at the company (the company link first, else the role on a prospect link, e.g. buyer)."""
+    from sales0.db.models import ContactLink
+
+    out: dict[int, str] = {}
+    pids = [p.id for p in ledger_prospects(db, company_id)]
+    for ctype, ids in (("prospect", pids), ("company", [company_id])):
+        if not ids:
+            continue
+        for cid, role in db.execute(select(ContactLink.contact_id, ContactLink.role).where(
+                ContactLink.entity_type == ctype, ContactLink.entity_id.in_(ids), ContactLink.role.is_not(None))).all():
+            out[cid] = role
+    return out
 
 
 def set_owner(db: Session, company_id: int, member_id: int | None) -> Company:

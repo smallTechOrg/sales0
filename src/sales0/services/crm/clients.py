@@ -80,7 +80,7 @@ def create_legacy(
     if not clean:
         raise invalid("client_invalid", "A client needs a name.")
     stamp = now_or(now)
-    comp = companies.get_or_create_row(db, company, now=stamp)
+    comp = companies.get_or_create_row(db, company, now=stamp) or companies.get_or_create_row(db, clean, now=stamp)  # a company of one
     stmt = select(Client).where(Client.status == "legacy", func.lower(Client.name) == clean.lower())
     stmt = stmt.where(Client.company_id == comp.id) if comp else stmt.where(Client.company_id.is_(None))
     existing = db.scalar(stmt.order_by(Client.id).limit(1))

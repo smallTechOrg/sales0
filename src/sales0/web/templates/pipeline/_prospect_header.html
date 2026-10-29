@@ -1,18 +1,54 @@
-{# Needs: p (ProspectDetail), prospect_stage_options, close_reasons, characteristic_options, company (CompanyView|None); oob optional. #}
-{% from "pipeline/_macros.html" import category_chips, flag_badges, priority_chip, source_chips, trait_editor %}
-{% set is_open = p.status == "open" %}
-{% set no_fu = p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0 %}
-<section class="card" id="prospect-header" aria-labelledby="prospect-title"{% if oob %} hx-swap-oob="outerHTML:#prospect-header"{% endif %}>
+{# The COMPANY header (one page for every stage). Needs: life (LifeView), co (CompanyDetail), p (ProspectDetail | None: the
+   company's outreach record), characteristic_options, is_admin, today; oob optional. #}
+{% from "pipeline/_macros.html" import category_chips, flag_badges, priority_chip, trait_editor %}
+{% set base = "/companies/%d" % life.company_id %}
+{% set pbase = ("/pipeline/prospects/%d" % p.id) if p else "" %}
+{% set is_open = p and p.status == "open" and not life.off_ramp %}
+{% set no_fu = p and p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0 %}
+<section class="card" id="company-header" aria-labelledby="company-title"{% if oob %} hx-swap-oob="outerHTML:#company-header"{% endif %}>
   <div class="card__body record-head">
     <div class="record-head__title">
-      <h1 id="prospect-title">{{ p.name }}</h1>
-      <span class="badge stage-badge" id="stage-badge">{{ p.stage_label }}</span>
-      {% if p.status != "open" %}<span class="badge" id="status-badge">{{ p.status|capitalize }}{% if p.closed_reason %} · {{ p.closed_reason|replace("_", " ") }}{% endif %}</span>{% endif %}
-      <span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>
-      {{ category_chips(p.categories) }}
-      {{ flag_badges(p.flags) }}
+      <h1 id="company-title">{{ life.name }}</h1>
+      <span class="badge stage-badge stage-badge--{{ life.stage or 'none' }}" id="stage-badge">{{ life.stage_label }}</span>
+      {% if life.sub_label %}<span class="badge" id="sub-status-badge">{{ life.sub_label }}</span>{% endif %}
+      {% if life.off_ramp %}<span class="badge badge--warn" id="off-ramp-badge">{{ life.off_ramp_label }}{% if life.off_ramp_reason %} · {{ life.off_ramp_reason }}{% endif %}</span>{% endif %}
+      {% if p %}<span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>{{ category_chips(p.categories) }}{{ flag_badges(p.flags) }}{% endif %}
     </div>
-    <form class="row" id="priority-form" method="post" action="/pipeline/prospects/{{ p.id }}/priority" hx-post="/pipeline/prospects/{{ p.id }}/priority" hx-swap="none">
+    <p class="hint" id="company-help">A company is the one record for who we deal with. It is a Prospect, then a Lead (a person decides), then a Client; its people, enquiries (each one specific requirement), outreach and follow-ups all live here.</p>
+
+    {% if life.suggestion %}
+      <div class="notice" id="lead-suggestion" role="status">
+        <strong>Suggested: Lead</strong> - {{ life.suggestion.get("detail") }}. Nothing moves until a person decides.
+        <form class="row" method="post" action="{{ base }}/suggestion">
+          <button class="btn btn--primary btn--sm" name="decision" value="accept" type="submit">Mark as lead</button>
+          <button class="btn btn--sm" name="decision" value="dismiss" type="submit">Dismiss</button>
+        </form>
+      </div>
+    {% endif %}
+
+    <div class="pcard__meta">
+      {% if co.city %}{{ co.city }}{% endif %}
+      {% if co.website and co.website.startswith(("http://", "https://")) %} · <a href="{{ co.website }}" rel="noopener noreferrer" target="_blank">{{ co.website }}</a>{% elif co.website %} · {{ co.website }}{% endif %}
+      {% if co.linkedin_url and co.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ co.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn page</a>{% endif %}
+      · owner: {{ life.owner_name or "none" }}
+      {% if p and p.linkedin_url and p.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ p.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn profile</a>{% endif %}
+      {% if p %}
+        {% if p.contacted_at %} · contacted {{ p.contacted_at|ago }}{% if p.contacted_estimated %} (date estimated){% endif %}{% else %} · not contacted yet{% endif %}
+        {% if p.responded_at %} · replied {{ p.responded_at|ago }}{% endif %}
+        {% if p.next_follow_up_on %} · next follow-up <span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% endif %}
+      {% endif %}
+      {% if life.client_since %} · client since {{ life.client_since.strftime("%d %b %Y") }}{% endif %}
+    </div>
+    {% if p and (p.sheet_status or p.sheet_tabs) %}
+      <div class="row">{% for tab in p.sheet_tabs %}<span class="chip chip--sheet" title="Synced from the Google Sheet, read-only">{{ tab }}</span> {% endfor %}
+        {% if p.sheet_status %}<span class="chip chip--sheet" id="sheet-status" title="Status in the Google Sheet (read-only)">Sheet status: {{ p.sheet_status }}</span>{% endif %}</div>
+    {% endif %}
+    {% if p and p.sheet_removed_at %}
+      <div class="notice" id="sheet-removed" role="status">Removed from the Google Sheet on {{ p.sheet_removed_at|localdt("%d %b %Y") }}. It stays here with its full history; if the row returns it is restored automatically.</div>
+    {% endif %}
+
+    {% if p %}
+    <form class="row" id="priority-form" method="post" action="{{ pbase }}/priority" hx-post="{{ pbase }}/priority" hx-swap="none">
       <label class="field__label" for="priority-select">Priority</label>
       <select class="select" id="priority-select" name="priority" data-autosubmit="request">
         <option value=""{% if p.priority_source != "manual" %} selected{% endif %}>Automatic{% if p.priority_source != "manual" %}{% if p.priority %} ({{ p.priority|capitalize }}){% else %} (none){% endif %}{% endif %}</option>
@@ -21,100 +57,125 @@
       <noscript><button class="btn btn--sm" type="submit">Save priority</button></noscript>
       <span class="hint">Automatic = the highest priority of its enquiries; a value you pick is kept.</span>
     </form>
-    <div class="pcard__meta">
-      {% if p.company_name %}{% if p.company_id %}<a href="/companies/{{ p.company_id }}">{{ p.company_name }}</a>{% else %}{{ p.company_name }}{% endif %} · {% endif %}
-      {% if p.contacted_at %}contacted {{ p.contacted_at|ago }}{% if p.contacted_estimated %} (date estimated){% endif %}{% else %}not contacted yet{% endif %}
-      {% if p.responded_at %} · replied {{ p.responded_at|ago }}{% endif %}
-      {% if p.next_follow_up_on %} · next follow-up <span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% endif %}
-      {% if p.linkedin_url and p.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ p.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn profile</a>{% endif %}
-    </div>
-    <div class="row">{{ source_chips(p) }}
-      {% if p.sheet_status %}<span class="chip chip--sheet" id="sheet-status" title="Status in the Google Sheet (read-only)">Sheet status: {{ p.sheet_status }}</span>{% endif %}
-      {% if p.tracked is none %}<span class="tracked" id="tracked-state">No LinkedIn profile linked</span> <span class="hint" id="track-hint">To track this person, add their LinkedIn profile link under Edit details.</span>
-      {% else %}
-        <form method="post" action="/pipeline/prospects/{{ p.id }}/tracked" hx-post="/pipeline/prospects/{{ p.id }}/tracked" hx-swap="none" class="actions">
-          <input type="hidden" name="tracked" value="{{ 'false' if p.tracked else 'true' }}">
-          <span class="tracked{% if p.tracked %} tracked--on{% endif %}" id="tracked-state">{{ "Tracked" if p.tracked else "Not tracked" }}</span>
-          <button class="btn btn--sm" id="btn-tracked" type="submit">{{ "Stop tracking" if p.tracked else "Track this person" }}</button>
-        </form>
-      {% endif %}
-    </div>
-    {{ trait_editor("/pipeline/prospects/%d/characteristics" % p.id, p.characteristics, characteristic_options or [],
-                    note="Characteristics stay with this entity when it becomes a lead and a client.") }}
-    {% if p.sheet_removed_at %}
-      <div class="notice" id="sheet-removed" role="status">Removed from the Google Sheet on {{ p.sheet_removed_at|localdt("%d %b %Y") }}. It stays here with its full history; if the row returns it is restored automatically.</div>
+    {{ trait_editor(pbase + "/characteristics", p.characteristics, characteristic_options or [],
+                    note="Characteristics belong to the company and stay as it moves from Prospect to Lead to Client.") }}
     {% endif %}
 
-    <div class="actions" id="prospect-actions">
-      {% if is_open %}
-        <form method="post" action="/pipeline/prospects/{{ p.id }}/stage" hx-post="/pipeline/prospects/{{ p.id }}/stage" hx-swap="none">
-          <label class="field__label" for="stage-select">Stage</label>
-          <select class="select" id="stage-select" name="stage">
-            {% for key, label in prospect_stage_options %}<option value="{{ key }}"{% if key == p.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    <div class="actions" id="company-actions">
+      {% if not life.stage %}
+        <form method="post" action="{{ base }}/add-to-pipeline"><button class="btn btn--primary" id="btn-add-pipeline" type="submit">Add to pipeline</button></form>
+        <span class="hint">This company is not in the pipeline yet (for example it only appears as someone's employer).</span>
+      {% endif %}
+
+      {% if life.off_ramp %}
+        {% if life.off_ramp == "do_not_contact" and not is_admin %}
+          <span class="hint" id="reopen-admin-only">Do not contact: nothing can be drafted or sent. Only an admin can reopen this company.</span>
+        {% else %}
+          <form method="post" action="{{ base }}/reopen">
+            <button class="btn btn--primary" id="btn-reopen" type="submit">Reopen{% if life.resume_label %} (back to {{ life.resume_label }}){% endif %}</button>
+          </form>
+        {% endif %}
+      {% elif life.stage == "prospect" %}
+        {% if is_open %}
+        <form method="post" action="{{ base }}/status">
+          <label class="field__label" for="stage-select">Outreach status</label>
+          <select class="select" id="stage-select" name="sub_status">
+            {% for key, label in life.sub_options %}<option value="{{ key }}"{% if key == life.sub_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
           <button class="btn" type="submit">Move</button>
         </form>
         {% if not p.responded_at %}
-        <form method="post" action="/pipeline/prospects/{{ p.id }}/response" hx-post="/pipeline/prospects/{{ p.id }}/response" hx-swap="none">
-          <button class="btn" id="btn-response" type="submit">Response received</button>
-        </form>
+          <form method="post" action="{{ pbase }}/response" hx-post="{{ pbase }}/response" hx-swap="none"><button class="btn" id="btn-response" type="submit">Response received</button></form>
         {% else %}<span class="badge badge--genuine" id="responded-badge">Response recorded</span>{% endif %}
-        {% if p.open_lead_id %}
-          <a class="btn btn--primary" id="btn-convert" href="/pipeline/leads/{{ p.open_lead_id }}">Open lead</a>
-        {% else %}
-          {% set why = "Contact it first - mark it Contacted." if not p.contacted_at else ("Record a response first - press 'Response received'." if not p.responded_at else "") %}
-          {% if why %}
-            <span><button class="btn" id="btn-convert" type="button" disabled aria-disabled="true" title="{{ why }}" aria-describedby="convert-why">Convert to lead</button>
-              <span class="hint" id="convert-why">{{ why }}</span></span>
-          {% else %}
-            <form method="post" action="/pipeline/prospects/{{ p.id }}/convert" hx-post="/pipeline/prospects/{{ p.id }}/convert" hx-swap="none">
-              <input type="hidden" name="stage" value="meeting_scheduled">
-              <label class="visually-hidden" for="convert-meeting">Meeting time (optional)</label>
-              <input class="input input--date" id="convert-meeting" type="datetime-local" name="meeting_at" title="Meeting time (optional)">
-              <button class="btn btn--primary" id="btn-convert" type="submit">Convert to lead</button>
-            </form>
-          {% endif %}
         {% endif %}
+        <form method="post" action="{{ base }}/mark-lead" class="row">
+          <label class="visually-hidden" for="lead-meeting">Meeting time (optional)</label>
+          <input class="input input--date" id="lead-meeting" type="datetime-local" name="meeting_at" title="Meeting time (optional)">
+          <button class="btn btn--primary" id="btn-mark-lead" type="submit">Mark as lead</button>
+        </form>
+      {% elif life.stage == "lead" %}
+        <form method="post" action="{{ base }}/status" class="stack" id="lead-stage-form">
+          <div class="grid-2">
+            <div class="field"><label class="field__label" for="lead-stage">Lead status</label>
+              <select class="input" id="lead-stage" name="sub_status">
+                {% for key, label in life.sub_options %}<option value="{{ key }}"{% if key == life.sub_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select></div>
+            <div class="field"><label class="field__label" for="lead-meeting">Meeting time</label>
+              <input class="input" id="lead-meeting" type="datetime-local" name="meeting_at" value="{{ life.lead_meeting_at.strftime('%Y-%m-%dT%H:%M') if life.lead_meeting_at else '' }}"></div>
+            <div class="field"><label class="field__label" for="lead-proposal">Proposal sent on</label>
+              <input class="input" id="lead-proposal" type="date" name="proposal_sent_on" value="{{ life.lead_proposal_sent_on.isoformat() if life.lead_proposal_sent_on else '' }}"></div>
+          </div>
+          <div><button class="btn" type="submit">Update lead</button></div>
+        </form>
       {% endif %}
-      <a class="btn" id="btn-draft" href="/outreach/compose?prospect_id={{ p.id }}">Draft email</a>
-      {% if is_open %}
-        <form method="post" action="/pipeline/prospects/{{ p.id }}/flag" hx-post="/pipeline/prospects/{{ p.id }}/flag" hx-swap="none">
+
+      {% if life.stage in ("prospect", "lead") and not life.off_ramp %}
+        <form method="post" action="{{ base }}/mark-client" hx-confirm="Mark {{ life.name }} as a client?">
+          <button class="btn btn--primary" id="btn-mark-client" type="submit">Mark client</button>
+        </form>
+      {% endif %}
+      {% if life.stage and not life.off_ramp %}
+        <form method="post" action="{{ base }}/off-ramp" hx-confirm="Close this company? You can reopen it later.">
+          <label class="visually-hidden" for="off-ramp-select">Close this company</label>
+          <select class="select" id="off-ramp-select" name="off_ramp">
+            {% for key, label in life.off_ramp_options %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select>
+          <input class="input" name="reason" maxlength="200" placeholder="Why (optional)" aria-label="Reason">
+          <button class="btn btn--danger" id="btn-close" type="submit">Close company</button>
+        </form>
+      {% endif %}
+
+      {% if p %}
+        <a class="btn" id="btn-draft" href="/outreach/compose?prospect_id={{ p.id }}">Draft email</a>
+        {% if is_open %}
+        <form method="post" action="{{ pbase }}/flag" hx-post="{{ pbase }}/flag" hx-swap="none">
           <input type="hidden" name="kind" value="no_follow_up">
           <input type="hidden" name="on" value="{{ 'false' if no_fu else 'true' }}">
           <button class="btn" id="btn-no-follow-up" type="submit">{{ "Allow follow-ups again" if no_fu else "Do not follow up" }}</button>
         </form>
-        <form method="post" action="/pipeline/prospects/{{ p.id }}/close" hx-post="/pipeline/prospects/{{ p.id }}/close" hx-swap="none" hx-confirm="Close this prospect? You can reopen it later.">
-          <label class="visually-hidden" for="close-reason">Reason for closing</label>
-          <select class="select" id="close-reason" name="reason">
-            {% for key, label in close_reasons %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-          </select>
-          <button class="btn btn--danger" id="btn-close" type="submit">Close</button>
+        {% endif %}
+        {% if p.tracked is not none %}
+        <form method="post" action="{{ pbase }}/tracked" hx-post="{{ pbase }}/tracked" hx-swap="none" class="actions">
+          <input type="hidden" name="tracked" value="{{ 'false' if p.tracked else 'true' }}">
+          <span class="tracked{% if p.tracked %} tracked--on{% endif %}" id="tracked-state">{{ "Tracked" if p.tracked else "Not tracked" }}</span>
+          <button class="btn btn--sm" id="btn-tracked" type="submit">{{ "Stop tracking" if p.tracked else "Track this person" }}</button>
         </form>
-      {% elif p.status == "closed" %}
-        <form method="post" action="/pipeline/prospects/{{ p.id }}/reopen" hx-post="/pipeline/prospects/{{ p.id }}/reopen" hx-swap="none">
-          <button class="btn btn--primary" id="btn-reopen" type="submit">Reopen</button>
-        </form>
+        {% endif %}
       {% endif %}
     </div>
 
     <details class="inline-edit">
-      <summary>Edit details</summary>
-      <form class="stack" method="post" action="/pipeline/prospects/{{ p.id }}/edit" hx-post="/pipeline/prospects/{{ p.id }}/edit" hx-swap="none">
+      <summary>Edit company</summary>
+      <form class="stack" method="post" action="/companies/{{ life.company_id }}">
         <div class="grid-2">
-          <div class="field"><label class="field__label" for="ed-name">Name{% if p.sheet_tabs %} <span class="lock">Sheet cell wins when it changes</span>{% endif %}</label>
-            <input class="input" id="ed-name" name="name" value="{{ p.name }}" required maxlength="200"></div>
-          <div class="field"><label class="field__label" for="ed-company">Company{% if p.sheet_tabs %} <span class="lock">Sheet cell wins when it changes</span>{% endif %}</label>
-            <input class="input" id="ed-company" name="company" value="{{ p.company_name or '' }}" maxlength="200"></div>
-          <div class="field"><label class="field__label" for="ed-website">Company website</label>
-            <input class="input" id="ed-website" name="website" value="{{ company.website if company and company.website else '' }}" maxlength="300" placeholder="acme.com"></div>
-          <div class="field"><label class="field__label" for="ed-company-li">Company LinkedIn page</label>
-            <input class="input" id="ed-company-li" name="company_linkedin_url" value="{{ company.linkedin_url if company and company.linkedin_url else '' }}" maxlength="500" placeholder="https://www.linkedin.com/company/..."></div>
-          <div class="field"><label class="field__label" for="ed-linkedin">Person's LinkedIn profile</label>
-            <input class="input" id="ed-linkedin" name="linkedin_url" value="{{ p.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+          <div class="field"><label class="field__label" for="co-name">Name</label><input class="input" id="co-name" name="name" value="{{ co.name }}" required maxlength="200"></div>
+          <div class="field"><label class="field__label" for="co-website">Website</label><input class="input" id="co-website" name="website" value="{{ co.website or '' }}" maxlength="300" placeholder="acme.com"></div>
+          <div class="field"><label class="field__label" for="co-linkedin">LinkedIn company page</label><input class="input" id="co-linkedin" name="linkedin_url" value="{{ co.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/company/..."></div>
+          <div class="field"><label class="field__label" for="co-city">City</label><input class="input" id="co-city" name="city" value="{{ co.city or '' }}" maxlength="100"></div>
         </div>
-        <p class="hint">E-mails and phone numbers are edited per person in the Contacts card below. Notes are dated entries in the Our notes card.</p>
-        <div><button class="btn btn--primary" type="submit">Save details</button></div>
+        <div class="field"><label class="field__label" for="co-notes">Company notes</label><textarea class="input" id="co-notes" name="notes" rows="3" maxlength="4000">{{ co.notes or "" }}</textarea></div>
+        <div><button class="btn btn--primary" type="submit">Save company</button></div>
+      </form>
+      {% if team_members %}
+      <form class="row" method="post" action="{{ base }}/owner">
+        <label class="field__label" for="co-owner">Owner</label>
+        <select class="select" id="co-owner" name="owner_member_id"><option value="">None</option>
+          {% for m in team_members %}<option value="{{ m.id }}"{% if m.id == life.owner_member_id %} selected{% endif %}>{{ m.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn--sm" type="submit">Save owner</button>
+      </form>
+      {% endif %}
+    </details>
+    {% if p %}
+    <details class="inline-edit">
+      <summary>Outreach person's LinkedIn profile (for tracking)</summary>
+      <form class="stack" method="post" action="{{ pbase }}/edit" hx-post="{{ pbase }}/edit" hx-swap="none">
+        <input type="hidden" name="name" value="{{ p.name }}"><input type="hidden" name="company" value="{{ p.company_name or '' }}">
+        <div class="field"><label class="field__label" for="ed-linkedin">Person's LinkedIn profile</label>
+          <input class="input" id="ed-linkedin" name="linkedin_url" value="{{ p.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+        <div><button class="btn" type="submit">Save</button></div>
       </form>
     </details>
+    {% endif %}
   </div>
 </section>

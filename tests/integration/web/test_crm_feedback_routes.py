@@ -84,12 +84,14 @@ def test_edit_characteristics_on_pages_and_filter_lists(web: TestClient) -> None
     pid = _prospect()
     tp, partner = _trait("training_provider"), _trait("partner")
     resp = web.post(f"/pipeline/prospects/{pid}/characteristics", data={"characteristic_ids": [str(tp), str(partner)]}, headers=HX)
-    assert resp.status_code == 200 and 'hx-swap-oob="outerHTML:#prospect-header"' in resp.text and "Characteristics saved" in resp.text
+    assert resp.status_code == 200 and 'hx-swap-oob="outerHTML:#company-header"' in resp.text and "Characteristics saved" in resp.text
     other = _prospect("P2", company="Globex", email="g@globex.example", contact_person="Gina")
-    listed = web.get(f"/pipeline?tab=prospects&view=list&characteristic={partner}").text
-    assert f'id="prospect-{pid}"' in listed and f'id="prospect-{other}"' not in listed
+    with session_scope() as db:
+        cid, ocid = db.get(Prospect, pid).company_id, db.get(Prospect, other).company_id  # type: ignore[union-attr]
+    listed = web.get(f"/pipeline?layout=list&characteristic={partner}").text
+    assert f'id="company-{cid}"' in listed and f'id="company-{ocid}"' not in listed
     board = web.get(f"/pipeline?characteristic={tp}").text
-    assert f'id="prospect-{pid}"' in board and f'id="prospect-{other}"' not in board
+    assert f'id="company-{cid}"' in board and f'id="company-{ocid}"' not in board
     assert 'id="f-characteristic"' in board
     # plain form post (no htmx): 303 back + flash; clearing all
     plain = web.post(f"/pipeline/prospects/{pid}/characteristics", data={"present": "1"}, follow_redirects=False)
@@ -127,10 +129,10 @@ def test_companies_list_search_and_rollup_page(web: TestClient) -> None:
     assert "<html" not in frag.text and "Acme Logistics" in frag.text
     assert "No companies match these filters." in web.get("/companies?q=zzz").text
     page = web.get(f"/companies/{company_id}").text
-    assert 'id="company-enquiries"' in page and f'href="/pipeline/prospects/{pid}#enquiry-' in page
+    assert 'id="company-enquiries"' in page and 'id="enquiry-' in page
     assert "View post" in page and 'id="company-outreach"' in page and "priya@acme.example" in page
-    # the prospect page links its company
-    assert f'href="/companies/{company_id}"' in web.get(f"/pipeline/prospects/{pid}").text
+    # the old prospect URL lands on the company page
+    assert web.get(f"/pipeline/prospects/{pid}", follow_redirects=False).headers["location"] == f"/companies/{company_id}"
     # edit + merge
     saved = web.post(f"/companies/{company_id}", data={"website": "acme-logistics.example"}, headers=JSON).json()
     assert saved["data"]["website"] == "acme-logistics.example"
@@ -152,7 +154,7 @@ def test_companies_list_search_and_rollup_page(web: TestClient) -> None:
 def test_edit_contact_details_inline_from_the_prospect_page(web: TestClient) -> None:
     pid = _prospect()
     page = web.get(f"/pipeline/prospects/{pid}").text
-    assert "Edit e-mail, phone, details" in page and 'id="add-prospect-contact"' in page
+    assert "Edit e-mail, phone, details" in page and 'id="add-company-person"' in page
     with session_scope() as db:
         cid = db.get(Prospect, pid).contact_id  # type: ignore[union-attr]
     back = f"/pipeline/prospects/{pid}"

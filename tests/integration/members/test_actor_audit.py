@@ -137,7 +137,9 @@ def test_discard_and_skipped_override_carry_the_member(admin: TestClient, make_c
 def test_pipeline_contacts_and_registries_carry_the_member(admin: TestClient, make_client: Callable[[], TestClient]) -> None:
     member, mid = _member(admin, make_client)
     r = member.post("/pipeline/prospects", data={"name": "Acme Buyer", "company": "Acme"})
-    pid = int(re.search(r"/pipeline/prospects/(\d+)", r.headers["location"]).group(1))
+    cid = int(re.search(r"/companies/(\d+)", r.headers["location"]).group(1))
+    with session_scope() as db:
+        pid = db.scalar(select(Prospect.id).where(Prospect.company_id == cid))
     member.post(f"/pipeline/prospects/{pid}/stage", data={"stage": "contacted"})
     member.post(f"/pipeline/prospects/{pid}/note", data={"body": "called them"})
     member.post("/contacts", data={"full_name": "Ravi Contact", "email": "ravi@acme.example"})

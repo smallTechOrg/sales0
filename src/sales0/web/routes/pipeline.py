@@ -21,20 +21,23 @@ from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
+from sqlalchemy import select as select_
 from sqlalchemy.orm import Session
 
-from sales0.clock import ensure_utc, local_today
+from sales0.clock import local_today
 from sales0.config import get_settings
 from sales0.db.engine import get_db
+from sales0.db.models import Prospect as Prospect_
 from sales0.db.models import TeamMember
 from sales0.errors import DomainError
 from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import clients as clients_service
 from sales0.services.crm import companies as companies_service
-from sales0.services.crm import contacts as contacts_service
 from sales0.services.crm import flags as flags_service
 from sales0.services.crm import followups as followups_service
+from sales0.services.crm import company_pipeline as company_pipeline_service
 from sales0.services.crm import leads as leads_service
+from sales0.services.crm import lifecycle as lifecycle_service
 from sales0.services.crm import pipeline as pipeline_service
 from sales0.services.crm import priority as priority_service
 from sales0.services.crm import prospects as prospects_service
@@ -65,8 +68,8 @@ from sales0.web.envelope import wants_json
 
 router = APIRouter()
 
-TABS = ("prospects", "leads", "clients")
 VIEWS = ("board", "list")
+STAGE_CHOICES: tuple[tuple[str, str], ...] = (("prospect", "Prospect"), ("lead", "Lead"), ("client", "Client"), ("closed", "Closed"))
 STATUSES = ("open", "closed", "converted", "all")
 FLAGS = ("repeat_poster", "competitor_mention", "no_follow_up")
 SOURCES = ("enquiry", "sheet", "manual", "import")
@@ -138,21 +141,22 @@ def _fragments(request: Request, parts: list[tuple[str, dict[str, Any]]], messag
 
 
 # ---------------------------------------------------------------------- list page
+VIEWS_OF = ("companies", "enquiries")  # what the board / list shows
+STAGE_FILTERS = ("prospect", "lead", "client", "closed")
+
+
 def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
-    tab = raw.get("tab") if raw.get("tab") in TABS else "prospects"
-    status = raw.get("status") if raw.get("status") in STATUSES else "open"
-    if tab != "prospects" and status in ("closed", "converted"):
-        status = "all"
+    # old bookmarks: ?tab=prospects|leads|clients meant a stage
+    stage = raw.get("stage") if raw.get("stage") in STAGE_FILTERS else ""
+    old = {"prospects": "prospect", "leads": "lead", "clients": "client"}.get(str(raw.get("tab") or ""))
+    if not stage and old:
+        stage = old
     return {
-        "tab": tab,
-        "view": raw.get("view") if raw.get("view") in VIEWS else "",
+        "view": raw.get("view") if raw.get("view") in VIEWS_OF else "companies",
+        "layout": raw.get("layout") if raw.get("layout") in VIEWS else ("list" if raw.get("view") == "list" else ""),
         "q": (raw.get("q") or "").strip()[:200],
-        "stage": raw.get("stage") or "",
-        "status": status,
+        "stage": stage,
         "flag": raw.get("flag") if raw.get("flag") in FLAGS else "",
-        "source": raw.get("source") if raw.get("source") in SOURCES else "",
-        "due": raw.get("due") if raw.get("due") in ("today", "overdue") else "",
-        "show_removed": "1" if raw.get("show_removed") in ("1", "true", "on", True) else "",
         "characteristic": str(raw.get("characteristic") or "") if str(raw.get("characteristic") or "").isdigit() else "",
         "priority": raw.get("priority") if raw.get("priority") in ("high", "medium", "low", "none") else "",
         "category": raw.get("category") if raw.get("category") in ("relevant_prospect", "channel_partner", "competitor") else "",
@@ -172,66 +176,37 @@ def _trait_options(db: Session) -> list[Any]:
 
 def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     params = _normalise(raw)
-    tab = params["tab"]
-    stage_options = LEAD_STAGE_OPTIONS if tab == "leads" else PROSPECT_STAGE_OPTIONS
-    valid_stages = {k for k, _ in stage_options}
-    if params["stage"] not in valid_stages:
-        params["stage"] = ""
-    ctx: dict[str, Any] = {"tab": tab, "params": params, "stage_options": stage_options, "characteristic_options": _trait_options(db),
-                           "priority_choices": priority_service.FILTER_CHOICES, "category_choices": CATEGORY_CHOICES}
     trait = _trait_id(params)
-
-    if tab == "clients":
-        page = clients_service.list_clients(
+    ctx: dict[str, Any] = {"params": params, "characteristic_options": _trait_options(db), "priority_choices": priority_service.FILTER_CHOICES,
+                           "category_choices": CATEGORY_CHOICES, "stage_choices": STAGE_CHOICES}
+    if params["view"] == "enquiries":
+        ctx.update(layout="board", forced_list=False, enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
-            sort=params["sort"] or None, page=params["page"],
-        )
-        ctx.update(view="list", forced_list=False, items=page.items, total=page.total, page=page.page, page_size=page.page_size)
+            category=params["category"] or None))
     else:
-        filtered = bool(
-            params["stage"] or params["status"] != "open" or (tab == "prospects" and (params["source"] or params["due"]))
-        )
-        view = params["view"] or "board"
-        forced = filtered and view == "board"
-        if filtered:
-            view = "list"
-        ctx.update(view=view, forced_list=forced)
-        if view == "board":
-            board = pipeline_service.board(
-                db, kind=tab, q=params["q"] or None, flag=(params["flag"] or None) if tab == "prospects" else None,
-                characteristic_id=trait, priority_filter=params["priority"] or None, category=params["category"] or None,
-                sort=params["sort"] or None,
-            )
-            ctx["board"] = board
-        elif tab == "prospects":
-            page = prospects_service.list_prospects(
-                db, stage=params["stage"] or None, status=params["status"], q=params["q"] or None,
-                source=params["source"] or None, flag=params["flag"] or None, due=params["due"] or None,
-                characteristic_id=trait, priority_filter=params["priority"] or None, category=params["category"] or None,
-                sort=params["sort"] or None, page=params["page"],
-            )  # fmt: skip
-            ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
+        layout = params["layout"] or "board"
+        # one stage chosen -> the list (the board always shows the three stages side by side)
+        forced = bool(params["stage"]) and layout == "board"
+        if params["stage"]:
+            layout = "list"
+        ctx.update(layout=layout, forced_list=forced)
+        common = dict(q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
+                      category=params["category"] or None, flag=params["flag"] or None, sort=params["sort"] or None)
+        if layout == "board":
+            ctx["company_board"] = company_pipeline_service.board(db, **common)
         else:
-            page = leads_service.list_leads(
-                db, stage=params["stage"] or None, open_only=params["status"] == "open", q=params["q"] or None,
-                characteristic_id=trait, priority_filter=params["priority"] or None, category=params["category"] or None,
-                sort=params["sort"] or None, page=params["page"],
-            )  # fmt: skip
+            page = company_pipeline_service.company_list(
+                db, stage=params["stage"] if params["stage"] in ("prospect", "lead", "client") else None,
+                closed=True if params["stage"] == "closed" else False, page=params["page"], **common)
             ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
-    ctx["view_param"] = params["view"]
     ctx["next"] = "/pipeline?" + qs({**params, "page": params["page"] if params["page"] > 1 else None})
     return ctx
 
 
 def _tab_counts(db: Session) -> list[tuple[str, str, int]]:
-    summary = pipeline_service.summary(db)
-    prospects = sum(summary.prospects_by_stage.values())
-    leads = sum(n for stage, n in summary.leads_by_stage.items() if stage in OPEN_LEAD_STAGES)
-    return [
-        ("prospects", "Prospects", prospects),
-        ("leads", "Leads", leads),
-        ("clients", "Clients", summary.clients_active + summary.clients_legacy),
-    ]
+    c = company_pipeline_service.counts(db)
+    return [("prospect", "Prospects", c["prospect"]), ("lead", "Leads", c["lead"]), ("client", "Clients", c["client"]),
+            ("closed", "Closed", c["closed"])]
 
 
 @router.get("/pipeline", response_class=HTMLResponse)
@@ -264,19 +239,23 @@ def _board_refresh(request: Request, db: Session, next_url: str, message: str) -
 # ---------------------------------------------------------------------- prospect detail
 
 
-def _header_ctx(db: Session, p: Any) -> dict[str, Any]:
-    company = companies_service.get_or_none(db, p.company_id) if p.company_id else None
-    return {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS,
-            "characteristic_options": _trait_options(db), "company": company}
+def _header_ctx(db: Session, p: Any, member: TeamMember | None = None) -> dict[str, Any]:
+    from sales0.services.team import members as members_service
+
+    return {"p": p, "life": lifecycle_service.life_view(db, p.company_id) if p.company_id else None,
+            "co": companies_service.get_company(db, p.company_id) if p.company_id else None,
+            "characteristic_options": _trait_options(db), "is_admin": bool(member is not None and member.role == "admin"),
+            "team_members": members_service.list_members(db, include_inactive=False)}
 
 
 def _prospect_parts(db: Session, prospect_id: PathId, member: TeamMember | None = None) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     p = prospects_service.get_prospect(db, prospect_id)
     base = f"/pipeline/prospects/{p.id}"
     no_fu = any(f.kind == "no_follow_up" for f in p.flags)
+    tl = timeline_service.list_timeline(db, company_id=p.company_id) if p.company_id else p.timeline
     parts = [
-        ("pipeline/_prospect_header.html", _header_ctx(db, p)),
-        ("pipeline/_timeline.html", {"timeline": p.timeline, "base": base}),
+        ("pipeline/_prospect_header.html", _header_ctx(db, p, member)),
+        ("pipeline/_timeline.html", {"timeline": tl, "base": base}),
         ("pipeline/_followups.html", _followups_ctx(p, base, no_fu, db, member)),
     ]
     return p, parts
@@ -307,24 +286,11 @@ def _draft_info(db: Session, p: Any, member: TeamMember | None) -> dict[int, Any
     return followup_drafts_service.explain(db, rows, member)
 
 
-@router.get("/pipeline/prospects/{prospect_id}", response_class=HTMLResponse)
-def prospect_page(
-    request: Request,
-    prospect_id: PathId,
-    db: Session = Depends(get_db),
-    member: TeamMember | None = Depends(get_acting_member_optional),
-) -> HTMLResponse:
-    from sales0.web.routes.prospect_research import research_ctx
+def _company_url(db: Session, prospect_id: int) -> str:
+    from sales0.db.models import Prospect
 
-    p = prospects_service.get_prospect(db, prospect_id)
-    details = [contacts_service.get_contact(db, c.id) for c in p.contacts[:20]]
-    no_fu = any(f.kind == "no_follow_up" for f in p.flags)
-    fu_ctx = _followups_ctx(p, f"/pipeline/prospects/{p.id}", no_fu, db, member)
-    return _page(
-        request, db, "pipeline/prospect.html",
-        {**_header_ctx(db, p), "contact_details": details,
-         **{k: fu_ctx[k] for k in ("channels", "fu_plan", "needs_contact", "draft_info", "prospect_id", "draft_due_ready")}, **research_ctx(db, p.id, member)},
-    )  # fmt: skip
+    cid = db.scalar(select_(Prospect.company_id).where(Prospect.id == prospect_id))
+    return f"/companies/{cid}" if cid else "/pipeline"
 
 
 def _prospect_action(
@@ -332,7 +298,7 @@ def _prospect_action(
     member: TeamMember | None = None,
 ) -> Response:
     """Run a prospect mutation; ``action`` returns the success message."""
-    back = next_url or f"/pipeline/prospects/{prospect_id}"
+    back = next_url or _company_url(db, prospect_id)
 
     def run() -> Response:
         message = action()
@@ -361,17 +327,18 @@ def create_prospect(
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def run() -> Response:
-        if not name.strip():
-            raise DomainError("prospect_invalid", "A prospect needs a name.", 400)
+        who = name.strip() or company.strip()  # the form asks for the company; a person is optional
+        if not who:
+            raise DomainError("prospect_invalid", "A company needs a name.", 400)
         view = prospects_service.create_manual(
-            db, name=name.strip(), company=opt_str(company), email=opt_str(email), phone=opt_str(phone),
+            db, name=who, company=opt_str(company), email=opt_str(email), phone=opt_str(phone),
             linkedin_url=opt_str(linkedin_url), website=opt_str(website), notes=opt_str(notes), actor=actor_of(member),
         )  # fmt: skip
         if wants_json(request):
             return envelope_ok(view.model_dump(mode="json"), 201)
-        return crm_done(request, f"/pipeline/prospects/{view.id}", f"Added {view.name}.")
+        return crm_done(request, f"/companies/{view.company_id}" if view.company_id else "/pipeline", f"Added {view.company_name or view.name}.")
 
-    return crm_guard(request, "/pipeline?tab=prospects", run, db)
+    return crm_guard(request, "/pipeline", run, db)
 
 
 @router.post("/pipeline/prospects/{prospect_id}/stage", response_model=None)
@@ -456,16 +423,17 @@ def prospect_convert(
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    back = f"/pipeline/prospects/{prospect_id}"
+    back = _company_url(db, prospect_id)
 
     def run() -> Response:
-        lead = leads_service.convert(
-            db, prospect_id, stage=stage or "meeting_scheduled", meeting_at=parse_local_datetime(meeting_at),
-            opened_by="manual", actor=actor_of(member),
-        )  # fmt: skip
+        cid = db.scalar(select_(Prospect_.company_id).where(Prospect_.id == prospect_id))
+        if cid is None:
+            raise DomainError("not_found", "That item no longer exists - refresh the page.", 404)
+        lifecycle_service.mark_lead(db, cid, stage=stage or "meeting_scheduled", meeting_at=parse_local_datetime(meeting_at),
+                                    actor=actor_of(member))
         if wants_json(request):
-            return envelope_ok(lead.model_dump(mode="json"), 201)
-        return crm_done(request, f"/pipeline/leads/{lead.id}", "Converted to a lead.")
+            return envelope_ok(lifecycle_service.life_view(db, cid).model_dump(mode="json"), 201)
+        return crm_done(request, back, "Marked as a lead.")
 
     return crm_guard(request, back, run, db)
 
@@ -698,17 +666,20 @@ def _followup_response(request: Request, db: Session, fu: Any, message: str, nex
     if wants_json(request):
         return _json(fu)
     if fu.prospect_id:
-        back = next_url or f"/pipeline/prospects/{fu.prospect_id}"
+        back = next_url or _company_url(db, fu.prospect_id)
     else:
-        back = next_url or f"/pipeline/leads/{fu.lead_id}"
+        from sales0.db.models import Lead
+
+        row = db.get(Lead, fu.lead_id)
+        cid = (row.company_id or db.scalar(select_(Prospect_.company_id).where(Prospect_.id == row.prospect_id))) if row else None
+        back = next_url or (f"/companies/{cid}" if cid else "/pipeline")
     if not is_htmx(request):
         return flash_redirect(back, message)
     parts: list[tuple[str, dict[str, Any]]] = [("pipeline/_due.html", {"due": followups_service.list_due(db)})]
     if fu.prospect_id:
         parts += _prospect_parts(db, fu.prospect_id, get_acting_member_optional(request, db))[1]
-    elif fu.lead_id:
-        parts += _lead_parts(db, fu.lead_id)[1]
-    return _fragments(request, parts, message)
+        return _fragments(request, parts, message)
+    return crm_done(request, back, message)
 
 
 @router.post("/pipeline/followups/{follow_up_id}/done", response_model=None)
@@ -835,40 +806,18 @@ def followups_draft_due(
     return crm_guard(request, back, run, db)
 
 
-# ---------------------------------------------------------------------- lead detail
-def _lead_parts(db: Session, lead_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
-    lead = leads_service.get_lead(db, lead_id)
-    base = f"/pipeline/leads/{lead.id}"
-    meeting_local = ""
-    if lead.meeting_at is not None:
-        meeting_local = ensure_utc(lead.meeting_at).astimezone(get_settings().tz).strftime("%Y-%m-%dT%H:%M")
-    parts = [
-        ("pipeline/_lead_header.html", {"l": lead, "lead_stage_options": LEAD_STAGE_OPTIONS, "meeting_local": meeting_local,
-                                         "characteristic_options": _trait_options(db)}),
-        ("pipeline/_timeline.html", {"timeline": lead.timeline, "base": base}),
-        ("pipeline/_followups.html", {"follow_ups": lead.follow_ups, "base": base, "can_act": lead.closed_at is None}),
-    ]
-    return lead, parts
-
-
-@router.get("/pipeline/leads/{lead_id}", response_class=HTMLResponse)
-def lead_page(request: Request, lead_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
-    lead, parts = _lead_parts(db, lead_id)
-    return _page(request, db, "pipeline/lead.html", {"l": lead, **parts[0][1]})
-
-
 def _lead_action(request: Request, db: Session, lead_id: PathId, action: Callable[[], str], *, next_url: str | None = None) -> Response:
-    back = next_url or f"/pipeline/leads/{lead_id}"
+    from sales0.db.models import Lead
+
+    row = db.get(Lead, lead_id)
+    cid = (row.company_id or db.scalar(select_(Prospect_.company_id).where(Prospect_.id == row.prospect_id))) if row else None
+    back = next_url or (f"/companies/{cid}" if cid else "/pipeline")
 
     def run() -> Response:
         message = action()
         if wants_json(request):
             return _json(leads_service.get_lead(db, lead_id))
-        if is_htmx(request):
-            if next_url:
-                return _board_refresh(request, db, next_url, message)
-            return _fragments(request, _lead_parts(db, lead_id)[1], message)
-        return flash_redirect(back, message)
+        return crm_done(request, back, message)
 
     return crm_guard(request, back, run, db)
 
@@ -940,32 +889,17 @@ def lead_followup(
     return _lead_action(request, db, lead_id, act)
 
 
-# ---------------------------------------------------------------------- clients
-def _client_parts(db: Session, client_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
-    client = clients_service.get_client(db, client_id)
-    parts = [
-        ("pipeline/_client_header.html", {"c": client, "client_statuses": CLIENT_STATUSES, "characteristic_options": _trait_options(db)}),
-        ("pipeline/_timeline.html", {"timeline": client.timeline, "base": f"/pipeline/clients/{client.id}"}),
-    ]
-    return client, parts
-
-
-@router.get("/pipeline/clients/{client_id}", response_class=HTMLResponse)
-def client_page(request: Request, client_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
-    client, parts = _client_parts(db, client_id)
-    return _page(request, db, "pipeline/client.html", parts[0][1])
-
-
 def _client_action(request: Request, db: Session, client_id: PathId, action: Callable[[], str]) -> Response:
-    back = f"/pipeline/clients/{client_id}"
+    from sales0.db.models import Client
+
+    row = db.get(Client, client_id)
+    back = f"/companies/{row.company_id}" if row is not None and row.company_id else "/pipeline"
 
     def run() -> Response:
         message = action()
         if wants_json(request):
             return _json(clients_service.get_client(db, client_id))
-        if is_htmx(request):
-            return _fragments(request, _client_parts(db, client_id)[1], message)
-        return flash_redirect(back, message)
+        return crm_done(request, back, message)
 
     return crm_guard(request, back, run, db)
 
@@ -989,9 +923,10 @@ def create_client(
         )  # fmt: skip
         if wants_json(request):
             return envelope_ok(view.model_dump(mode="json"), 201)
-        return crm_done(request, f"/pipeline/clients/{view.id}", f"Added client {view.name}.")
+        return crm_done(request, f"/companies/{view.company_id}" if view.company_id else "/pipeline?stage=client",
+                        f"Added client {view.name}.")
 
-    return crm_guard(request, "/pipeline?tab=clients", run, db)
+    return crm_guard(request, "/pipeline?stage=client", run, db)
 
 
 @router.post("/pipeline/clients/{client_id}", response_model=None)

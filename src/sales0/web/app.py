@@ -28,6 +28,7 @@ from sales0.web import auth as web_auth
 from sales0.web.envelope import install_exception_handlers
 from sales0.web.middleware import CsrfOriginMiddleware, HardeningMiddleware, RequestContextMiddleware
 from sales0.web.routes import (
+    company,
     contacts,
     costs,
     criteria,
@@ -143,7 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users.router)  # Phase 5: admin Users page
     app.include_router(criteria.router)  # inbox feedback A3: editable triage criteria + discard reasons
     app.include_router(worker_api.router)  # hosted: the laptop worker (bearer token; 404 without SALES0_WORKER_TOKEN)
-    for r in (pipeline.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):
+    for r in (pipeline.router, company.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):
         app.include_router(r)
     from sales0.web.routes import prospect_research
 

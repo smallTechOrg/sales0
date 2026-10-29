@@ -1,26 +1,30 @@
-{# Needs: board (Board), tab, params, today, next. #}
-{% set kind = "prospect" if tab == "prospects" else "lead" %}
-{% set any_cards = board.columns|sum(attribute="total") %}
+{# Needs: company_board (CompanyBoard), params, today. Companies as cards in Prospect | Lead | Client, plus a collapsed Closed lane. #}
+{% set any_cards = company_board.columns|sum(attribute="total") %}
 {% if not any_cards %}
   <div class="empty-state" id="pipeline-empty">
-    {% if params.q or params.flag or params.characteristic or params.priority or params.category %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ tab }}">Clear filters</a>
-    {% elif tab == "prospects" %}<p>No prospects yet — accept an enquiry in the Inbox, or add one.</p><div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-prospect">New prospect</a></div>
-    {% else %}<p>No leads yet. A prospect becomes a lead once it has been contacted and has replied.</p>{% endif %}
+    {% if params.q or params.flag or params.characteristic or params.priority or params.category %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline">Clear filters</a>
+    {% else %}<p>No companies in the pipeline yet - accept an enquiry in the Inbox, or add a company.</p><div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-company">New company</a></div>{% endif %}
   </div>
 {% else %}
-<div class="board" id="pipeline-board" role="list" aria-label="{{ 'Prospects' if tab == 'prospects' else 'Leads' }} by stage">
-  {% for col in board.columns %}
-    <section class="board__col" role="listitem" data-stage="{{ col.stage }}" aria-labelledby="col-{{ col.stage }}">
-      <div class="board__head"><h2 id="col-{{ col.stage }}">{{ col.label }}</h2><span class="count-pill" title="{{ col.total }} in total">{{ col.total }}</span></div>
-      {% for c in col.cards if params.show_removed or not (kind == "prospect" and c.sheet_removed_at) %}
-        {% include "pipeline/_card.html" %}
-      {% else %}
-        <p class="board__empty">Nothing here.</p>
-      {% endfor %}
+<div class="board" id="pipeline-board" role="list" aria-label="Companies by stage">
+  {% for col in company_board.columns if col.key != "closed" %}
+    <section class="board__col" role="listitem" data-stage="{{ col.key }}" aria-labelledby="col-{{ col.key }}">
+      <div class="board__head"><h2 id="col-{{ col.key }}">{{ col.label }}</h2><span class="count-pill" title="{{ col.total }} in total">{{ col.total }}</span></div>
+      {% for c in col.cards %}{% include "pipeline/_card.html" %}{% else %}<p class="board__empty">Nothing here.</p>{% endfor %}
       {% if col.total > col.cards|length %}
-        <p class="board__more"><a href="/pipeline?{{ qs(params, tab=tab, view='list', stage=col.stage, page=None) }}">Show all {{ col.total }}</a></p>
+        <p class="board__more"><a href="/pipeline?{{ qs(params, stage=col.key, layout='list', page=None) }}">Show all {{ col.total }}</a></p>
       {% endif %}
     </section>
   {% endfor %}
 </div>
+{% set closed = company_board.columns|selectattr("key", "equalto", "closed")|first %}
+{% if closed and closed.total %}
+<details class="card board__closed" id="closed-lane">
+  <summary><strong>Closed</strong> <span class="count-pill">{{ closed.total }}</span> <span class="muted">not interested, dormant, do not contact, lost clients - reopen from the company page</span></summary>
+  <div class="board board--closed">
+    {% for c in closed.cards %}{% include "pipeline/_card.html" %}{% endfor %}
+  </div>
+  {% if closed.total > closed.cards|length %}<p class="board__more"><a href="/pipeline?{{ qs(params, stage='closed', layout='list', page=None) }}">Show all {{ closed.total }}</a></p>{% endif %}
+</details>
+{% endif %}
 {% endif %}

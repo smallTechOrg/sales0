@@ -131,14 +131,6 @@ def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
     return _page(request, db, "contacts/companies.html", ctx)
 
 
-@router.get("/companies/{company_id}", response_class=HTMLResponse)
-def company_page(request: Request, company_id: PathId, db: Session = Depends(get_db)) -> Response:
-    co = companies_service.get_company(db, company_id)
-    if wants_json(request):
-        return envelope_ok(_dump(co))
-    return _page(request, db, "contacts/company.html", {"co": co, "duplicates": companies_service.duplicate_candidates(db, company_id)})
-
-
 @router.post("/companies/{company_id}", response_model=None)
 def update_company(
     request: Request,
