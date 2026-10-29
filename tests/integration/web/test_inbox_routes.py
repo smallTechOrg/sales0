@@ -292,7 +292,7 @@ LINK_CASES = [
     ("profile", "https://www.linkedin.com/in/priya-menon-acme/", "Author profile (post link unavailable) ↗"),
     ("profile", "https://www.linkedin.com/company/briltus-academy/", "Author profile (post link unavailable) ↗"),
     ("search", "https://www.linkedin.com/search/results/content/?keywords=ai%20workshop",
-     "Search results (post link unavailable) ↗"),
+     "Search results (post and profile links unavailable) ↗"),
     ("other", "https://example.invalid/elsewhere", "Open link ↗"),
 ]
 

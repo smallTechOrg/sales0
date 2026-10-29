@@ -28,7 +28,7 @@
                   {% if e.company %}{{ e.company }} · {% endif %}{% if e.date_added %}{{ e.date_added|ago }}{% endif %}
                 </div>
                 <div class="row">
-                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">View post</a>{% endif %}
+                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ link_label(e.source_url) }}</a>{% endif %}
                   <a href="/inbox?tab=accepted&q={{ (e.requirement_summary or '')[:40]|urlencode }}">Open in Inbox</a>
                   <a href="/outreach/compose?enquiry_id={{ e.id }}">Draft from this enquiry</a>
                 </div>
