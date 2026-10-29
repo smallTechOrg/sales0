@@ -320,3 +320,9 @@ Spec: `spec/capabilities/inbox-feedback.md`. Integrator: re-link q14's down_revi
 - Assumed: AI-skipped posts are grouped by poster type in the breakdown (their one-line reasons are nearly all unique).
 - Card permalinks: `card_post_urn` only reads the already-captured card links/HTML (no navigation); real SDUI cards usually carry no URN, so expect little live gain - "Copy link to post" stays the main source. Not exercised in a real browser.
 - Harness friction: the worktree had no .env; tests ran with `SALES0_ANTHROPIC_API_KEY=sk-test-dummy` and `-m "not llm"`. `test_migration_p9` seeded old-revision enquiries via the ORM and broke on the first new enquiries column since p9; it now seeds via Core.
+## Integration of the three feedback slices (feature/sales0-feedback-1)
+- Migrations relinked into one chain: p11 -> q12_traits -> q13_followch -> q14_criteria; migration tests read the head via head_revision() and the q12 drift check upgrades to head first. test_migration_p9 seeds follow_ups with Core (the model now maps q13's channel).
+- The inbox pipeline check (services.crm.pipeline_match) uses the CRM's company keys through companies.by_name / by_domain / by_linkedin (name_key, domain_key, linkedin_key); it no longer scans linkedin_url or prefix-matches website_key. Free-mail domains are still filtered before the domain lookup.
+- Criteria rule text widened 600 -> 1000 chars (model, q14, form, service limit): a 617-char seed rule made q14 fail on PostgreSQL (SQLite ignores VARCHAR length).
+- Nav stays one flat list (one scrolling row on phones) with thin dividers before Pipeline / Outreach / Metrics / Users (NAV_GROUP_STARTS); Criteria sits after Setup, Companies after Contacts.
+- Verified on a temp PostgreSQL 18 cluster: upgrade head, check, downgrade to p11 and back, downgrade base and back, check; db/criteria/crm/outreach/sheetsync/cross-slice suites with SALES0_TEST_POSTGRES_URL.
