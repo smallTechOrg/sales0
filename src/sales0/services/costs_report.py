@@ -24,7 +24,7 @@ from sales0.db.models import LlmCall, OutreachMessage
 from sales0.errors import DomainError
 from sales0.services._common import now_or
 
-FEATURES = ("triage", "research", "drafting", "suggest", "reply")
+FEATURES = ("triage", "research", "drafting", "suggest", "reply", "summary")
 
 
 class SpendCapReached(DomainError):

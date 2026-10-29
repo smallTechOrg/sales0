@@ -52,6 +52,8 @@ class LlmCall(Base):
     request_id: Mapped[str | None] = mapped_column(String(100))
     # q14: triage only - the triage_criteria_sets version whose rules were in the system prompt (NULL = built-in)
     criteria_version: Mapped[int | None] = mapped_column(Integer)
+    # q15: server-side web searches made by this request (billed per search, folded into cost_usd_micros)
+    web_search_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=now_utc, index=True
     )

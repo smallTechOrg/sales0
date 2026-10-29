@@ -23,6 +23,7 @@ from sales0.db.models.profiles import LinkedinProfile
 from sales0.db.models.metrics import ManualMetric
 from sales0.db.models.ops import Digest, ScheduledJob, Suggestion
 from sales0.db.models.outreach import CompanyBrief, Deck, MessageTemplate, OutreachEvent, OutreachMessage
+from sales0.db.models.research import ProspectDoc, ProspectNote, WorkerTask
 from sales0.db.models.replies import OutreachReply, ReplyPollState, Suppression
 from sales0.db.models.registries import ChannelGroup, Competitor, CompetitorMention, ImportBatch
 from sales0.db.models.runs import ScrapeRun, ScrapeRunKeyword, WatchRun
@@ -34,6 +35,9 @@ from sales0.db.models.timeline import TimelineEvent
 from sales0.db.models.workers import Worker
 
 __all__ = [
+    "ProspectDoc",
+    "ProspectNote",
+    "WorkerTask",
     "Worker",
     "LINKEDIN_SESSION_ID",
     "ChannelGroup",
