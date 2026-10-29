@@ -5,7 +5,7 @@
     <form id="prospect-note-form" method="post" action="/pipeline/prospects/{{ pid }}/notes" hx-post="/pipeline/prospects/{{ pid }}/notes" hx-swap="none" data-reset-on-success>
       <div class="field"><label class="field__label" for="pn-body">New note</label>
         <textarea class="input" id="pn-body" name="body" rows="2" required maxlength="4000" placeholder="What we know, what they said, what we agreed..."></textarea></div>
-      <div><button class="btn btn--primary" type="submit" id="btn-add-note">Add note</button></div>
+      <div><button class="btn btn--primary" type="submit" id="btn-add-note">Save note</button></div>
     </form>
     <div id="notes-list">
     {% for n in notes %}
