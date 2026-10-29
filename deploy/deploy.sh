@@ -98,7 +98,7 @@ step_deploy() {
     --allow-unauthenticated --port 8080 \\
     --min-instances 0 --max-instances 1 --timeout 900 --concurrency 10 --cpu 1 --memory 1Gi --cpu-boost \\
     --network default --subnet default --vpc-egress private-ranges-only \\
-    --set-env-vars SALES0_MODE=hosted,SALES0_DB_HOST=$DB_HOST,SALES0_DB_NAME=$DB_NAME,SALES0_DB_USER=$DB_USER,SALES0_DB_SSLMODE=require,SALES0_PUBLIC_BASE_URL=$PUBLIC_URL,SALES0_GOOGLE_CLIENT_SECRET_PATH=/secrets/google/google_client_secret.json,SALES0_ATTACHMENTS_BUCKET=$BUCKET \\
+    --set-env-vars SALES0_MODE=hosted,SALES0_DB_HOST=$DB_HOST,SALES0_DB_NAME=$DB_NAME,SALES0_DB_USER=$DB_USER,SALES0_DB_SSLMODE=require,SALES0_PUBLIC_BASE_URL=$PUBLIC_URL,SALES0_GOOGLE_CLIENT_SECRET_PATH=/secrets/google/google_client_secret.json,SALES0_ATTACHMENTS_BUCKET=$BUCKET,SALES0_SHEET_CLIENT_SOURCING_ID=1xUdfMXUKFRNd3RXTq-PAynlbFqyI5sfWUtEHDtlw3ag \\
     --set-secrets SALES0_DB_PASSWORD=sales0-db-password:latest,SALES0_SECRET_KEY=sales0-secret-key:latest,SALES0_WORKER_TOKEN=sales0-worker-token:latest,SALES0_APP_PASSWORD=sales0-app-password:latest,SALES0_ANTHROPIC_API_KEY=sales0-anthropic-api-key:latest,SALES0_ANTHROPIC_WORKSPACE_ID=sales0-anthropic-workspace-id:latest,/secrets/google/google_client_secret.json=sales0-google-client-secret:latest"
 }
 
