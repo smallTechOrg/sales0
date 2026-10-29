@@ -56,14 +56,14 @@ def test_deck_rejects_non_pdf_empty_and_oversize(db: Session, monkeypatch: pytes
 def test_deck_storage_dedupe_sanitising_lookup_and_soft_delete(db: Session, offering) -> None:
     a = decks.upload_deck(db, filename="../../etc/we!rd name?.PDF", data=PDF, offering_id=offering.id)
     db.commit()
-    assert a.filename == "we_rd name.pdf" and a.stored_path == f"decks/{a.sha256}.pdf"
+    assert a.filename == "we_rd name.pdf" and a.stored_path == f"decks/{a.sha256}.pdf" and a.storage == "local"
     from sales0.config import get_settings
 
     stored = get_settings().data_path / a.stored_path
     assert stored.read_bytes() == PDF
     assert decks.safe_filename("") == "deck.pdf" and decks.safe_filename("a/b\\c.txt") == "c.txt.pdf"
 
-    b = decks.upload_deck(db, filename="again.pdf", data=PDF)  # same bytes -> same row
+    b = decks.upload_deck(db, filename="again.pdf", data=PDF)  # same bytes -> same row, same single file
     assert b.id == a.id and len(decks.list_decks(db)) == 1
     assert [p.name for p in stored.parent.iterdir()] == [f"{a.sha256}.pdf"]
 
@@ -81,3 +81,61 @@ def test_deck_storage_dedupe_sanitising_lookup_and_soft_delete(db: Session, offe
     with pytest.raises(DomainError) as exc:
         decks.read_deck_bytes(a)
     assert exc.value.code == "deck_corrupt"
+
+
+def test_missing_file_is_flagged_never_picked_by_default_and_restored_by_reupload(db: Session, offering) -> None:
+    from sales0.config import get_settings
+
+    a = decks.upload_deck(db, filename="Lost.pdf", data=PDF, offering_id=offering.id)
+    db.commit()
+    (get_settings().data_path / a.stored_path).unlink()
+    with pytest.raises(DomainError) as exc:
+        decks.read_deck_bytes(a)
+    assert exc.value.code == "deck_missing" and "upload it again" in exc.value.message
+    assert a.content_missing is True and decks.is_available(a) is False
+    db.commit()
+    assert decks.deck_for_offering(db, offering.id) is None and decks.missing_for_offering(db, offering.id).id == a.id
+
+    again = decks.upload_deck(db, filename="Lost.pdf", data=PDF)  # upload again restores the file
+    assert again.id == a.id and again.content_missing is False and decks.read_deck_bytes(again) == PDF
+    assert decks.attachment_label(again).startswith("Lost.pdf (") and decks.attachment_label(None) == "none"
+
+
+def test_gcs_backend_with_a_fake_client_stores_once_and_verifies(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from sales0.services.outreach import storage
+    from tests.support.fake_gcs import FakeGcsClient
+
+    monkeypatch.setenv("SALES0_ATTACHMENTS_BUCKET", "bucket-x")
+    reset_settings()
+    client = FakeGcsClient()
+    storage.set_gcs_client_factory(lambda: client)
+    a = decks.upload_deck(db, filename="Cloud.pdf", data=PDF)
+    b = decks.upload_deck(db, filename="Cloud again.pdf", data=PDF)
+    db.commit()
+    assert a.id == b.id and a.storage == "gcs" and client.buckets["bucket-x"].objects == {f"decks/{a.sha256}.pdf": PDF}
+    assert [c for c in client.calls if c[0] == "put"] == [("put", "bucket-x", f"decks/{a.sha256}.pdf")]  # stored once
+    assert decks.read_deck_bytes(a) == PDF and decks.is_available(a)
+    client.buckets["bucket-x"].objects.clear()
+    with pytest.raises(DomainError) as exc:
+        decks.read_deck_bytes(a)
+    assert exc.value.code == "deck_missing"
+
+
+def test_hosted_without_a_bucket_refuses_uploads_and_treats_local_rows_as_missing(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    a = decks.upload_deck(db, filename="Local.pdf", data=PDF)
+    db.commit()
+    monkeypatch.setenv("SALES0_MODE", "hosted")
+    reset_settings()
+    with pytest.raises(DomainError) as exc:
+        decks.upload_deck(db, filename="New.pdf", data=PDF + b"%new")
+    assert exc.value.code == "attachments_not_configured" and "SALES0_ATTACHMENTS_BUCKET" in exc.value.message
+    with pytest.raises(DomainError) as exc:  # a pre-GCS row on the hosted app: its /tmp file is gone
+        decks.read_deck_bytes(a)
+    assert exc.value.code == "deck_missing"
+
+
+def test_rows_hold_metadata_only(db: Session) -> None:
+    from sales0.db.models import Deck, OutreachMessage
+
+    names = {c.name for c in Deck.__table__.columns} | {c.name for c in OutreachMessage.__table__.columns}
+    assert not {"content", "data", "bytes", "blob"} & names  # no file bytes in the database

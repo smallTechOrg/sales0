@@ -132,5 +132,8 @@ class WorkerClient:
     def import_batch(self, request: p.ImportBatchRequest) -> p.ImportBatchResponse:
         return self._call("POST", "/api/worker/import/batch", request, p.ImportBatchResponse)
 
+    def import_deck_chunk(self, request: p.ImportDeckChunkRequest) -> p.ImportDeckChunkResponse:
+        return self._call("POST", "/api/worker/import/deck-chunk", request, p.ImportDeckChunkResponse)
+
     def import_finalize(self, request: p.ImportFinalizeRequest) -> p.ImportFinalizeResponse:
         return self._call("POST", "/api/worker/import/finalize", request, p.ImportFinalizeResponse)

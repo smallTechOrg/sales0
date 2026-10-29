@@ -154,6 +154,12 @@ def _build_content(db: Session, msg: OutreachMessage, settings: Settings | None 
         raise DomainError("invalid_message", str(exc), 400) from exc
 
 
+def _attachment_note(db: Session, msg: OutreachMessage) -> str:
+    """'attachment=name.pdf (120 KB)' / 'no attachment' for the audit trail (approval + sent records)."""
+    deck = db.get(Deck, msg.deck_id) if msg.deck_id is not None else None
+    return f"attachment={decks.attachment_label(deck)} deck={deck.id} sha256={deck.sha256[:12]}" if deck is not None else "no attachment"
+
+
 def _reset_approval(msg: OutreachMessage) -> None:
     msg.content_sha256 = None
     msg.approved_by_member_id = None
@@ -193,8 +199,11 @@ def update_message(
     new_deck: int | None = msg.deck_id
     if not isinstance(deck_id, _Unset):
         new_deck = deck_id
-        if deck_id is not None and not decks.get_deck(db, deck_id).active:
-            raise DomainError("deck_missing", "That deck was deleted - pick another.", 409)
+        if deck_id is not None and deck_id != msg.deck_id:
+            chosen = decks.get_deck(db, deck_id)
+            if not chosen.active:
+                raise DomainError("deck_missing", "That deck was deleted - pick another.", 409)
+            decks.read_deck_bytes(chosen)  # deck_missing / deck_corrupt now, not at approval
     if new_to != msg.to_addrs or new_cc != msg.cc_addrs:
         suppressions.assert_not_suppressed(db, new_to, new_cc)
     changed = [
@@ -257,7 +266,10 @@ def approve(db: Session, msg_id: int, member: TeamMember, *, now: datetime | Non
     msg.state = "approved"
     msg.error = None
     msg.updated_at = stamp
-    add_event(db, msg.id, "approved", member.id, f"sha256={content.sha256[:12]}", stamp, acted_by_id=acted_by_of(member))
+    add_event(
+        db, msg.id, "approved", member.id, f"sha256={content.sha256[:12]}; {_attachment_note(db, msg)}", stamp,
+        acted_by_id=acted_by_of(member),
+    )  # fmt: skip
     db.commit()
     return msg
 
@@ -502,7 +514,10 @@ def _execute(
     msg.error = None
     msg.send_outcome_unknown = False
     msg.updated_at = stamp
-    add_event(db, msg.id, "sent", member.id, f"from {profile}; gmail_message={message_id}", stamp, acted_by_id=acted_by_of(member))
+    add_event(
+        db, msg.id, "sent", member.id, f"from {profile}; gmail_message={message_id}; {_attachment_note(db, msg)}", stamp,
+        acted_by_id=acted_by_of(member),
+    )  # fmt: skip
     events.publish(
         db,
         events.MessageSent(

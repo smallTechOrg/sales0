@@ -7,6 +7,8 @@ plain local install exposes nothing.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 
@@ -90,6 +92,18 @@ def _require_hosted() -> None:
 def import_batch(body: p.ImportBatchRequest, db: Session = Depends(get_db)) -> JSONResponse:
     stats = data_import.import_batch(db, body.table, body.phase, body.rows, body.member_emails)
     return _reply(p.ImportBatchResponse(**stats))
+
+
+@router.post("/import/deck-chunk", dependencies=[Depends(require_worker), Depends(_require_hosted)])
+def import_deck_chunk(body: p.ImportDeckChunkRequest, db: Session = Depends(get_db)) -> JSONResponse:
+    try:
+        data = base64.b64decode(body.data_b64, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise DomainError("deck_chunk_invalid", "The deck chunk is not valid base64.", 422) from exc
+    stats = data_import.import_deck_chunk(
+        db, deck_id=body.deck_id, sha256=body.sha256, offset=body.offset, total=body.total, data=data
+    )  # fmt: skip
+    return _reply(p.ImportDeckChunkResponse(**stats))
 
 
 @router.post("/import/finalize", dependencies=[Depends(require_worker), Depends(_require_hosted)])

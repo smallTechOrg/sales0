@@ -25,7 +25,7 @@ from sales0.agent.research import SafeFetcher
 from sales0.clock import ensure_utc, utcnow
 from sales0.config import get_settings
 from sales0.db.engine import get_db
-from sales0.db.models import CompanyBrief, Deck, Enquiry, OutreachMessage, TeamMember
+from sales0.db.models import CompanyBrief, Deck, Enquiry, Offering, OutreachMessage, TeamMember
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMClient, LLMError, LLMModelNotFound, get_llm_client
 from sales0.logging import get_logger
@@ -35,6 +35,7 @@ from sales0.services import suppressions as suppressions_service
 from sales0.services.outreach import decks as decks_service
 from sales0.services.outreach import drafting, messages, templates
 from sales0.services.outreach._shared import split_acted_by
+from sales0.services.outreach import recipients as recipients_service
 from sales0.services.outreach import research as research_service
 from sales0.services.team import connections as connections_service
 from sales0.services.team import members as members_service
@@ -214,13 +215,35 @@ def outbox(
 
 # ---------------------------------------------------------------------- compose + research
 def _defaults_ctx(db: Session, offering_id: int | None, template_id: int | None = None, deck_id: int | None = None) -> dict[str, Any]:
+    """Template + deck selects with the offering's defaults, and a truthful note on WHY a deck is (not) picked:
+    the attachment must never silently default to "No deck"."""
     tpl = templates.get_template(db, template_id) if template_id else templates.template_for_offering(db, offering_id)
     deck = decks_service.get_deck(db, deck_id) if deck_id else decks_service.deck_for_offering(db, offering_id)
+    all_decks = decks_service.list_decks(db)
+    offering = db.get(Offering, offering_id) if offering_id else None
+    lost = decks_service.missing_for_offering(db, offering_id)
+    if deck is not None and deck.content_missing:
+        deck, lost = None, deck
+    if lost is not None and (deck is None or deck.offering_id != offering_id):
+        deck_note = ("missing", f"The deck '{lost.name}' mapped to this offering has no file (file missing - upload it again on "
+                                "Outreach > Decks)." + (f" Using {decks_service.attachment_label(deck)} instead." if deck else
+                                " No deck is selected: pick one or the email goes out without an attachment."))
+    elif deck is not None and offering is not None and deck.offering_id == offering.id:
+        deck_note = ("ok", f"Attached by default: {decks_service.attachment_label(deck)} (mapped to {offering.name}).")
+    elif deck is not None:
+        why = f"no deck is mapped to {offering.name}" if offering is not None else "no offering is chosen"
+        deck_note = ("warn", f"Attached by default: {decks_service.attachment_label(deck)} (a generic deck - {why}).")
+    elif all_decks:
+        why = f"No deck is mapped to {offering.name}" if offering is not None else "No offering is chosen"
+        deck_note = ("warn", f"{why}, so no deck is selected: this email will go out WITHOUT an attachment unless you pick one.")
+    else:
+        deck_note = ("warn", "No decks uploaded yet: this email will go out without an attachment. Upload one on Outreach > Decks.")
     return {
         "templates": templates.list_templates(db),
-        "decks": decks_service.list_decks(db),
+        "decks": all_decks,
         "selected_template": tpl.id if tpl else None,
         "selected_deck": deck.id if deck else None,
+        "deck_note": deck_note,
     }
 
 
@@ -286,6 +309,7 @@ def compose(
     form = _prefill(db, _opt_int(enquiry_id), _opt_int(prospect_id))
     ctx = {
         "form": form, "offerings": offerings_service.list_offerings(db), "section": "compose",
+        "recipients": recipients_service.for_prospect(db, form["prospect_id"], form["company_id"]),
         "connection": connections_service.connection_status(db, member.id), "cap": _cap_info(db, member),
         **_defaults_ctx(db, form["offering_id"]),
     }  # fmt: skip
@@ -298,6 +322,20 @@ def compose_defaults(request: Request, offering_id: str | None = None, db: Sessi
     from sales0.web.context import render_fragment
 
     return render_fragment(request, "outreach/_defaults.html", _defaults_ctx(db, _opt_int(offering_id)))
+
+
+@router.get("/outreach/compose/contacts", response_class=HTMLResponse)
+def compose_contacts(
+    request: Request, contact_q: str = "", db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)
+) -> HTMLResponse:
+    """htmx: the contact picker filled with contacts matching the search (suppressed ones disabled)."""
+    from sales0.web.context import render_fragment
+
+    q = " ".join(contact_q.split())[:100]
+    return render_fragment(
+        request, "outreach/_recipients.html",
+        {"recipients": recipients_service.search(db, q) if q else [], "selected_email": "", "searched": q},
+    )  # fmt: skip
 
 
 def _research_fetcher() -> SafeFetcher | None:
@@ -412,6 +450,7 @@ def _message_ctx(db: Session, msg: OutreachMessage, member: TeamMember) -> dict[
     cap = _cap_info(db, member)
     brief = _json_dict(msg.brief_json)
     left = list(dict.fromkeys(templates.find_placeholders(msg.subject) + templates.find_placeholders(msg.body)))
+    deck = db.get(Deck, msg.deck_id) if msg.deck_id else None
     hash_prefix: str | None = None
     if msg.state in ("draft", "edited") and owner:
         try:
@@ -430,7 +469,9 @@ def _message_ctx(db: Session, msg: OutreachMessage, member: TeamMember) -> dict[
             "status": brief.get("research_status"),
         } if brief else None),
         "placeholders": left, "connection": owner_conn, "cap": cap, "stuck": stuck,
-        "decks": decks_service.list_decks(db), "deck": db.get(Deck, msg.deck_id) if msg.deck_id else None,
+        "decks": decks_service.list_decks(db), "deck": deck,
+        "attachment": decks_service.attachment_label(deck) if deck else None,
+        "deck_missing": deck is not None and not decks_service.is_available(deck),
         "hash_prefix": hash_prefix, "approved_hash": (msg.content_sha256 or "")[:12] or None,
         "can_edit": can_edit,
         # Send exists ONLY for an approved message the acting member owns, with Gmail connected and cap room.
@@ -469,14 +510,18 @@ def edit_message(
     cc: str = Form(""),
     subject: str = Form(""),
     body: str = Form(""),
-    deck_id: str = Form("none"),
+    deck_id: str | None = Form(None),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
 ) -> Response:
+    # A post WITHOUT a deck_id field keeps the attachment (it used to default to "none" and silently detach it);
+    # only an explicit "none" removes it.
+    deck_change: Any = messages.UNSET if deck_id is None else _opt_int(deck_id)
+
     def act() -> str:
         before = messages.get_message(db, msg_id).state
         after = messages.update_message(
-            db, msg_id, member, to=to, cc=cc, subject=subject, body=body, deck_id=_opt_int(deck_id)
+            db, msg_id, member, to=to, cc=cc, subject=subject, body=body, deck_id=deck_change
         ).state  # fmt: skip
         if before == "approved" and after != "approved":
             return "Saved. Because you edited an approved message, its approval was reset - approve it again before sending."

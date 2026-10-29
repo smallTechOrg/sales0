@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, true
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sales0.db.base import Base
@@ -44,6 +44,11 @@ class Deck(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    # Where the PDF lives (services/outreach/storage.py): "local" = <data_dir>/<stored_path>, "gcs" = the
+    # SALES0_ATTACHMENTS_BUCKET object <stored_path> (= decks/<sha256>.pdf). The database never holds the bytes.
+    storage: Mapped[str] = mapped_column(String(10), nullable=False, default="local", server_default="local")
+    # True when the file could not be found (migration q13 / a failed read / push-data): "file missing - upload again".
+    content_missing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class OutreachMessage(Base):

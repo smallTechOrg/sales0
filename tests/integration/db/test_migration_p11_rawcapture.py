@@ -44,5 +44,8 @@ def test_adds_and_removes_the_columns_and_keeps_rows(tmp_path: Path) -> None:
     assert not NEW & cols(url)
 
 
-def test_it_is_the_single_linear_head() -> None:
-    assert head_revision() == REV
+def test_it_is_on_the_single_linear_chain() -> None:
+    from alembic.script import ScriptDirectory
+
+    script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+    assert REV in {r.revision for r in script.iterate_revisions(head_revision(), "base")}

@@ -152,6 +152,18 @@
     }
   });
 
+  // Compose: picking a contact in a <select data-fill-recipient> fills the To field and the contact name.
+  document.addEventListener("change", function (evt) {
+    var sel = evt.target instanceof HTMLSelectElement && evt.target.hasAttribute("data-fill-recipient") ? evt.target : null;
+    if (!sel) return;
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.dataset.email) return;
+    var to = document.getElementById(sel.getAttribute("data-fill-recipient"));
+    if (to) to.value = opt.dataset.email;
+    var name = document.getElementById(sel.getAttribute("data-fill-name") || "");
+    if (name && opt.dataset.name) name.value = opt.dataset.name;
+  });
+
   document.addEventListener("click", function (evt) {
     var t = evt.target instanceof Element ? evt.target.closest("[data-select-on-click]") : null;
     if (t && typeof t.select === "function") t.select();

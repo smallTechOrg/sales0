@@ -14,6 +14,7 @@ table plan, so it is derived from the ORM metadata and cannot drift:
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -55,10 +56,16 @@ DEFERRED: dict[str, tuple[str, ...]] = {
     "prospects": ("origin_enquiry_id",),
     "outreach_messages": ("follow_up_of_id",),
 }
+# Columns the SERVER owns: never overwritten by a re-run; a new row starts "file missing" until its file arrives.
+SERVER_OWNED: dict[str, tuple[str, ...]] = {"decks": ("storage", "stored_path", "content_missing")}
 # FK targets that are not imported but are checked / re-mapped on the server.
 EXTERNAL = frozenset({MEMBERS, ACCOUNTS})
 
 MAX_ROWS_PER_BATCH = 1000
+# Deck FILES travel separately (``import_deck_chunk``): one deck at a time, in pieces under the 8 MB request cap. The
+# hosted app writes them to its attachment store (GCS), so the laptop needs no Google credentials.
+DECK_CHUNK_BYTES = 4 * 1024 * 1024  # raw bytes per chunk: ~5.4 MB as base64
+DECK_MAX_TOTAL = 10 * 1024 * 1024  # the hard ceiling of SALES0_DECK_MAX_BYTES
 
 
 def importable_tables() -> dict[str, Table]:
@@ -225,6 +232,10 @@ def import_batch(db: Session, table_name: str, phase: str, rows: list[dict[str, 
     present = _existing(db, table, values)
     new = [v for v in values if tuple(v[n] for n in pks) not in present]
     old = [v for v in values if tuple(v[n] for n in pks) in present]
+    owned = set(SERVER_OWNED.get(table_name, ()))
+    if owned and phase == "insert":
+        new = [{**v, "content_missing": True} if "content_missing" in owned else v for v in new]
+        old = [{k: x for k, x in v.items() if k not in owned} for v in old]
     try:
         if new and phase == "insert":
             # one executemany needs identical keys on every row; the client sends every column, so they match
@@ -260,3 +271,56 @@ def finalize(db: Session, local_counts: dict[str, int]) -> dict[str, Any]:
         remote = db.execute(select(func.count()).select_from(tables[name])).scalar_one()
         report[name] = {"local": int(local), "remote": int(remote), "ok": remote >= local}
     return {"tables": report, "ok": all(r["ok"] for r in report.values())}
+
+
+def _part_key(sha256: str, offset: int) -> str:
+    return f"decks/_parts/{sha256}/{offset:012d}"
+
+
+def import_deck_chunk(db: Session, *, deck_id: int, sha256: str, offset: int, total: int, data: bytes) -> dict[str, Any]:
+    """Store one piece of a deck's PDF (its row is imported first). Pieces arrive in order and are kept as temporary
+    objects; the last one assembles ``decks/<sha256>.pdf`` (sha256 verified) in the hosted store, marks the row
+    available and removes the pieces. ``offset == 0`` with the file already stored answers ``skipped``: re-running
+    push-data sends nothing twice."""
+    from sales0.db.models import Deck
+    from sales0.services.outreach import storage
+
+    deck = db.get(Deck, deck_id)
+    if deck is None:
+        raise DomainError("deck_unknown", f"Deck {deck_id} is not on the server; push the decks rows first.", 422)
+    if sha256 != deck.sha256:
+        raise DomainError("deck_hash_mismatch", f"Deck {deck_id}: the file does not match the server's row.", 422)
+    if not 0 < total <= DECK_MAX_TOTAL or offset < 0 or not data or offset + len(data) > total:
+        raise DomainError("deck_chunk_invalid", f"Deck {deck_id}: chunk outside the declared size.", 422)
+    backend = storage.current_backend()  # hosted without a bucket: refused loudly
+    store = storage.store_for(backend)
+    key = storage.deck_key(sha256)
+    if offset == 0 and store.exists(key):
+        deck.storage, deck.stored_path, deck.content_missing = backend, key, False
+        db.flush()
+        return {"stored": total, "complete": True, "skipped": True}
+    if offset > 0 and not store.exists(_part_key(sha256, 0)):
+        raise DomainError("deck_chunk_order", f"Deck {deck_id}: chunk at {offset} out of order; re-run push-data.", 409)
+    store.put(_part_key(sha256, offset), data)
+    if offset + len(data) < total:
+        return {"stored": offset + len(data), "complete": False, "skipped": False}
+    pieces: list[bytes] = []
+    offsets: list[int] = []
+    at = 0
+    while at < total:
+        piece = store.get(_part_key(sha256, at))
+        if not piece:
+            raise DomainError("deck_chunk_order", f"Deck {deck_id}: piece at {at} is missing; re-run push-data.", 409)
+        pieces.append(piece)
+        offsets.append(at)
+        at += len(piece)
+    whole = b"".join(pieces)
+    for off in offsets:
+        store.delete(_part_key(sha256, off))
+    if len(whole) != total or hashlib.sha256(whole).hexdigest() != sha256:
+        raise DomainError("deck_hash_mismatch", f"Deck {deck_id}: the uploaded bytes do not match its sha256.", 422)
+    store.put(key, whole)
+    deck.storage, deck.stored_path, deck.content_missing = backend, key, False
+    db.flush()
+    log.info("import_deck_file", deck_id=deck_id, size=total)
+    return {"stored": total, "complete": True, "skipped": False}

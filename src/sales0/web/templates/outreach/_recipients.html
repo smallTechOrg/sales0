@@ -1,0 +1,5 @@
+{# The contact picker's <select>. Needs recipients (list[RecipientOption]), selected_email; searched optional. #}
+<select class="input" id="recipient-pick" data-fill-recipient="to" data-fill-name="contact_name" aria-describedby="recipient-help">
+  <option value="">{% if recipients %}Choose a contact ({{ recipients|length }}){% elif searched %}No contact matches "{{ searched }}"{% else %}No saved contacts - type the address below or search{% endif %}</option>
+  {% for r in recipients %}<option value="{{ r.email }}" data-email="{{ r.email }}" data-name="{{ r.name }}" data-contact-id="{{ r.contact_id }}"{% if r.suppressed %} disabled{% elif r.email == selected_email %} selected{% endif %}>{{ r.label }}</option>{% endfor %}
+</select>

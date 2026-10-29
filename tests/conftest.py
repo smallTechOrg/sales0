@@ -52,6 +52,7 @@ _RESET_SEAMS = [
     ("sales0.services.team.oauth", "reset_state_store"),
     ("sales0.jobs.reply_poller", "reset_poller"),
     ("sales0.services.events", "reset"),
+    ("sales0.services.outreach.storage", "reset_storage"),
 ]
 
 # Fast, deterministic pacing + caps for tests (architecture.md → Conventions → Tests).

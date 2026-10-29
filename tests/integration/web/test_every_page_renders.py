@@ -54,7 +54,7 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/runs", *STUB_PAGES, "/pipeline", "/contacts", "/contacts/duplicates", "/competitors", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
-                    "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/templates", "/outreach/decks",
+                    "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
@@ -350,6 +350,7 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
     page("/outreach/templates", "Message templates", ['id="template-form"', 'id="variable-help"'])
     page("/outreach/decks", "Decks", ['id="deck-upload-form"', "up to 10 MB"])
     _assert_contains(_get(client, "/outreach/compose/defaults?offering_id=1"), ['id="template-deck-fields"'], where("defaults"))
+    _assert_contains(_get(client, "/outreach/compose/contacts?contact_q=x"), ['id="recipient-pick"'], where("contacts"))
 
     error = _get(client, "/runs/999999", status=404)
     _assert_contains(error, ["That item no longer exists", "Back to sales0"], where("/runs/999999"))

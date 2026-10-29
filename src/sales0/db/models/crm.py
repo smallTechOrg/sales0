@@ -189,6 +189,8 @@ class FollowUp(Base):
     auto: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     done_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     done_actor: Mapped[str | None] = mapped_column(String(80))
+    # How it was done: whatsapp | linkedin | email | call (FOLLOW_UP_CHANNELS; validated in the service).
+    channel: Mapped[str | None] = mapped_column(String(10))
     cancelled_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     cancel_reason: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
