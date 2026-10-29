@@ -42,6 +42,8 @@ and scraping happens on a laptop running `sales0 worker`.
 | Database (created by the app itself at first boot, owned by `sales0_app`) | `sales0` |
 | Secret Manager secrets | `sales0-db-password`, `sales0-secret-key`, `sales0-worker-token`, `sales0-app-password`, `sales0-anthropic-api-key`, `sales0-anthropic-workspace-id`, `sales0-google-client-secret` |
 | IAM | `secretmanager.secretAccessor` for `870371939888-compute@developer.gserviceaccount.com` on those 7 secrets only |
+| Cloud Storage bucket | `sales0-attachments-870371939888` (us-central1, Standard, uniform bucket-level access, public access prevention enforced, default soft delete) - outreach attachments (deck PDFs) |
+| IAM (bucket) | `roles/storage.objectAdmin` for the same service account on **that bucket only** |
 | Cloud Run service | `sales0` (min 0, max 1, timeout 900 s, Direct VPC egress `default`/`default`, `private-ranges-only`) |
 | Artifact Registry image | pushed by `gcloud run deploy --source` into the existing repo `cloud-run-source-deploy` |
 
@@ -66,8 +68,8 @@ export GOOGLE_CLIENT_SECRET_FILE=path/to/google_client_secret.json   # a *Web ap
 ```
 
 1. **Review**: `deploy/deploy.sh` (dry run: prints every command, executes nothing).
-2. **Apply**: `deploy/deploy.sh --apply`. Steps can be run alone: `--step secrets`, `--step db-user`, `--step deploy`,
-   `--step verify`. Every command is guarded ("create only if missing"), so re-running never rotates a secret or
+2. **Apply**: `deploy/deploy.sh --apply`. Steps can be run alone: `--step secrets`, `--step db-user`, `--step bucket`,
+   `--step deploy`, `--step verify`. Every command is guarded ("create only if missing"), so re-running never rotates a secret or
    re-creates the role, and a failed run can simply be repeated.
 3. The Cloud Run URL is deterministic: `https://sales0-870371939888.us-central1.run.app`. The script sets
    `SALES0_PUBLIC_BASE_URL` to it up front (Gmail redirect URI, secure cookies, allowed Host). If you use a custom
@@ -85,7 +87,8 @@ Set by the image / `deploy.sh` (nothing to do by hand):
 |---|---|---|
 | `SALES0_MODE=hosted` | image | enables hosted behaviour and the boot-time refusals below |
 | `SALES0_HOST=0.0.0.0`, `SALES0_PORT` (from `$PORT`) | image | bind address |
-| `SALES0_DATA_DIR=/tmp/sales0` | image | scratch only (nothing persistent lives on disk) |
+| `SALES0_DATA_DIR=/tmp/sales0` | image | scratch only (nothing persistent lives on disk: it is in-memory and wiped on every restart / scale to zero) |
+| `SALES0_ATTACHMENTS_BUCKET=sales0-attachments-870371939888` | env (`deploy.sh`) | **where deck PDFs (email attachments) live**: object `decks/<sha256>.pdf`, read with the service account's Application Default Credentials (no key file). Required in hosted mode: without it deck upload / approve / send refuse with `attachments_not_configured` instead of silently writing to `/tmp` |
 | `SALES0_AUTO_MIGRATE=true` | image | create database + `alembic upgrade head` at boot |
 | `SALES0_DB_HOST=10.110.112.7`, `SALES0_DB_NAME=sales0`, `SALES0_DB_USER=sales0_app`, `SALES0_DB_SSLMODE=require` | env | PostgreSQL connection (pool 2 + 2 overflow, recycled every 5 min) |
 | `SALES0_PUBLIC_BASE_URL` | env | https URL of the service |
@@ -191,6 +194,21 @@ uv run sales0 push-data --source ~/path/to/sales0-run/data/sales0.db            
   enables the purge job). Pushed posts have their purge date cleared under that default. The new `seen_posts` columns
   (`posted_date`, `truncated`, `link_kind`, `search_url`, `raw_card` JSON) are copied when the source has them; a source
   from before they existed is migrated on its copy and those columns stay empty.
+
+* **Deck files (attachments):** after the rows, each deck PDF found locally (`<folder of the .db>/decks/<sha256>.pdf`,
+  else `SALES0_DATA_DIR/decks/`) is sent one deck at a time in pieces of at most 4 MB (each request under the 8 MB
+  cap); the hosted app writes it to the attachments bucket, so the laptop needs no Google credentials. A deck whose file
+  is not found locally stays "file missing - upload again" on the hosted Decks page. Re-running skips files already
+  in the bucket.
+
+### 5b. Where attachments live
+
+Deck PDFs are stored once per content (`decks/<sha256>.pdf`): on the hosted app in the bucket
+`SALES0_ATTACHMENTS_BUCKET`, locally under `<SALES0_DATA_DIR>/decks/`. The `decks` table holds only metadata (name,
+file name, size, sha256, which store, the key, a `content_missing` flag); a message references its deck by id and
+the approval hash covers the bytes, which are re-read and re-verified at send time. Before this change hosted decks
+were written to `/tmp` and lost on every restart; migration `q13_followch_3e7a6c58` marks those rows "file missing -
+upload again" (Outreach > Decks), and uploading the same PDF again restores them in place.
 
 ## 6. Gmail OAuth (per member)
 

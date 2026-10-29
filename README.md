@@ -438,7 +438,8 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_ADMIN_EMAIL` | str | `admin@smalltech.in` | Email of the first admin team member created on an empty database. |
 | `SALES0_ADMIN_NAME` | str | `Admin` | Display name of that first admin. |
 | `SALES0_GMAIL_DAILY_SEND_CAP` | int | `40` | Max outreach emails sent per member per day (0 disables sending). |
-| `SALES0_DECK_MAX_BYTES` | int | `10485760` | Max size of one uploaded deck PDF, in bytes. |
+| `SALES0_DECK_MAX_BYTES` | int | `10485760` | Max size of one uploaded deck PDF, in bytes (at most 10 MB). |
+| `SALES0_ATTACHMENTS_BUCKET` | str | unset | Google Cloud Storage bucket for deck PDFs (outreach attachments), object `decks/<sha256>.pdf`, Application Default Credentials. Required when hosted (uploads and sends refuse without it); unset locally = files under `<data_dir>/decks/`. |
 | `SALES0_PUBLIC_BASE_URL` | str | unset | Public origin when hosted (e.g. `https://sales.example.com`). Builds the Google OAuth redirect (`<url>/oauth/google/callback`, must match a registered redirect URI exactly) and (with `SALES0_COOKIE_SECURE=auto`) turns on the Secure cookie flag when it starts with `https://`; its host is added to the accepted Host names. |
 | `SALES0_ALLOWED_HOSTS` | str | empty | Extra Host names (comma separated, any port) accepted once logins are enabled, in addition to loopback, `SALES0_HOST` and the host of `SALES0_PUBLIC_BASE_URL`. Any other Host header is refused with 400 (DNS-rebinding guard). In open mode (no logins) only loopback and `SALES0_HOST` are accepted. |
 | `SALES0_COOKIE_SECURE` | auto \| true \| false | `auto` | Secure flag on every cookie: `auto` (default: when the request is https, or `X-Forwarded-Proto: https` arrives from a `SALES0_TRUSTED_PROXIES` peer, or `SALES0_PUBLIC_BASE_URL` is https), `true` or `false`. |
@@ -544,7 +545,8 @@ directory").
 
 - Put **`SALES0_DATA_DIR`** (an absolute path, for example `/var/lib/sales0`) on a persistent
   disk or volume. It holds the SQLite database (`sales0.db`, plus `-wal` and `-shm`), uploaded
-  decks, the generated `secret.key` (when `SALES0_SECRET_KEY` is unset), Chrome profiles for
+  decks (`decks/<sha256>.pdf`; the hosted app keeps them in the Cloud Storage bucket `SALES0_ATTACHMENTS_BUCKET`
+  instead, see `docs/deploy.md` section 5b), the generated `secret.key` (when `SALES0_SECRET_KEY` is unset), Chrome profiles for
   LinkedIn accounts, and logs if you point `SALES0_LOG_FILE` there. Relative paths resolve
   against the repo root, so set absolute paths on a server.
 - Set `SALES0_DATABASE_URL=sqlite:////var/lib/sales0/sales0.db` (four slashes = absolute path).
@@ -813,7 +815,7 @@ Not supported today (do not rely on these):
 - **More than one process / worker** on the same data directory (refused at boot by a lock file).
 - **Multi-tenant (several companies in one install).** Planned, none of it exists yet:
   a tenant/workspace id on every table (a cheap migration: the names are already tenant-neutral and data goes
-  through services), Postgres, object storage for decks and uploads instead of the local disk, a worker queue
+  through services), Postgres, object storage for uploads instead of the local disk (decks already use GCS when hosted), a worker queue
   instead of the in-process scheduler thread, per-tenant proxies and Gmail/LinkedIn accounts, and **Google OAuth app
   verification** (including the restricted-scope security assessment for `gmail.modify`) for external domains.
 - **WhatsApp** ingestion: deferred by decision. The WhatsApp row on **Metrics** reads "not enabled" and the page is a labelled stub.

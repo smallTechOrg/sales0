@@ -8,7 +8,7 @@ Drafts a personalised email per prospect from the matched offering's template, a
 | Input | Type | Source | Required |
 |---|---|---|---|
 | Per-offering (or per-group) template | subject + body with placeholders | User (Outreach → Templates) | Yes |
-| Deck PDFs mapped to an offering or group | files under `data/decks/` | User upload | No |
+| Deck PDFs mapped to an offering or group | `decks/<sha256>.pdf` in the attachment store (local: `<data_dir>/decks/`; hosted: GCS bucket `SALES0_ATTACHMENTS_BUCKET`), metadata in `decks` | User upload (max 10 MB) | No |
 | Prospect + company brief + timeline | records | CRM, research | Yes |
 | Approve / Edit / Reject | action | User | Yes before any send |
 
@@ -28,6 +28,9 @@ Drafts a personalised email per prospect from the matched offering's template, a
 - **No send without approval of that exact version.** Editing an approved draft resets it to unapproved.
 - Drafts never invent prices, are ≤180 words, and have no unfilled placeholders (if one remains, Approve is blocked).
 - Sending records the timeline event, the prospect stage (New → Contacted) and date_email_sent.
+- **The attachment is never dropped silently.** Compose pre-selects the deck mapped to the offering (else the newest generic deck) and says why; when none applies it warns "this email will go out WITHOUT an attachment". The draft, the approval control and the sent record show the attachment (file name + size) or "No attachment"; the `approved` / `sent` audit events record it. A deck whose file is missing is flagged "file missing - upload again" and blocks approval (`deck_missing`). An edit post without a `deck_id` field keeps the deck (only an explicit `none` removes it).
+- Each PDF is stored once per content; messages reference the deck by id and the approval hash covers its bytes, re-read and re-verified at send time. Hosted mode without `SALES0_ATTACHMENTS_BUCKET` refuses uploads/sends (`attachments_not_configured`) rather than using the ephemeral `/tmp`.
+- **Recipient picker:** Compose lists the prospect's contacts (primary first) and its company's contacts, one option per address (all of a contact's emails); choosing one fills To and Contact name; suppressed addresses are listed disabled; free text stays for someone new; a search box finds any contact.
 
 ## Success Criteria
 - [ ] Drafting for the P1 prospect uses the "AI corporate workshops" template, mentions Acme Logistics, and has no `{{` left.
