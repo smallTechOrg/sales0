@@ -384,6 +384,25 @@ class PurgeJob(DailyJob):
         return JobResult("failed" if failed else "ok", "removed " + ", ".join(parts))
 
 
+class FollowUpDraftsJob(DailyJob):
+    name = "followup_drafts"
+    label = "Draft due follow-up emails"
+    description = (
+        "Writes AI draft emails for due Email follow-ups into the outbox (local mode, opt-in, default OFF). It never "
+        "approves or sends anything: every draft waits for a person to review, approve and send it."
+    )
+    default_enabled = False
+    time_setting = "scheduler_followup_drafts_time"
+
+    def _run(self, ctx: Ctx, now: datetime) -> JobResult:
+        from sales0.services import followup_drafts
+
+        with ctx.sessions() as db:
+            result = followup_drafts.draft_due(db, None, None, now=now)
+            db.commit()
+            return JobResult("ok", result.summary())
+
+
 class SheetSyncJob(JobDef):
     name = "sheet_sync"
     label = "Google Sheet sync"
@@ -476,7 +495,7 @@ class Scheduler:
             sessions = get_sessionmaker()
         self.ctx = Ctx(self.settings, sessions, rng or random.Random())
         self.now = now
-        self.defs: dict[str, JobDef] = {j.name: j for j in (jobs or [DiscoveryJob(), WatchJob(), DigestJob(), SheetSyncJob(), PurgeJob()])}
+        self.defs: dict[str, JobDef] = {j.name: j for j in (jobs or [DiscoveryJob(), WatchJob(), DigestJob(), SheetSyncJob(), PurgeJob(), FollowUpDraftsJob()])}
         self._lock = threading.RLock()  # one job body at a time (tick / run_now)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -689,6 +708,6 @@ def reset_scheduler() -> None:
 
 
 __all__ = [
-    "DiscoveryJob", "DigestJob", "JobResult", "JobView", "PurgeJob", "Scheduler", "SheetSyncJob", "WatchJob",
+    "DiscoveryJob", "DigestJob", "FollowUpDraftsJob", "JobResult", "JobView", "PurgeJob", "Scheduler", "SheetSyncJob", "WatchJob",
     "get_scheduler", "register_purge_hook", "reset_scheduler", "unregister_purge_hook",
 ]

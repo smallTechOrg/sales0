@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from sales0.clock import local_today
 from sales0.config import get_settings
-from sales0.db.models import Flag, FollowUp, Lead, Prospect
+from sales0.db.models import Flag, FollowUp, Lead, OutreachMessage, Prospect
 from sales0.db.models.enums_crm import FOLLOW_UP_CHANNELS
 from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
@@ -33,6 +33,9 @@ _OPEN = (FollowUp.done_at.is_(None), FollowUp.cancelled_at.is_(None))
 AUTO_KINDS = ("follow_up_1", "follow_up_2", "final_follow_up")
 CHANNEL_LABELS = {"whatsapp": "WhatsApp", "linkedin": "LinkedIn", "email": "Email", "call": "Call"}
 assert tuple(CHANNEL_LABELS) == FOLLOW_UP_CHANNELS
+
+
+DEFAULT_PLANNED_CHANNEL = "email"
 
 
 def check_channel(channel: str | None, *, required: bool = False) -> str | None:
@@ -69,7 +72,21 @@ def _view(f: FollowUp, who: str, today: date) -> FollowUpView:
         overdue=(f.done_at is None and f.cancelled_at is None and f.due_on < today),
         auto=bool(f.auto), done=f.done_at is not None, done_at=f.done_at, channel=f.channel,
         channel_label=CHANNEL_LABELS.get(f.channel or "", None),
+        planned_channel=f.planned_channel or "email", planned_channel_label=CHANNEL_LABELS.get(f.planned_channel or "email", "Email"),
     )
+
+
+def _draft_map(db: Session, ids: list[int]) -> dict[int, tuple[int, str]]:
+    """follow_up id -> (newest follow-up email message id, its state) for the reminders that have an email draft."""
+    if not ids:
+        return {}
+    out: dict[int, tuple[int, str]] = {}
+    for fid, mid, state in db.execute(
+        select(OutreachMessage.follow_up_id, OutreachMessage.id, OutreachMessage.state)
+        .where(OutreachMessage.follow_up_id.in_(ids)).order_by(OutreachMessage.id)
+    ).all():
+        out[fid] = (mid, state)
+    return out
 
 
 def views_for(db: Session, rows: list[FollowUp], today: date | None = None) -> list[FollowUpView]:
@@ -81,7 +98,9 @@ def views_for(db: Session, rows: list[FollowUp], today: date | None = None) -> l
         dict(db.execute(select(Lead.id, Prospect.name).join(Prospect, Prospect.id == Lead.prospect_id).where(Lead.id.in_(lids))).all())
         if lids else {}
     )
-    return [_view(r, names.get(r.prospect_id, "") if r.prospect_id else lead_names.get(r.lead_id, ""), today) for r in rows]
+    drafts = _draft_map(db, [r.id for r in rows])
+    out = [_view(r, names.get(r.prospect_id, "") if r.prospect_id else lead_names.get(r.lead_id, ""), today) for r in rows]
+    return [v.model_copy(update={"draft_message_id": drafts[v.id][0], "draft_state": drafts[v.id][1]}) if v.id in drafts else v for v in out]
 
 
 def refresh_next(db: Session, prospect_id: int) -> None:
@@ -120,9 +139,10 @@ def _get(db: Session, follow_up_id: int) -> FollowUp:
 
 def schedule_for_contact(
     db: Session, prospect_id: int, contacted_at: datetime, *, now: datetime | None = None, due_dates: dict[str, date] | None = None,
+    channels: dict[str, str] | None = None,
 ) -> list[FollowUpView]:
-    """The three reminders (calendar days from the contact date, or the agent's ``due_dates`` per kind).
-    No-op with ``no_follow_up`` or open auto reminders."""
+    """The three reminders (calendar days from the contact date, or the agent's ``due_dates`` per kind; ``channels`` =
+    the planned channel per kind, default email). No-op with ``no_follow_up`` or open auto reminders."""
     s = get_settings()
     p = db.get(Prospect, prospect_id)
     if p is None:
@@ -136,7 +156,8 @@ def schedule_for_contact(
     created: list[FollowUp] = []
     for kind, _label, default in plan(base):
         due = _check_date((due_dates or {}).get(kind) or default)
-        f = FollowUp(prospect_id=p.id, kind=kind, due_on=due, auto=True, created_at=stamp, updated_at=stamp)
+        f = FollowUp(prospect_id=p.id, kind=kind, due_on=due, auto=True, created_at=stamp, updated_at=stamp,
+                     planned_channel=check_channel((channels or {}).get(kind)) or DEFAULT_PLANNED_CHANNEL)
         db.add(f)
         created.append(f)
     db.flush()
@@ -144,7 +165,8 @@ def schedule_for_contact(
     timeline.add_event(
         db, subject_type="prospect", subject_id=p.id, kind="follow_up_added",
         body="Follow-ups scheduled: " + ", ".join(f"{KIND_LABELS[f.kind]} on {f.due_on.isoformat()}" for f in created),
-        data={"follow_up_ids": [f.id for f in created], "due": [f.due_on.isoformat() for f in created]},
+        data={"follow_up_ids": [f.id for f in created], "due": [f.due_on.isoformat() for f in created],
+              "channels": [f.planned_channel for f in created]},
         actor=SYSTEM, occurred_at=stamp, prospect_id=p.id,
     )
     return views_for(db, created, _today(now))
@@ -199,6 +221,7 @@ def complete(
         how = f" via {CHANNEL_LABELS[channel]}" if channel else ""
         _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done{how}" + (f": {note}" if note else ""), actor, now,
                data={**({"channel": channel} if channel else {}), **({"note": note} if note else {})})
+        stop_drafts(db, [f.id], f"{KIND_LABELS.get(f.kind, f.kind)} was done{how}", now=stamp)  # a pending draft is moot now
         if f.prospect_id and f.kind != "custom":
             from sales0.services.crm import prospects
 
@@ -223,6 +246,7 @@ def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, n
             done.append(f)
     if n:
         db.flush()
+        stop_drafts(db, [f.id for f in done], f"stage moved to {stage_label(stage)}", now=stamp)
         for f in done:
             _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done (stage moved to {stage_label(stage)})", actor, stamp,
                    data={"auto": True, "stage": stage})
@@ -248,9 +272,52 @@ def snooze(db: Session, follow_up_id: int, due_on: date, *, actor: Actor = TEAM,
     return views_for(db, [f], _today(now))[0]
 
 
+def set_planned_channel(
+    db: Session, follow_up_id: int, channel: str, *, actor: Actor = TEAM, now: datetime | None = None,
+) -> FollowUpView:
+    """Change HOW an open reminder is planned to be done (WhatsApp / LinkedIn / Email / Call). Only Email ones are
+    AI-drafted; switching away from Email rejects a pending draft for it. Same channel = no-op."""
+    f = _get(db, follow_up_id)
+    new = check_channel(channel, required=True)
+    if f.done_at is not None or f.cancelled_at is not None:
+        raise DomainError("followup_invalid", "This follow-up is already finished.", 400)
+    old = f.planned_channel or DEFAULT_PLANNED_CHANNEL
+    if old == new:
+        return views_for(db, [f], _today(now))[0]
+    f.planned_channel, f.updated_at = new, now_or(now)
+    db.flush()
+    _event(db, f, "follow_up_added", f"{KIND_LABELS.get(f.kind, f.kind)} will be done via {CHANNEL_LABELS[new]} (was {CHANNEL_LABELS.get(old, old)})",
+           actor, now, data={"planned_channel": new, "was": old})
+    if new != "email":
+        stop_drafts(db, [f.id], f"planned channel changed to {CHANNEL_LABELS[new]}", now=now)
+    return views_for(db, [f], _today(now))[0]
+
+
+def stop_drafts(db: Session, follow_up_ids: list[int], why: str, *, now: datetime | None = None) -> int:
+    """Reject the NOT-yet-sent email drafts of these reminders (a reply arrived, it was done by hand, ...). Never touches
+    a message that is sending/sent. Returns how many drafts were rejected."""
+    if not follow_up_ids:
+        return 0
+    from sales0.services.outreach._shared import add_event
+
+    n = 0
+    for m in db.scalars(select(OutreachMessage).where(OutreachMessage.follow_up_id.in_(follow_up_ids),
+                                                     OutreachMessage.state.in_(("draft", "edited", "approved", "failed")))):
+        if m.state == "failed" and m.send_outcome_unknown:
+            continue  # the outcome is unknown: a human decides in the outbox
+        m.state, m.approved_at, m.approved_by_member_id, m.content_sha256 = "rejected", None, None, None
+        m.error = f"Follow-up stopped: {why}."[:1000]
+        m.updated_at = now_or(now)
+        add_event(db, m.id, "follow_up_stopped", None, why, now)
+        n += 1
+    if n:
+        db.flush()
+    return n
+
+
 def add_custom(
     db: Session, *, prospect_id: int | None = None, lead_id: int | None = None, due_on: date, note: str | None = None,
-    actor: Actor = TEAM, now: datetime | None = None,
+    actor: Actor = TEAM, now: datetime | None = None, planned_channel: str | None = None,
 ) -> FollowUpView:
     if (prospect_id is None) == (lead_id is None):
         raise ValueError("add_custom needs exactly one of prospect_id / lead_id")
@@ -262,7 +329,7 @@ def add_custom(
         raise not_found()
     stamp = now_or(now)
     f = FollowUp(prospect_id=prospect_id, lead_id=lead_id, kind="custom", due_on=due_on, note=clip(note, 300), auto=False,
-                 created_at=stamp, updated_at=stamp)
+                 created_at=stamp, updated_at=stamp, planned_channel=check_channel(planned_channel) or DEFAULT_PLANNED_CHANNEL)
     db.add(f)
     db.flush()
     _event(db, f, "follow_up_added", f"Follow-up added for {due_on.isoformat()}" + (f": {note.strip()}" if note and note.strip() else ""), actor, now)
@@ -286,6 +353,7 @@ def cancel_open(
     for f in rows:
         f.cancelled_at, f.cancel_reason, f.updated_at = stamp, reason[:80], stamp
     db.flush()
+    stop_drafts(db, [f.id for f in rows], reason.replace("_", " "), now=stamp)
     body = f"{len(rows)} follow-up(s) cancelled ({reason.replace('_', ' ')})"
     data = {"count": len(rows), "reason": reason, "follow_up_ids": [f.id for f in rows]}
     if prospect_id is not None:
@@ -315,5 +383,6 @@ def for_lead(db: Session, lead_id: int, *, today: date | None = None) -> list[Fo
 
 __all__ = [
     "AUTO_KINDS", "CHANNEL_LABELS", "add_custom", "cancel_open", "check_channel", "complete", "complete_up_to", "due_count",
-    "for_lead", "for_prospect", "list_due", "plan", "refresh_next", "schedule_for_contact", "snooze", "views_for",
+    "for_lead", "for_prospect", "list_due", "plan", "refresh_next", "schedule_for_contact", "set_planned_channel", "snooze",
+    "stop_drafts", "views_for",
 ]

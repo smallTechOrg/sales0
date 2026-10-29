@@ -96,8 +96,8 @@ def test_prospect_page_changes_the_category(client: TestClient) -> None:
         assert db.get(Prospect, pid) is not None
 
 
-def test_members_cannot_file_competitors_but_can_accept_anyway(  # noqa: F811
-    admin: TestClient, make_client: Callable[[], TestClient]
+def test_members_cannot_file_competitors_but_can_accept_anyway(
+    admin: TestClient, make_client: Callable[[], TestClient]  # noqa: F811
 ) -> None:
     link = add_member(admin, "Mia Member", "mia@acct.example")
     mia = activate(make_client, link, "mia@acct.example")

@@ -36,8 +36,12 @@ class FollowUpView(_View):
     auto: bool = False
     done: bool = False
     done_at: datetime | None = None
-    channel: str | None = None  # whatsapp | linkedin | email | call
+    channel: str | None = None  # whatsapp | linkedin | email | call (how it WAS done)
     channel_label: str | None = None
+    planned_channel: str = "email"  # how it is PLANNED to be done (q16); only email ones are AI-drafted
+    planned_channel_label: str = "Email"
+    draft_message_id: int | None = None  # the pending follow-up email draft for it, if any (q16)
+    draft_state: str | None = None
 
 
 class DuePanel(_View):

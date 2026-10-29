@@ -145,6 +145,7 @@ def _require_open(p: Prospect) -> None:
 def _set_stage(
     db: Session, p: Prospect, stage: str, *, actor: Actor, now: datetime | None, note: str | None = None,
     when: datetime | None = None, extra: dict | None = None, schedule: bool = True, due_dates: dict | None = None,
+    channels: dict | None = None,
 ) -> bool:
     """Move ``p`` to ``stage`` (any direction). Returns False when nothing changed."""
     stamp = now_or(now)
@@ -170,7 +171,7 @@ def _set_stage(
     # E1: leaving ``new`` is a first contact even when a (sheet-estimated) contact date already existed; a no-op when
     # reminders are already open (Log contact planned dates win) or the prospect is marked Do not follow up
     if (first_contact or (prev == "new" and stage != "new")) and schedule:
-        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates)  # type: ignore[arg-type]
+        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates, channels=channels)  # type: ignore[arg-type]
     if stage != "new":
         followups.complete_up_to(db, p.id, stage, actor=actor, now=stamp)
     followups.refresh_next(db, p.id)
@@ -201,26 +202,27 @@ def advance_to(
 
 def mark_contacted(
     db: Session, prospect_id: int, *, when: datetime | None = None, actor: Actor = TEAM, channel: str = "manual",
-    note: str | None = None, now: datetime | None = None, due_dates: dict | None = None,
+    note: str | None = None, now: datetime | None = None, due_dates: dict | None = None, channels: dict | None = None,
 ) -> ProspectView:
     p = _get(db, prospect_id)
     _require_open(p)
     stamp = now_or(now)
     if p.stage == "new":
-        _set_stage(db, p, "contacted", actor=actor, now=stamp, note=note, when=when, extra={"channel": channel}, due_dates=due_dates)
+        _set_stage(db, p, "contacted", actor=actor, now=stamp, note=note, when=when, extra={"channel": channel}, due_dates=due_dates,
+                   channels=channels)
     elif p.contacted_at is None or p.contacted_estimated:
         p.contacted_at, p.contacted_estimated, p.updated_at = (when or stamp), False, stamp
         db.flush()
         timeline.add_event(db, subject_type="prospect", subject_id=p.id, kind="stage_change",
                            body="Contact date recorded" + (f" - {note.strip()}" if note and note.strip() else ""),
                            data={"channel": channel, "contacted_at": p.contacted_at.isoformat()}, actor=actor, occurred_at=stamp)
-        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates)
+        followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates, channels=channels)
     return _view(db, p)
 
 
 def log_contact(
     db: Session, prospect_id: int, *, channel: str, note: str | None = None, contacted_on: date | None = None,
-    due_dates: dict | None = None, actor: Actor = TEAM, now: datetime | None = None,
+    due_dates: dict | None = None, actor: Actor = TEAM, now: datetime | None = None, channels: dict | None = None,
 ) -> ProspectView:
     """The FIRST contact made by hand (WhatsApp / LinkedIn / Email / Call): New -> Contacted, the contact date recorded
     and the three follow-ups scheduled (the agent's dates, else contact day + offsets). The stage_change timeline entry
@@ -243,6 +245,7 @@ def log_contact(
     return mark_contacted(
         db, p.id, when=when, actor=actor, channel=ch or "manual", note=(note or "").strip() or None, now=stamp,
         due_dates={k: v for k, v in (due_dates or {}).items() if v is not None} or None,
+        channels={k: v for k, v in (channels or {}).items() if v} or None,
     )  # fmt: skip
 
 

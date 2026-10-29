@@ -260,6 +260,8 @@ class Settings(BaseSettings):
     followup_days_1: int = Field(3, ge=1)
     followup_days_2: int = Field(7, ge=1)
     followup_days_final: int = Field(14, ge=1)
+    # E2: AI-drafted follow-up emails (never sent without a human click): AI calls per "Draft due follow-ups" click / scheduled run
+    followup_draft_batch: int = Field(10, ge=1, le=50)
     stale_lead_days: int = Field(14, ge=1)
     repeat_poster_min: int = Field(3, ge=2)
     repeat_poster_days: int = Field(60, ge=1)
@@ -279,6 +281,7 @@ class Settings(BaseSettings):
     scheduler_digest_time: str = "07:30"  # local time the daily digest is built
     scheduler_purge_time: str = "04:15"
     scheduler_watch_time: str = "05:30"  # profile_watch job (default disabled in the scheduler)
+    scheduler_followup_drafts_time: str = "08:00"  # followup_drafts job (opt-in: disabled until enabled on /schedule)
 
     # --- Prospect watch ---
     watch_max_profiles_per_run: int = Field(25, ge=1)
@@ -427,7 +430,7 @@ class Settings(BaseSettings):
             ) from exc
         return value
 
-    @field_validator("scheduler_window_start", "scheduler_window_end", "scheduler_digest_time", "scheduler_purge_time", "scheduler_watch_time", mode="before")
+    @field_validator("scheduler_window_start", "scheduler_window_end", "scheduler_digest_time", "scheduler_purge_time", "scheduler_watch_time", "scheduler_followup_drafts_time", mode="before")
     @classmethod
     def _valid_hhmm(cls, value: Any) -> Any:
         value = _clean_enum_value(value)

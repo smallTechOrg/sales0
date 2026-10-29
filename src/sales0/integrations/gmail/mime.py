@@ -99,13 +99,23 @@ def normalise(
     )
 
 
-def build_message(content: DraftContent) -> bytes:
-    """Render RFC 2822 bytes. Raises ``InvalidMessage`` over Gmail's 25 MB limit."""
+THREAD_HEADERS = ("In-Reply-To", "References")
+
+
+def build_message(content: DraftContent, headers: dict[str, str] | None = None) -> bytes:
+    """Render RFC 2822 bytes. Raises ``InvalidMessage`` over Gmail's 25 MB limit.
+
+    ``headers`` may only carry the threading headers (In-Reply-To / References) of a follow-up: they are NOT part of the
+    approval hash (the human approves the words, not the plumbing), are checked for control characters and ignored otherwise.
+    """
     msg = EmailMessage(policy=policy.SMTP)
     msg["To"] = ", ".join(content.to)
     if content.cc:
         msg["Cc"] = ", ".join(content.cc)
     msg["Subject"] = content.subject
+    for name, value in (headers or {}).items():
+        if name in THREAD_HEADERS and value and value.strip():
+            msg[name] = " ".join(_validate_header_text(name, value).split())
     msg.set_content(content.text_body + "\n")
     if content.html_body is not None:
         msg.add_alternative(content.html_body + "\n", subtype="html")

@@ -6,6 +6,10 @@
 <section class="card" id="follow-ups" aria-labelledby="fu-title"{% if oob %} hx-swap-oob="outerHTML:#follow-ups"{% endif %}>
   <div class="card__header"><h2 id="fu-title">Follow-ups</h2></div>
   <div class="card__body">
+    {% if can_act and prospect_id is defined and prospect_id and (draft_info or {}) %}
+      {% from "outreach/_followup_drafts.html" import draft_due_form %}
+      {{ draft_due_form(draft_due_ready|default(0), base, prospect_id, id="draft-due-prospect-form") }}
+    {% endif %}
     {% if needs_contact is defined and needs_contact %}
       {# Not contacted yet: the three follow-ups are planned from the contact day; they become live when the contact is logged. #}
       <form class="stack" id="log-contact-form" method="post" action="{{ base }}/contact" hx-post="{{ base }}/contact" hx-swap="none">
@@ -24,7 +28,11 @@
         <div class="grid-2" id="fu-plan">
           {% for kind, label, due in fu_plan %}
             <div class="field"><label class="field__label" for="lc-{{ kind }}">{{ label }} (planned)</label>
-              <input class="input input--date" id="lc-{{ kind }}" type="date" name="due_{{ kind }}" value="{{ due.isoformat() }}" data-planned="{{ kind }}"></div>
+              <input class="input input--date" id="lc-{{ kind }}" type="date" name="due_{{ kind }}" value="{{ due.isoformat() }}" data-planned="{{ kind }}">
+              <label class="visually-hidden" for="lc-ch-{{ kind }}">How {{ label }} will be done</label>
+              <select class="select" id="lc-ch-{{ kind }}" name="channel_{{ kind }}" data-planned-channel="{{ kind }}">
+                {% for key, ch_label in channels %}<option value="{{ key }}"{% if key == "email" %} selected{% endif %}>{{ ch_label }}</option>{% endfor %}
+              </select></div>
           {% endfor %}
         </div>
         <div><button class="btn btn--primary" id="btn-log-contact" type="submit">Log contact</button></div>
@@ -34,6 +42,7 @@
     {% for f in open_fus %}
       <div class="due-row{% if f.overdue %} due-row--overdue{% endif %}" id="fu-{{ f.id }}">
         <div class="due-row__main"><strong>{{ f.kind_label }}</strong> <span class="due-date">{{ f.due_on.strftime("%d %b %Y") }}{% if f.overdue %} (overdue){% endif %}</span>
+          {% if f.kind != "custom" %}<span class="chip chip--channel" data-planned-channel="{{ f.planned_channel }}" title="Planned channel">{{ f.planned_channel_label }}</span>{% endif %}
           {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}</div>
         {% if can_act %}
         <div class="due-row__actions">
@@ -46,11 +55,33 @@
             <label class="visually-hidden" for="fu-note-{{ f.id }}">Note</label>
             <input class="input" id="fu-note-{{ f.id }}" name="note" maxlength="300" placeholder="Note (optional)">
             <button class="btn btn--sm btn--primary" type="submit">Mark done</button></form>
+          {% if f.kind != "custom" %}
+          <form class="inline-form" method="post" action="/pipeline/followups/{{ f.id }}/channel" hx-post="/pipeline/followups/{{ f.id }}/channel" hx-swap="none" id="fu-channel-{{ f.id }}">
+            <label class="visually-hidden" for="fu-plan-ch-{{ f.id }}">Planned channel of {{ f.kind_label }}</label>
+            <select class="select" id="fu-plan-ch-{{ f.id }}" name="channel" data-autosubmit="request" title="How this follow-up will be done; only Email ones are AI-drafted">
+              {% for key, label in channels %}<option value="{{ key }}"{% if key == f.planned_channel %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <noscript><button class="btn btn--sm" type="submit">Set channel</button></noscript></form>
+          {% endif %}
           <form class="inline-form" method="post" action="/pipeline/followups/{{ f.id }}/snooze" hx-post="/pipeline/followups/{{ f.id }}/snooze" hx-swap="none" id="fu-date-{{ f.id }}">
             <label class="visually-hidden" for="fu-snooze-{{ f.id }}">Due date of {{ f.kind_label }}</label>
             <input class="input input--date" id="fu-snooze-{{ f.id }}" type="date" name="due_on" required value="{{ f.due_on.isoformat() }}">
             <button class="btn btn--sm" type="submit">Change date</button></form>
         </div>
+          {% if f.kind != "custom" and prospect_id is defined and prospect_id %}
+            {% set el = (draft_info or {}).get(f.id) %}
+            <div class="due-row__draft" id="fu-draft-{{ f.id }}">
+              {% if f.draft_message_id and f.draft_state in ("draft", "edited", "approved", "failed", "sending") %}
+                <a class="btn btn--sm" href="/outreach/messages/{{ f.draft_message_id }}">Review the email draft</a>
+              {% elif el and el.ok %}
+                <form class="inline-form" method="post" action="/pipeline/followups/{{ f.id }}/draft" hx-post="/pipeline/followups/{{ f.id }}/draft" hx-swap="none" hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+                  <button class="btn btn--sm" type="submit">Draft email</button>
+                  <span class="htmx-indicator" role="status"><span class="spinner" aria-hidden="true"></span> Writing...</span>
+                  <span class="hint">AI draft for you to approve; never sent automatically.</span>
+                </form>
+              {% elif el %}<span class="muted" id="fu-draft-why-{{ f.id }}">No email draft: {{ el.reason }}.</span>{% endif %}
+            </div>
+          {% endif %}
         {% endif %}
       </div>
     {% endfor %}

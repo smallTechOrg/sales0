@@ -85,6 +85,9 @@ class GmailClient(Protocol):
         text_body: str,
         html_body: str | None = None,
         attachments: list[tuple[str, bytes, str]] | None = None,
+        *,
+        thread_id: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> str: ...
 
     def get_draft(self, draft_id: str) -> Draft: ...
@@ -191,9 +194,16 @@ class RealGmailClient:
         self._email = str(email)
         return self._email
 
-    def create_draft(self, to, cc, subject, text_body, html_body=None, attachments=None) -> str:  # type: ignore[no-untyped-def]
+    def create_draft(self, to, cc, subject, text_body, html_body=None, attachments=None, *, thread_id=None, headers=None) -> str:  # type: ignore[no-untyped-def]
         self.tokens.require_scopes("drafts")
-        raw = build_message(prepare(to, cc, subject, text_body, html_body, attachments))
+        raw = build_message(prepare(to, cc, subject, text_body, html_body, attachments), headers)
+        if thread_id:
+            # a follow-up joins the original Gmail thread: JSON body with threadId (no attachments on follow-ups)
+            r = self._request(
+                "POST", f"{API}/drafts",
+                json={"message": {"raw": base64.urlsafe_b64encode(raw).decode("ascii"), "threadId": thread_id}},
+            )
+            return str(r.json()["id"])
         r = self._request(
             "POST",
             f"{UPLOAD_API}/drafts",
@@ -273,12 +283,15 @@ class FakeGmailClient:
         self.calls.append(("profile_email", ()))
         return self.email
 
-    def create_draft(self, to, cc, subject, text_body, html_body=None, attachments=None) -> str:  # type: ignore[no-untyped-def]
+    def create_draft(self, to, cc, subject, text_body, html_body=None, attachments=None, *, thread_id=None, headers=None) -> str:  # type: ignore[no-untyped-def]
         self.calls.append(("create_draft", (tuple(to), tuple(cc), subject)))
-        raw = build_message(prepare(to, cc, subject, text_body, html_body, attachments))
+        raw = build_message(prepare(to, cc, subject, text_body, html_body, attachments), headers)
         self._n += 1
         draft_id = f"draft-{self._n}"
         self.raw_drafts[draft_id] = raw
+        if thread_id:
+            self.draft_threads = getattr(self, "draft_threads", {})
+            self.draft_threads[draft_id] = thread_id
         return draft_id
 
     def get_draft(self, draft_id: str) -> Draft:
@@ -299,18 +312,19 @@ class FakeGmailClient:
         verify_approval(approved, self.get_draft(approved.draft_id))
         raw = self.raw_drafts.pop(approved.draft_id)
         n = len(self.sent) + 1
-        self.sent.append({"message_id": f"msg-{n}", "thread_id": f"thr-{n}", "raw": raw, "approved": approved})
+        thread = getattr(self, "draft_threads", {}).pop(approved.draft_id, None) or f"thr-{n}"
+        self.sent.append({"message_id": f"msg-{n}", "thread_id": thread, "raw": raw, "approved": approved})
         from datetime import UTC
 
         c = parse_raw(raw)
-        self.threads[f"thr-{n}"] = [
+        self.threads.setdefault(thread, []).append(
             ThreadMessage(
-                id=f"msg-{n}", thread_id=f"thr-{n}", from_addr=self.email.lower(), from_name="",
+                id=f"msg-{n}", thread_id=thread, from_addr=self.email.lower(), from_name="",
                 to_addrs=tuple(a.lower() for a in c.to), cc_addrs=tuple(a.lower() for a in c.cc), subject=c.subject,
-                date=datetime.now(UTC), snippet=c.text_body[:100], labels=("SENT",),
+                date=datetime.now(UTC), snippet=c.text_body[:100], labels=("SENT",), message_id_header=f"<msg-{n}@fake.example>",
             )
-        ]
-        return f"msg-{n}", f"thr-{n}"
+        )
+        return f"msg-{n}", thread
 
     def trash_thread(self, thread_id: str) -> None:
         self.calls.append(("trash_thread", (thread_id,)))

@@ -23,6 +23,26 @@
       </div>
     </section>
 
+    {% from "outreach/_followup_drafts.html" import draft_due_form %}
+    <section class="card" id="due-followups" aria-labelledby="due-fu-title">
+      <div class="card__header"><h2 id="due-fu-title">Follow-ups due by email</h2>
+        <span class="muted">{{ due_followups|length }} due</span></div>
+      <div class="card__body stack">
+        {% set ready = due_followups|selectattr(1)|selectattr("1.ok")|list %}
+        {{ draft_due_form(ready|length, "/outreach", batch=followup_batch) }}
+        {% if due_followups %}
+          <ul class="plain-list" id="due-followup-list">
+            {% for v, el in due_followups %}
+              <li data-ready="{{ 1 if el.ok else 0 }}"><a href="/pipeline/prospects/{{ v.prospect_id }}">{{ v.who }}</a> - {{ v.kind_label }}, due {{ v.due_on.strftime("%d %b") }}:
+                {% if el.ok %}<span class="badge badge--genuine">ready to draft</span>
+                {% elif el.message_id %}<a href="/outreach/messages/{{ el.message_id }}">{{ el.reason }} - open it</a>
+                {% else %}<span class="muted">skipped - {{ el.reason }}</span>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="muted" id="due-followup-empty">No follow-up emails are due.</p>{% endif %}
+      </div>
+    </section>
+
     {% if stuck_count %}
       <div class="flash flash--error" id="stuck-warning" role="alert">
         {{ stuck_count }} message{{ "s" if stuck_count != 1 }} {{ "have" if stuck_count != 1 else "has" }} been in "Sending" for over 5 minutes. The send may have been interrupted:

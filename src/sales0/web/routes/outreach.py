@@ -29,6 +29,7 @@ from sales0.db.models import CompanyBrief, Deck, Enquiry, Offering, OutreachMess
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMClient, LLMError, LLMModelNotFound, get_llm_client
 from sales0.logging import get_logger
+from sales0.services import followup_drafts as followup_drafts_service
 from sales0.services import offerings as offerings_service
 from sales0.services import replies as replies_service
 from sales0.services import suppressions as suppressions_service
@@ -231,7 +232,8 @@ def outbox(
             "items": items, "state": state, "scope": "all" if everyone else "mine", "state_filters": STATE_FILTERS,
             "state_labels": STATE_LABELS, "cap": _cap_info(db, member), "stuck_count": sum(1 for i in items if i["stuck"]),
             "is_admin": member.role == "admin", "connection": connections_service.connection_status(db, member.id),
-            "section": "outbox",
+            "section": "outbox", "due_followups": followup_drafts_service.due_overview(db, member),
+            "followup_batch": get_settings().followup_draft_batch,
         },
     )  # fmt: skip
 

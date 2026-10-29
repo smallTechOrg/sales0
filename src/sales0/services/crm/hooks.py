@@ -152,7 +152,15 @@ def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
         # closed / converted: the email is still a real contact - record it, change no status, schedule nothing
         prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, schedule=False, now=ev.sent_at)
         return
-    if p.stage == "new":
+    if msg.follow_up_id is not None and p.stage != "new":
+        # E2: the email IS a drafted follow-up - mark exactly THAT reminder done via email (the stage advances). The first
+        # app email of a prospect first contacted by hand also records the email contact date.
+        fu = db.get(FollowUp, msg.follow_up_id)
+        if prior_emails == 0:
+            prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, schedule=False, now=ev.sent_at)
+        if fu is not None and fu.done_at is None and fu.cancelled_at is None and fu.prospect_id == p.id:
+            followups.complete(db, fu.id, actor=actor, note="follow-up email sent", channel="email", now=ev.sent_at)
+    elif p.stage == "new":
         prospects.mark_contacted(db, p.id, when=ev.sent_at, actor=actor, channel="email", now=ev.sent_at)
     elif prior_emails == 0:
         # contacted by hand (LinkedIn/call/sheet) before: the first app email is not a follow-up by itself

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -34,6 +35,7 @@ from sales0.services.team.connections import connection_status
 log = get_logger("sales0.outreach.drafting")
 
 PROMPT_VERSION = "draft-v2"  # bump on any prompt or schema edit (v2: optional account summary)
+FOLLOWUP_PROMPT_VERSION = "draft-followup-v1"  # the follow-up variant (draft_followup_system.md + the thread block)
 TOOL_NAME = "write_email"
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 FATAL_LLM_ERRORS = (LLMAuthError, LLMModelNotFound)
@@ -45,6 +47,26 @@ _PRICE = re.compile(
     re.I,
 )
 _WORD = re.compile(r"[A-Za-z]{4,}")
+
+
+@dataclass(frozen=True)
+class ThreadItem:
+    sent_text: str
+    subject: str
+    body: str
+
+
+@dataclass(frozen=True)
+class FollowUpContext:
+    """What makes a draft a FOLLOW-UP: which reminder, the earlier emails (oldest first) and the subject to keep."""
+
+    kind_label: str
+    sequence: int
+    days_since_first: int | None
+    thread: tuple[ThreadItem, ...] = ()
+    subject: str | None = None  # forced subject ("Re: <original>") so Gmail keeps one conversation
+    follow_up_id: int | None = None
+    follow_up_of_id: int | None = None  # the OutreachMessage being followed up
 
 
 def _inert(value: object) -> str:
@@ -131,18 +153,18 @@ def _brief_parts(brief: dict[str, Any] | None) -> tuple[list[str], list[str]]:
     return lines, hooks[:3]
 
 
-def _llm_row(resp: Any, enquiry_id: int | None, now: datetime) -> LlmCall:
+def _llm_row(resp: Any, enquiry_id: int | None, now: datetime, version: str = PROMPT_VERSION) -> LlmCall:
     return LlmCall(
-        feature="drafting", model=resp.model[:100], prompt_version=PROMPT_VERSION, enquiry_id=enquiry_id,
+        feature="drafting", model=resp.model[:100], prompt_version=version, enquiry_id=enquiry_id,
         input_tokens=resp.input_tokens, output_tokens=resp.output_tokens, cost_usd_micros=resp.cost_usd_micros,
         latency_ms=resp.latency_ms, status="ok", request_id=resp.request_id[:100] if resp.request_id else None,
         created_at=now,
     )  # fmt: skip
 
 
-def _error_row(exc: Exception, enquiry_id: int | None, now: datetime) -> LlmCall:
+def _error_row(exc: Exception, enquiry_id: int | None, now: datetime, version: str = PROMPT_VERSION) -> LlmCall:
     return LlmCall(
-        feature="drafting", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, enquiry_id=enquiry_id,
+        feature="drafting", model=get_settings().llm_model, prompt_version=version, enquiry_id=enquiry_id,
         status="error", error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
     )  # fmt: skip
 
@@ -166,6 +188,7 @@ def generate_draft(
     company_id: int | None = None,
     now: datetime | None = None,
     account_summary: str | None = None,
+    follow_up: FollowUpContext | None = None,
 ) -> OutreachMessage:
     """Create an ``OutreachMessage`` in state ``draft`` owned by ``member`` (flushed; caller commits).
 
@@ -178,8 +201,11 @@ def generate_draft(
     company = " ".join(company.split())
     first_name = (first_name or "").strip() or None
     offering = db.get(Offering, offering_id) if offering_id is not None else None
+    version = FOLLOWUP_PROMPT_VERSION if follow_up is not None else PROMPT_VERSION
     template = templates.get_template(db, template_id) if template_id is not None else templates.template_for_offering(db, offering_id)
     deck = decks.get_deck(db, deck_id) if deck_id is not None else decks.deck_for_offering(db, offering_id)
+    if follow_up is not None:
+        template, deck = None, None  # a follow-up is written from the thread, never from the first-email template; no deck again
     if deck is not None and not deck.active:
         deck = None
     ref_enquiry = enquiry_id if enquiry_id is not None and db.get(Enquiry, enquiry_id) is not None else None
@@ -191,7 +217,8 @@ def generate_draft(
     t_subject = templates.render(template.subject, values).text if template else ""
     t_body = templates.render(template.body, values).text if template else ""
     facts, hooks = _brief_parts(brief)
-    source_text = "\n".join([requirement, t_subject, t_body, *facts, *hooks, offering.name if offering else "", account_summary or ""])
+    thread_text = [f"{t.subject}\n{t.body}" for t in follow_up.thread] if follow_up is not None else []
+    source_text = "\n".join([requirement, t_subject, t_body, *facts, *hooks, offering.name if offering else "", account_summary or "", *thread_text])
 
     client = llm or get_llm_client()
     feedback: list[str] = []
@@ -201,38 +228,38 @@ def generate_draft(
             sender_name=member.name, first_name=first_name, company=company, requirement=requirement[:4000],
             offering=offering.name if offering else None, hooks=hooks, brief_facts=facts,
             template_subject=t_subject, template_body=t_body, feedback=feedback,
-            account_summary=(account_summary or "").strip()[:3000],
+            account_summary=(account_summary or "").strip()[:3000], follow_up=follow_up,
         )  # fmt: skip
         req = StructuredRequest(
             feature="drafting",
-            system=(PROMPTS_DIR / "draft_system.md").read_text(encoding="utf-8").strip() + "\n",
+            system=(PROMPTS_DIR / ("draft_followup_system.md" if follow_up is not None else "draft_system.md")).read_text(encoding="utf-8").strip() + "\n",
             messages=[{"role": "user", "content": user.strip() + "\n"}],
             tool_name=TOOL_NAME,
             tool_description="Submit the finished outreach email (subject and plain-text body).",
             input_schema=_tool_schema(),
             max_tokens=900,
-            prompt_version=PROMPT_VERSION,
+            prompt_version=version,
             log_context={"enquiry_id": ref_enquiry, "input_summary": f"draft for {company[:60]}"},
         )
         call_at = now_or(now)
         try:
             resp = client.structured(req)
         except FATAL_LLM_ERRORS as exc:
-            db.add(_error_row(exc, ref_enquiry, call_at))
+            db.add(_error_row(exc, ref_enquiry, call_at, version))
             db.flush()
             raise
         except LLMBadResponse as exc:
-            db.add(_error_row(exc, ref_enquiry, call_at))
+            db.add(_error_row(exc, ref_enquiry, call_at, version))
             if attempt == 2:
                 db.flush()
                 raise DomainError("draft_failed", "The AI did not return a usable draft. Try again.", 502) from exc
             feedback = ["Your previous answer was not usable. Call write_email with subject and body."]
             continue
         except LLMError as exc:
-            db.add(_error_row(exc, ref_enquiry, call_at))
+            db.add(_error_row(exc, ref_enquiry, call_at, version))
             db.flush()
             raise DomainError("draft_failed", "The AI service is unavailable right now. Try again in a minute.", 502) from exc
-        db.add(_llm_row(resp, ref_enquiry, call_at))
+        db.add(_llm_row(resp, ref_enquiry, call_at, version))
         data = resp.tool_input or {}
         subject, body = data.get("subject"), data.get("body")
         if not isinstance(subject, str) or not isinstance(body, str) or not body.strip():
@@ -242,14 +269,16 @@ def generate_draft(
             feedback = ["Your previous answer had no subject/body. Call write_email with both."]
             continue
         subject = " ".join(subject.split())[:300]
+        if follow_up is not None and follow_up.subject:
+            subject = follow_up.subject[:300]  # same subject = same Gmail conversation
         body = body.replace("\r\n", "\n").strip()
         if member.name.lower() not in body.lower():
             body = f"{body}\n\nBest regards,\n{member.name}"
         hard, soft = check_draft(subject, body, company=company, hooks=hooks, source_text=source_text, sender_name=member.name)
         if best is None or len(hard) <= len(best[2]):
             best = (subject, body, hard, soft)
-        if not hard and not soft:
-            break
+        if not hard and (follow_up is not None or not soft):
+            break  # a follow-up is retried for HARD problems only (cost: one call per draft); soft ones are shown to the human
         feedback = hard + soft
     assert best is not None
     subject, body, hard, soft = best
@@ -272,13 +301,20 @@ def generate_draft(
         enquiry_id=enquiry_id,
         prospect_id=prospect_id,
         company_id=company_id,
+        follow_up_of_id=follow_up.follow_up_of_id if follow_up is not None else None,
+        follow_up_id=follow_up.follow_up_id if follow_up is not None else None,
         brief_json=json.dumps(brief, ensure_ascii=False) if brief else None,
         created_at=stamp,
         updated_at=stamp,
     )  # fmt: skip
     db.add(msg)
     db.flush()
-    add_event(db, msg.id, "drafted", member.id, f"template={msg.template_id} deck={msg.deck_id} words={word_count(body)}", stamp, acted_by_id=acted_by_of(member))
+    add_event(
+        db, msg.id, "drafted", member.id,
+        f"template={msg.template_id} deck={msg.deck_id} words={word_count(body)}"
+        + (f" follow_up={follow_up.follow_up_id} prompt={version}" if follow_up is not None else ""),
+        stamp, acted_by_id=acted_by_of(member),
+    )
     db.flush()
     log.info("draft_generated", message_id=msg.id, member_id=member.id, words=word_count(body), flagged=bool(flagged))
     return msg

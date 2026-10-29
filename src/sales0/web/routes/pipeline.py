@@ -40,7 +40,9 @@ from sales0.services.crm import priority as priority_service
 from sales0.services.crm import prospects as prospects_service
 from sales0.services.crm import timeline as timeline_service
 from sales0.services.crm.stages import LEAD_STAGES, PROSPECT_STAGES, STAGE_LABELS
-from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash
+from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound, get_llm_client
+from sales0.services import followup_drafts as followup_drafts_service
+from sales0.web.acting import clear_flash, get_acting_member, get_acting_member_optional, pop_flash
 from sales0.web.context import PathId
 from sales0.web.context import (
     actor_of,
@@ -103,6 +105,19 @@ def _safe_next(value: str | None) -> str | None:
     if not text.startswith("/pipeline") or text.startswith("//") or "\\" in text:
         return None
     return text
+
+
+def get_llm() -> LLMClient:
+    """LLM seam for the follow-up drafts (``sales0.llm.set_llm_client`` in tests)."""
+    return get_llm_client()
+
+
+def _safe_back(value: str | None, default: str) -> str:
+    """A same-site /pipeline or /outreach path (open-redirect safe), else ``default``."""
+    text = (value or "").strip()
+    if text.startswith(("/pipeline", "/outreach")) and not text.startswith("//") and "\\" not in text:
+        return text
+    return default
 
 
 def _page(request: Request, db: Session, template: str, ctx: dict[str, Any]) -> HTMLResponse:
@@ -255,29 +270,41 @@ def _header_ctx(db: Session, p: Any) -> dict[str, Any]:
             "characteristic_options": _trait_options(db), "company": company}
 
 
-def _prospect_parts(db: Session, prospect_id: PathId) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
+def _prospect_parts(db: Session, prospect_id: PathId, member: TeamMember | None = None) -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     p = prospects_service.get_prospect(db, prospect_id)
     base = f"/pipeline/prospects/{p.id}"
     no_fu = any(f.kind == "no_follow_up" for f in p.flags)
     parts = [
         ("pipeline/_prospect_header.html", _header_ctx(db, p)),
         ("pipeline/_timeline.html", {"timeline": p.timeline, "base": base}),
-        ("pipeline/_followups.html", _followups_ctx(p, base, no_fu)),
+        ("pipeline/_followups.html", _followups_ctx(p, base, no_fu, db, member)),
     ]
     return p, parts
 
 
-def _followups_ctx(p: Any, base: str, no_fu: bool) -> dict[str, Any]:
+def _followups_ctx(p: Any, base: str, no_fu: bool, db: Session | None = None, member: TeamMember | None = None) -> dict[str, Any]:
     """The follow-ups card: open + done reminders, the channel choices and, before the first contact, the planned
     Follow-up 1 / 2 / Final dates (editable in the Log contact form; they become live reminders when it is saved)."""
     can_act = p.status == "open" and p.lead is None
     needs_contact = can_act and p.stage == "new" and (p.contacted_at is None or p.contacted_estimated)
+    info = _draft_info(db, p, member) if db is not None and can_act else {}
+    today = _today()
     return {
         "follow_ups": p.follow_ups, "base": base, "can_act": can_act, "no_follow_up": no_fu,
         "channels": list(followups_service.CHANNEL_LABELS.items()),
         "fu_plan": followups_service.plan(_today()) if needs_contact else [],
         "needs_contact": needs_contact,
+        "draft_info": info, "prospect_id": p.id,
+        "draft_due_ready": sum(1 for v in p.follow_ups if not v.done and v.due_on <= today and info.get(v.id) is not None and info[v.id].ok),
     }  # fmt: skip
+
+
+def _draft_info(db: Session, p: Any, member: TeamMember | None) -> dict[int, Any]:
+    """Per open email follow-up of the prospect: can an AI email draft be written (or why not)."""
+    from sales0.db.models import FollowUp
+
+    rows = [f for f in (db.get(FollowUp, v.id) for v in p.follow_ups if not v.done) if f is not None]
+    return followup_drafts_service.explain(db, rows, member)
 
 
 @router.get("/pipeline/prospects/{prospect_id}", response_class=HTMLResponse)
@@ -292,16 +319,17 @@ def prospect_page(
     p = prospects_service.get_prospect(db, prospect_id)
     details = [contacts_service.get_contact(db, c.id) for c in p.contacts[:20]]
     no_fu = any(f.kind == "no_follow_up" for f in p.flags)
-    fu_ctx = _followups_ctx(p, f"/pipeline/prospects/{p.id}", no_fu)
+    fu_ctx = _followups_ctx(p, f"/pipeline/prospects/{p.id}", no_fu, db, member)
     return _page(
         request, db, "pipeline/prospect.html",
         {**_header_ctx(db, p), "contact_details": details,
-         **{k: fu_ctx[k] for k in ("channels", "fu_plan", "needs_contact")}, **research_ctx(db, p.id, member)},
+         **{k: fu_ctx[k] for k in ("channels", "fu_plan", "needs_contact", "draft_info", "prospect_id", "draft_due_ready")}, **research_ctx(db, p.id, member)},
     )  # fmt: skip
 
 
 def _prospect_action(
-    request: Request, db: Session, prospect_id: PathId, action: Callable[[], str], *, next_url: str | None = None
+    request: Request, db: Session, prospect_id: PathId, action: Callable[[], str], *, next_url: str | None = None,
+    member: TeamMember | None = None,
 ) -> Response:
     """Run a prospect mutation; ``action`` returns the success message."""
     back = next_url or f"/pipeline/prospects/{prospect_id}"
@@ -313,7 +341,7 @@ def _prospect_action(
         if is_htmx(request):
             if next_url:
                 return _board_refresh(request, db, next_url, message)
-            return _fragments(request, _prospect_parts(db, prospect_id)[1], message)
+            return _fragments(request, _prospect_parts(db, prospect_id, member or get_acting_member_optional(request, db))[1], message)
         return flash_redirect(back, message)
 
     return crm_guard(request, back, run, db)
@@ -639,6 +667,9 @@ def prospect_log_contact(
     due_follow_up_1: str = Form(""),
     due_follow_up_2: str = Form(""),
     due_final_follow_up: str = Form(""),
+    channel_follow_up_1: str = Form(""),
+    channel_follow_up_2: str = Form(""),
+    channel_final_follow_up: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -653,6 +684,8 @@ def prospect_log_contact(
         view = prospects_service.log_contact(
             db, prospect_id, channel=channel, note=opt_str(note), contacted_on=parse_date(contacted_on, label="contact date"),  # type: ignore[arg-type]
             due_dates=dues, actor=actor_of(member),
+            channels={"follow_up_1": opt_str(channel_follow_up_1), "follow_up_2": opt_str(channel_follow_up_2),
+                      "final_follow_up": opt_str(channel_final_follow_up)},
         )  # fmt: skip
         how = followups_service.CHANNEL_LABELS.get(channel.strip().lower(), channel)
         return f"Contact via {how} logged - {view.stage_label}; the three follow-ups are scheduled."
@@ -672,7 +705,7 @@ def _followup_response(request: Request, db: Session, fu: Any, message: str, nex
         return flash_redirect(back, message)
     parts: list[tuple[str, dict[str, Any]]] = [("pipeline/_due.html", {"due": followups_service.list_due(db)})]
     if fu.prospect_id:
-        parts += _prospect_parts(db, fu.prospect_id)[1]
+        parts += _prospect_parts(db, fu.prospect_id, get_acting_member_optional(request, db))[1]
     elif fu.lead_id:
         parts += _lead_parts(db, fu.lead_id)[1]
     return _fragments(request, parts, message)
@@ -715,6 +748,91 @@ def followup_snooze(
         return _followup_response(request, db, fu, f"Snoozed until {due:%d %b}.", next_url)  # type: ignore[union-attr]
 
     return crm_guard(request, next_url or "/pipeline", run, db)
+
+
+# ---------------------------------------------------------------------- planned channel + AI-drafted follow-up emails (E2)
+@router.post("/pipeline/followups/{follow_up_id}/channel", response_model=None)
+def followup_channel(
+    request: Request,
+    follow_up_id: PathId,
+    channel: str = Form(""),
+    next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """Change HOW a follow-up is planned to be done (WhatsApp / LinkedIn / Email / Call); only Email ones get AI drafts."""
+    next_url = _safe_next(next)
+
+    def run() -> Response:
+        fu = followups_service.set_planned_channel(db, follow_up_id, channel, actor=actor_of(member))
+        return _followup_response(request, db, fu, f"{fu.kind_label} will be done via {fu.planned_channel_label}.", next_url)
+
+    return crm_guard(request, next_url or "/pipeline", run, db)
+
+
+def _llm_fatal(db: Session, exc: Exception) -> DomainError:
+    db.commit()  # keep the error llm_calls row
+    return DomainError("llm_unavailable", f"The AI service refused the request ({type(exc).__name__}) - check the API key and model in .env.", 502)
+
+
+@router.post("/pipeline/followups/{follow_up_id}/draft", response_model=None)
+def followup_draft(
+    request: Request,
+    follow_up_id: PathId,
+    next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db),
+    member: TeamMember = Depends(get_acting_member),
+    llm: LLMClient = Depends(get_llm),
+) -> Response:
+    """The per-follow-up "Draft email" button: ONE Haiku call -> a draft in the outbox. Nothing is approved or sent."""
+    from sales0.db.models import FollowUp
+
+    back = _safe_back(next, "/pipeline")
+
+    def run() -> Response:
+        f = db.get(FollowUp, follow_up_id)
+        if f is None:
+            raise DomainError("not_found", "That follow-up no longer exists.", 404)
+        try:
+            msg = followup_drafts_service.draft_follow_up(db, llm, follow_up_id, member)
+        except (LLMAuthError, LLMModelNotFound) as exc:
+            raise _llm_fatal(db, exc) from exc
+        url = f"/outreach/messages/{msg.id}"
+        if wants_json(request):
+            return envelope_ok({"message_id": msg.id, "url": url}, 201)
+        return crm_done(request, url, "Follow-up draft written - review it, then approve it. Nothing is sent until you do.")
+
+    return crm_guard(request, back, run, db)
+
+
+@router.post("/pipeline/followups/draft-due", response_model=None)
+def followups_draft_due(
+    request: Request,
+    next: str = Form(""),  # noqa: A002
+    prospect_id: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember = Depends(get_acting_member),
+    llm: LLMClient = Depends(get_llm),
+) -> Response:
+    """"Draft due follow-ups": drafts for the due Email follow-ups, at most SALES0_FOLLOWUP_DRAFT_BATCH per click (click
+    again for the rest). Skipped ones (replied, unsubscribed, ...) are counted with their reasons in the flash."""
+    back = _safe_back(next, "/outreach")
+
+    def run() -> Response:
+        try:
+            result = followup_drafts_service.draft_due(db, llm, member, prospect_id=opt_int(prospect_id, "prospect"))
+        except (LLMAuthError, LLMModelNotFound) as exc:
+            raise _llm_fatal(db, exc) from exc
+        if wants_json(request):
+            return envelope_ok({
+                "drafted": result.drafted, "skipped": result.skipped, "failed": result.failed, "remaining": result.remaining,
+                "stopped": result.stopped,
+                "outcomes": [{"follow_up_id": o.follow_up_id, "prospect": o.prospect_name, "status": o.status, "reason": o.reason,
+                              "message_id": o.message_id} for o in result.outcomes],
+            })
+        return crm_done(request, back, result.summary())
+
+    return crm_guard(request, back, run, db)
 
 
 # ---------------------------------------------------------------------- lead detail

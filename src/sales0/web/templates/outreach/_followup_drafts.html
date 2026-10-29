@@ -1,0 +1,12 @@
+{# E2: the "Draft due follow-ups" button. ``count`` = how many are ready; ``next`` = where to come back; optional
+   ``prospect_id`` limits it to one prospect. AI drafts only - nothing is approved or sent. #}
+{% macro draft_due_form(count, next, prospect_id="", batch=10, id="draft-due-form") -%}
+<form class="inline-form" id="{{ id }}" method="post" action="/pipeline/followups/draft-due" hx-post="/pipeline/followups/draft-due"
+      hx-disabled-elt="find button" hx-indicator="find .htmx-indicator" hx-swap="none">
+  <input type="hidden" name="next" value="{{ next }}">
+  {% if prospect_id %}<input type="hidden" name="prospect_id" value="{{ prospect_id }}">{% endif %}
+  <button class="btn btn--primary" type="submit"{% if not count %} disabled aria-disabled="true"{% endif %}>Draft due follow-ups{% if count %} ({{ count }}){% endif %}</button>
+  <span class="htmx-indicator row" role="status"><span class="spinner" aria-hidden="true"></span> Writing drafts... (up to {{ batch }} per click)</span>
+  <span class="hint">AI writes the drafts; you review, approve and send each one. Nothing is sent automatically.</span>
+</form>
+{%- endmacro %}

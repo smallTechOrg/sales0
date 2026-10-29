@@ -313,6 +313,7 @@ def send(db: Session, msg_id: int, member: TeamMember, *, now: datetime | None =
     if msg.state not in ("approved", "failed"):
         raise DomainError("not_approved", "Only an approved message can be sent - approve it first.", 409)
     prior = msg.state
+    _assert_follow_up_still_wanted(db, msg)
     client, profile = _preflight(db, msg, member, now)
     claimed = _claim(db, msg, "(state = 'approved') OR (state = 'failed' AND send_outcome_unknown = FALSE AND content_sha256 IS NOT NULL)", now)
     if not claimed:
@@ -342,6 +343,7 @@ def retry_send(
         )
     if msg.content_sha256 is None:
         raise DomainError("not_approved", "This message must be approved again before it can be sent.", 409)
+    _assert_follow_up_still_wanted(db, msg)
     client, profile = _preflight(db, msg, member, now)
     old_draft = msg.gmail_draft_id
     claimed = _claim(
@@ -441,6 +443,47 @@ def _fail(db: Session, msg: OutreachMessage, member: TeamMember, text: str, *, u
     return msg
 
 
+def _thread_for(db: Session, msg: OutreachMessage, client: GmailClient) -> tuple[str | None, dict[str, str] | None]:
+    """A follow-up joins the Gmail thread of the email it follows up (same mailbox only): its thread id plus the
+    In-Reply-To / References headers of the newest message in it. Best effort - any problem sends it as a plain new
+    email (the human already approved those words)."""
+    if msg.follow_up_of_id is None:
+        return None, None
+    parent = db.get(OutreachMessage, msg.follow_up_of_id)
+    if parent is None or not parent.gmail_thread_id or parent.member_id != msg.member_id:
+        return None, None
+    try:
+        thread = client.get_thread(parent.gmail_thread_id)
+    except Exception:  # noqa: BLE001 - unreachable / scope missing / gone: no threading, still sendable
+        return None, None
+    last = next((m for m in reversed(thread) if m.message_id_header), None)
+    if last is None:
+        return parent.gmail_thread_id, None
+    refs = " ".join(x for x in (last.references, last.message_id_header) if x).strip()
+    return parent.gmail_thread_id, {"In-Reply-To": last.message_id_header, "References": refs}
+
+
+def _assert_follow_up_still_wanted(db: Session, msg: OutreachMessage) -> None:
+    """A drafted follow-up email is only sent while its CRM reminder is still open: a reply, closing the prospect, a Do
+    not follow up flag or doing it by hand cancels/finishes the reminder and the draft must not go out."""
+    if msg.follow_up_id is None:
+        return
+    from sales0.db.models import FollowUp
+
+    fu = db.get(FollowUp, msg.follow_up_id)
+    if fu is None or fu.cancelled_at is not None:
+        why = (fu.cancel_reason or "cancelled").replace("_", " ") if fu is not None else "removed"
+        raise DomainError(
+            "follow_up_stopped",
+            f"This follow-up was stopped ({why}), so the email must not go out. Reject this draft.", 409,
+        )
+    if fu.done_at is not None:
+        raise DomainError(
+            "follow_up_stopped",
+            "This follow-up was already marked done (by hand or by another email). Reject this draft if it is not needed.", 409,
+        )
+
+
 def _dispatch(client: GmailClient, approved: ApprovedMessage) -> tuple[str, str]:
     """The single call site of ``send_draft``: it needs an ApprovedMessage bound to the content hash."""
     return client.send_draft(approved)
@@ -470,10 +513,12 @@ def _execute(
             unknown=False, now=now, clear_approval=True,
         )  # fmt: skip
 
+    thread_id, thread_headers = _thread_for(db, msg, client)
     try:
+        extra = {"thread_id": thread_id, "headers": thread_headers} if thread_id or thread_headers else {}
         draft_id = client.create_draft(
             list(content.to), list(content.cc), content.subject, content.text_body, None,
-            [(a.filename, a.data, a.mime) for a in content.attachments],
+            [(a.filename, a.data, a.mime) for a in content.attachments], **extra,
         )  # fmt: skip
     except (GmailError, InvalidMessage) as exc:
         connections.record_failure(member.id, exc)

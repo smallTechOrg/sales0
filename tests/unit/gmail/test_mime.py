@@ -96,3 +96,26 @@ def test_oversize_clear_error():
 def test_just_under_limit_ok():
     att = Attachment("big.pdf", b"\x01" * (10 * 1024 * 1024), "application/pdf")
     assert len(build_message(mk(attachments=[att]))) < MAX_MESSAGE_BYTES
+
+
+# ---- E2: threading headers of a follow-up (not part of the approval hash, never header-injectable)
+def test_threading_headers_are_added_but_do_not_change_the_approval_hash() -> None:
+    from sales0.integrations.gmail.mime import build_message, normalise, parse_raw
+
+    content = normalise(["a@x.example"], [], "Re: Hello", "Body", None, [])
+    plain = build_message(content)
+    threaded = build_message(content, {"In-Reply-To": "<m1@x>", "References": "<m0@x> <m1@x>", "X-Evil": "no"})
+    assert b"In-Reply-To: <m1@x>" in threaded and b"References: <m0@x> <m1@x>" in threaded and b"X-Evil" not in threaded
+    assert b"In-Reply-To" not in plain
+    assert parse_raw(threaded).sha256 == parse_raw(plain).sha256 == content.sha256
+
+
+def test_threading_header_with_a_line_break_is_refused() -> None:
+    import pytest
+
+    from sales0.integrations.gmail.errors import InvalidMessage
+    from sales0.integrations.gmail.mime import build_message, normalise
+
+    content = normalise(["a@x.example"], [], "Re: Hello", "Body", None, [])
+    with pytest.raises(InvalidMessage):
+        build_message(content, {"In-Reply-To": "<m1@x>\r\nBcc: evil@x.example"})
