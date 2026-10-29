@@ -11,7 +11,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import _free_port
 from tests.e2e._flows import add_keyword, connect_linkedin, run_now
-from tests.support.live_server import live_server
+from tests.e2e._fast import live_server
 
 # One real triage call costs ~$0.0002+ (Haiku); a $0.0001 cap is exceeded by the FIRST call, so the
 # second triage is refused and the remaining enquiries stay pending.

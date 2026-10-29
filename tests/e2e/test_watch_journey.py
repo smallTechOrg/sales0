@@ -15,7 +15,8 @@ from sqlalchemy import create_engine, text
 
 from tests.e2e._flows import RUN_TIMEOUT_MS, TERMINAL_RUN_STATUSES, add_keyword, card, connect_linkedin, run_now, settled
 from tests.e2e.conftest import _free_port
-from tests.support.live_server import LiveServer, live_server
+from tests.e2e._fast import live_server
+from tests.support.live_server import LiveServer
 
 
 def seed_tracked(server: LiveServer, slug: str, name: str) -> None:

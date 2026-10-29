@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import re
-import socket
 import threading
 import time
 from collections.abc import Iterator
@@ -36,21 +35,10 @@ from sales0.services.team import connections
 from sales0.web.app import create_app
 from tests.integration.outreach.conftest import PDF
 from tests.support.fake_google import FakeGoogle, serve_fake_google
+from tests.e2e._fast import free_port
 from tests.support.research_site import FixtureSite, serve_fixture_site
 
 ADMIN_EMAIL = "admin@team.example"
-FIRST_PORT = 8766  # 8765 is the user's own sales0 and is never touched
-
-
-def free_port(start: int = FIRST_PORT) -> int:
-    for port in range(start, start + 200):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            try:
-                sock.bind(("127.0.0.1", port))
-            except OSError:
-                continue
-            return port
-    raise RuntimeError("no free port")
 
 
 class Env:

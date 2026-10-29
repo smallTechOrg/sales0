@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import re
-import socket
 import threading
 import time
 from collections.abc import Iterator
@@ -48,6 +47,7 @@ from sales0.jobs.runner import reset_runner
 from sales0.services.sheetsync import StaticSource
 from sales0.services.team import connections
 from sales0.web.app import create_app
+from tests.e2e._fast import free_port
 from tests.support.crm_seed import seed_pending_enquiries
 from tests.support.fake_google import FakeGoogle, serve_fake_google
 from tests.support.research_site import FixtureSite, serve_fixture_site
@@ -55,23 +55,6 @@ from tests.unit.sheetsync import fixtures as sheet_fx
 
 ADMIN_EMAIL = "admin@team.example"
 PASSWORD = "journey-pass-123"
-PHASE2_PORT = 8792  # spec: Phase 2 e2e; falls back to a free port >= 8766 when another run holds it. Never 8765.
-
-
-def _port_free(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        try:
-            sock.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
-
-
-def pick_port() -> int:
-    for port in (PHASE2_PORT, *range(8766, 8900)):
-        if port != 8765 and _port_free(port):
-            return port
-    raise RuntimeError("no free port for the Phase 2 e2e server")
 
 
 class Env:
@@ -83,7 +66,7 @@ class Env:
 def env(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Env]:
     secret = tmp_path / "client_secret.json"
     secret.write_text(json.dumps({"installed": {"client_id": "synthetic-id.apps.example", "client_secret": "synthetic-secret"}}))
-    port = pick_port()
+    port = free_port()
     assert port != 8765
     with serve_fake_google(ADMIN_EMAIL) as google, serve_fixture_site() as site:
         for key, value in {

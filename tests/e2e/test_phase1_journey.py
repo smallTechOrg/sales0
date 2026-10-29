@@ -82,7 +82,8 @@ def _skipped(page: Page, pid: str):
     return page.locator("#skipped-list article.skipped").filter(has_text=SNIPPET[pid])
 
 
-def test_phase1_journey_setup_connect_run_triage_decide_search_restart(server: LiveServer, ui: Page) -> None:
+def test_phase1_journey_setup_connect_run_triage_decide_search_restart(real_llm_server: LiveServer, ui: Page) -> None:
+    server = real_llm_server
     page, base = ui, server.base_url
 
     # --- empty start: / lands on the Review inbox empty state, fixture mode is labelled

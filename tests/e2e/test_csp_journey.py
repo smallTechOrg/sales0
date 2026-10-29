@@ -11,7 +11,7 @@ from playwright.sync_api import ConsoleMessage, Page, expect
 
 from tests.e2e._flows import add_keyword, remove_keyword
 from tests.e2e.conftest import _free_port
-from tests.support.live_server import live_server
+from tests.e2e._fast import live_server
 
 PAGES = [
     "/inbox", "/setup", "/runs", "/pipeline", "/contacts", "/replies", "/metrics", "/costs", "/schedule", "/digest",

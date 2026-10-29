@@ -87,7 +87,7 @@ def recheck_linkedin(page: Page, server: LiveServer) -> dict[str, Any]:
     deadline = time.monotonic() + 60
     while len(session_events(server, "check")) <= checks_before:
         assert time.monotonic() < deadline, "Re-check never logged a linkedin_session line"
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(50)
     expect(page.locator("#linkedin-card")).to_have_attribute("data-status", "connected", timeout=60_000)
     expect(page.locator("#status-light")).to_have_attribute("data-status", "connected", timeout=15_000)
     return session_events(server, "check")[-1]
