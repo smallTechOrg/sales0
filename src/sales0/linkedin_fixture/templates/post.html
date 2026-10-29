@@ -1,0 +1,7 @@
+{% extends "_layout.html" %}
+{% block title %}Post | LinkedIn (fixture){% endblock %}
+{% block content %}
+{% if post %}
+<div class="k3v9q _m1x7" data-urn="{{ post.urn }}">{% include "_post_body.html" %}</div>
+{% else %}<div class="c8pz1 _d3oq"><h1 class="o2ty5">This post is not available</h1></div>{% endif %}
+{% endblock %}

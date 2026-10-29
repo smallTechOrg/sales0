@@ -1,0 +1,263 @@
+{% extends "_layout.html" %}
+{#- Search results. Phase 1.2: SDUI markup (lazy column of listitems, feed-full-update posts,
+    "…" control menus) for every keyword except legacy-urn-test, which keeps the Phase 1.1
+    URN card shapes. ``mode`` is one of: sdui | drift | legacy | empty. -#}
+{% block title %}"{{ keyword }}" | Search | LinkedIn (fixture){% endblock %}
+{% block content %}
+<h1 class="_vh3k">Search results for {{ keyword }}</h1>
+{% if mode == "bulk" %}
+<div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent" class="w8sc2">
+ <div data-testid="lazy-column" class="u5rt7 _b2xe">
+{%- include "_bulk_cards.html" %}
+ </div>
+ <div id="fx-sentinel" class="fx9sn" data-next="{{ next_start }}" aria-hidden="true"></div>
+</div>
+{% elif mode == "sdui" or mode == "drift" %}
+<div data-sdui-screen="com.linkedin.sdui.flagshipnav.search.SearchResultsContent" class="w8sc2">
+ <div data-testid="lazy-column" class="u5rt7 _b2xe">
+{%- if mode == "drift" %}
+{%- for item_key in drift_keys %}
+  <div role="listitem" componentkey="{{ listitem_key(item_key) }}" class="y6ob2"><div class="k3v9q"><div class="g4nu7">{{ drift_texts[loop.index0] }}</div></div></div>
+{%- endfor %}
+{%- else %}
+{%- for card in cards %}
+  {% include "_sdui_card.html" %}
+{%- endfor %}
+{%- endif %}
+ </div>
+</div>
+{% for card in lazy_cards or [] %}<template class="l0vr6">{% include "_sdui_card.html" %}</template>{% endfor %}
+{% elif mode == "legacy" %}
+<ul role="list" class="u5rt7 _b2xe">
+  {% for post in posts %}{% include "_post_card.html" %}
+  {% endfor %}
+</ul>
+{% else %}
+<div class="k3v9q _n4ow"><h2 class="o2ty5">No results found</h2><p class="e2mc8">Try shortening or rephrasing your search.</p></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  // Phase 1.1 cards: "…see more" reveals the hidden tail of the post text (no classes involved).
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest('button[aria-label*="see more" i]');
+    if (!button) return;
+    const rest = button.parentElement.querySelector('[dir="ltr"] [hidden]');
+    if (rest) rest.hidden = false;
+    button.remove();
+  });
+</script>
+{% if mode == "sdui" %}
+<script>
+  // SDUI posts: "…more" expands the text; the "…" control menu opens on its trigger and
+  // "Copy link to post" writes the post's share link through navigator.clipboard.writeText
+  // (only for posts whose copy_link is "urn"). Every trigger click and menu-item click is
+  // recorded so tests can assert what the scraper clicked.
+  (() => {
+    const BASE = {{ base | tojson }};
+    const SHARE = {{ share_slugs | tojson }};  // inner KEY -> share slug (urn posts only)
+    const QUERY = {{ copy_query | tojson }};
+    const MENU = '[data-view-name="feed-control-menu"]';
+    window.__fixture_menu_clicks = [];
+    window.__fixture_menu_opens = 0;
+    const closeAll = () => {
+      document.querySelectorAll(MENU).forEach((menu) => {
+        const list = menu.querySelector('[role="menu"]');
+        if (list) list.hidden = true;
+        const trigger = menu.querySelector(":scope > button");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+      });
+    };
+    const toast = (message) => {
+      const box = document.createElement("div");
+      box.className = "tq4s5";
+      box.setAttribute("role", "status");
+      box.textContent = message;
+      document.body.appendChild(box);
+      setTimeout(() => box.remove(), 3000);
+    };
+    const copy = (text) => {
+      try {
+        const pending = navigator.clipboard && navigator.clipboard.writeText(text);
+        if (pending && typeof pending.catch === "function") pending.catch(() => {});
+      } catch (error) { /* no clipboard: nothing to do, like a denied permission */ }
+    };
+    document.addEventListener("click", (event) => {
+      const more = event.target.closest('[data-testid="expandable-text-button"]');
+      if (more) {
+        const box = more.parentElement.querySelector('[data-testid="expandable-text-box"]');
+        if (box) box.querySelectorAll("[hidden]").forEach((node) => { node.hidden = false; });
+        more.remove();
+        return;
+      }
+      const item = event.target.closest(`${MENU} [role="menuitem"]`);
+      if (item) {
+        const label = item.textContent.trim();
+        window.__fixture_menu_clicks.push(label);
+        if (label.toLowerCase() === "copy link to post") {
+          const holder = item.closest('[componentkey]:not([role="listitem"])');
+          const slug = holder ? SHARE[holder.getAttribute("componentkey")] : undefined;
+          if (slug) {
+            copy([BASE, "posts", slug].join("/") + "?" + QUERY);
+            toast("Link copied to clipboard.");
+          }
+        }
+        closeAll();
+        return;
+      }
+      const trigger = event.target.closest(`${MENU} > button`);
+      if (trigger) {
+        window.__fixture_menu_opens += 1;
+        const list = trigger.parentElement.querySelector('[role="menu"]');
+        const opening = Boolean(list && list.hidden);
+        closeAll();
+        if (opening) { list.hidden = false; trigger.setAttribute("aria-expanded", "true"); }
+        return;
+      }
+      closeAll();
+    });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeAll(); });
+  })();
+</script>
+{% endif %}
+{% if mode == "bulk" %}
+<script>
+  // Phase 1.4 bulk results: infinite scroll + the control menus of both markup variants.
+  // The first cards are in the page; each scroll (wheel / scroll event / sentinel in view) fetches the
+  // next 10 as the same markup (~150 ms latency) and appends them; an empty answer ends the list.
+  (() => {
+    const BASE = {{ base | tojson }};
+    const QUERY = {{ copy_query | tojson }};
+    const MORE = {{ more_url | tojson }};
+    const COLUMN = document.querySelector('[data-testid="lazy-column"]');
+    const SENTINEL = document.getElementById("fx-sentinel");
+    window.__fixture_query = {{ fixture_query | tojson }};
+    window.__fixture_menu_clicks = [];
+    window.__fixture_menu_opens = 0;
+    window.__fixture_loads = 0;
+    let loading = false, done = false;
+    const loadMore = async () => {
+      if (loading || done) return;
+      loading = true;
+      try {
+        const start = COLUMN.querySelectorAll('[role="listitem"]').length;
+        const response = await fetch(MORE + "&start=" + start, { credentials: "include" });
+        const html = response.ok ? (await response.text()).trim() : "";
+        if (!html) { done = true; SENTINEL.remove(); }
+        else { COLUMN.insertAdjacentHTML("beforeend", html); window.__fixture_loads += 1; }
+      } catch (error) { /* a failed page just ends this attempt */ }
+      loading = false;
+    };
+    let last = 0;
+    const gesture = () => { const now = Date.now(); if (now - last < 200) return; last = now; loadMore(); };
+    document.addEventListener("wheel", gesture, { passive: true });
+    if ("IntersectionObserver" in window && SENTINEL) {
+      new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) loadMore(); }, { rootMargin: "0px" }).observe(SENTINEL);
+    }
+
+    // ---- "…more", and the "…" control menu ("Copy link to post" writes the share link).
+    let portal = null;
+    const closeAll = () => {
+      document.querySelectorAll('[data-view-name="feed-control-menu"]').forEach((menu) => {
+        const list = menu.querySelector('[role="menu"]');
+        if (list) list.hidden = true;
+        const trigger = menu.querySelector(":scope > button");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+      });
+      if (portal) { portal.remove(); portal = null; }
+    };
+    const copy = (slug) => {
+      if (!slug) return;
+      try {
+        const pending = navigator.clipboard && navigator.clipboard.writeText([BASE, "posts", slug].join("/") + "?" + QUERY);
+        if (pending && typeof pending.catch === "function") pending.catch(() => {});
+      } catch (error) { /* no clipboard, like a denied permission */ }
+      const box = document.createElement("div");
+      box.className = "tq4s5";
+      box.setAttribute("role", "status");
+      box.textContent = "Link copied to clipboard.";
+      document.body.appendChild(box);
+      setTimeout(() => box.remove(), 3000);
+    };
+    const choose = (label, slug) => {
+      window.__fixture_menu_clicks.push(label);
+      if (label.toLowerCase() === "copy link to post") copy(slug);
+      closeAll();
+    };
+    const openPortal = (trigger) => {
+      closeAll();
+      const rect = trigger.getBoundingClientRect();
+      portal = document.createElement("div");
+      portal.setAttribute("role", "menu");
+      portal.className = "m6pq3";
+      portal.style.cssText = "position:fixed;top:" + (rect.bottom + 4) + "px;left:" + Math.max(8, rect.right - 200) + "px";
+      const name = (trigger.getAttribute("aria-label") || "").replace(/^Open control menu for post by\s*/, "");
+      for (const label of ["Save", "Copy link to post", "Not interested", "Unfollow " + name, "Report post"]) {
+        const item = document.createElement("div");
+        item.setAttribute("role", "menuitem");
+        item.className = "m2it5";
+        item.textContent = label;
+        portal.appendChild(item);
+      }
+      portal.dataset.fxShare = trigger.dataset.fxShare || "";
+      document.body.appendChild(portal);
+    };
+    document.addEventListener("click", (event) => {
+      const more = event.target.closest('[data-testid="expandable-text-button"]');
+      if (more) {
+        const box = more.closest('[data-testid="expandable-text-box"]') || more.parentElement.querySelector('[data-testid="expandable-text-box"]');
+        if (box) box.querySelectorAll("[hidden]").forEach((node) => { node.hidden = false; });
+        more.remove();
+        return;
+      }
+      const item = event.target.closest('[role="menuitem"]');
+      if (item) {
+        const inline = item.closest('[data-view-name="feed-control-menu"]');
+        const holder = inline || item.closest('[role="menu"]');
+        choose(item.textContent.trim(), inline ? inline.dataset.fxShare : holder && holder.dataset.fxShare);
+        return;
+      }
+      const trigger = event.target.closest('button[aria-label^="Open control menu for post by"]');
+      if (trigger) {
+        window.__fixture_menu_opens += 1;
+        const inline = trigger.closest('[data-view-name="feed-control-menu"]');
+        if (inline) {
+          const list = inline.querySelector('[role="menu"]');
+          const opening = Boolean(list && list.hidden);
+          closeAll();
+          if (opening) { list.hidden = false; trigger.setAttribute("aria-expanded", "true"); }
+        } else { openPortal(trigger); }
+        return;
+      }
+      closeAll();
+    });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeAll(); });
+  })();
+</script>
+{% endif %}
+{% if lazy %}
+<script>
+  // Lazy results: each scroll gesture reveals the next card after a delay, like LinkedIn's XHR
+  // paging. Phase 1.2: revealed cards are appended as new listitems to the lazy column.
+  (() => {
+    const lazy = {{ lazy | tojson }};
+    const list = document.querySelector('[data-testid="lazy-column"]');
+    const ping = () => { if (lazy.voyager_url) fetch(lazy.voyager_url, { credentials: "include" }).catch(() => {}); };
+    let scrolls = 0, last = 0;
+    ping();
+    document.addEventListener("wheel", () => {
+      const now = Date.now();
+      if (now - last < 200) return;  // one gesture, however many wheel events it produced
+      last = now;
+      scrolls += 1;
+      ping();
+      if (lazy.checkpoint_at && scrolls >= lazy.checkpoint_at) { window.location.assign(lazy.next_page_url); return; }
+      setTimeout(() => {
+        const next = document.querySelector("main > template");
+        if (next && list) { list.appendChild(next.content.cloneNode(true)); next.remove(); }
+      }, lazy.delay_ms);
+    }, { passive: true });
+  })();
+</script>
+{% endif %}
+{% endblock %}

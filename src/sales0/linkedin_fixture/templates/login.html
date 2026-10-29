@@ -1,0 +1,25 @@
+{% extends "_layout.html" %}
+{% block title %}LinkedIn Login, Sign in | LinkedIn (fixture){% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="c8pz1 _h1wa">
+  <h1 class="o2ty5">Sign in</h1>
+  <p class="e2mc8">Stay updated on your professional world</p>
+  <form class="p5ki2" method="post" action="{{ base }}/checkpoint/lg/login-submit">
+    <input id="username" class="i3gh7" name="session_key" type="text" autocomplete="username" value="fixture.user@example.com" aria-label="Email or phone">
+    <input id="password" class="i3gh7" name="session_password" type="password" autocomplete="current-password" value="fixture" aria-label="Password">
+    <button type="submit" class="s9fe4">Sign in</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The fixture "user" submits the form after 300 ms; LinkedIn then asks for a 2FA code.
+  (() => {
+    const next = {{ (base ~ "/checkpoint/challenge/verify") | tojson }};
+    const go = () => window.location.assign(next);
+    document.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); go(); });
+    setTimeout(go, 300);
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+{# Needs: items (list[CompanyCard]), total, page, page_size, params, today. The company list. #}
+{% from "pipeline/_macros.html" import category_chips, priority_chip, trait_chips, pager with context %}
+<section class="card" aria-label="Companies">
+  <div class="card__body table-wrap">
+    {% if items %}
+      <table class="table" id="pipeline-list">
+        <thead><tr><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">{{ "Stage" if params.closed else "Status" }}</th><th scope="col">Enquiries</th><th scope="col">Owner</th><th scope="col">Next follow-up</th></tr></thead>
+        <tbody>
+        {% for c in items %}
+          <tr id="company-{{ c.id }}" data-stage="{{ c.stage or '' }}">
+            <td><a href="/companies/{{ c.id }}">{{ c.name }}</a> {{ category_chips(c.categories) }}{{ trait_chips(c.characteristics) }}{% if c.suggested_lead %} <span class="badge badge--info">Suggested: Lead</span>{% endif %}</td>
+            <td>{{ priority_chip(c.priority, c.priority_source == "manual") }}</td>
+            <td>{% if c.stage != "client" or c.off_ramp %}<span class="badge stage-badge stage-badge--{{ c.stage or 'none' }}">{{ c.sub_label or c.stage_label }}</span>{% else %}<span class="badge stage-badge stage-badge--client">Client</span>{% endif %}{% if c.off_ramp %} <span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}</td>
+            <td>{{ c.enquiries }}</td>
+            <td>{{ c.owner or "—" }}</td>
+            <td>{% if c.next_follow_up_on %}<span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b %Y") }}</span>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% elif params.q or params.sub or params.closed or params.flag or params.characteristic or params.priority or params.category %}
+      <div class="empty-state empty-state--compact" id="pipeline-empty"><p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}&layout=list">Clear filters</a></div>
+    {% else %}
+      <div class="empty-state" id="pipeline-empty"><p>No {{ params.tab }} yet{% if params.tab == "prospects" %} - accept an enquiry in the Inbox, or add a company{% endif %}.</p>
+        <div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-company">New company</a></div></div>
+    {% endif %}
+  </div>
+</section>
+{{ pager("/pipeline", params, page, page_size, total, "companies") }}

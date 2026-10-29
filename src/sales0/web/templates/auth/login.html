@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Log in · sales0</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <main class="login" id="main">
+    <section class="card login__card" aria-labelledby="login-title">
+      <form class="card__body" id="login-form" method="post" action="/login">
+        <p class="login__mark" id="login-title">sales0</p>
+        {% if flash %}<p class="flash flash--{{ flash.kind }}" id="login-flash" role="status">{{ flash.message }}</p>{% endif %}
+        {% if error %}<p class="field__error" id="login-error" role="alert">{{ error }}</p>{% endif %}
+        <input type="hidden" name="next" value="{{ next_path }}">
+        <div class="field">
+          <label class="field__label" for="login-email">Email</label>
+          <input class="input" id="login-email" name="email" type="email" value="{{ email }}" autocomplete="username" required{% if not email %} autofocus{% endif %}>
+        </div>
+        <div class="field">
+          <label class="field__label" for="login-password">Password</label>
+          <input class="input" id="login-password" name="password" type="password" autocomplete="current-password" required{% if email %} autofocus{% endif %}>
+        </div>
+        <label class="check"><input type="checkbox" id="login-remember" name="remember" value="1"{% if remember %} checked{% endif %}> Remember me on this device</label>
+        <button class="btn btn--primary" id="login-submit" type="submit">Log in</button>
+        <p class="muted">Use the email address your admin set up for you. On a fresh install that is the admin email from <code>.env</code> (<code>SALES0_ADMIN_EMAIL</code>, set before the first start).</p>
+        <p class="muted">No password yet, or forgotten it? Ask an admin for a set-password link.</p>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{# Needs: keyword (KeywordView), keyword_group_choices, own_group. #}
+<li id="keyword-{{ keyword.id }}" data-keyword-id="{{ keyword.id }}" data-active="{{ 'true' if keyword.active else 'false' }}">
+  <div class="item-list__main">
+    <strong>{{ keyword.text }}</strong>
+    {% if keyword.suggested %}<span class="badge badge--stub" title="From the suggested keyword library">suggested</span>{% endif %}
+    {% if keyword.scanned_total >= 80 and keyword.relevant_total == 0 %}<span class="badge badge--stub" title="Scanned 80+ posts and none were relevant — consider editing or removing it">No yield</span>{% endif %}
+    <span class="muted keyword__yield">Scanned <span class="mono">{{ keyword.scanned_total }}</span> · Relevant <span class="mono">{{ keyword.relevant_total }}</span> ({{ pct_text(keyword.relevant_total, keyword.scanned_total) }}) · {% if keyword.last_run_at %}last run {{ keyword.last_run_at | ago }}{% else %}not run yet{% endif %}{% if not keyword.active %} · paused{% endif %}</span>
+  </div>
+  <button class="switch" type="button" role="switch" aria-checked="{{ 'true' if keyword.active else 'false' }}"
+          aria-label="Search '{{ keyword.text }}' in runs"
+          hx-post="/setup/keywords/{{ keyword.id }}/toggle" hx-vals='{"active": "{{ 'false' if keyword.active else 'true' }}"}'
+          hx-target="#keyword-{{ keyword.id }}" hx-disabled-elt="this">
+    <span class="switch__track" aria-hidden="true"></span>
+    <span>{{ "Active" if keyword.active else "Paused" }}</span>
+  </button>
+  <details class="keyword__edit">
+    <summary class="btn btn--sm">Edit</summary>
+    <form class="stack stack--tight" method="post" action="/setup/keywords/{{ keyword.id }}/edit"
+          hx-post="/setup/keywords/{{ keyword.id }}/edit" hx-target="#keyword-list" hx-disabled-elt="find button">
+      <div class="field">
+        <label class="field__label" for="keyword-{{ keyword.id }}-text">Text</label>
+        <input class="input" id="keyword-{{ keyword.id }}-text" name="text" type="text" minlength="2" maxlength="100" required value="{{ keyword.text }}">
+      </div>
+      <div class="field">
+        <label class="field__label" for="keyword-{{ keyword.id }}-group">Group</label>
+        <select class="select" id="keyword-{{ keyword.id }}-group" name="group_name">
+          <option value="none"{% if not keyword.group_name %} selected{% endif %}>{{ own_group }}</option>
+          {% for choice in keyword_group_choices %}<option value="{{ choice }}"{% if keyword.group_name == choice %} selected{% endif %}>{{ choice }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="row">
+        <button class="btn btn--primary btn--sm" type="submit">Save</button>
+        <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit>Cancel</button>
+      </div>
+    </form>
+  </details>
+  <button class="btn btn--danger btn--sm" type="button"
+          hx-post="/setup/keywords/{{ keyword.id }}/delete" hx-target="#keyword-list"
+          hx-confirm="Remove keyword '{{ keyword.text }}'? Past runs and enquiry chips keep its text.">Remove</button>
+</li>

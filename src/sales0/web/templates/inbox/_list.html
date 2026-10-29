@@ -1,0 +1,58 @@
+{# Needs: inbox (InboxPage), tab, q, page, pages, has_runs, offerings, discard_reasons, priorities. #}
+<section id="inbox-list" class="stack" aria-label="Enquiries" data-tab="{{ tab }}" data-total="{{ inbox.total }}">
+  {% set decidable = inbox.items | rejectattr("triage_status", "equalto", "pending") | list %}
+  {% if decidable %}
+    <form id="bulk-form" class="bulk-form" method="post" action="/inbox/decide" aria-label="Bulk actions">
+      <div id="bulk-bar" class="bulk-bar">
+        <label class="enquiry__select"><input type="checkbox" class="js-select-all"> Select all on page</label>
+        <div class="bulk-bar__actions">
+          <span class="bulk-bar__count" aria-live="polite">0 selected</span>
+          <input type="hidden" name="tab" value="{{ tab }}">
+          <input type="hidden" name="q" value="{{ q }}">
+          <input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="category" value="{{ category|default('') }}">
+          {% if tab != "accepted" %}
+            <button class="btn btn--primary btn--sm" type="submit" name="decision" value="accept"
+                    hx-post="/inbox/decide" hx-target="#inbox-list" hx-vals='{"decision": "accept"}'>Accept selected</button>
+          {% endif %}
+          {% if tab != "discarded" %}
+            <label class="visually-hidden" for="bulk-discard-reason">Discard reason</label>
+            <select class="select" id="bulk-discard-reason" name="discard_reason">
+              {% for reason in discard_reasons %}<option value="{{ reason }}">{{ reason }}</option>{% endfor %}
+              <option value="">Other — use AI reason</option>
+            </select>
+            <label class="visually-hidden" for="bulk-custom-reason">Or your own reason</label>
+            <input class="input" id="bulk-custom-reason" name="custom_reason" maxlength="200" placeholder="Or your own reason">
+            <button class="btn btn--danger btn--sm" type="submit" name="decision" value="discard"
+                    hx-post="/inbox/decide" hx-target="#inbox-list" hx-vals='{"decision": "discard"}'>Discard selected</button>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if inbox.items %}
+    <div class="enquiry-list">
+      {% for card in inbox.items %}{% include "inbox/_card.html" %}{% endfor %}
+    </div>
+    {% if pages > 1 %}
+      <nav class="pagination" aria-label="Pages">
+        {% if page > 1 %}<a class="btn" href="/inbox?tab={{ tab }}&q={{ q | urlencode }}&category={{ category|default('') }}&page={{ page - 1 }}">← Prev</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ page }} of {{ pages }} · {{ inbox.total }} enquiries</span>
+        {% if page < pages %}<a class="btn" href="/inbox?tab={{ tab }}&q={{ q | urlencode }}&category={{ category|default('') }}&page={{ page + 1 }}">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% elif q %}
+    <div class="empty-state"><p>No enquiries match '{{ q }}'.</p><a class="btn" href="/inbox?tab={{ tab }}">Clear search</a></div>
+  {% elif tab == "review" and not has_runs %}
+    <div class="empty-state">
+      <p>No enquiries yet. Add keywords and connect LinkedIn in Setup, then press Run now.</p>
+      <a class="btn btn--primary" href="/setup">Go to Setup</a>
+    </div>
+  {% elif tab == "review" %}
+    <div class="empty-state"><p>All caught up — nothing to review.</p><a class="btn" href="/runs">Go to Runs</a></div>
+  {% elif tab == "accepted" %}
+    <div class="empty-state"><p>Accepted enquiries start (or join) a company in the pipeline here.</p></div>
+  {% else %}
+    <div class="empty-state"><p>Discarded enquiries are kept here and stay searchable.</p></div>
+  {% endif %}
+</section>

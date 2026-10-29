@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }}{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <p><a href="/runs">← All runs</a></p>
+      <h1>Run #{{ run.id }}</h1>
+      <p>Started {{ run.started_at | localdt }} · {{ run.trigger | capitalize }} · {{ run.mode }} mode</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div id="run-detail" class="stack"
+    {% if active %}hx-get="/runs/{{ run.id }}" hx-select="#run-detail" hx-target="#run-detail" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+    {% if drift_alert %}{% with drift_run=run %}{% include "runs/_drift_alert.html" %}{% endwith %}{% endif %}
+    <section class="card" aria-labelledby="totals-title">
+      <div class="card__header">
+        <h2 id="totals-title">Totals</h2>
+        {% with status=run.status %}{% include "runs/_status_badge.html" %}{% endwith %}
+      </div>
+      <div class="card__body">
+        {% if active %}
+          <p class="row"><span class="spinner" aria-hidden="true"></span><span>{{ run.current_step or "Run in progress…" }}</span></p>
+        {% elif outcome %}
+          <div class="outcome outcome--{{ outcome.kind }}"><p><strong>{{ outcome.text }}</strong></p>{% if outcome.guidance %}<p>{{ outcome.guidance }}</p>{% endif %}{% if outcome.cooldown %}<p class="run-cooldown"><strong>{{ outcome.cooldown }}</strong></p>{% endif %}{% if outcome.setup_link %}<p><a class="btn btn--primary btn--sm" href="/setup#linkedin-card">Go to Setup</a></p>{% endif %}</div>
+        {% endif %}
+        {% if run.posts_seen or not active %}{% include "runs/_summary.html" %}{% endif %}
+        <dl class="kv">
+          <dt>Keywords</dt><dd>{{ run.keywords_done }}/{{ run.keywords_planned }}</dd>
+          <dt>Errors</dt><dd>{{ run.errors_count }}</dd>
+          <dt>Duration</dt><dd>{{ duration_text(run.duration_ms if run.duration_ms is not none else elapsed_ms(run.started_at, run.finished_at)) }}</dd>
+          <dt>Finished</dt><dd>{{ run.finished_at | localdt }}</dd>
+        </dl>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="keywords-log-title">
+      <div class="card__header"><h2 id="keywords-log-title">Per-keyword log</h2></div>
+      <div class="card__body">
+        {% if detail.keywords %}
+          <div class="table-wrap">
+            <table id="run-keywords" class="table">
+              <thead>
+                <tr>
+                  <th scope="col">Keyword</th><th scope="col">Status</th><th scope="col" class="num">Scanned</th><th scope="col" class="num">New</th>
+                  <th scope="col" class="num">Already seen</th><th scope="col" class="num">Relevant</th><th scope="col" class="num">Skipped</th>
+                  <th scope="col" class="num">Links</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Duration</th><th scope="col">Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for kw in detail.keywords %}
+                  <tr>
+                    <td>{{ kw.keyword_text }}</td>
+                    <td>{% with status=kw.status %}{% include "runs/_status_badge.html" %}{% endwith %}</td>
+                    <td class="num">{{ kw.posts_seen }}</td>
+                    <td class="num">{{ kw.posts_new }}</td>
+                    <td class="num">{{ kw.posts_dupe }}</td>
+                    <td class="num">{{ kw.posts_relevant }}</td>
+                    <td class="num">{{ kw.posts_skipped_ai }}</td>
+                    <td class="num">{{ kw.permalinks_found }}</td>
+                    <td class="num">{{ usd_precise(kw.cost_usd_micros) }}</td>
+                    <td class="num">{{ duration_text(kw.duration_ms) }}</td>
+                    <td>{{ kw.error_message or "" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <table id="run-keywords" class="table" hidden></table>
+          <div class="empty-state empty-state--compact"><p>No keywords were planned for this run.</p></div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}{{ c.name }} · Competitor{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/competitors">&larr; Competitors &amp; Groups</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="competitor-header" aria-labelledby="comp-name">
+      <div class="card__body record-head">
+        <div class="record-head__title"><h1 id="comp-name">{{ c.name }}</h1>
+          {% if c.active %}<span class="badge badge--genuine">Active</span>{% else %}<span class="badge">Inactive</span>{% endif %}
+          {% if c.sheet_synced %}<span class="chip chip--sheet">Synced from sheet</span>{% endif %}</div>
+        <dl class="kv">
+          <dt>Website</dt><dd>{% if c.website and c.website.startswith(("http://", "https://")) %}<a href="{{ c.website }}" rel="noopener noreferrer" target="_blank">{{ c.website }}</a>{% else %}{{ c.website or "—" }}{% endif %}</dd>
+          <dt>Approx. clients</dt><dd>{{ c.approx_clients if c.approx_clients is not none else "—" }}</dd>
+          <dt>Client names</dt><dd>{{ c.client_names or "—" }}</dd>
+          <dt>Contact</dt><dd>{{ c.contact or "—" }}{% if c.email %} · {{ c.email }}{% endif %}</dd>
+          <dt>Notes</dt><dd class="timeline__text">{{ c.notes or "—" }}</dd>
+        </dl>
+        {% if c.sheet_synced %}<p class="lock">Synced from sheet - edits to the sheet's fields are overwritten.</p>{% endif %}
+      </div>
+    </section>
+    <div class="grid-2">
+      <section class="card" id="competitor-enquiries" aria-labelledby="ce-title">
+        <div class="card__header"><h2 id="ce-title">Mentioned in enquiries</h2><span class="muted">{{ c.enquiries|length }}</span></div>
+        <div class="card__body">
+          {% for e in c.enquiries %}
+            <div class="reply-item"><strong>{{ e.requirement_summary or "(no summary)" }}</strong>
+              <div class="muted">{{ e.review_status|replace("_", " ")|capitalize }}{% if e.company %} · {{ e.company }}{% endif %}{% if e.date_added %} · {{ e.date_added|ago }}{% endif %}</div>
+              {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ link_label(e.source_url) }}</a>{% endif %}</div>
+          {% else %}<p class="muted">No enquiry mentions this competitor yet.</p>{% endfor %}
+        </div>
+      </section>
+      <section class="card" id="competitor-clients" aria-labelledby="cl-title">
+        <div class="card__header"><h2 id="cl-title">Linked clients</h2><span class="muted">{{ c.clients|length }}</span></div>
+        <div class="card__body">
+          {% for k in c.clients %}<div class="reply-item"><a href="/pipeline/clients/{{ k.id }}">{{ k.name }}</a></div>
+          {% else %}<p class="muted">No clients are linked.</p>{% endfor %}
+          <form class="inline-form" id="link-client-form" method="post" action="/competitors/competitor/{{ c.id }}/link">
+            <input type="hidden" name="entity_type" value="client">
+            <div class="field"><label class="field__label" for="link-client">Link a client</label>
+              <select class="input" id="link-client" name="entity_id" required>
+                <option value="">Choose a client…</option>
+                {% for k in client_choices %}<option value="{{ k.id }}">{{ k.name }}</option>{% endfor %}
+              </select></div>
+            <button class="btn" type="submit">Link client</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{# Research brief panel (innerHTML of #brief-panel). Needs brief (see routes.brief_view). #}
+<div class="brief" id="brief" data-status="{{ brief.status }}">
+  <input type="hidden" name="{{ brief.field or 'brief_id' }}" value="{{ brief.id }}">
+  <div class="row row--between">
+    <h3>Research brief: {{ brief.company }}{% if brief.version %} <span class="muted">(version {{ brief.version }}, {{ brief.origin_label }})</span>{% endif %}</h3>
+    <span class="badge {{ 'badge--warn' if brief.status != 'done' else 'badge--info' }}">{{ {"done": "Complete", "partial": "Partial", "failed": "Could not research"}.get(brief.status, brief.status) }}</span>
+  </div>
+  {% if brief.error %}<p class="muted">{{ brief.error }}</p>{% endif %}
+  {% if brief.limited %}<p class="muted">Limited information was found - treat this as a starting point.</p>{% endif %}
+  <dl class="kv">
+    <dt>What they do</dt><dd>{{ brief.what_they_do or "unknown" }}</dd>
+    {% if brief.size_hints and brief.size_hints != "unknown" %}<dt>Size</dt><dd>{{ brief.size_hints }}</dd>{% endif %}
+    {% if brief.suggested_offering and brief.suggested_offering != "unknown" %}<dt>Suggested fit</dt><dd>{{ brief.suggested_offering }}</dd>{% endif %}
+  </dl>
+  {% if brief.needs %}<p><strong>Possible AI-training needs</strong> (hypotheses, not facts)</p><ul>{% for n in brief.needs %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  <p><strong>Personalisation hooks</strong></p>
+  {% if brief.hooks %}<ul id="brief-hooks">{% for h in brief.hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% else %}<p class="muted">No hooks found.</p>{% endif %}
+  <p><strong>Sources</strong></p>
+  {% if brief.sources %}<ul id="brief-sources">{% for s in brief.sources %}<li>{% if s.startswith(("http://", "https://")) %}<a href="{{ s }}" target="_blank" rel="noopener noreferrer">{{ s }}</a>{% else %}{{ s }}{% endif %}</li>{% endfor %}</ul>{% else %}<p class="muted">No pages were read.</p>{% endif %}
+  <p class="muted">Research cost {{ brief.cost_usd_micros|usd }}. "Generate draft" will use this brief.{% if brief.prospect_id %} Edit it or see its history on the <a href="/pipeline/prospects/{{ brief.prospect_id }}#research-card">prospect page</a>.{% endif %}</p>
+</div>

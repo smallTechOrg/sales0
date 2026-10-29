@@ -1,0 +1,29 @@
+{# Needs: it (row, evidence, stats). #}
+{% set s = it.row %}
+<article class="card" id="suggestion-{{ s.id }}" data-kind="{{ s.kind }}">
+  <div class="card__body stack">
+    <div class="row row--between">
+      <div>
+        <span class="badge {{ 'badge--genuine' if s.kind == 'new_keyword' else 'badge--warn' }}">{{ "Add keyword" if s.kind == "new_keyword" else "Pause keyword" }}</span>
+        <strong class="suggestion__text">{{ s.text }}</strong>
+      </div>
+      <span class="muted">{{ s.created_at|ago }}</span>
+    </div>
+    {% if s.rationale %}<p>{{ s.rationale }}</p>{% endif %}
+    {% if s.kind == "pause_keyword" and it.stats %}
+      <p class="muted">Scanned {{ it.stats.get("scanned", 0) }} posts over {{ it.stats.get("runs", 0) }} run(s); genuine enquiries: {{ it.stats.get("relevant", 0) }}.</p>
+    {% endif %}
+    {% if it.evidence %}
+      <details>
+        <summary>Based on {{ it.evidence|length }} enquir{{ "y" if it.evidence|length == 1 else "ies" }}</summary>
+        <ul class="item-list">
+          {% for e in it.evidence %}<li class="muted">{{ e.snippet }}</li>{% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+    <div class="row">
+      <form method="post" action="/suggestions/{{ s.id }}/accept"><button class="btn btn--primary btn--sm" type="submit">{{ "Add this keyword" if s.kind == "new_keyword" else "Pause this keyword" }}</button></form>
+      <form method="post" action="/suggestions/{{ s.id }}/dismiss"><button class="btn btn--sm" type="submit">Dismiss</button></form>
+    </div>
+  </div>
+</article>

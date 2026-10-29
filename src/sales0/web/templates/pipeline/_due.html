@@ -1,0 +1,60 @@
+{# Needs: due (DuePanel). The Due-today panel; swapped out-of-band after Done / Snooze. #}
+<section class="card due-panel" id="due-today" aria-labelledby="due-title" aria-live="polite"{% if oob %} hx-swap-oob="outerHTML:#due-today"{% endif %}>
+  <div class="card__header"><h2 id="due-title">Due today</h2>
+    <span class="muted">{{ due.due_today|length }} due · {{ due.overdue|length }} overdue</span></div>
+  <div class="card__body">
+    {% set email_due = (due.overdue + due.due_today)|rejectattr("kind", "equalto", "custom")|selectattr("planned_channel", "equalto", "email")|selectattr("prospect_id")|list %}
+    {% if email_due %}
+      {% from "outreach/_followup_drafts.html" import draft_due_form %}
+      {{ draft_due_form(email_due|length, "/pipeline", id="draft-due-panel-form") }}
+    {% endif %}
+    {% if not due.due_today and not due.overdue %}
+      <p class="muted" id="due-empty">Nothing due today.</p>
+    {% endif %}
+    {% for title, rows, over in (("Overdue", due.overdue, true), ("Due today", due.due_today, false)) %}
+      {% if rows %}
+        <div class="due-group" id="due-group-{{ 'overdue' if over else 'today' }}">
+          <h3>{{ title }} ({{ rows|length }})</h3>
+          {% for f in rows %}
+            {% set href = ("/pipeline/prospects/%d" % f.prospect_id) if f.prospect_id else ("/pipeline/leads/%d" % f.lead_id) %}
+            <div class="due-row{% if over %} due-row--overdue{% endif %}" id="followup-{{ f.id }}">
+              <div class="due-row__main">
+                <strong><a href="{{ href }}">{{ f.who }}</a></strong>
+                <span class="badge">{{ f.kind_label }}</span>
+                <span class="due-date">due {{ f.due_on.strftime("%d %b") }}{% if over %} (overdue){% endif %}</span>
+                {% if f.note %}<div class="muted">{{ f.note }}</div>{% endif %}
+              </div>
+              <div class="due-row__actions">
+                <form method="post" action="/pipeline/followups/{{ f.id }}/done" hx-post="/pipeline/followups/{{ f.id }}/done" hx-swap="none">
+                  <input type="hidden" name="next" value="/pipeline">
+                  <label class="visually-hidden" for="due-ch-{{ f.id }}">How was it done</label>
+                  <select class="select" id="due-ch-{{ f.id }}" name="channel">
+                    <option value="">How?</option>
+                    {% for key, label in (("whatsapp", "WhatsApp"), ("linkedin", "LinkedIn"), ("email", "Email"), ("call", "Call")) %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                  </select>
+                  <button class="btn btn--sm btn--primary" type="submit">Done</button>
+                </form>
+                <form method="post" action="/pipeline/followups/{{ f.id }}/snooze" hx-post="/pipeline/followups/{{ f.id }}/snooze" hx-swap="none">
+                  <input type="hidden" name="next" value="/pipeline">
+                  <label class="visually-hidden" for="snooze-{{ f.id }}">Snooze {{ f.who }} until</label>
+                  <input class="input input--date" id="snooze-{{ f.id }}" type="date" name="due_on" required min="{{ today.isoformat() }}" value="{{ (today + one_day).isoformat() }}">
+                  <button class="btn btn--sm" type="submit">Snooze</button>
+                </form>
+                {% if f.draft_message_id and f.draft_state in ("draft", "edited", "approved", "failed", "sending") %}
+                  <a class="btn btn--sm" href="/outreach/messages/{{ f.draft_message_id }}">Review draft</a>
+                {% elif f.kind != "custom" and f.prospect_id and f.planned_channel == "email" %}
+                  <form method="post" action="/pipeline/followups/{{ f.id }}/draft" hx-post="/pipeline/followups/{{ f.id }}/draft" hx-swap="none" hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+                    <input type="hidden" name="next" value="/pipeline">
+                    <button class="btn btn--sm" type="submit">Draft email</button>
+                    <span class="htmx-indicator" role="status"><span class="spinner" aria-hidden="true"></span></span>
+                  </form>
+                {% endif %}
+                <a class="btn btn--sm btn--ghost" href="{{ href }}">Open</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>

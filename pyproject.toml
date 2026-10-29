@@ -1,0 +1,72 @@
+[project]
+name = "sales0"
+version = "0.1.0"
+description = "AI sales and marketing agent for smallTech: LinkedIn discovery, AI triage, review inbox."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+    "anthropic>=0.40",
+    "playwright>=1.45",
+    "tzdata>=2024.1",
+    "httpx>=0.27",
+    "google-auth>=2.62.0",
+    "google-auth-oauthlib>=1.5.0",
+    "cryptography>=42",
+    "argon2-cffi>=25.1.0",
+    "psycopg[binary]>=3.2",
+    "google-cloud-storage>=3.17.1",
+]
+
+[project.scripts]
+sales0 = "sales0.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-playwright>=0.5",
+    "pytest-timeout>=2.3",
+    "pytest-xdist>=3.6",
+    "ruff>=0.17.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sales0"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra -m 'not eval' --dist loadgroup"
+timeout = 120
+markers = [
+    "llm: makes a real Anthropic (Haiku) call using the key from .env",
+    "browser: drives a real Playwright Chromium",
+    "e2e: live server subprocess + headless Chromium + real Haiku",
+    "eval: ground-truth triage eval against the real sheets (network + real Haiku); excluded from the default run",
+    "chrome: needs the installed Google Chrome (real headless Chrome; Phase 1.1)",
+    "unmigrated: the test needs a database that was never migrated (matters when SALES0_TEST_POSTGRES_URL clones a migrated template)",
+    "slow: a test that takes more than a few seconds; deselect with -m 'not slow' for the fast loop",
+    "sqlite_only: asserts SQLite internals (PRAGMA, EXPLAIN QUERY PLAN, file dumps); skipped when SALES0_TEST_POSTGRES_URL is set",
+]
+
+[tool.ruff]
+exclude = [".claude", ".venv", "data"]
+
+[tool.ruff.lint]
+# CI gate: real bugs (syntax, undefined names, unused imports/variables), not style.
+select = ["E4", "E7", "E9", "F"]

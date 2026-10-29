@@ -1,0 +1,138 @@
+{
+ "entries": [
+  {
+   "key": "821b929fcd1a0fb13f2b5f7b",
+   "loose": "2038b020ab74ebcb085d4db6",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhdnstEvCaJ46zW9t1V",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01S3pyNr2CiZZgwsQEs4tFU2",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Vikram Shah",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Individual trainer advertising own availability as open to work, not a buyer requirement",
+       "requirement_summary": "Vikram Shah - Self-promo, open to freelance GenAI training - Unknown/Unknown",
+       "topic": "Generative AI, ChatGPT, Copilot, prompt engineering training",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhdoGCVph7ZrEGHrLwc",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 383,
+     "output_tokens": 507,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Vikram Shah\nHeadline: Certified AI Trainer | Open to work\nDate posted: 2026-10-2",
+   "tool": "record_triage"
+  },
+  {
+   "key": "a416292e4f884be14b18e10e",
+   "loose": "7fd6a09ccc4462eb1cca00e5",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhdnpuMYmdkkKtCs6hN",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01HowDpS5y8fByAV8TRWfNwq",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Mumbai",
+       "company": "Meridian Insurance",
+       "contact_person": "Sanjay Gupta",
+       "dates_mentioned": null,
+       "email": "it-projects@meridian.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 3,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (COO) seeking a partner to design and build an internal AI assistant over its SOP and claims documents",
+       "requirement_summary": "Meridian Insurance - AI assistant over SOP/claims docs, consulting + build - Mumbai/Unknown",
+       "topic": "Internal AI assistant (RAG) over SOP and claims manuals; consulting, architecture, build and handover",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhdo9m4h9YWbrFST1bn",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 418,
+     "output_tokens": 554,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sanjay Gupta\nHeadline: COO at Meridian Insurance\nDate posted: 2026-10-27\nURL: ht",
+   "tool": "record_triage"
+  }
+ ]
+}

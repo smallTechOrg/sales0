@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Review inbox{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Review inbox</h1>
+      <p>Accept genuine buyers, discard the rest. Every decision teaches the AI.</p>
+    </div>
+    <form class="inline-form search-form" method="get" action="/inbox" role="search">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      {% if tab == "skipped" and state == "failed" %}<input type="hidden" name="state" value="failed">{% endif %}
+      <div class="field">
+        <label class="visually-hidden" for="inbox-search">Search this tab</label>
+        <input class="input" id="inbox-search" name="q" type="search" value="{{ q }}" placeholder="Search text, company, author…">
+      </div>
+      {% if tab != "skipped" %}
+      <div class="field">
+        <label class="visually-hidden" for="inbox-category">Category</label>
+        <select class="select" id="inbox-category" name="category">
+          <option value="">All categories</option>
+          {% for value, label in categories %}<option value="{{ value }}"{% if category == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <button class="btn" type="submit">Search</button>
+      {% if q or category %}<a class="btn btn--ghost" href="/inbox?tab={{ tab }}">Clear</a>{% endif %}
+    </form>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "inbox/_tabs.html" %}
+    {% if tab == "skipped" %}{% include "inbox/_skipped.html" %}{% else %}{% include "inbox/_list.html" %}{% endif %}
+  </div>
+{% endblock %}

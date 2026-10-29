@@ -1,0 +1,19 @@
+{# Header identity. shell.login_member (logged in) / shell.acting_member / shell.can_act_as / shell.open_mode. #}
+<div class="acting" id="acting-as">
+  {% if shell.login_member %}
+    <a class="acting__me" id="whoami" href="/account" title="My account">{{ shell.login_member.name }} <span class="badge badge--info">{{ shell.login_member.role }}</span></a>
+  {% endif %}
+  {% if shell.acting_member and shell.can_act_as %}
+    <form class="acting__form" method="post" action="/team/acting">
+      <input type="hidden" name="next" value="{{ request.url.path }}">
+      <label class="acting__label" for="acting-select">{% if shell.login_member %}Act as{% else %}Acting as{% endif %}</label>
+      <select class="acting__select" id="acting-select" name="member_id" data-autosubmit>
+        {% for m in shell.team_members %}
+          <option value="{{ m.id }}"{% if m.id == shell.acting_member.id %} selected{% endif %}>{{ m.name }}{% if m.role == "admin" %} (admin){% endif %}</option>
+        {% endfor %}
+      </select>
+      <noscript><button class="btn btn--sm" type="submit">Switch</button></noscript>
+    </form>
+  {% endif %}
+  <a class="acting__team" href="/team"{% if request.url.path == "/team" %} aria-current="page"{% endif %}>Team</a>
+</div>

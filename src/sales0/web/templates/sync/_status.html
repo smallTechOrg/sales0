@@ -1,0 +1,95 @@
+<div id="sync-status" class="stack"
+     {% if panel.running %}hx-get="/sync/status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}
+     data-state="{{ panel.state }}">
+  <section class="card" aria-labelledby="sync-title">
+    <div class="card__header"><h2 id="sync-title">Status</h2></div>
+    <div class="card__body">
+      <p id="sync-state">
+        {% if panel.running %}<span class="badge badge--info" data-state="running"><span class="spinner" aria-hidden="true"></span> Running…</span>
+        {% elif panel.state == "disabled" %}<span class="badge" data-state="disabled">Manual sync only</span> <span class="muted">Press "Sync now" to pull the sheet. Automatic sync is off (SALES0_SHEET_SYNC_MINUTES is 0).</span>
+        {% else %}<span class="badge badge--genuine" data-state="idle">Idle</span>{% endif %}
+      </p>
+      {% if panel.last_finished_at %}
+        <p id="sync-last">Last sync {{ panel.last_finished_at|ago }}
+          (<span class="badge badge--{{ 'genuine' if panel.last_status == 'ok' else 'medium' }}" id="sync-last-status">{{ panel.last_status }}</span>)
+          {% if panel.last_duration_s is not none %}· took {{ "%.0f"|format(panel.last_duration_s) }}s{% endif %}
+          {% if panel.last_dry_run %}· <span class="muted">dry run, nothing written</span>{% endif %}
+          · {{ panel.runs_total }} run{{ "" if panel.runs_total == 1 else "s" }} so far</p>
+      {% else %}
+        <p id="sync-last" class="muted">No sync has run yet.</p>
+      {% endif %}
+      {% if panel.next_run_in_min is not none %}<p id="sync-next" class="muted">Next sync in ~{{ panel.next_run_in_min }} min.</p>{% endif %}
+      {% if panel.last_error %}<p id="sync-error" class="flash flash--error" role="alert">{{ panel.last_error }}</p>{% endif %}
+      <div class="actions">
+        <form method="post" action="/sync/run" hx-post="/sync/run" hx-target="#sync-status" hx-swap="outerHTML" hx-disabled-elt="find button" class="inline-form">
+          <button id="sync-now" class="btn btn--primary" type="submit" {% if panel.running or not panel.available %}disabled{% endif %}>Sync now</button>
+        </form>
+        <form method="post" action="/sync/dry-run" hx-post="/sync/dry-run" hx-target="#sync-status" hx-swap="outerHTML" hx-disabled-elt="find button" class="inline-form">
+          <button id="sync-dry-run" class="btn" type="submit" {% if not panel.available %}disabled{% endif %}>Preview changes (dry run)</button>
+        </form>
+        {% if panel.blocked and can_override %}
+          <form method="post" action="/sync/run-anyway" hx-post="/sync/run-anyway" hx-target="#sync-status" hx-swap="outerHTML" class="inline-form"
+                hx-confirm="The last sync refused to hide many rows at once (the sheet may be half-loaded). Hide them anyway? Nothing is deleted.">
+            <input type="hidden" name="confirm" value="yes">
+            <button id="sync-apply-anyway" class="btn btn--danger" type="submit" {% if panel.running or not panel.available %}disabled{% endif %}>Apply anyway (admin)</button>
+          </form>
+        {% endif %}
+        {% if interval > 0 %}
+          {% if panel.job_enabled %}
+            <form method="post" action="/sync/disable" hx-post="/sync/disable" hx-target="#sync-status" hx-swap="outerHTML" class="inline-form">
+              <button id="sync-auto-off" class="btn" type="submit">Turn off automatic sync</button>
+            </form>
+            <span class="muted" id="sync-auto">Automatic sync on: every ~{{ interval }} min.</span>
+          {% else %}
+            <form method="post" action="/sync/enable" hx-post="/sync/enable" hx-target="#sync-status" hx-swap="outerHTML" class="inline-form">
+              <button id="sync-auto-on" class="btn" type="submit">Turn on automatic sync (every ~{{ interval }} min)</button>
+            </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="tabs-title">
+    <div class="card__header"><h2 id="tabs-title">Last sync, by tab</h2></div>
+    <div class="card__body table-wrap">
+      {% if panel.tabs %}
+      <table class="table" id="sync-tabs">
+        <thead><tr><th>Tab</th><th class="num">Rows</th><th class="num">Added</th><th class="num">Updated</th><th class="num">Unchanged</th><th class="num">Removed</th><th class="num">Errors</th><th class="num">Warnings</th><th>Problem</th></tr></thead>
+        <tbody>
+        {% for t in panel.tabs %}
+          <tr data-tab="{{ t.tab }}">
+            <td>{{ t.tab }}</td><td class="num">{{ t.rows }}</td><td class="num">{{ t.added }}</td><td class="num">{{ t.updated }}</td>
+            <td class="num">{{ t.unchanged }}</td><td class="num">{{ t.removed }}</td><td class="num">{{ t.errors }}</td><td class="num">{{ t.warnings }}</td>
+            <td>{% if t.fetch_error %}<span class="muted">fetch error: {{ t.fetch_error }}</span>{% endif %}
+                {% if t.removal_blocked %}<span class="muted">removal blocked {{ t.removal_blocked }}</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted">Counts only. "Errors" are rows that could not be applied (each is listed by row number in the server log); "Removed" rows are only hidden in the CRM, never deleted.</p>
+      {% else %}
+        <p id="sync-empty" class="muted">No sync has run yet.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if dry %}
+  <section class="card" aria-labelledby="dry-title" id="sync-dryrun">
+    <div class="card__header"><h2 id="dry-title">Preview (dry run)</h2><span class="muted">{{ dry.at|ago }} · nothing was written</span></div>
+    <div class="card__body table-wrap">
+      <table class="table" id="sync-dryrun-tabs">
+        <thead><tr><th>Tab</th><th class="num">Rows</th><th class="num">Would add</th><th class="num">Would update</th><th class="num">Unchanged</th><th class="num">Would remove</th><th class="num">Errors</th><th>Problem</th></tr></thead>
+        <tbody>
+        {% for t in dry.tabs %}
+          <tr><td>{{ t.tab }}</td><td class="num">{{ t.rows }}</td><td class="num">{{ t.added }}</td><td class="num">{{ t.updated }}</td>
+            <td class="num">{{ t.unchanged }}</td><td class="num">{{ t.removed }}</td><td class="num">{{ t.errors }}</td>
+            <td>{% if t.fetch_error %}<span class="muted">fetch error: {{ t.fetch_error }}</span>{% endif %}{% if t.removal_blocked %}<span class="muted">removal blocked {{ t.removal_blocked }}</span>{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted">{{ dry.total_changes }} change{{ "" if dry.total_changes == 1 else "s" }} would be applied by the next sync.</p>
+    </div>
+  </section>
+  {% endif %}
+</div>

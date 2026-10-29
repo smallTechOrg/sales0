@@ -1,0 +1,11 @@
+## Company
+Name: {{ company_name | inert }}
+Website: {{ website_url | inert }}
+{% if context_text %}
+## What we already know (from our own records; use it only to recognise the right company)
+<our_records>
+{{ context_text | inert }}
+</our_records>
+{% endif %}
+
+Search the web (at most {{ max_uses }} searches), then call `record_web_findings` with at most {{ max_findings }} findings.

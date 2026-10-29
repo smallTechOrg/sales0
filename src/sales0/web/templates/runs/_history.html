@@ -1,0 +1,33 @@
+{# Needs: runs (list[RunView]); oob=True when refreshed alongside the panel. #}
+<div id="run-history"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if runs %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Started</th><th scope="col">Status</th><th scope="col" class="num">Keywords</th>
+            <th scope="col" class="num">Scanned</th><th scope="col" class="num">New</th><th scope="col" class="num">Relevant</th>
+            <th scope="col" class="num">Skipped</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr id="run-row-{{ run.id }}">
+              <td><a href="/runs/{{ run.id }}">{{ run.started_at | localdt }}</a></td>
+              <td>{% with status=run.status %}{% include "runs/_status_badge.html" %}{% endwith %}{% if run.abort_reason and run.status == "aborted" %} <span class="muted">{{ run.abort_reason | replace("_", " ") }}</span>{% endif %}{% if run.layout_warnings %} <span class="badge badge--warn" title="{{ run.layout_warnings }} keyword(s) may have hit a LinkedIn layout change">Layout warning</span>{% endif %}</td>
+              <td class="num">{{ run.keywords_done }}/{{ run.keywords_planned }}</td>
+              <td class="num">{{ run.posts_seen }}</td>
+              <td class="num">{{ run.posts_new }}</td>
+              <td class="num">{{ run.posts_relevant }}</td>
+              <td class="num">{{ run.posts_skipped_ai }}{% if run.triage_failed %} <span class="muted">({{ run.triage_failed }} failed)</span>{% endif %}</td>
+              <td class="num">{{ usd_precise(run.cost_usd_micros) }}</td>
+              <td class="num">{{ duration_text(run.duration_ms if run.duration_ms is not none else elapsed_ms(run.started_at, run.finished_at)) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state empty-state--compact"><p>No runs yet.</p></div>
+  {% endif %}
+</div>

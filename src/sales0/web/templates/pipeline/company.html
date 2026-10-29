@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner, flag_badges %}
+{% block title %}{{ life.name }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/pipeline">&larr; Pipeline</a>{% if life.stage %} / <a href="/pipeline?tab={{ {'prospect': 'prospects', 'lead': 'leads', 'client': 'clients'}[life.stage] }}">{{ life.stage_label }}s</a>{% endif %} / <a href="/companies">Companies</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    {% include "pipeline/_prospect_header.html" %}
+    <div class="grid-2">
+      <div class="stack">
+        {% if p %}
+          {% include "pipeline/_summary.html" %}
+          {% include "pipeline/_research.html" %}
+          {% include "pipeline/_notes.html" %}
+        {% endif %}
+        {% with timeline=company_timeline, base=(("/pipeline/prospects/%d" % p.id) if p else ("/companies/%d" % life.company_id)) %}{% include "pipeline/_timeline.html" %}{% endwith %}
+      </div>
+      <div class="stack">
+        <section class="card" id="company-people" aria-labelledby="ppl-title">
+          <div class="card__header"><h2 id="ppl-title">People</h2><span class="muted">{{ co.contacts|length }}</span></div>
+          <div class="card__body">
+            {% for c in contact_details or co.contacts %}
+              {% set role = roles.get(c.id) %}
+              <div class="reply-item" id="company-contact-{{ c.id }}"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "Person" }}</a>
+                {% if role %}<span class="badge" data-role="{{ role }}">{{ role }}</span>{% endif %}
+                <div class="muted">{{ c.email or "" }}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.title %} · {{ c.title }}{% endif %}</div>
+                <form class="inline-form" method="post" action="/companies/{{ life.company_id }}/people/{{ c.id }}/role">
+                  <label class="field__label" for="role-{{ c.id }}">Role at {{ life.name }}</label>
+                  <select class="select" id="role-{{ c.id }}" name="role">
+                    <option value="">Not set</option>
+                    {% for key, label in person_role_labels.items() %}<option value="{{ key }}"{% if role == label %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                  </select>
+                  <input class="input" name="role_other" maxlength="40" placeholder="or type a role" aria-label="Other role"{% if role and role not in person_role_labels.values() %} value="{{ role }}"{% endif %}>
+                  <button class="btn btn--sm" type="submit">Save role</button>
+                </form>
+                {% if c.email_items is defined %}
+                  <details class="inline-edit"><summary>Edit e-mail, phone, details</summary>
+                    {% with next_url="/companies/%d" % life.company_id, with_notes=False %}{% include "contacts/_editor.html" %}{% endwith %}
+                  </details>
+                {% endif %}
+              </div>
+            {% else %}<p class="muted">No people yet. They are added when you accept an enquiry with an address, send an email - or add a person here.</p>{% endfor %}
+            <details class="inline-edit" id="add-company-person">
+              <summary>Add a person</summary>
+              <form class="stack" method="post" action="/companies/{{ life.company_id }}/people">
+                <div class="grid-2">
+                  <div class="field"><label class="field__label" for="apc-name">Name</label><input class="input" id="apc-name" name="full_name" maxlength="200"></div>
+                  <div class="field"><label class="field__label" for="apc-email">E-mail</label><input class="input" id="apc-email" type="email" name="email" maxlength="254"></div>
+                  <div class="field"><label class="field__label" for="apc-phone">Phone</label><input class="input" id="apc-phone" name="phone" maxlength="50"></div>
+                  <div class="field"><label class="field__label" for="apc-title">Title</label><input class="input" id="apc-title" name="title" maxlength="200"></div>
+                  <div class="field"><label class="field__label" for="apc-li">LinkedIn profile</label><input class="input" id="apc-li" name="linkedin_url" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+                  <div class="field"><label class="field__label" for="apc-role">Role</label>
+                    <select class="select" id="apc-role" name="role"><option value="">Not set</option>
+                      {% for key, label in person_role_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+                    <input class="input" name="role_other" maxlength="40" placeholder="or type a role" aria-label="Other role"></div>
+                </div>
+                <div><button class="btn" type="submit">Add person</button></div>
+              </form>
+            </details>
+          </div>
+        </section>
+
+        <section class="card" id="company-enquiries" aria-labelledby="enq-title">
+          <div class="card__header"><h2 id="enq-title">Enquiries</h2><span class="muted">{{ co.enquiries|length }}</span></div>
+          <div class="card__body">
+            <p class="hint">Each enquiry is one specific requirement. Contacted and follow-up statuses follow this company's outreach; on the enquiry that brought the company in you can also set them here and the company's prospect stage follows. The others are set here.</p>
+            {% for e in co.enquiries %}
+              <div class="reply-item" id="enquiry-{{ e.id }}">
+                <strong>{{ e.requirement_summary or "(no summary)" }}</strong>
+                <div class="muted">
+                  {% if e.deal_label %}<span class="badge stage-badge" data-deal-status="{{ e.deal_status }}">{{ e.deal_label }}</span> {% endif %}
+                  {% if e.priority %}<span class="badge badge--{{ e.priority }}">{{ e.priority|capitalize }}</span> {% endif %}
+                  <span class="badge">{{ e.review_status|replace("_", " ")|capitalize }}</span>
+                  {% if e.sheet_status %}<span class="chip chip--sheet">Sheet: {{ e.sheet_status }}</span>{% endif %}
+                  {% if e.date_added %}{{ e.date_added|ago }}{% endif %}
+                </div>
+                <div class="row">
+                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ link_label(e.source_url) }}</a>{% endif %}
+                  {% if e.author_profile_url and e.author_profile_url.startswith(("http://", "https://")) and e.author_profile_url != e.source_url %}<a href="{{ e.author_profile_url }}" rel="noopener noreferrer" target="_blank">Author profile</a>{% endif %}
+                  <a href="/inbox?tab={{ 'accepted' if e.review_status == 'accepted' else ('discarded' if e.review_status == 'discarded' else 'review') }}&q={{ (e.requirement_summary or '')[:40]|urlencode }}">Open in Inbox</a>
+                  {% if p %}<a href="/outreach/compose?enquiry_id={{ e.id }}">Draft from this enquiry</a>{% endif %}
+                </div>
+                {% if e.review_status == "accepted" %}
+                <form class="inline-form" id="enquiry-status-form-{{ e.id }}" method="post" action="/pipeline/enquiries/{{ e.id }}/status">
+                  <label class="field__label" for="enquiry-status-{{ e.id }}">Status</label>
+                  <select class="select" id="enquiry-status-{{ e.id }}" name="status">
+                    {% for key, label in deal_options %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                  </select>
+                  <button class="btn btn--sm" type="submit">Set</button>
+                  <button class="btn btn--sm btn--primary" name="status" value="won" type="submit">Won</button>
+                  <button class="btn btn--sm" name="status" value="lost" type="submit">Lost</button>
+                </form>
+                {% endif %}
+                {% if p %}
+                <form class="inline-form" id="enquiry-category-form-{{ e.id }}" method="post" action="/pipeline/prospects/{{ p.id }}/enquiries/{{ e.id }}/category" hx-post="/pipeline/prospects/{{ p.id }}/enquiries/{{ e.id }}/category" hx-swap="none" hx-trigger="change">
+                  <label class="field__label" for="enquiry-category-{{ e.id }}">Category</label>
+                  <select class="select" id="enquiry-category-{{ e.id }}" name="category" data-autosubmit="request">
+                    {% for value, label in (("relevant_prospect", "Relevant prospect"), ("channel_partner", "Channel partner"), ("competitor", "Competitor")) %}<option value="{{ value }}"{% if e.category == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                  </select>
+                  <noscript><button class="btn btn--sm" type="submit">Save</button></noscript>
+                </form>
+                {% endif %}
+              </div>
+            {% else %}<p class="muted">No enquiries yet. This company is here without one (for example from a sheet or a cold list).</p>{% endfor %}
+          </div>
+        </section>
+
+        {% if life.open_lead_id %}
+          {% with follow_ups=lead_follow_ups, base="/pipeline/leads/%d" % life.open_lead_id, can_act=True %}{% include "pipeline/_followups.html" %}{% endwith %}
+        {% elif p %}
+          {% with follow_ups=p.follow_ups, base="/pipeline/prospects/%d" % p.id, can_act=(p.status == "open" and not life.off_ramp and life.stage == "prospect"), no_follow_up=(p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0) %}{% include "pipeline/_followups.html" %}{% endwith %}
+        {% endif %}
+
+        <section class="card" id="company-outreach" aria-labelledby="out-title">
+          <div class="card__header"><h2 id="out-title">Outreach &amp; replies</h2>
+            {% if p and not life.off_ramp %}<a class="btn btn--sm" href="/outreach/compose?prospect_id={{ p.id }}">Draft email</a>{% endif %}</div>
+          <div class="card__body">
+            {% for m in co.messages %}
+              <div class="reply-item" id="message-{{ m.id }}"><a href="/outreach/messages/{{ m.id }}">{{ m.subject or "(no subject)" }}</a>
+                <div class="muted"><span class="badge state state--{{ m.state }}">{{ m.state|capitalize }}</span>
+                  {% if m.reply_status %}<span class="badge reply-badge reply-badge--{{ m.reply_status }}">{{ m.reply_status|replace("_", " ")|capitalize }}</span>{% endif %}
+                  {% if m.sent_at %}sent {{ m.sent_at|ago }}{% endif %}{% if m.owner_name %} · {{ m.owner_name }}{% endif %}</div></div>
+            {% else %}<p class="muted">No emails to this company yet. Outreach and follow-ups belong to the company and are sent to a person you choose, optionally about one enquiry.</p>{% endfor %}
+            {% for r in co.replies %}
+              <div class="reply-item"><span class="badge reply-kind reply-kind--{{ r.kind }}">Reply · {{ r.kind|replace("_", " ")|capitalize }}</span>
+                {% if r.intent %}<span class="badge reply-intent reply-intent--{{ r.intent }}">{{ r.intent|replace("_", " ")|capitalize }}</span>{% endif %}
+                <span class="muted">{{ r.received_at|ago }} · <a href="/outreach/messages/{{ r.message_id }}">Message #{{ r.message_id }}</a></span>
+                {% if r.snippet %}<div class="reply-snippet">{{ r.snippet }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        {% if p and (p.sheet_sources or p.sheet_tabs) %}
+        <section class="card" id="sheet-panel" aria-labelledby="sheet-title">
+          <div class="card__header"><h2 id="sheet-title">Synced from sheet</h2><span class="badge badge--info">Read-only</span></div>
+          <div class="card__body">
+            <p class="lock" id="sheet-lock">Synced from sheet - a sheet cell wins only when it changes</p>
+            <p class="hint">When a cell changes in the sheet, the next sync copies it here. Until that cell changes, your edits here stand; a stage you set in the app is never overwritten. Notes, characteristics, follow-ups, flags and the timeline are yours. sales0 never writes to Google.</p>
+            <table class="table" id="sheet-sources">
+              <thead><tr><th scope="col">Tab</th><th scope="col">Row</th><th scope="col">Sheet status</th><th scope="col">Last seen</th></tr></thead>
+              <tbody>
+              {% for s in p.sheet_sources %}
+                <tr><td><span class="chip chip--sheet">{{ s.sheet_tab or "—" }}</span></td><td>{{ s.row_number or "—" }}</td><td>{{ s.sheet_status or p.sheet_status or "—" }}</td><td>{{ s.last_seen_at|ago if s.last_seen_at else "—" }}</td></tr>
+              {% else %}
+                <tr><td colspan="4">{% for t in p.sheet_tabs %}<span class="chip chip--sheet">{{ t }}</span> {% endfor %}{% if p.sheet_status %}Status: {{ p.sheet_status }}{% endif %}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if p and (p.reason_text or p.reason_url or p.extra_link) %}
+        <section class="card" id="prospect-reason" aria-labelledby="reason-title">
+          <div class="card__header"><h2 id="reason-title">Why this company</h2></div>
+          <div class="card__body">
+            {% if p.reason_text %}<p>{{ p.reason_text }}</p>{% endif %}
+            {% for u in (p.reason_url, p.extra_link) if u and u.startswith(("http://", "https://")) %}<p><a href="{{ u }}" rel="noopener noreferrer" target="_blank">{{ u }}</a></p>{% endfor %}
+          </div>
+        </section>
+        {% endif %}
+
+        <details class="inline-edit" id="company-merge">
+          <summary>Merge a duplicate into this company</summary>
+          <form class="inline-form" method="post" action="/companies/{{ life.company_id }}/merge" hx-post="/companies/{{ life.company_id }}/merge" hx-swap="none" hx-confirm="Merge the chosen company into {{ life.name }}? Its people, enquiries and history move here and the duplicate is deleted.">
+            <div class="field"><label class="field__label" for="merge-drop">Duplicate company</label>
+              <select class="input" id="merge-drop" name="drop_id" required>
+                <option value="">Choose…</option>
+                {% for d in duplicates %}<option value="{{ d.id }}">{{ d.name }}{% if d.website %} ({{ d.website }}){% endif %} · #{{ d.id }}</option>{% endfor %}
+              </select></div>
+            <button class="btn btn--danger" type="submit">Merge into {{ life.name }}</button>
+          </form>
+          <p class="hint">Listed: companies with the same website domain or LinkedIn page, or a name that starts the same. Everything moves to this company; the duplicate's name is kept in the timeline.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+{% endblock %}

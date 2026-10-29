@@ -1,0 +1,1859 @@
+{
+ "entries": [
+  {
+   "key": "fde1ddbe1295d7aa53bfc85e",
+   "loose": "ba68fd1980384edc4df0c7f3",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhVkPM3t6hKSwYgzscT",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01YAY8VQxSKopeyzb71JCJsR",
+      "input": {
+       "intent": "other",
+       "kind": "bounce",
+       "reason": "\"Undeliverable\"; recipient mailbox doesn't exist or address is misspelled."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhVkmASurKwABTPSPY1",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 1105
+     },
+     "cache_creation_input_tokens": 1105,
+     "cache_read_input_tokens": 0,
+     "inference_geo": "global",
+     "input_tokens": 295,
+     "output_tokens": 108,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: system-admin@oakridge-motors.example\nSubject: Undeliverable: AI workshop for your managers\nSnippet: Your message t",
+   "tool": "record_reply"
+  },
+  {
+   "key": "89eaefecafaada330b888469",
+   "loose": "9b39ab18e0e339e2414cbd74",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhVqkYz8eH1UbXa7duR",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01VywK9NqfqAKTgffQfqt8KQ",
+      "input": {
+       "intent": "other",
+       "kind": "bounce",
+       "reason": "Delivery failed permanently: 550 5.1.1 User unknown for the recipient address."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhVr7dnPtruN2sj8SQA",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 288,
+     "output_tokens": 108,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: mail-delivery@campus-mail.example\nSubject: Mail delivery failed\nSnippet: Delivery to the following recipient faile",
+   "tool": "record_reply"
+  },
+  {
+   "key": "a1db879c6ca9ab14d6f27925",
+   "loose": "695bad707ec9dcd240f2b1ae",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhVyxfASbe6XcTrvo8W",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Ct7qPDjWtzyMtkxEbkNSJL",
+      "input": {
+       "intent": "other",
+       "kind": "auto_reply",
+       "reason": "Out-of-office until 4 November; names Rohan Iyer as urgent contact."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhVzMy6Exv68tL8N8FM",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 301,
+     "output_tokens": 108,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: rahul.mehta@tandem-logistics.example\nSubject: Re: AI workshop for your managers\nSnippet: Thank you for your messag",
+   "tool": "record_reply"
+  },
+  {
+   "key": "0020e9f8e6b0f978b9323618",
+   "loose": "c187b290ddb69d12f3d0f4d3",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhW68VENLwVLph4r86f",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01MZYLMM2GBWQsze9jWeDPxW",
+      "input": {
+       "intent": "other",
+       "kind": "auto_reply",
+       "reason": "Out-of-office: on leave until 10 Nov, names HR operations for assistance."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhW6XoHwFxnguW8Qbi8",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 294,
+     "output_tokens": 108,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: s.kulkarni@meridian-bank.example\nSubject: Re: AI workshop for your managers\nSnippet: Automatic reply: Thank you fo",
+   "tool": "record_reply"
+  },
+  {
+   "key": "d53f7c7b0de803cdbbff9786",
+   "loose": "ae3819e276738eb6e1192181",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWAo2wCu8zcKUrNgtQ",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_012sYX67ZfhvvKhRVg8dMbiU",
+      "input": {
+       "intent": "other",
+       "kind": "auto_reply",
+       "reason": "Ticket auto-acknowledgement: \"Your request #48213 has been received\" from support system."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWBC6JS5i8guEgpm4m",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 283,
+     "output_tokens": 110,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: support@cloudnest.example\nSubject: [Ticket #48213] AI workshop for your managers\nSnippet: Thanks for contacting Cl",
+   "tool": "record_reply"
+  },
+  {
+   "key": "d71fc495e4033e9702224f9d",
+   "loose": "04e2545248a2fcf7e626e583",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWFouxP1MmkU8AxCFY",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01RXdrQrKKVdTyUwDrFLUDLL",
+      "input": {
+       "intent": "other",
+       "kind": "auto_reply",
+       "reason": "Mailbox not monitored notice; directs sales enquiries to website form, no person decision."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWGCEL2q48nPaHanKU",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 272,
+     "output_tokens": 109,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: info@riverstone-estates.example\nSubject: Re: AI workshop for your managers\nSnippet: This mailbox is not monitored.",
+   "tool": "record_reply"
+  },
+  {
+   "key": "305c8b55c917764f666e0704",
+   "loose": "777705f8c07312087838d635",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWM1wm9rAUZ4Qb1Zpf",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_0144xkFc426RKCPY56Ewq2fG",
+      "input": {
+       "intent": "other",
+       "kind": "auto_reply",
+       "reason": "Out-of-office: on leave until 3 November, will respond after returning to office."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWMVy2PQn4C7iv9r9A",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 297,
+     "output_tokens": 105,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: vikram.joshi@sundaram-textiles.example\nSubject: Re: AI workshop for your managers\nSnippet: Main 3 November tak chh",
+   "tool": "record_reply"
+  },
+  {
+   "key": "123f48818c6619fc539a0a32",
+   "loose": "a814b499580006ff94c360a8",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWSd2axnPAPJXT5RKQ",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01JNQwC5N1XPdnRuw3iVR1pq",
+      "input": {
+       "intent": "other",
+       "kind": "auto_reply",
+       "reason": "Automated receipt confirmation from admissions office; \"Do not reply to this message.\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWT2MCWGVSrypEfwPv",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 279,
+     "output_tokens": 106,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: admin@silverline-edu.example\nSubject: Thank you for contacting Silverline\nSnippet: This is an automated confirmati",
+   "tool": "record_reply"
+  },
+  {
+   "key": "1bf5cbec04be80157fe5c5e2",
+   "loose": "f902d2ddf7213173f712f586",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWXZSpUbrUvqoWtdpc",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_0174NsGBjpz5k1kK82FtkAzJ",
+      "input": {
+       "intent": "interested",
+       "kind": "human",
+       "reason": "\"this looks relevant for us. Can we set up a call next Tuesday to discuss a workshop\" for 40 sales staff"
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWXumqVkDHUdPcGvCF",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 293,
+     "output_tokens": 117,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: meera.nair@lotuspay.example\nSubject: Re: AI workshop for your managers\nSnippet: Hi Ann, this looks relevant for us",
+   "tool": "record_reply"
+  },
+  {
+   "key": "b20fe231278d9ee822533fd9",
+   "loose": "889ada7268495a214bcee904",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWdsDNGmqSfkbN8nRn",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01BL2VjE7DLkaqUXcNQqpfU3",
+      "input": {
+       "intent": "interested",
+       "kind": "human",
+       "reason": "Asks to send the deck and pricing for the 2-day program for about 30 managers."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWeDo2joXj3rSHqAMe",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 285,
+     "output_tokens": 104,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: arjun.rao@bluepeak-energy.example\nSubject: Re: AI workshop for your managers\nSnippet: Thanks for reaching out. Ple",
+   "tool": "record_reply"
+  },
+  {
+   "key": "2539b9b98980dedeb8ec7333",
+   "loose": "f4da1c757c1ee0610b0c1da2",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWk4HMbYbQvyTCGfmT",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01R5JJBcA8YmvRzzyn9HpPXW",
+      "input": {
+       "intent": "interested",
+       "kind": "human",
+       "reason": "Asks to share the proposal and schedule; says they are planning next month"
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWkTq5AhsoUTi3fTAx",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 297,
+     "output_tokens": 98,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: kavita.shah@sundaram-textiles.example\nSubject: Re: AI workshop for your managers\nSnippet: Namaste Ann ji, aapka wo",
+   "tool": "record_reply"
+  },
+  {
+   "key": "7f6e97dd8c9c03a5c0e9c0a7",
+   "loose": "264185bdacaa5cb838c555c9",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWqREyYK1cmtFSe1Td",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_014EZbTKJHJTMMDE91JBthuf",
+      "input": {
+       "intent": "interested",
+       "kind": "human",
+       "reason": "\"we were just discussing GenAI training for the ops team... free for a quick call Thursday at 3pm?\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWqna23oXN6GDLb3k9",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 280,
+     "output_tokens": 112,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: tom.becker@northwind.example\nSubject: Re: AI workshop for your managers\nSnippet: Interesting timing - we were just",
+   "tool": "record_reply"
+  },
+  {
+   "key": "27c0ddf9cb422fe4f1890fee",
+   "loose": "3f045becd1ac1688f49158df",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhWxA3BvBL8ndDByo6B",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01EJ2epF3w3TfW4E31DHPpff",
+      "input": {
+       "intent": "interested",
+       "kind": "human",
+       "reason": "\"Yes, we are interested\"; asks for sample agenda and pharma client references, decision by month end."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhWxWcvEA9FbrLjeeEz",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 287,
+     "output_tokens": 109,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: latha.iyer@pioneer-pharma.example\nSubject: Re: AI workshop for your managers\nSnippet: Yes, we are interested. Coul",
+   "tool": "record_reply"
+  },
+  {
+   "key": "0ff91f2ce0cedb506130df6c",
+   "loose": "bf27499f982db0742d42887c",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhX47DxiLGyjDf7pjSa",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01XAD8F2XCqtN2obWb8DZQMh",
+      "input": {
+       "intent": "interested",
+       "kind": "human",
+       "reason": "\"Sounds good, let's talk. Call me anytime this week.\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhX4UoF2xa1qNWKaXxM",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 262,
+     "output_tokens": 98,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: dev.malhotra@zenith-cars.example\nSubject: Re: AI workshop for your managers\nSnippet: Sounds good, let's talk. Call",
+   "tool": "record_reply"
+  },
+  {
+   "key": "0231b8b8a269afc092eda4a7",
+   "loose": "c77a679922de4718c91b20a9",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhX9qWwHuvo3BdEbQqr",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_019Jhzi62ZqMBfTBeMXR28pd",
+      "input": {
+       "intent": "question",
+       "kind": "human",
+       "reason": "Asks \"Who are you and how did you get my email address?\" and says they don't recall asking for this."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXABqqnHLVkARfjES3",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 268,
+     "output_tokens": 106,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: gita.krishnan@harbor-foods.example\nSubject: Re: AI workshop for your managers\nSnippet: Who are you and how did you",
+   "tool": "record_reply"
+  },
+  {
+   "key": "bbbeb7933dbab6cbd8f23abc",
+   "loose": "c248fd4654bb3a71858c8f09",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXJzv4q7pTR8su6FEq",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_0112cCYu1DXtD1PYydoLG6Sc",
+      "input": {
+       "intent": "question",
+       "kind": "human",
+       "reason": "Asks what the workshop covers, whether it is hands-on or lecture, and if a coding background is needed."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXKL1mXqUekWPH8amr",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 284,
+     "output_tokens": 110,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: paul.dsouza@orchid-labs.example\nSubject: Re: AI workshop for your managers\nSnippet: Can you tell me more about wha",
+   "tool": "record_reply"
+  },
+  {
+   "key": "ace29ca42ddf2f53c2d23221",
+   "loose": "1eaeaa563f443fb49a3ef447",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXSPRxH9qFQVwAEpUn",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01PYeMRfc5iYiwdzUW9hu5J7",
+      "input": {
+       "intent": "question",
+       "kind": "human",
+       "reason": "Asks whether workshop is for engineers or non-technical staff, plus typical group size and duration."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXSoUEe9rwF26bc2AE",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 268,
+     "output_tokens": 107,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: nina.thomas@brightpath.example\nSubject: Re: AI workshop for your managers\nSnippet: Is this meant for engineers or ",
+   "tool": "record_reply"
+  },
+  {
+   "key": "50ca340771726f40c12e8b1d",
+   "loose": "ca5f74b6f5a13170c31751f0",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXXeBFYJin18ZyWbLn",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Qxj5VWXH5YSYLMEfebBTdn",
+      "input": {
+       "intent": "question",
+       "kind": "human",
+       "reason": "Asks which Pune companies smallTech has worked with and whether workshops are in-person only; asks before deciding."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXY3VsfeGK7RCCQxHY",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 268,
+     "output_tokens": 112,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: sameer.ali@greenfield-tech.example\nSubject: Re: AI workshop for your managers\nSnippet: Which companies in Pune hav",
+   "tool": "record_reply"
+  },
+  {
+   "key": "73130e82e0027521bc6924bd",
+   "loose": "92972b8fa8ccef090aab7ff3",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXd19R4k9viThAg8rn",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_015ZJMbjZZKS6pTxBJPDpVPX",
+      "input": {
+       "intent": "question",
+       "kind": "human",
+       "reason": "Asks \"who is this?\" and \"What is this regarding?\" - wants to know who smallTech is before deciding."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXdTRxLhFwTSPXd8v8",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 274,
+     "output_tokens": 111,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: anita.bose@coastline-retail.example\nSubject: Re: AI workshop for your managers\nSnippet: Sorry, who is this? I don'",
+   "tool": "record_reply"
+  },
+  {
+   "key": "e491d89de4ef145c7f168a58",
+   "loose": "b4a3c7ccdd839d058cd12125",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXirdVhJAjBVd81XJW",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01LqoYeFSfy5oFJEQPF5MVwt",
+      "input": {
+       "intent": "not_now",
+       "kind": "human",
+       "reason": "Training budgets frozen until next financial year; asks to reach out again in April."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXjCDj9pLpJwCyNeVY",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 276,
+     "output_tokens": 102,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: farhan.sheikh@veritas-health.example\nSubject: Re: AI workshop for your managers\nSnippet: Thanks for the note, but ",
+   "tool": "record_reply"
+  },
+  {
+   "key": "a480b0223a995e5e12cd7145",
+   "loose": "d2a602f279ea4c6425100f59",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXpRV3qQxXFKBacSAe",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01XTYgjZSL4BvyF1uSVrwRxz",
+      "input": {
+       "intent": "not_now",
+       "kind": "human",
+       "reason": "\"We're not looking at anything like this right now\" - polite decline, no request to stop contact."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXprGzfuSRfcL8W4ja",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 276,
+     "output_tokens": 106,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: claire.dupont@skyline-ins.example\nSubject: Re: AI workshop for your managers\nSnippet: Thank you for thinking of us",
+   "tool": "record_reply"
+  },
+  {
+   "key": "220cdcf7ba51d4b5efb29392",
+   "loose": "449f98edef3d982f07766b99",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhXxQT5gptkz25Nf6Um",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01BFVMALtyLCYSGVdidTZoXY",
+      "input": {
+       "intent": "not_now",
+       "kind": "human",
+       "reason": "Polite decline: already has training vendor under contract through 2027, \"will pass for now\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhXxqFFmqENwH1vppzN",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 274,
+     "output_tokens": 105,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: harish.rao@oakridge-motors.example\nSubject: Re: AI workshop for your managers\nSnippet: Appreciate you writing. We ",
+   "tool": "record_reply"
+  },
+  {
+   "key": "09e544c5619f8c95d1239a8c",
+   "loose": "f33d30a63b1561a091039a83",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhY5gFw9KQEAcUAoTi5",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01858oHriegBX3njd1o9CfFA",
+      "input": {
+       "intent": "not_now",
+       "kind": "human",
+       "reason": "\"Not a priority this quarter, we are tied up with the audit. Maybe revisit in Q1?\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhY6C1f4oGvBHjagzDG",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 272,
+     "output_tokens": 112,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: isha.verma@meridian-bank.example\nSubject: Re: AI workshop for your managers\nSnippet: Not a priority this quarter, ",
+   "tool": "record_reply"
+  },
+  {
+   "key": "b9dfb24f4849b67969c5f5c6",
+   "loose": "74e6345eb71fa250b88121fc",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYBpbdipfXwjtJsoEN",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01FrX61REottWjFckiK5vXgU",
+      "input": {
+       "intent": "not_now",
+       "kind": "human",
+       "reason": "\"The team is swamped until Diwali, can we reconnect in the second week of November?\" Polite deferral, asks to reconnect later."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYCAweB2F5hH2CK1hx",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 278,
+     "output_tokens": 121,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: manoj.pillai@tandem-logistics.example\nSubject: Re: AI workshop for your managers\nSnippet: Thanks for the follow up",
+   "tool": "record_reply"
+  },
+  {
+   "key": "58f8391c672e6828ab4a4c76",
+   "loose": "d3347d6324df0df578ec05ca",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYJLGQo8HHA3WhS6vG",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01WsyJS9MD3Qnh9PNHnbJyWG",
+      "input": {
+       "intent": "not_now",
+       "kind": "human",
+       "reason": "\"bad timing for us - there is a hiring and spending freeze in place at the moment\" - polite decline for now"
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYJhbmDLLdS5kFFi99",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 282,
+     "output_tokens": 112,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: olivia.grant@cloudnest.example\nSubject: Re: AI workshop for your managers\nSnippet: Hi Ann, bad timing for us - the",
+   "tool": "record_reply"
+  },
+  {
+   "key": "03dfa5ad424fdbd26015ca4d",
+   "loose": "b17fe98012aa2bdaaf38032a",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYPiinZAyJHTUqZCe2",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01UxJoJ3vC9GQfqxcngVzVKZ",
+      "input": {
+       "intent": "unsubscribe",
+       "kind": "human",
+       "reason": "Snippet asks to be removed from the list: \"Please remove me from your list.\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYQDUePoS8sMsBDWr6",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 250,
+     "output_tokens": 105,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: ben.carter@riverstone-estates.example\nSubject: Re: AI workshop for your managers\nSnippet: Please remove me from yo",
+   "tool": "record_reply"
+  },
+  {
+   "key": "5f89ab8eef1c9fce404ed4af",
+   "loose": "0e15fcf9793dc7965f8501b6",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYW6hY4Ux8LgwciXEZ",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01FcXeKnRGoxiSyp2hqX6Uh1",
+      "input": {
+       "intent": "unsubscribe",
+       "kind": "human",
+       "reason": "\"STOP emailing me. This is spam and I will report it\" - hostile spam complaint, asks to stop contact."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYWUGJ3FK3CpM82N8E",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 271,
+     "output_tokens": 118,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: ritu.sen@silverline-edu.example\nSubject: Re: AI workshop for your managers\nSnippet: STOP emailing me. This is spam",
+   "tool": "record_reply"
+  },
+  {
+   "key": "b7ce4484e5fbfcb723be459a",
+   "loose": "62a5b632e98d3a4466c37a73",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYbcaZyQcK99Qz1Chb",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01M36GFkUBhvEirwvEz5rNBS",
+      "input": {
+       "intent": "unsubscribe",
+       "kind": "human",
+       "reason": "Snippet says \"Unsubscribe\" in reply to outreach; asks to be removed from list."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYc19ippTENT8M26zZ",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 248,
+     "output_tokens": 112,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: lars.nielsen@lotuspay.example\nSubject: Re: AI workshop for your managers\nSnippet: Unsubscribe\n",
+   "tool": "record_reply"
+  },
+  {
+   "key": "cd1256b053c98210c97afbc8",
+   "loose": "5a4426738c1100a24b65b680",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYhNc2e3ZwsgSpkAS5",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Uh7sGrNXNkEgSNjSiFdWBf",
+      "input": {
+       "intent": "unsubscribe",
+       "kind": "human",
+       "reason": "\"Do not contact me again,\" asks how details were obtained, threatens data protection complaint."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYhhwgWswSYh67z8WP",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 272,
+     "output_tokens": 109,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: usha.menon@bluepeak-energy.example\nSubject: Re: AI workshop for your managers\nSnippet: Do not contact me again. Ho",
+   "tool": "record_reply"
+  },
+  {
+   "key": "06fcc9851a1aff2692302535",
+   "loose": "2b6aad4f7ff0637f9c9b5cf9",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYnsza7SncqRWBFhfG",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01VRsA1pA5nKTL8mWLbC95cZ",
+      "input": {
+       "intent": "unsubscribe",
+       "kind": "human",
+       "reason": "\"Please take me off your mailing list and don't email this address again.\""
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYoDaZh7dVBHqUqbGU",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 262,
+     "output_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: yash.kapoor@northwind.example\nSubject: Re: AI workshop for your managers\nSnippet: Not interested. Please take me o",
+   "tool": "record_reply"
+  },
+  {
+   "key": "241eadc158ef0f6ca62d4262",
+   "loose": "20dfc4ab76c4ccabd9056e03",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYtWq8Mk9eRWsD9orh",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01HPxwBjJnHX8NbxSNJCELWn",
+      "input": {
+       "intent": "other",
+       "kind": "human",
+       "reason": "Forwarding to HR lead Sunita who handles training vendors; no direct ask or decision yet."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhYtqBaz49qtUdSBGRz",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 289,
+     "output_tokens": 109,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: rahul.sharma@pioneer-pharma.example\nSubject: Re: AI workshop for your managers\nSnippet: Forwarding this to our HR ",
+   "tool": "record_reply"
+  },
+  {
+   "key": "43275c08012a9f5d3ccf0422",
+   "loose": "157a91637245c374fa44d071",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhYzeg5XXLb7LmeZTRF",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_015742aPqEUG2k6DbAFYhYBU",
+      "input": {
+       "intent": "other",
+       "kind": "human",
+       "reason": "Wrong contact: says they left the company in March and are no longer L&D manager. No further ask."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhZ17hLWygxoEvTf5Mq",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 273,
+     "output_tokens": 106,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: zoe.walsh@harbor-foods.example\nSubject: Re: AI workshop for your managers\nSnippet: I think you have the wrong pers",
+   "tool": "record_reply"
+  },
+  {
+   "key": "2424e40e5dcbfe9cdeb95c0a",
+   "loose": "4b006450bc1b3a58a4e5d393",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhZ7Fo3ifioRvYaaDZF",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01RfGh9jmaa3j2CLjAnW2VZB",
+      "input": {
+       "intent": "other",
+       "kind": "human",
+       "reason": "Snippet \"Got it, thank you.\" is a brief acknowledgement with no request or decision stated."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhZ7hq1D8K8dtRnmk63",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 251,
+     "output_tokens": 108,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: dinesh.kumar@zenith-cars.example\nSubject: Re: AI workshop for your managers\nSnippet: Got it, thank you.\n",
+   "tool": "record_reply"
+  },
+  {
+   "key": "79eb3f426b2a89b20a9b68fd",
+   "loose": "53d05ac80105467622009aba",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhZDLfYQFN7tAWrVoR5",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Hc4uipCAtSuxEzWqbsGbGj",
+      "input": {
+       "intent": "other",
+       "kind": "human",
+       "reason": "Recipient says outreach bounced to them and landed in spam; asks us to resend to this address. No clear interest or opt-out."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhZDgzbVbB8b8yWN8ai",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 284,
+     "output_tokens": 117,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: anil.gupta@orchid-labs.example\nSubject: Re: AI workshop for your managers\nSnippet: Hi, your mail bounced back to m",
+   "tool": "record_reply"
+  },
+  {
+   "key": "c496d7ba1600c9114ff824de",
+   "loose": "8451bf4ca26095c8365835c4",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhZJyjue4VeMu3UrR9F",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01G4aKEGTU2dQSb1GsQUR4M9",
+      "input": {
+       "intent": "other",
+       "kind": "human",
+       "reason": "Forwarding to colleague Jay who handles team development; no direct ask or decision yet."
+      },
+      "name": "record_reply",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhZKQ3CdaNDaZt1Tihd",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1105,
+     "inference_geo": "global",
+     "input_tokens": 269,
+     "output_tokens": 105,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "From: preeti.nambiar@brightpath.example\nSubject: Re: AI workshop for your managers\nSnippet: Adding my colleague Jay here",
+   "tool": "record_reply"
+  }
+ ]
+}

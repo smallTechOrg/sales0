@@ -1,0 +1,17 @@
+{% extends "_layout.html" %}
+{% block title %}{{ company.name }} | LinkedIn (fixture){% endblock %}
+{% block content %}
+<main class="q7cx2 _n4fa" role="main">
+  <section class="t1wq9" aria-label="About">
+    <h1 class="o2ty5">{{ company.name }}</h1>
+    <p class="v8sd2">{{ company.tagline }}</p>
+    <p class="v8sd2">{{ company.industry }} · {{ company.location }} · {{ company.size }}</p>
+    <h2 class="o2ty5">About</h2>
+    <p class="v8sd2">{{ company.about }}</p>
+  </section>
+  <section class="t1wq9" aria-label="Recent posts">
+    <h2 class="o2ty5">Posts</h2>
+    {% for post in company.posts %}<div class="k3v9q" role="listitem"><p class="v8sd2">{{ post }}</p></div>{% endfor %}
+  </section>
+</main>
+{% endblock %}

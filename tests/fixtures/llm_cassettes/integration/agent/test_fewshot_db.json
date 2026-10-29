@@ -1,0 +1,71 @@
+{
+ "entries": [
+  {
+   "key": "74b3ce68f218c8cce4b3b83a",
+   "loose": "e07f5ced021622e3b7bc7c70",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhLBBpVXJkLNvxbW2Fw",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_012KxnX9dQpaaVAyi3kxDqmj",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Mumbai",
+       "company": "Meridian Insurance",
+       "contact_person": "Sanjay Gupta",
+       "dates_mentioned": null,
+       "email": "it-projects@meridian.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 3,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "COO of Meridian Insurance seeking a partner to design and build an internal RAG assistant over SOPs and claims manuals",
+       "requirement_summary": "Meridian Insurance - AI assistant over SOPs and claims manuals (consulting + build) - Mumbai/Unknown",
+       "topic": "Internal AI assistant (RAG) over SOP and claims documents; consulting, build and handover",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhLBa9D7qtaWHgmFgBC",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 908,
+     "output_tokens": 559,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Recent team decisions (learn from these; they override the built-in examples when they disagree)\n\n<example index=\"1\">",
+   "tool": "record_triage"
+  }
+ ]
+}

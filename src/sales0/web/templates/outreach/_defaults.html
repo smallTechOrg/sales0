@@ -1,0 +1,18 @@
+{# Template + deck selects with defaults for the chosen offering. Needs templates, decks, selected_template, selected_deck, deck_note. #}
+<div class="grid-2" id="template-deck-fields">
+  <div class="field">
+    <label class="field__label" for="template_id">Template (picked from the offering, change if you like)</label>
+    <select class="input" id="template_id" name="template_id">
+      <option value="">No template - write from the requirement</option>
+      {% for t in templates %}<option value="{{ t.id }}"{% if t.id == selected_template %} selected{% endif %}>{{ t.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label class="field__label" for="deck_id">Deck to attach</label>
+    <select class="input" id="deck_id" name="deck_id">
+      <option value="none"{% if not selected_deck %} selected{% endif %}>No deck (no attachment)</option>
+      {% for d in decks %}<option value="{{ d.id }}"{% if d.id == selected_deck %} selected{% endif %}{% if d.content_missing %} disabled{% endif %}>{{ d.name }} - {{ d.filename }} ({{ (d.size_bytes / 1024)|round|int }} KB){% if d.content_missing %} - file missing, upload again{% endif %}</option>{% endfor %}
+    </select>
+    {% if deck_note %}<p class="{{ 'muted' if deck_note[0] == 'ok' else 'badge badge--warn' }}" id="deck-note" data-deck-note="{{ deck_note[0] }}">{{ deck_note[1] }}</p>{% endif %}
+  </div>
+</div>

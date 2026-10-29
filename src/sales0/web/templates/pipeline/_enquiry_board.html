@@ -1,0 +1,65 @@
+{# Needs: enquiry_board (EnquiryBoard), params. Accepted enquiries grouped by deal status; the company name labels each card. #}
+{% from "pipeline/_macros.html" import category_chips, priority_chip, trait_chips with context %}
+{% set any_cards = enquiry_board.columns|sum(attribute="total") %}
+{% if not any_cards %}
+  <div class="empty-state" id="pipeline-empty"><p>No accepted enquiries yet - accept one in the Inbox and it appears here with its status.</p><a class="btn btn--primary" href="/inbox">Open the Inbox</a></div>
+{% else %}
+{% macro ecard(e) %}
+        {% set c = e.company_card %}
+        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}">
+          <h3>
+            {% if e.company_id %}<a href="/companies/{{ e.company_id }}">{{ e.company_name or "Company" }}</a>
+            {% elif e.person_name %}{% if e.contact_id %}<a href="/contacts/{{ e.contact_id }}">{{ e.person_name }}</a>{% else %}{{ e.person_name }}{% endif %}
+            {% else %}(no company or person){% endif %}
+            {{ priority_chip(e.priority) }}
+          </h3>
+          {% if e.person_name and e.company_id %}<div class="pcard__meta">{% if e.contact_id %}<a href="/contacts/{{ e.contact_id }}">{{ e.person_name }}</a>{% else %}{{ e.person_name }}{% endif %}{% if e.person_title %} · {{ e.person_title }}{% endif %}</div>
+          {% elif e.person_name %}<div class="pcard__meta">No company yet{% if e.person_title %} · {{ e.person_title }}{% endif %}</div>{% endif %}
+          <div class="pcard__badges">
+            {% if c and c.stage and c.sub_label %}<span class="badge stage-badge stage-badge--{{ c.stage }}">{{ c.stage_label }}{% if c.stage != "client" %}: {{ c.sub_label }}{% endif %}</span>{% endif %}
+            {% if c and c.off_ramp %}<span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}
+            {{ category_chips([e.category] if e.category != "relevant_prospect" else []) }}{% if c %}{{ trait_chips(c.characteristics) }}{% endif %}
+          </div>
+          <div class="pcard__meta">{{ e.summary or "(no summary)" }}</div>
+          <div class="pcard__meta">
+            {% if c and c.owner %}{{ c.owner }}{% endif %}
+            {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}{% if c and c.owner %} · {% endif %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">Source</a>{% endif %}
+            {% if c and c.next_follow_up_on %}<br>Next follow-up <span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b") }}</span>{% endif %}
+          </div>
+          <form class="inline-form" method="post" action="/pipeline/enquiries/{{ e.id }}/status">
+            <input type="hidden" name="next" value="{{ next }}">
+            <label class="field__label" for="estatus-{{ e.id }}">Status</label>
+            <select class="select" id="estatus-{{ e.id }}" name="status">
+              {% for key, label in deal_options %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <button class="btn btn--sm" type="submit">Set</button>
+          </form>
+        </article>
+{% endmacro %}
+{% set active = enquiry_board.columns|rejectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
+{% set parked = enquiry_board.columns|selectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
+<div class="board board--enquiries" id="enquiry-board" role="list" aria-label="Enquiries by status">
+  {% for col in active %}
+    <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
+      <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
+      {% for e in col.cards %}{{ ecard(e) }}{% else %}<p class="board__empty">Nothing here.</p>{% endfor %}
+      {% if col.total > col.cards|length %}<p class="board__more">{{ col.total - col.cards|length }} more</p>{% endif %}
+    </section>
+  {% endfor %}
+</div>
+{% set parked_total = parked|sum(attribute="total") %}
+{% if parked_total %}
+<details class="card board__closed" id="enquiry-closed-lane">
+  <summary><strong>Lost, no response, on hold</strong> <span class="count-pill">{{ parked_total }}</span></summary>
+  <div class="board board--enquiries">
+    {% for col in parked if col.total %}
+      <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
+        <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
+        {% for e in col.cards %}{{ ecard(e) }}{% endfor %}
+        {% if col.total > col.cards|length %}<p class="board__more">{{ col.total - col.cards|length }} more</p>{% endif %}
+      </section>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+{% endif %}

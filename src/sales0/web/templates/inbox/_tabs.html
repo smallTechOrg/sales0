@@ -1,0 +1,7 @@
+{# Needs: tabs, tab, counts (dict); oob=True when refreshed after a decision. #}
+<nav id="inbox-tabs" class="tabs" aria-label="Inbox tabs"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for key, label in tabs %}
+    <a class="tabs__tab{% if key == tab %} tabs__tab--active{% endif %}" href="/inbox?tab={{ key }}"{% if key == "skipped" %} id="inbox-tab-skipped"{% endif %}
+       data-tab="{{ key }}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }} (<span data-count="{{ key }}">{{ counts.get(key, 0) }}</span>)</a>
+  {% endfor %}
+</nav>

@@ -1,0 +1,3 @@
+{% set cls = {"succeeded": "badge--genuine", "aborted": "badge--discard", "failed": "badge--discard", "running": "badge--info", "queued": "badge--info",
+              "done": "badge--genuine", "warning": "badge--warn", "error": "badge--discard", "skipped": "", "pending": ""} %}
+<span class="badge {{ cls.get(status, '') }}">{{ status | replace("_", " ") | capitalize }}</span>

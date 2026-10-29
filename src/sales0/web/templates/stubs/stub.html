@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ stub.title }}{% endblock %}
+{% block content %}
+  <section class="stub-page card" aria-labelledby="stub-title">
+    <div class="card__body">
+      <span class="badge badge--stub">Not built — deferred by decision</span>
+      <h1 id="stub-title">{{ stub.title }}</h1>
+      <p>{{ stub.description }}</p>
+      <p class="muted">This is not built: it was deferred on purpose, so there is nothing here to use.</p>
+    </div>
+  </section>
+{% endblock %}

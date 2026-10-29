@@ -1,0 +1,65 @@
+{# Skipped by AI tab (Phase 1.4). Needs: skipped (SkippedPage), counts, state, q, page, pages. #}
+<section id="inbox-list" class="stack" aria-label="Posts skipped by the AI" data-tab="skipped" data-total="{{ skipped.total }}">
+  <div id="skipped-state" class="subfilter" role="group" aria-label="Filter skipped posts">
+    <a href="/inbox?tab=skipped&q={{ q | urlencode }}"{% if state == "discard" %} aria-current="true"{% endif %}>All skipped ({{ counts.get("skipped", 0) }})</a>
+    <span aria-hidden="true">|</span>
+    <a href="/inbox?tab=skipped&state=failed&q={{ q | urlencode }}"{% if state == "failed" %} aria-current="true"{% endif %}>Triage failed ({{ counts.get("skipped_failed", 0) }})</a>
+  </div>
+  {% if skipped.items %}
+    <div id="skipped-list" class="skipped-list">
+      {% for post in skipped.items %}
+        {% set failed = post.triage_status == "failed" %}
+        <article id="skipped-{{ post.id }}" class="skipped" data-verdict="{{ 'discard' if not failed else '' }}"
+                 data-can-rescue="{{ 'true' if post.can_rescue else 'false' }}" data-triage-status="{{ post.triage_status }}">
+          <p class="skipped__snippet">{{ post.snippet }}</p>
+          {% if failed %}
+            <p class="triage-failed" role="status">AI triage failed — {{ post.triage_error or "unknown error" }}</p>
+          {% else %}
+            <p class="skipped__reason"><span class="badge badge--discard">Skipped</span> {{ post.reason or "No reason recorded" }}</p>
+          {% endif %}
+          <p class="skipped__meta muted">
+            {% if poster_label(post.poster_type) %}<span>{{ poster_label(post.poster_type) }}</span><span aria-hidden="true">·</span>{% endif %}
+            <span>{{ post.author_name or "Unknown author" }}{% if post.author_headline %} · {{ post.author_headline }}{% endif %}</span>
+            {% if post.keyword_text %}<span class="chip">{{ post.keyword_text }}</span>{% endif %}
+            <span aria-hidden="true">·</span><span>seen {{ post.times_seen }}× · last {{ post.last_seen_at | ago }}</span>
+            {% if post.post_url and post.post_url.startswith(("http://", "https://")) %}<a class="enquiry__link" href="{{ post.post_url }}" target="_blank" rel="noopener" data-link-kind="{{ post.link_kind or 'post' }}">View post ↗</a>
+            {% elif post.profile_url and post.profile_url.startswith(("http://", "https://")) %}<a class="enquiry__link" href="{{ post.profile_url }}" target="_blank" rel="noopener" data-link-kind="profile">Author profile ↗</a>{% endif %}
+            {% if not post.can_rescue %}<span class="badge">text purged</span>{% endif %}
+          </p>
+          <div class="skipped__actions">
+            {% set hidden %}<input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="state" value="{{ state }}"><input type="hidden" name="page" value="{{ page }}">{% endset %}
+            {% if failed %}
+              <form method="post" action="/inbox/skipped/{{ post.id }}/retry" hx-post="/inbox/skipped/{{ post.id }}/retry" hx-target="#inbox-list" hx-swap="outerHTML" hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+                {{ hidden }}
+                <button class="btn btn--sm skipped__retry" type="submit"{% if not post.can_rescue %} disabled title="Post text is no longer stored (kept 14 days)"{% endif %}>Retry triage</button>
+                <span class="htmx-indicator row"><span class="spinner" aria-hidden="true"></span> Asking AI…</span>
+              </form>
+            {% else %}
+              <form method="post" action="/inbox/skipped/{{ post.id }}/rescue" hx-post="/inbox/skipped/{{ post.id }}/rescue" hx-target="#inbox-list" hx-swap="outerHTML" hx-disabled-elt="find button">
+                {{ hidden }}
+                <button class="btn btn--ghost btn--sm skipped__rescue" type="submit"{% if not post.can_rescue %} disabled title="Post text is no longer stored (kept 14 days)"{% endif %}>Rescue → enquiry</button>
+              </form>
+              <form method="post" action="/inbox/skipped/{{ post.id }}/override" hx-post="/inbox/skipped/{{ post.id }}/override" hx-target="#inbox-list" hx-swap="outerHTML" hx-disabled-elt="find button">
+                {{ hidden }}
+                <button class="btn btn--primary btn--sm skipped__override" type="submit"{% if not post.can_rescue %} disabled title="Post text is no longer stored (kept 14 days)"{% endif %}>Override: accept</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+    {% if pages > 1 %}
+      <nav class="pagination" aria-label="Pages">
+        {% if page > 1 %}<a class="btn" href="/inbox?tab=skipped&state={{ state }}&q={{ q | urlencode }}&page={{ page - 1 }}">← Prev</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ page }} of {{ pages }} · {{ skipped.total }} posts</span>
+        {% if page < pages %}<a class="btn" href="/inbox?tab=skipped&state={{ state }}&q={{ q | urlencode }}&page={{ page + 1 }}">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% elif q %}
+    <div id="skipped-list" class="empty-state"><p>No skipped posts match '{{ q }}'.</p><a class="btn" href="/inbox?tab=skipped&state={{ state }}">Clear search</a></div>
+  {% elif state == "failed" %}
+    <div id="skipped-list" class="empty-state"><p>No triage failures.</p></div>
+  {% else %}
+    <div id="skipped-list" class="empty-state"><p>Nothing skipped yet — posts the AI judges not relevant are listed here.</p></div>
+  {% endif %}
+</section>

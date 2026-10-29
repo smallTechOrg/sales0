@@ -1,0 +1,13 @@
+{# Needs: timeline (list[TimelineItemView]); oob optional. subject_type/subject_id for the note form live in the page. #}
+{% from "pipeline/_macros.html" import timeline_list %}
+<section class="card" id="timeline-card" aria-labelledby="timeline-title"{% if oob %} hx-swap-oob="outerHTML:#timeline-card"{% endif %}>
+  <div class="card__header"><h2 id="timeline-title">Timeline</h2><span class="muted">newest first</span></div>
+  <div class="card__body">
+    <form id="note-form" method="post" action="{{ base }}/note" hx-post="{{ base }}/note" hx-swap="none" data-reset-on-success>
+      <div class="field"><label class="field__label" for="note-body">Add a note</label>
+        <textarea class="input" id="note-body" name="body" rows="2" required maxlength="4000" placeholder="Call summary, what they said, what to do next…"></textarea></div>
+      <div><button class="btn btn--primary" type="submit">Add note</button></div>
+    </form>
+    <div id="timeline" aria-live="polite">{{ timeline_list(timeline) }}</div>
+  </div>
+</section>

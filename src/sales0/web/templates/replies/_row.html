@@ -1,0 +1,19 @@
+{# Needs: it {r, msg, owner, show_owner}, kind_labels, intent_labels. #}
+{% set r = it.r %}
+<tr id="reply-{{ r.id }}" data-kind="{{ r.kind }}" data-handled="{{ 1 if r.handled else 0 }}">
+  <td><span class="badge reply-kind reply-kind--{{ r.kind }}">{{ kind_labels.get(r.kind, r.kind) }}</span></td>
+  <td>{% if r.intent %}<span class="badge reply-intent reply-intent--{{ r.intent }}">{{ intent_labels.get(r.intent, r.intent) }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+  <td>{{ r.from_addr }}{% if it.show_owner %}<div class="muted">to {{ it.owner }}</div>{% endif %}</td>
+  <td>
+    <div class="reply-snippet">{{ r.snippet }}</div>
+    {% if r.reason %}<div class="muted">{{ r.reason }}</div>{% endif %}
+  </td>
+  <td>{{ r.received_at|ago }}</td>
+  <td><a href="/outreach/messages/{{ r.message_id }}">Message #{{ r.message_id }}</a></td>
+  <td>
+    <form method="post" action="/replies/{{ r.id }}/handled" hx-post="/replies/{{ r.id }}/handled" hx-target="#reply-{{ r.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="handled" value="{{ 0 if r.handled else 1 }}">
+      <button class="btn btn--small" type="submit">{{ "Reopen" if r.handled else "Mark handled" }}</button>
+    </form>
+  </td>
+</tr>

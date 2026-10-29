@@ -1,0 +1,41 @@
+# --- secrets (never commit) ---
+.env
+.env.*
+!.env.example
+
+# --- runtime data: SQLite DB, persistent Playwright/Chromium profiles, logs ---
+data/
+data/pulled/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+linkedin-profile*/
+playwright-profile*/
+*-profile-fixture/
+google_token.json
+client_secret*.json
+
+# --- python / tooling ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- test artefacts ---
+test-results/
+playwright-report/
+
+# --- OS / editors ---
+.DS_Store
+.idea/
+.vscode/

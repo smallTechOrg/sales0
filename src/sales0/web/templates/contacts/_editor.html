@@ -1,0 +1,72 @@
+{# Inline editor of one contact's e-mails, phones and details (contact page + prospect page Contacts card).
+   Needs: c (ContactDetail), next_url (where to come back), with_notes (bool). Plain form posts: 303 back + flash. #}
+{% set cid = c.id %}
+<div class="contact-edit" id="contact-edit-{{ cid }}">
+  <div>
+    <h3 class="group-heading">E-mails</h3>
+    <ul class="item-list" id="contact-{{ cid }}-emails">
+      {% for e in c.email_items %}
+        <li class="contact-edit__row" data-email-id="{{ e.id }}">
+          <span>{{ e.email }}</span>
+          {% if e.is_primary %}<span class="badge">Primary</span>{% else %}
+            <form method="post" action="/contacts/{{ cid }}/emails/{{ e.id }}/primary"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn--sm btn--ghost" type="submit">Make primary</button></form>{% endif %}
+          {% if e.suppressed %}<span class="badge badge--warn" title="On the suppression list: sales0 will not draft or send to this address">Suppressed</span>{% endif %}
+          <details class="inline-edit"><summary>Change</summary>
+            <form method="post" action="/contacts/{{ cid }}/emails/{{ e.id }}"><input type="hidden" name="next" value="{{ next_url }}">
+              <label class="visually-hidden" for="em-{{ e.id }}">E-mail</label>
+              <input class="input" id="em-{{ e.id }}" type="email" name="email" value="{{ e.email }}" required maxlength="254">
+              <button class="btn btn--sm" type="submit">Save</button></form>
+          </details>
+          <form method="post" action="/contacts/{{ cid }}/emails/{{ e.id }}/delete"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn--sm btn--danger" type="submit" aria-label="Remove {{ e.email }}">Remove</button></form>
+        </li>
+      {% else %}<li class="muted">No e-mail yet.</li>{% endfor %}
+    </ul>
+    <form class="contact-edit__row" method="post" action="/contacts/{{ cid }}/emails">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label class="visually-hidden" for="add-email-{{ cid }}">Add e-mail</label>
+      <input class="input" id="add-email-{{ cid }}" type="email" name="email" required maxlength="254" placeholder="name@company.com">
+      <label class="accept-options__item"><input type="checkbox" name="primary" value="1"> Primary</label>
+      <button class="btn btn--sm" type="submit">Add e-mail</button>
+    </form>
+  </div>
+  <div>
+    <h3 class="group-heading">Phones</h3>
+    <ul class="item-list" id="contact-{{ cid }}-phones">
+      {% for ph in c.phone_items %}
+        <li class="contact-edit__row" data-phone-id="{{ ph.id }}">
+          <span>{{ ph.phone }}</span>
+          {% if ph.is_primary %}<span class="badge">Primary</span>{% else %}
+            <form method="post" action="/contacts/{{ cid }}/phones/{{ ph.id }}/primary"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn--sm btn--ghost" type="submit">Make primary</button></form>{% endif %}
+          <details class="inline-edit"><summary>Change</summary>
+            <form method="post" action="/contacts/{{ cid }}/phones/{{ ph.id }}"><input type="hidden" name="next" value="{{ next_url }}">
+              <label class="visually-hidden" for="ph-{{ ph.id }}">Phone</label>
+              <input class="input" id="ph-{{ ph.id }}" name="phone" value="{{ ph.phone }}" required maxlength="50">
+              <button class="btn btn--sm" type="submit">Save</button></form>
+          </details>
+          <form method="post" action="/contacts/{{ cid }}/phones/{{ ph.id }}/delete"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn--sm btn--danger" type="submit" aria-label="Remove {{ ph.phone }}">Remove</button></form>
+        </li>
+      {% else %}<li class="muted">No phone yet.</li>{% endfor %}
+    </ul>
+    <form class="contact-edit__row" method="post" action="/contacts/{{ cid }}/phones">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label class="visually-hidden" for="add-phone-{{ cid }}">Add phone</label>
+      <input class="input" id="add-phone-{{ cid }}" name="phone" required maxlength="50" placeholder="+91 98765 43210">
+      <label class="accept-options__item"><input type="checkbox" name="primary" value="1"> Primary</label>
+      <button class="btn btn--sm" type="submit">Add phone</button>
+    </form>
+  </div>
+  <details class="inline-edit"{% if with_notes %} open{% endif %}>
+    <summary>Edit name, title, company, LinkedIn{% if with_notes %}, notes{% endif %}</summary>
+    <form class="stack" method="post" action="/contacts/{{ cid }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <div class="grid-2">
+        <div class="field"><label class="field__label" for="ec-name-{{ cid }}">Name</label><input class="input" id="ec-name-{{ cid }}" name="full_name" value="{{ c.full_name or '' }}" maxlength="200"></div>
+        <div class="field"><label class="field__label" for="ec-title-{{ cid }}">Title</label><input class="input" id="ec-title-{{ cid }}" name="title" value="{{ c.title or '' }}" maxlength="200"></div>
+        <div class="field"><label class="field__label" for="ec-company-{{ cid }}">Company</label><input class="input" id="ec-company-{{ cid }}" name="company" value="{{ c.company_name or '' }}" maxlength="200"></div>
+        <div class="field"><label class="field__label" for="ec-li-{{ cid }}">LinkedIn profile</label><input class="input" id="ec-li-{{ cid }}" name="linkedin_url" value="{{ c.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+      </div>
+      {% if with_notes %}<div class="field"><label class="field__label" for="ec-notes-{{ cid }}">Notes</label><textarea class="input" id="ec-notes-{{ cid }}" name="notes" rows="3" maxlength="4000">{{ c.notes or "" }}</textarea></div>{% endif %}
+      <div><button class="btn btn--primary" type="submit">Save contact</button></div>
+    </form>
+  </details>
+</div>

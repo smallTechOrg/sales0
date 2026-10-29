@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Suppressions{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Suppressions</h1>
+      <p>Addresses sales0 will never draft to or send to. Unsubscribe replies and hard bounces are added here automatically.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "replies/_subnav.html" %}
+
+    <section class="card" aria-labelledby="add-title">
+      <div class="card__header"><h2 id="add-title">Add an address</h2></div>
+      <div class="card__body">
+        <form class="inline-form" method="post" action="/replies/suppressions" id="suppression-add">
+          <div class="field">
+            <label class="field__label" for="sup-address">Email address</label>
+            <input class="input" id="sup-address" name="address" type="email" required placeholder="name@company.example">
+          </div>
+          <div class="field">
+            <label class="field__label" for="sup-note">Note (optional)</label>
+            <input class="input" id="sup-note" name="note" maxlength="300">
+          </div>
+          <button class="btn btn--primary" type="submit">Add to suppression list</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="sup-title">
+      <div class="card__header"><h2 id="sup-title">Suppressed addresses</h2><span class="muted">{{ items|length }}</span></div>
+      <div class="card__body table-wrap">
+        {% if items %}
+        <table class="table" id="suppressions-table">
+          <thead><tr><th>Address</th><th>Reason</th><th>Added</th><th>Source</th><th></th></tr></thead>
+          <tbody>
+          {% for it in items %}{% set s = it.s %}
+            <tr id="suppression-{{ s.id }}">
+              <td>{{ s.address }}{% if s.note %}<div class="muted">{{ s.note }}</div>{% endif %}</td>
+              <td><span class="badge">{{ it.reason_label }}</span></td>
+              <td>{{ s.created_at|ago }}</td>
+              <td>{% if it.link %}<a href="{{ it.link }}">source message</a>{% elif it.has_source %}reply from another member{% else %}<span class="muted">-</span>{% endif %}</td>
+              <td>
+                {% if is_admin %}
+                <form method="post" action="/replies/suppressions/{{ s.id }}/delete">
+                  <button class="btn btn--small btn--danger" type="submit">Remove</button>
+                </form>
+                {% else %}<span class="muted">admin only</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="suppressions-empty"><p>Nobody is suppressed yet.</p></div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

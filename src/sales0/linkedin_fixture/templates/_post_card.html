@@ -1,0 +1,11 @@
+{#- One search result, in the card shape assigned to the post (corpus.CARD_SHAPES):
+    data-urn div | li > div[data-id] | li with only a /feed/update/ link | li > article with only a /posts/ link. -#}
+{%- if post.shape == "data-urn" -%}
+<li class="y6ob2"><div class="k3v9q _m1x7" data-urn="{{ post.urn }}">{% include "_post_body.html" %}</div></li>
+{%- elif post.shape == "data-id" -%}
+<li class="y6ob2"><div class="k3v9q _q2ln" data-id="{{ post.urn }}">{% include "_post_body.html" %}</div></li>
+{%- elif post.shape == "update-link" -%}
+<li class="y6ob2 k3v9q"><div class="_j5hc">{% include "_post_body.html" %}</div></li>
+{%- else -%}
+<li class="y6ob2"><article class="k3v9q _z8de">{% include "_post_body.html" %}</article></li>
+{%- endif -%}

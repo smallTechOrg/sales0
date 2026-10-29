@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Outreach decks{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Decks</h1>
+  <p>PDF decks attached to outreach emails. Map a deck to an offering and it is attached by default when you draft for that offering. Decks are stored in the sales0 database (not on disk), so they survive restarts.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "outreach/_subnav.html" %}
+    <section class="card" aria-labelledby="upload-title">
+      <div class="card__header"><h2 id="upload-title">Upload a deck</h2><span class="muted">PDF only, up to {{ max_mb }} MB</span></div>
+      <div class="card__body">
+        <form class="inline-form" method="post" action="/outreach/decks" enctype="multipart/form-data" id="deck-upload-form">
+          <div class="field"><label class="field__label" for="deck-file">PDF file</label><input class="input" id="deck-file" name="file" type="file" accept="application/pdf,.pdf" required></div>
+          <div class="field"><label class="field__label" for="deck-name">Display name (optional)</label><input class="input" id="deck-name" name="name" maxlength="120"></div>
+          <div class="field"><label class="field__label" for="deck-offering">Offering</label>
+            <select class="input" id="deck-offering" name="offering_id"><option value="">Any offering (generic)</option>
+              {% for o in offerings %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select></div>
+          <button class="btn btn--primary" type="submit">Upload deck</button>
+        </form>
+        <p class="muted">Files larger than {{ max_mb }} MB or that are not real PDFs are refused with a message here. Uploading the same file again does not create a duplicate.</p>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="decks-title">
+      <div class="card__header"><h2 id="decks-title">Your decks</h2><span class="muted">{{ decks|length }}</span></div>
+      <div class="card__body table-wrap">
+        {% if decks %}
+          <table class="table" id="deck-table">
+            <thead><tr><th>Name</th><th>File</th><th>Size</th><th>Offering</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for d in decks %}
+              <tr id="deck-{{ d.id }}">
+                <td>{{ d.name }}</td>
+                <td>{% if d.content_missing %}{{ d.filename }} <span class="badge badge--warn" id="deck-missing-{{ d.id }}">File missing - upload again</span>{% else %}<a href="/outreach/decks/{{ d.id }}/file" target="_blank" rel="noopener">{{ d.filename }}</a>{% endif %}</td>
+                <td>{{ (d.size_bytes / 1024)|round|int }} KB</td>
+                <td>
+                  <form class="inline-form" method="post" action="/outreach/decks/{{ d.id }}/offering">
+                    <select class="input" name="offering_id" aria-label="Offering for {{ d.name }}">
+                      <option value="">Any offering</option>
+                      {% for o in offerings %}<option value="{{ o.id }}"{% if d.offering_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+                    </select>
+                    <button class="btn btn--sm" type="submit">Attach to offering</button>
+                  </form>
+                </td>
+                <td>
+                  <form method="post" action="/outreach/decks/{{ d.id }}/delete" data-q="Delete deck '{{ d.name }}'? Messages already approved with it can still be sent." data-confirm-submit>
+                    <button class="btn btn--danger btn--sm" type="submit">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="decks-empty"><p>No decks yet. Upload a PDF above to attach it to outreach emails.</p></div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

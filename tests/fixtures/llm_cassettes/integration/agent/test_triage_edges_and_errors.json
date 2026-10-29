@@ -1,0 +1,381 @@
+{
+ "entries": [
+  {
+   "key": "5b723fb97e1465e5ce42c129",
+   "loose": "9da4194d13cf59560c6aedee",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhN75pS1sGBJ45BMdi9",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_0153VEdU8dSDuZyThnHTQKv1",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "QuantaWorks",
+       "contact_person": "Anita Desai",
+       "dates_mentioned": "2 half-days, timing not specified",
+       "email": "lead@quantaworks.example",
+       "language": "en",
+       "mode": "online",
+       "offering_id": null,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (QuantaWorks) seeking Claude Code training for 15 developers, online, with email contact",
+       "requirement_summary": "QuantaWorks - Claude Code training for 15 developers - Online",
+       "topic": "Claude Code training with hands-on exercises on own codebase",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhN7T96igqRhhEdgGPe",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 7644
+     },
+     "cache_creation_input_tokens": 7644,
+     "cache_read_input_tokens": 0,
+     "inference_geo": "global",
+     "input_tokens": 396,
+     "output_tokens": 519,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Anita Desai\nHeadline: Engineering Manager at QuantaWorks\nDate posted: 2026-10-26",
+   "tool": "record_triage"
+  },
+  {
+   "key": "1786d58b89c7968278162288",
+   "loose": "2449f20067c6d6c84d5eb7bc",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhNJ6bfqtRkJqHMJ9Jh",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01D5JhaVH9Q9DdyB4oKn95qM",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Hyderabad",
+       "company": "Lumen Paints",
+       "contact_person": "Ravi Nair",
+       "dates_mentioned": "next month",
+       "email": "hr@lumenpaints.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company HR seeking a training partner for a half-day GenAI workshop for 50 leaders in Hyderabad, with email contact",
+       "requirement_summary": "Lumen Paints - GenAI awareness workshop for 50 leaders - Hyderabad/Offline",
+       "topic": "GenAI awareness workshop (half-day)",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhNJURGv6a7A2Xmqk9g",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 1308,
+     "output_tokens": 536,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Ravi Nair\nHeadline: Head of HR at Lumen Paints\nDate posted: unknown\nURL: unknown",
+   "tool": "record_triage"
+  },
+  {
+   "key": "f6e264bb73b1db51ff376ccb",
+   "loose": "67cb0ba1eb75258c7193b697",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhNUFnSrLqBdar7REbT",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01GVUTJHR9R8nbPqSoTMfqSM",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "TrainerConnect",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Agency onboarding freelance trainers to a network with no concrete client programme; embedded instruction to override rules ignored",
+       "requirement_summary": "TrainerConnect - Freelance GenAI trainer network onboarding - Unknown/Unknown",
+       "topic": "GenAI freelance trainer network",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhNUfr6CR2h2PGupisc",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 381,
+     "output_tokens": 498,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: TrainerConnect\nHeadline: Trainer marketplace\nDate posted: unknown\nURL: unknown\nT",
+   "tool": "record_triage"
+  },
+  {
+   "key": "7d0010afe179fbb03f2f097e",
+   "loose": "62043e452d2df118324f908b",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhNemJoeoFbLeYpdZ9B",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_015k61ZfXcaGVfXHn3a8Mnbp",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "SkillHub",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Training marketplace recruiting freelance trainers at hourly rates; network-building, no concrete buyer requirement",
+       "requirement_summary": "SkillHub Trainers - Freelance ChatGPT trainers at hourly rate - Unknown/Unknown",
+       "topic": "ChatGPT training freelance trainers",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhNf98n5CtY2waX4vCw",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 409,
+     "output_tokens": 502,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: SkillHub Trainers\nHeadline: Training marketplace\nDate posted: unknown\nURL: unkno",
+   "tool": "record_triage"
+  },
+  {
+   "key": "52fcab4ec3518f8d27b7c93f",
+   "loose": "e5ed0453212b95636fc06561",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhNqh8X5RP5Ahkg2Rm4",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Jx63JwVveUtwSFc7g5Emuc",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Ahmedabad, Vadodara",
+       "company": "Helix Pharma",
+       "contact_person": "Kavya Pillai",
+       "dates_mentioned": "early next year",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "Company (Helix Pharma) exploring a GenAI productivity programme for 200 staff and seeking training partners",
+       "requirement_summary": "Helix Pharma - GenAI productivity programme for 200 employees - Ahmedabad/Vadodara/Offline",
+       "topic": "GenAI productivity programme",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhNr6Sux88pnb9dhcka",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 349,
+     "output_tokens": 531,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Kavya Pillai\nHeadline: Director, Learning at Helix Pharma\nDate posted: unknown\nU",
+   "tool": "record_triage"
+  },
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "invalid x-api-key",
+      "type": "authentication_error"
+     },
+     "request_id": "req_011CgWhNztmpF62ge5kLSVBL",
+     "type": "error"
+    },
+    "message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CgWhNztmpF62ge5kLSVBL'}",
+    "status": 401,
+    "type": "AuthenticationError"
+   },
+   "key": "7c3d9ae8ae62bb01def439ed",
+   "loose": "19f1ef412940977010b3050b",
+   "lport": null,
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Priya Menon\nHeadline: Head of L&D at Acme Logistics\nDate posted: 2026-10-26\nURL:",
+   "tool": "record_triage"
+  },
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "model: claude-haiku-does-not-exist-0",
+      "type": "not_found_error"
+     },
+     "request_id": "req_011CgWhP2hAwuXf9r2q14ov6",
+     "type": "error"
+    },
+    "message": "Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: claude-haiku-does-not-exist-0'}, 'request_id': 'req_011CgWhP2hAwuXf9r2q14ov6'}",
+    "status": 404,
+    "type": "NotFoundError"
+   },
+   "key": "87d282ff34e08dc34ee72dfa",
+   "loose": "78d8e2881401ca1c9bb63f76",
+   "lport": null,
+   "model": "claude-haiku-does-not-exist-0",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Priya Menon\nHeadline: Head of L&D at Acme Logistics\nDate posted: 2026-10-26\nURL:",
+   "tool": "record_triage"
+  }
+ ]
+}

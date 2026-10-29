@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Pipeline{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Pipeline</h1>
+      <p id="pipeline-help">{{ tab_help }}</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    {% include "pipeline/_due.html" %}
+
+    <nav class="tabs" id="pipeline-tabs" aria-label="Pipeline">
+      {% for key, label, count in tabs %}
+        <a class="tabs__tab{% if key == params.tab %} tabs__tab--active{% endif %}" id="tab-{{ key }}" href="/pipeline?{{ qs(params, tab=key, layout=None, sub=None, closed=None, flag=None, page=None) }}"{% if key == params.tab %} aria-current="page"{% endif %}>{{ label }} <span class="count-pill">{{ count }}</span></a>
+      {% endfor %}
+    </nav>
+
+    <div class="row row--between">
+      <form class="filters" id="pipeline-filters" method="get" action="/pipeline" role="search"
+            hx-get="/pipeline" hx-target="#pipeline-body" hx-push-url="true" hx-trigger="change, input changed delay:300ms from:#pipeline-search, submit">
+        <input type="hidden" name="tab" value="{{ params.tab }}">
+        {% if params.layout %}<input type="hidden" name="layout" value="{{ params.layout }}">{% endif %}
+        <div class="field field--grow">
+          <label class="field__label" for="pipeline-search">Search</label>
+          <input class="input" id="pipeline-search" type="search" name="q" value="{{ params.q }}" placeholder="Search company or person…" autocomplete="off">
+        </div>
+        {% if params.tab == "prospects" %}
+          <div class="field"><label class="field__label" for="f-flag">Flag</label>
+            <select class="input" id="f-flag" name="flag"><option value="">Any</option>
+              {% for key, label in (("repeat_poster", "Repeat poster"), ("competitor_mention", "Mentions competitor"), ("no_follow_up", "Do not follow up")) %}
+                <option value="{{ key }}"{% if key == params.flag %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select></div>
+        {% endif %}
+        <div class="field"><label class="field__label" for="f-priority">Priority</label>
+          <select class="input" id="f-priority" name="priority"><option value="">Any</option>
+            {% for key, label in priority_choices %}<option value="{{ key }}"{% if key == params.priority %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select></div>
+        <div class="field"><label class="field__label" for="f-category">Category</label>
+          <select class="input" id="f-category" name="category"><option value="">Any</option>
+            {% for key, label in category_choices %}<option value="{{ key }}"{% if key == params.category %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select></div>
+        {% if params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="sort" value="priority"{% if params.sort == "priority" %} checked{% endif %}> Highest priority first</label>{% endif %}
+        {% if layout == "list" and params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="closed" value="1"{% if params.closed %} checked{% endif %}> Show closed</label>{% endif %}
+        {% if characteristic_options %}
+          <div class="field"><label class="field__label" for="f-characteristic">Characteristic</label>
+            <select class="input" id="f-characteristic" name="characteristic"><option value="">Any</option>
+              {% for ch in characteristic_options %}<option value="{{ ch.id }}"{% if ch.id|string == params.characteristic %} selected{% endif %}>{{ ch.name }}{% if not ch.active %} (retired){% endif %}</option>{% endfor %}
+            </select></div>
+        {% endif %}
+        <noscript><button class="btn" type="submit">Apply</button></noscript>
+      </form>
+      <div class="row">
+        {% if params.tab != "enquiries" %}
+          <div class="view-toggle" id="view-toggle" role="group" aria-label="Layout">
+            <a href="/pipeline?{{ qs(params, layout='board', sub=None, closed=None, page=None) }}"{% if layout == "board" %} aria-current="true"{% endif %}>Board</a>
+            <a href="/pipeline?{{ qs(params, layout='list', page=None) }}"{% if layout == "list" %} aria-current="true"{% endif %}>List</a>
+          </div>
+        {% endif %}
+        {% if params.tab == "prospects" %}<a class="btn btn--primary" href="#new-company" id="btn-new-prospect">New company</a>{% endif %}
+      </div>
+    </div>
+
+    {% include "pipeline/_body.html" %}
+
+    {% if params.tab == "prospects" %}
+      <section class="card" id="new-company" aria-labelledby="new-company-title">
+        <div class="card__header"><h2 id="new-company-title">New company</h2></div>
+        <form class="card__body" method="post" action="/pipeline/prospects">
+          <div class="grid-2">
+            <div class="field"><label class="field__label" for="np-company">Company</label><input class="input" id="np-company" name="company" required maxlength="200"></div>
+            <div class="field"><label class="field__label" for="np-name">Person to reach (optional)</label><input class="input" id="np-name" name="name" maxlength="200"></div>
+            <div class="field"><label class="field__label" for="np-email">Email</label><input class="input" id="np-email" type="email" name="email" maxlength="254"></div>
+            <div class="field"><label class="field__label" for="np-phone">Phone</label><input class="input" id="np-phone" name="phone" maxlength="50"></div>
+            <div class="field"><label class="field__label" for="np-linkedin">Person's LinkedIn URL</label><input class="input" id="np-linkedin" name="linkedin_url" maxlength="500" placeholder="https://www.linkedin.com/in/…"></div>
+            <div class="field"><label class="field__label" for="np-website">Website</label><input class="input" id="np-website" name="website" maxlength="300"></div>
+          </div>
+          <div class="field"><label class="field__label" for="np-notes">Notes</label><textarea class="input" id="np-notes" name="notes" rows="2" maxlength="4000"></textarea></div>
+          <div class="row"><button class="btn btn--primary" type="submit">Add company</button><span class="hint">A company with no enquiry is fine (a cold list). An existing company with the same name, website or the same person is reused. A client you already have: add the company, then press Mark client.</span></div>
+        </form>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

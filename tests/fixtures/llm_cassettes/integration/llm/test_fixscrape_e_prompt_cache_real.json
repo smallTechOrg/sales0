@@ -1,0 +1,157 @@
+{
+ "entries": [
+  {
+   "key": "68a742924af9eef55927ad86",
+   "loose": "ab37d408027051130934f460",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhUSG9iWKvTiveRRFQr",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Pp5Ax2Mny7iH88AkAQxjJ4",
+      "input": {
+       "word": "hello"
+      },
+      "name": "record_word",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhUScyqSzrFoYeUb6oU",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 2349
+     },
+     "cache_creation_input_tokens": 2349,
+     "cache_read_input_tokens": 0,
+     "inference_geo": "global",
+     "input_tokens": 211,
+     "output_tokens": 33,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "Word: hello. Record it.",
+   "tool": "record_word"
+  },
+  {
+   "key": "68a742924af9eef55927ad86",
+   "loose": "ab37d408027051130934f460",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhUX6MxrY7DuWHBi4Ey",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_013x9VuTnc7UDvhfgDRbY4Wf",
+      "input": {
+       "word": "hello"
+      },
+      "name": "record_word",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhUXY9XXxMsmyLVxbJH",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 2349,
+     "inference_geo": "global",
+     "input_tokens": 211,
+     "output_tokens": 33,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "Word: hello. Record it.",
+   "tool": "record_word"
+  },
+  {
+   "key": "2d60570f3e547d1fb25ae63e",
+   "loose": "778e49cf61dbdb92d50eb906",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhUdeWBe5et4skm8vRz",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01NyAYMkRsB6iFkryPB7M3bF",
+      "input": {
+       "word": "hello"
+      },
+      "name": "record_word",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhUeA1UKcHmC11ZiFt6",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 0,
+     "inference_geo": "global",
+     "input_tokens": 509,
+     "output_tokens": 33,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "Word: hello. Record it.",
+   "tool": "record_word"
+  }
+ ]
+}

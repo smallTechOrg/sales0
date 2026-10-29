@@ -1,0 +1,71 @@
+{
+ "entries": [
+  {
+   "key": "749c630c187f1fac0661946d",
+   "loose": "1a3f06d27755b4dfe15d62a8",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWst1MnBZaZ9f8VLCCFZ",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01LDdxrXKgYJMVogSepCatto",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Pune",
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": "next month",
+       "email": "hr@punelogistics.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (Pune HR) seeking a trainer for a two-day GenAI workshop for about 40 managers next month",
+       "requirement_summary": "Pune HR (company not named) - Generative AI workshop for 40 managers - Pune/Offline",
+       "topic": "Two-day hands-on Generative AI workshop for about 40 managers",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWst2AQK3t1pvY6Ls81n",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 7820
+     },
+     "cache_creation_input_tokens": 7820,
+     "cache_read_input_tokens": 0,
+     "inference_geo": "global",
+     "input_tokens": 350,
+     "output_tokens": 520,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Pune HR\nHeadline: unknown\nDate posted: unknown\nURL: unknown\nText:\nHi connections",
+   "tool": "record_triage"
+  }
+ ]
+}

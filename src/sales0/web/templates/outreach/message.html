@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Message #{{ msg.id }}{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Message #{{ msg.id }} {% with s=msg.state, state_labels={"draft":"Draft","edited":"Edited","approved":"Approved","sending":"Sending","sent":"Sent","failed":"Failed","rejected":"Rejected"} %}{% include "outreach/_state_badge.html" %}{% endwith %}</h1>
+      <p>Owned by {{ owner_name }}{% if not is_owner %} - you are viewing it read-only{% endif %}. Created {{ msg.created_at|localdt }}.</p>
+    </div>
+    <a class="btn btn--ghost" href="/outreach">Back to outbox</a>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack" id="message-page" data-state="{{ msg.state }}">
+    {% include "outreach/_subnav.html" %}
+
+    {# ---- who the mail goes out as ---- #}
+    {% if is_owner %}
+      {% if connection.status == "connected" %}
+        <div class="sender-banner" id="sender-banner" role="status">Sending as <strong>{{ connection.email }}</strong> (your connected Gmail). Mail is sent only when you press Send on an approved message.</div>
+      {% else %}
+        <div class="flash flash--error" id="gmail-block" role="alert"><strong>Gmail is not connected</strong> ({{ connection.label }}). You cannot send until you <a href="/team">connect your Gmail on the Team page</a>.{% if connection.last_error %} {{ connection.last_error }}{% endif %}</div>
+      {% endif %}
+    {% else %}
+      <div class="sender-banner sender-banner--other" id="sender-banner" role="status">This message belongs to {{ owner_name }} and would go out from {{ msg.from_addr }}. Only {{ owner_name }} can edit, approve or send it.</div>
+    {% endif %}
+
+    {% if msg.state == "sending" %}
+      <div class="flash {{ 'flash--error' if stuck else 'flash--ok' }}" id="sending-notice" role="alert">
+        {% if stuck %}This message has been "Sending" for over 5 minutes, so the send may have been interrupted. Check the Sent folder of {{ msg.from_addr }} in Gmail before doing anything else; sales0 will not retry on its own.
+        {% else %}Sending in progress. Reload in a few seconds.{% endif %}
+      </div>
+    {% endif %}
+    {% if msg.state == "sent" %}
+      <div class="flash flash--ok" id="sent-notice" role="status">Sent {{ msg.sent_at|localdt }} from {{ msg.from_addr }}. Gmail message id <span class="mono">{{ msg.gmail_message_id }}</span>, thread <span class="mono">{{ msg.gmail_thread_id }}</span>. It cannot be sent again. Attachment: <strong id="sent-attachment">{{ attachment or "none" }}</strong>.</div>
+    {% endif %}
+    {% if msg.state in ("draft", "edited", "approved", "failed") %}
+      {% if deck_missing %}
+        <div class="flash flash--error" id="attachment-missing" role="alert">The attached deck <strong>{{ deck.filename }}</strong> has no file (file missing - <a href="/outreach/decks">upload it again</a>). It cannot be approved or sent until you upload it again or pick another deck.</div>
+      {% elif not deck %}
+        <div class="flash flash--error" id="no-attachment-warning" role="alert"><strong>No attachment.</strong> This email will go out without a deck. {% if can_edit %}Pick one under "Attached deck" and save if it should have one.{% endif %}</div>
+      {% endif %}
+    {% endif %}
+    {% if msg.state == "rejected" %}<div class="flash flash--error" id="rejected-notice" role="status">Rejected - this message will not be sent.</div>{% endif %}
+    {% if msg.state == "failed" %}
+      <div class="flash flash--error" id="failed-notice" role="alert">
+        <strong>The send failed.</strong> {{ msg.error }}
+        {% if msg.send_outcome_unknown %}<br><strong>It is not known whether this email went out.</strong> Open Gmail's Sent folder first.{% else %}<br>Nothing was sent.{% endif %}
+      </div>
+    {% endif %}
+    {% if msg.state not in ("sent", "sending", "rejected", "failed") and msg.error %}
+      <div class="flash flash--error" id="draft-attention" role="alert">{{ msg.error }}</div>
+    {% endif %}
+    {% if placeholders and msg.state in ("draft", "edited", "approved", "failed") %}
+      <div class="flash flash--error" id="placeholder-warning" role="alert">Unfilled placeholder(s) in the text: <strong>{{ placeholders|join(", ") }}</strong>. Replace them with real text; you cannot approve until they are gone.</div>
+    {% endif %}
+
+    <div class="grid-2">
+      {# ---- the message ---- #}
+      <section class="card" aria-labelledby="msg-title">
+        <div class="card__header"><h2 id="msg-title">{{ "Edit message" if can_edit else "Message" }}</h2></div>
+        <div class="card__body">
+          {% if can_edit %}
+            {% if msg.state == "approved" %}<p class="badge badge--warn" id="edit-reset-notice">Editing an approved message resets its approval - you will need to approve it again.</p>{% endif %}
+            <form class="stack" method="post" action="/outreach/messages/{{ msg.id }}/edit" id="edit-form">
+              <div class="field"><label class="field__label" for="to">To</label><input class="input" id="to" name="to" value="{{ msg.to_addrs }}" maxlength="500"></div>
+              <div class="field"><label class="field__label" for="cc">Cc</label><input class="input" id="cc" name="cc" value="{{ msg.cc_addrs }}" maxlength="500"></div>
+              <div class="field"><label class="field__label" for="subject">Subject</label><input class="input" id="subject" name="subject" value="{{ msg.subject }}" maxlength="300"></div>
+              <div class="field"><label class="field__label" for="body">Body</label><textarea class="input" id="body" name="body" rows="14">{{ msg.body }}</textarea></div>
+              <div class="field"><label class="field__label" for="deck_id">Attached deck</label>
+                <select class="input" id="deck_id" name="deck_id">
+                  <option value="none"{% if not msg.deck_id %} selected{% endif %}>No attachment</option>
+                  {% for d in decks %}<option value="{{ d.id }}"{% if d.id == msg.deck_id %} selected{% endif %}{% if d.content_missing and d.id != msg.deck_id %} disabled{% endif %}>{{ d.name }} ({{ d.filename }}, {{ (d.size_bytes / 1024)|round|int }} KB){% if d.content_missing %} - file missing, upload again{% endif %}</option>{% endfor %}
+                  {% if deck and not deck.active %}<option value="{{ deck.id }}" selected>{{ deck.name }} (deleted)</option>{% endif %}
+                </select></div>
+              <div><button class="btn" type="submit" id="save-btn">Save changes</button></div>
+            </form>
+          {% else %}
+            <dl class="kv">
+              <dt>To</dt><dd>{{ msg.to_addrs or "-" }}</dd>
+              <dt>Cc</dt><dd>{{ msg.cc_addrs or "-" }}</dd>
+              <dt>From</dt><dd>{{ msg.from_addr }}</dd>
+              <dt>Subject</dt><dd>{{ msg.subject }}</dd>
+              <dt>Attachment</dt><dd id="attachment-kv">{{ attachment or "none" }}</dd>
+            </dl>
+            <pre class="mail-body" id="message-body">{{ msg.body }}</pre>
+          {% endif %}
+          {% if deck %}<p class="muted" id="attachment-line">Attached: <a href="/outreach/decks/{{ deck.id }}/file" target="_blank" rel="noopener">{{ deck.filename }}</a> ({{ (deck.size_bytes / 1024)|round|int }} KB){% if deck_missing %} - <strong>file missing, upload again</strong>{% endif %}</p>{% endif %}
+        </div>
+      </section>
+
+      <div class="stack">
+        {# ---- actions ---- #}
+        <section class="card" aria-labelledby="actions-title">
+          <div class="card__header"><h2 id="actions-title">Review and send</h2></div>
+          <div class="card__body stack" id="actions">
+            {% if can_approve %}
+              <form method="post" action="/outreach/messages/{{ msg.id }}/approve">
+                <button class="btn btn--primary" id="approve-btn" type="submit"{% if placeholders %} disabled{% endif %}>Approve this exact version{% if hash_prefix %} (hash {{ hash_prefix }}){% endif %}</button>
+              </form>
+              <p id="approve-attachment">Attachment: <strong>{{ attachment or "none - no deck will be attached" }}</strong></p>
+              <p class="muted">Approving locks in the current text, recipients and deck. Any later edit cancels the approval.</p>
+            {% endif %}
+            {% if msg.state == "approved" %}
+              <p id="approved-note"><span class="badge badge--info">Approved</span> by {{ owner_name }}{% if msg.approved_at %} {{ msg.approved_at|localdt }}{% endif %}, content hash <span class="mono" id="approved-hash">{{ approved_hash }}</span>. Attachment: <strong id="approved-attachment">{{ attachment or "none" }}</strong>.</p>
+            {% endif %}
+            {% if can_send %}
+              <form method="post" action="/outreach/messages/{{ msg.id }}/send" id="send-form" data-busy-submit data-busy-disable data-busy-text="Sending...">
+                <button class="btn btn--danger" id="send-btn" type="submit">Send now from {{ connection.email }}</button>
+              </form>
+              <p class="muted">This really sends the email. It cannot be undone and it can only be sent once.</p>
+            {% elif is_owner and msg.state == "approved" %}
+              <p class="muted" id="send-blocked">Sending is unavailable:
+                {% if connection.status != "connected" %}Gmail is not connected - <a href="/team">connect it</a>.{% elif cap.reached %}today's limit of {{ cap.cap }} emails is reached.{% endif %}</p>
+            {% endif %}
+            {% if can_retry_known %}
+              <form method="post" action="/outreach/messages/{{ msg.id }}/send" data-busy-submit data-busy-disable>
+                <button class="btn" id="retry-btn" type="submit">Retry send</button>
+              </form>
+              <p class="muted">Nothing was sent last time, so a retry is safe. It still only happens when you press the button.</p>
+            {% endif %}
+            {% if can_retry_unknown %}
+              <form method="post" action="/outreach/messages/{{ msg.id }}/retry" id="retry-unknown-form" data-busy-submit data-busy-disable>
+                <label class="row"><input type="checkbox" name="confirm_not_sent" value="1" id="confirm-not-sent" required> I checked the Gmail Sent folder and it was NOT sent.</label>
+                <button class="btn btn--danger" id="retry-unknown-btn" type="submit">Retry send</button>
+              </form>
+            {% endif %}
+            {% if is_owner and msg.state == "failed" and msg.content_sha256 is none %}
+              <p class="muted" id="reapprove-note">The approval was cleared. Edit the message (any change) and save it to approve it again.</p>
+            {% endif %}
+            {% if can_reject %}
+              <form method="post" action="/outreach/messages/{{ msg.id }}/reject" data-q="Reject this message? It will never be sent." data-confirm-submit>
+                <button class="btn btn--ghost" id="reject-btn" type="submit">Reject</button>
+              </form>
+            {% endif %}
+            {% if not is_owner %}<p class="muted">You can read this message but only its owner can act on it.</p>{% endif %}
+          </div>
+        </section>
+
+        {# ---- research ---- #}
+        <section class="card" aria-labelledby="brief-title">
+          <div class="card__header"><h2 id="brief-title">Research brief</h2></div>
+          <div class="card__body">
+            {% if brief %}
+              <p>{{ brief.what_they_do or "unknown" }}</p>
+              <p><strong>Hooks used</strong></p>
+              {% if brief.hooks %}<ul id="message-hooks">{% for h in brief.hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% else %}<p class="muted">none</p>{% endif %}
+              {% if brief.sources %}<p><strong>Sources</strong></p><ul>{% for s in brief.sources %}<li>{% if s.startswith(("http://", "https://")) %}<a href="{{ s }}" target="_blank" rel="noopener noreferrer">{{ s }}</a>{% else %}{{ s }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+            {% else %}
+              <p class="muted">No research was done for this message.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="replies-title">
+          <div class="card__header"><h2 id="replies-title">Replies</h2><span class="muted">{{ replies|length }}</span></div>
+          <div class="card__body stack" id="message-replies">
+            {% if msg.reply_status == "bounced" %}
+              <div class="flash flash--error" id="bounce-note" role="alert">This message bounced: the address did not accept it. Do not send to it again.</div>
+            {% endif %}
+            {% if suppressed_to %}
+              <div class="flash flash--error" id="suppressed-note" role="alert">On the suppression list: {{ suppressed_to|join(", ") }}. sales0 will not draft or send to {{ "it" if suppressed_to|length == 1 else "them" }}. <a href="/replies/suppressions">See the suppression list</a>.</div>
+            {% endif %}
+            {% for v in replies %}{% set r = v.reply %}
+              <div class="reply-item" data-kind="{{ r.kind }}">
+                <span class="badge reply-kind reply-kind--{{ r.kind }}">{{ {"human": "Human", "auto_reply": "Auto-reply", "bounce": "Bounce"}.get(r.kind, r.kind) }}</span>
+                {% if r.intent %}<span class="badge reply-intent reply-intent--{{ r.intent }}">{{ r.intent|replace("_", " ")|capitalize }}</span>{% endif %}
+                <span class="muted">{{ r.from_addr }} - {{ r.received_at|ago }}{% if r.handled %} - handled{% endif %}</span>
+                <div class="reply-snippet">{{ r.snippet }}</div>
+              </div>
+            {% else %}
+              <p class="muted">No replies yet. They appear here automatically (see <a href="/replies">Replies</a>).</p>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </div>
+
+    {# ---- timeline ---- #}
+    <section class="card" aria-labelledby="timeline-title">
+      <div class="card__header"><h2 id="timeline-title">Timeline</h2></div>
+      <div class="card__body">
+        <ol class="timeline" id="timeline">
+          {% for ev, label, who, ev_detail in events %}
+            <li data-kind="{{ ev.kind }}"><strong>{{ label }}</strong>{% if who %} by {{ who }}{% endif %} <span class="muted">{{ ev.created_at|localdt("%d %b %H:%M:%S") }}</span>{% if ev_detail %}<div class="muted">{{ ev_detail }}</div>{% endif %}</li>
+          {% else %}<li class="muted">No events yet.</li>{% endfor %}
+        </ol>
+      </div>
+    </section>
+  </div>
+{% endblock %}

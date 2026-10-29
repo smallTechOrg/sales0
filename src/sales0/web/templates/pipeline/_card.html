@@ -1,0 +1,15 @@
+{# Needs: c (CompanyCard), today. One company card of the board. #}
+{% from "pipeline/_macros.html" import category_chips, priority_chip, trait_chips %}
+<article class="pcard" id="company-{{ c.id }}" data-stage="{{ c.stage or '' }}"{% if c.off_ramp %} data-off-ramp="{{ c.off_ramp }}"{% endif %}>
+  <h3><a href="/companies/{{ c.id }}">{{ c.name }}</a> {{ priority_chip(c.priority, c.priority_source == "manual") }}</h3>
+  <div class="pcard__badges">
+    {% if c.off_ramp %}<span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}
+    {% if c.stage and c.sub_label %}<span class="badge stage-badge stage-badge--{{ c.stage }}">{{ c.stage_label }}{% if c.stage != "client" %}: {{ c.sub_label }}{% endif %}</span>{% endif %}
+    {% if c.suggested_lead %}<span class="badge badge--info" title="A reply or enquiry status suggests this company is a lead - a person decides">Suggested: Lead</span>{% endif %}
+  </div>
+  <div class="pcard__meta">
+    {% if c.city %}{{ c.city }} · {% endif %}{{ c.enquiries }} enquir{{ "y" if c.enquiries == 1 else "ies" }}{% if c.owner %} · {{ c.owner }}{% endif %}
+    {% if c.next_follow_up_on %}<br>Next follow-up <span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b") }}{% if c.next_follow_up_on < today %} (overdue){% endif %}</span>{% endif %}
+  </div>
+  <div class="pcard__badges">{{ category_chips(c.categories) }}{{ trait_chips(c.characteristics) }}</div>
+</article>

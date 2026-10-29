@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner, timeline_list, flag_badges, trait_chips %}
+{% block title %}{{ co.name }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/companies">&larr; Companies</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="company-header" aria-labelledby="company-title">
+      <div class="card__body record-head">
+        <div class="record-head__title"><h1 id="company-title">{{ co.name }}</h1> {{ trait_chips(co.characteristics) }}</div>
+        <div class="pcard__meta">{% if co.city %}{{ co.city }}{% endif %}
+          {% if co.website and co.website.startswith(("http://", "https://")) %} · <a href="{{ co.website }}" rel="noopener noreferrer" target="_blank">{{ co.website }}</a>{% elif co.website %} · {{ co.website }}{% endif %}
+          {% if co.linkedin_url and co.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ co.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn page</a>{% endif %}</div>
+        <p class="muted" id="company-summary">{{ co.prospects|length }} prospect{{ "" if co.prospects|length == 1 else "s" }} · {{ co.leads|length }} lead{{ "" if co.leads|length == 1 else "s" }} · {{ co.clients|length }} client{{ "" if co.clients|length == 1 else "s" }} · {{ co.contacts|length }} contact{{ "" if co.contacts|length == 1 else "s" }} · {{ co.enquiries|length }} enquir{{ "y" if co.enquiries|length == 1 else "ies" }} · {{ co.messages|length }} email{{ "" if co.messages|length == 1 else "s" }}, {{ co.replies|length }} repl{{ "y" if co.replies|length == 1 else "ies" }} · {{ co.open_follow_ups }} open follow-up{{ "" if co.open_follow_ups == 1 else "s" }}</p>
+        {% if co.notes %}<p class="timeline__text">{{ co.notes }}</p>{% endif %}
+        <details class="inline-edit">
+          <summary>Edit company</summary>
+          <form class="stack" method="post" action="/companies/{{ co.id }}">
+            <div class="grid-2">
+              <div class="field"><label class="field__label" for="co-name">Name</label><input class="input" id="co-name" name="name" value="{{ co.name }}" required maxlength="200"></div>
+              <div class="field"><label class="field__label" for="co-website">Website</label><input class="input" id="co-website" name="website" value="{{ co.website or '' }}" maxlength="300" placeholder="acme.com"></div>
+              <div class="field"><label class="field__label" for="co-linkedin">LinkedIn company page</label><input class="input" id="co-linkedin" name="linkedin_url" value="{{ co.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/company/..."></div>
+              <div class="field"><label class="field__label" for="co-city">City</label><input class="input" id="co-city" name="city" value="{{ co.city or '' }}" maxlength="100"></div>
+            </div>
+            <div class="field"><label class="field__label" for="co-notes">Notes</label><textarea class="input" id="co-notes" name="notes" rows="3" maxlength="4000">{{ co.notes or "" }}</textarea></div>
+            <div><button class="btn btn--primary" type="submit">Save company</button></div>
+          </form>
+        </details>
+        <details class="inline-edit" id="company-merge">
+          <summary>Merge a duplicate into this company</summary>
+          <form class="inline-form" method="post" action="/companies/{{ co.id }}/merge" hx-post="/companies/{{ co.id }}/merge" hx-swap="none" hx-confirm="Merge the chosen company into {{ co.name }}? Its prospects, contacts, enquiries and history move here and the duplicate is deleted.">
+            <div class="field"><label class="field__label" for="merge-drop">Duplicate company</label>
+              <select class="input" id="merge-drop" name="drop_id" required>
+                <option value="">Choose…</option>
+                {% for d in duplicates %}<option value="{{ d.id }}">{{ d.name }}{% if d.website %} ({{ d.website }}){% endif %} · #{{ d.id }}</option>{% endfor %}
+              </select></div>
+            <button class="btn btn--danger" type="submit">Merge into {{ co.name }}</button>
+          </form>
+          <p class="hint">Listed: companies with the same website domain or LinkedIn page, or a name that starts the same. Everything moves to this company; the duplicate's name is kept in the timeline.</p>
+        </details>
+      </div>
+    </section>
+    <div class="grid-2">
+      <div class="stack">
+        <section class="card" id="company-prospects" aria-labelledby="cp-title">
+          <div class="card__header"><h2 id="cp-title">Prospects, leads &amp; clients</h2></div>
+          <div class="card__body">
+            {% for p in co.prospects %}
+              <div class="reply-item"><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a> <span class="badge stage-badge">{{ p.stage_label }}</span>{% if p.priority %} <span class="chip-priority" data-priority="{{ p.priority }}">{{ p.priority|capitalize }}</span>{% endif %}
+                {% if p.status != "open" %}<span class="badge">{{ p.status|capitalize }}</span>{% endif %} {{ flag_badges(p.flags) }} {{ trait_chips(p.characteristics) }}
+                {% if p.open_lead_id %} · <a href="/pipeline/leads/{{ p.open_lead_id }}">Open lead</a>{% endif %}</div>
+            {% else %}<p class="muted">No prospects at this company.</p>{% endfor %}
+            {% for l in co.leads %}
+              <div class="reply-item" id="company-lead-{{ l.id }}"><span class="badge">Lead</span> <a href="/pipeline/leads/{{ l.id }}">{{ l.prospect_name }}</a> <span class="badge stage-badge stage-badge--{{ l.stage }}">{{ l.stage_label }}</span></div>
+            {% endfor %}
+            {% for c in co.clients %}
+              <div class="reply-item" id="company-client-{{ c.id }}"><span class="badge stage-badge stage-badge--won">Client</span> <a href="/pipeline/clients/{{ c.id }}">{{ c.name }}</a> <span class="muted">{{ c.status|capitalize }}{% if c.started_on %} since {{ c.started_on.strftime("%d %b %Y") }}{% endif %}</span> {{ trait_chips(c.characteristics) }}</div>
+            {% endfor %}
+          </div>
+        </section>
+        <section class="card" id="company-contacts" aria-labelledby="cc-title">
+          <div class="card__header"><h2 id="cc-title">People</h2><span class="muted">{{ co.contacts|length }}</span></div>
+          <div class="card__body">
+            {% for c in co.contacts %}<div class="reply-item"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "(unnamed)" }}</a>
+                <div class="muted">{% if c.title %}{{ c.title }} · {% endif %}{% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.linkedin_url and c.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ c.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn</a>{% endif %}</div></div>
+            {% else %}<p class="muted">No contacts.</p>{% endfor %}
+          </div>
+        </section>
+        <section class="card" id="company-enquiries" aria-labelledby="ce-title">
+          <div class="card__header"><h2 id="ce-title">Enquiries</h2><span class="muted">{{ co.enquiries|length }}</span></div>
+          <div class="card__body">
+            {% for e in co.enquiries %}
+              <div class="reply-item" id="company-enquiry-{{ e.id }}">
+                {% if e.prospect_id %}<a href="/pipeline/prospects/{{ e.prospect_id }}#enquiry-{{ e.id }}"><strong>{{ e.requirement_summary or "(no summary)" }}</strong></a>
+                {% else %}<a href="/inbox?tab={{ 'accepted' if e.review_status == 'accepted' else ('discarded' if e.review_status == 'discarded' else 'review') }}&q={{ (e.requirement_summary or '')[:40]|urlencode }}"><strong>{{ e.requirement_summary or "(no summary)" }}</strong></a>{% endif %}
+                <div class="muted">{{ e.review_status|replace("_", " ")|capitalize }}{% if e.author_name %} · {{ e.author_name }}{% endif %}{% if e.date_added %} · {{ e.date_added|ago }}{% endif %}</div>
+                <div class="row">
+                  {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ "Author profile" if e.link_kind == "profile" else "View post" }}</a>{% endif %}
+                  {% if e.author_profile_url and e.author_profile_url.startswith(("http://", "https://")) and e.author_profile_url != e.source_url %}<a href="{{ e.author_profile_url }}" rel="noopener noreferrer" target="_blank">Author profile</a>{% endif %}
+                </div>
+              </div>
+            {% else %}<p class="muted">No enquiries.</p>{% endfor %}
+          </div>
+        </section>
+        <section class="card" id="company-outreach" aria-labelledby="co-out-title">
+          <div class="card__header"><h2 id="co-out-title">Outreach &amp; replies</h2><span class="muted">{{ co.messages|length }} / {{ co.replies|length }}</span></div>
+          <div class="card__body">
+            {% for m in co.messages %}
+              <div class="reply-item"><a href="/outreach/messages/{{ m.id }}">{{ m.subject or "(no subject)" }}</a>
+                <div class="muted"><span class="badge state state--{{ m.state }}">{{ m.state|capitalize }}</span>
+                  {% if m.reply_status %}<span class="badge reply-badge reply-badge--{{ m.reply_status }}">{{ m.reply_status|replace("_", " ")|capitalize }}</span>{% endif %}
+                  {% if m.sent_at %}sent {{ m.sent_at|ago }}{% endif %}{% if m.owner_name %} · {{ m.owner_name }}{% endif %}</div></div>
+            {% else %}<p class="muted">No emails to this company yet.</p>{% endfor %}
+            {% for r in co.replies %}
+              <div class="reply-item"><span class="badge reply-kind reply-kind--{{ r.kind }}">Reply · {{ r.kind|replace("_", " ")|capitalize }}</span>
+                <span class="muted">{{ r.received_at|ago }} · <a href="/outreach/messages/{{ r.message_id }}">Message #{{ r.message_id }}</a></span>
+                {% if r.snippet %}<div class="reply-snippet">{{ r.snippet }}</div>{% endif %}</div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+      <section class="card" id="company-timeline" aria-labelledby="cti-title">
+        <div class="card__header"><h2 id="cti-title">Timeline</h2><span class="muted">read-only</span></div>
+        <div class="card__body"><div id="timeline">{{ timeline_list(co.timeline) }}</div></div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

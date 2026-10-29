@@ -1,0 +1,91 @@
+{# LinkedIn accounts card (Phase 5). Needs: accounts (list[LinkedInAccountView]), account_busy (JobName|None), accounts_notice (str|None),
+   accounts_error (str|None), fixture_mode (bool). The DEFAULT account is managed by the LinkedIn connection card above
+   (same buttons, same ids), so its row here has no Connect / Re-check buttons. #}
+{% set busy = account_busy is not none %}
+{% set modifiers = {"connected": "connected", "not_connected": "not-connected", "needs_attention": "needs-attention", "disabled": "not-connected"} %}
+{% set labels = {"connected": "Connected", "not_connected": "Not connected", "needs_attention": "Needs attention", "disabled": "Disabled"} %}
+<section id="linkedin-accounts" class="card" aria-labelledby="linkedin-accounts-title"
+  hx-get="/setup/linkedin/accounts" hx-trigger="session-changed from:body delay:200ms{% if busy %}, every 2s{% endif %}" hx-swap="outerHTML">
+  <div class="card__header">
+    <h2 id="linkedin-accounts-title">LinkedIn accounts</h2>
+    <span class="muted">{{ accounts | length }} account{{ "" if accounts | length == 1 else "s" }} · each has its own cool-down and daily limits</span>
+  </div>
+  <div class="card__body">
+    {% if accounts_error %}<p class="outcome outcome--error" role="alert">{{ accounts_error }}</p>{% endif %}
+    <ul class="stack" id="linkedin-account-list">
+      {% for a in accounts %}
+      <li class="row" id="linkedin-account-{{ a.id }}" data-account-id="{{ a.id }}" data-status="{{ a.status }}">
+        <span class="status-light status-light--{{ modifiers[a.status] }}"><span class="status-light__dot" aria-hidden="true"></span><span>{{ labels[a.status] }}</span></span>
+        <strong>{{ a.label }}</strong>
+        <span class="muted">{{ "pasted cookie" if a.backend == "db" else "Chrome window" }}{% if a.is_default %} · default{% endif %}</span>
+        {% if a.status == "needs_attention" and a.last_error %}<span class="muted">{{ a.last_error }}</span>{% endif %}
+        {% if a.cooldown_until %}<span class="muted">cool-down until {{ cooldown_clock(a.cooldown_until) }}</span>{% endif %}
+        <span class="muted">today {{ a.runs_today }} runs · {{ a.posts_today }} posts</span>
+        <form class="inline-form" method="post" action="/setup/linkedin/accounts/{{ a.id }}/rename" hx-post="/setup/linkedin/accounts/{{ a.id }}/rename" hx-target="#linkedin-accounts" hx-swap="outerHTML">
+          <input class="input" name="label" type="text" value="{{ a.label }}" maxlength="80" aria-label="Name of {{ a.label }}" required>
+          <button class="btn btn--ghost" type="submit">Rename</button>
+        </form>
+        {% if not a.is_default and not a.disabled %}
+          {% if a.backend == "folder" %}
+          <form method="post" action="/setup/linkedin/accounts/{{ a.id }}/connect" hx-post="/setup/linkedin/accounts/{{ a.id }}/connect" hx-target="#linkedin-accounts" hx-swap="outerHTML">
+            <button class="btn" type="submit" {% if busy %}disabled{% endif %}>Connect {{ a.label }}</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/setup/linkedin/accounts/{{ a.id }}/check" hx-post="/setup/linkedin/accounts/{{ a.id }}/check" hx-target="#linkedin-accounts" hx-swap="outerHTML">
+            <button class="btn" type="submit" {% if busy %}disabled{% endif %}>Re-check {{ a.label }}</button>
+          </form>
+        {% endif %}
+        {% if a.disabled %}
+          <form method="post" action="/setup/linkedin/accounts/{{ a.id }}/enable" hx-post="/setup/linkedin/accounts/{{ a.id }}/enable" hx-target="#linkedin-accounts" hx-swap="outerHTML">
+            <button class="btn" type="submit">Enable</button>
+          </form>
+        {% else %}
+          <form method="post" action="/setup/linkedin/accounts/{{ a.id }}/disable" hx-post="/setup/linkedin/accounts/{{ a.id }}/disable" hx-target="#linkedin-accounts" hx-swap="outerHTML">
+            <button class="btn btn--ghost" type="submit">Disable</button>
+          </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form class="inline-form" method="post" action="/setup/linkedin/accounts" hx-post="/setup/linkedin/accounts" hx-target="#linkedin-accounts" hx-swap="outerHTML">
+      <div class="field">
+        <label class="field__label" for="new-account-label">Add a LinkedIn account</label>
+        <input class="input" id="new-account-label" name="label" type="text" maxlength="80" required placeholder="e.g. Priya's account" autocomplete="off">
+      </div>
+      <button class="btn btn--primary" type="submit">Add account</button>
+    </form>
+
+    <details id="paste-cookie">
+      <summary>Paste li_at cookie (server fallback)</summary>
+      <div class="stack">
+        <p class="outcome outcome--warn"><strong>Read this first.</strong> Use this only when Chrome cannot be opened on this machine (a server / VPS).</p>
+        <ul>
+          <li>The <span class="mono">li_at</span> cookie IS your LinkedIn login. Anyone who has it can act as you: treat it like a password and never share it.</li>
+          <li>Automating LinkedIn can breach LinkedIn's Terms of Service; your account may be restricted.</li>
+          <li>LinkedIn is quick to flag logins from datacentre IP addresses, so this is riskier than the Chrome window on your own computer.</li>
+          <li>The cookie is stored <strong>encrypted</strong> in the database with <span class="mono">SALES0_SECRET_KEY</span>, which must be set on a server. If that key changes you must paste the cookie again.</li>
+          <li>sales0 validates it with one visit to your LinkedIn feed{% if fixture_mode %} (the fixture LinkedIn in this mode){% endif %} before marking the account connected.</li>
+        </ul>
+        <form method="post" action="/setup/linkedin/cookie" hx-post="/setup/linkedin/cookie" hx-target="#linkedin-accounts" hx-swap="outerHTML" autocomplete="off">
+          <div class="field">
+            <label class="field__label" for="cookie-account">Account</label>
+            <select class="select" id="cookie-account" name="account_id">
+              <option value="">New account…</option>
+              {% for a in accounts if a.backend == "db" %}<option value="{{ a.id }}">{{ a.label }} (replace its cookie)</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="field__label" for="cookie-label">Name (for a new account)</label>
+            <input class="input" id="cookie-label" name="label" type="text" maxlength="80" placeholder="e.g. Server account">
+          </div>
+          <div class="field">
+            <label class="field__label" for="cookie-value">li_at cookie value</label>
+            <input class="input mono" id="cookie-value" name="cookie" type="password" autocomplete="off" spellcheck="false" required>
+          </div>
+          <button id="save-cookie" class="btn btn--primary" type="submit" {% if busy %}disabled{% endif %}>Save and validate</button>
+        </form>
+      </div>
+    </details>
+  </div>
+</section>

@@ -1,0 +1,71 @@
+{
+ "entries": [
+  {
+   "key": "6f7ab5027f9e5aa4f98910df",
+   "loose": "5f5e5bbcf55cff3501346d99",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhcdfU6GwumQ4tDyHNf",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_017Trk7qdpHrhuE8JUJd6hRV",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Pune",
+       "company": "Acme Logistics",
+       "contact_person": "Priya Menon",
+       "dates_mentioned": "Week of 17 Nov (2026)",
+       "email": "training@acmelogistics.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": "+91 98200 11111",
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company L&D seeking a training partner for an on-site 2-day GenAI workshop for 40 managers in Pune, with contact route",
+       "requirement_summary": "Acme Logistics - 2-day GenAI workshop for 40 managers - Pune/Offline",
+       "topic": "GenAI fundamentals, prompt writing for operations teams, logistics use cases",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhce1ZTrr9Qsz7jRbHN",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 466,
+     "output_tokens": 559,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Priya Menon\nHeadline: Head of L&D at Acme Logistics\nDate posted: 2026-10-28\nURL:",
+   "tool": "record_triage"
+  }
+ ]
+}

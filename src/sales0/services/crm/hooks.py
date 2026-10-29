@@ -1,0 +1,280 @@
+"""Event subscribers: the CRM reacts to enquiry decisions, sent messages and replies.
+
+Each handler runs in its own savepoint and swallows (logs) every failure, so the publisher
+(inbox decide, message send, reply poller) is never broken by the CRM.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from sales0.clock import local_today
+from sales0.config import get_settings
+from sales0.db.models import Enquiry, FollowUp, Lead, OutreachMessage, OutreachReply, Prospect, TimelineEvent
+from sales0.logging import get_logger
+from sales0.services import events
+from sales0.services._common import record_history
+from sales0.services.crm import contacts, flags, followups, lifecycle, priority, prospects, timeline
+from sales0.services.crm.actor import SYSTEM, TEAM, Actor, actor_for
+
+log = get_logger("sales0.crm.hooks")
+
+
+def _audit_failure(db: Session, hook: str, ev: Any, exc: Exception) -> None:
+    """Leave a visible trace of a swallowed hook failure on the enquiry's timeline (best effort, never raises).
+
+    The failed hook's savepoint is already rolled back, so this runs in its own savepoint. Hooks without an
+    enquiry in reach (e.g. a reply whose message has none) only log."""
+    try:
+        enquiry_id = getattr(ev, "enquiry_id", None)
+        if enquiry_id is None:
+            msg_id = getattr(ev, "outreach_message_id", None)
+            msg = db.get(OutreachMessage, msg_id) if msg_id else None
+            enquiry_id = msg.enquiry_id if msg is not None else None
+        if enquiry_id is None:
+            return
+        with db.begin_nested():
+            timeline.add_event(
+                db, subject_type="enquiry", subject_id=enquiry_id, kind="note", actor=SYSTEM,
+                body=f"CRM update failed ({hook}); it will be retried by the nightly check.",
+                data={"system": True, "hook_failed": True, "hook": hook, "event": type(ev).__name__,
+                      "error": f"{type(exc).__name__}: {exc}"[:300]},
+            )
+    except Exception:  # noqa: BLE001 - auditing must never break the publisher either
+        log.exception("crm_hook_audit_failed", hook=hook)
+
+
+def _guarded(fn: Callable[[Session, Any], None]) -> Callable[[Session, Any], None]:
+    def wrapper(db: Session, ev: Any) -> None:
+        try:
+            with db.begin_nested():
+                fn(db, ev)
+        except Exception as exc:  # noqa: BLE001 - the CRM must never break its publisher
+            log.exception("crm_hook_failed", hook=fn.__name__, event_type=type(ev).__name__)
+            _audit_failure(db, fn.__name__, ev, exc)
+
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    wrapper.__wrapped__ = fn  # type: ignore[attr-defined]
+    return wrapper
+
+
+def _member_actor(db: Session, member_id: int | None, by_member_id: int | None = None) -> Actor:
+    return actor_for(db, member_id, by_member_id)
+
+
+# ---------------------------------------------------------------------------- enquiry decided
+def _on_enquiry_decided(db: Session, ev: events.EnquiryDecided) -> None:
+    actor = _member_actor(db, ev.actor_member_id, ev.by_member_id)
+    e = db.get(Enquiry, ev.enquiry_id)
+    if e is None:
+        return
+    if ev.decision == "accept":
+        view = prospects.ensure_for_enquiry(db, ev.enquiry_id, actor=actor)
+        if e.category == "channel_partner":
+            from sales0.services import categories
+
+            categories.tick_partner(db, view.id, actor=actor)  # E3: accepting a channel partner ticks "Partner"
+        return
+    if ev.decision == "discard" and e.prospect_id:
+        priority.refresh(db, e.prospect_id)  # a discarded enquiry no longer counts toward the derived priority
+        p = db.get(Prospect, e.prospect_id)
+        if p is None or p.status != "open" or p.stage != "new" or p.stage_source == "sheet":
+            return
+        other = db.scalar(
+            select(func.count(Enquiry.id)).where(Enquiry.prospect_id == p.id, Enquiry.id != e.id, Enquiry.review_status == "accepted")
+        )
+        if not other:
+            prospects.close(db, p.id, "enquiry_discarded", actor=actor)
+
+
+# ---------------------------------------------------------------------------- message sent
+def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
+    msg = db.get(OutreachMessage, ev.outreach_message_id)
+    if msg is None or msg.state != "sent":
+        return
+    pid = prospects.resolve_for_message(db, msg.id)
+    if pid is None and msg.enquiry_id:
+        e = db.get(Enquiry, msg.enquiry_id)
+        if e is not None and e.review_status == "accepted":
+            pid = prospects.ensure_for_enquiry(db, e.id, actor=_member_actor(db, ev.member_id), now=ev.sent_at).id
+        elif e is not None:
+            # E1: never silent - an email to an enquiry nobody has accepted yet is not a pipeline contact
+            timeline.add_event(
+                db, subject_type="enquiry", subject_id=e.id, kind="note", actor=_member_actor(db, ev.member_id),
+                occurred_at=ev.sent_at,
+                body="An email was sent for this enquiry but it has not been accepted yet, so no prospect was moved to Contacted. "
+                "Accept the enquiry to track it in the pipeline.",
+                data={"system": True, "message_id": msg.id, "review_status": e.review_status},
+            )
+    if pid is None:
+        return
+    p = db.get(Prospect, pid)
+    if p is None:
+        return
+    actor = _member_actor(db, ev.member_id)
+    if msg.prospect_id is None:
+        msg.prospect_id = p.id
+    if msg.company_id is None and p.company_id:
+        msg.company_id = p.company_id
+    prior_emails = int(db.scalar(
+        select(func.count(TimelineEvent.id)).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "email_sent")
+    ) or 0)
+    already = any(
+        (t.data or {}).get("message_id") == msg.id
+        for t in db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "email_sent"))
+    )
+    if already:
+        return
+    timeline.add_event(
+        db, subject_type="prospect", subject_id=p.id, kind="email_sent", body=msg.subject or None,
+        data={"message_id": msg.id, "to": list(ev.to_addrs)}, actor=actor, occurred_at=ev.sent_at,
+    )
+    for addr in ev.to_addrs:
+        try:
+            row, _ = contacts.upsert_row(db, email=addr, company_id=p.company_id, origin="enquiry", actor=SYSTEM, now=ev.sent_at)
+        except Exception:  # noqa: BLE001 - an unparsable recipient must not stop the stage move
+            continue
+        contacts.link(db, row.id, "prospect", p.id, "recipient")
+        if p.contact_id is None:
+            p.contact_id = row.id
+    e = db.get(Enquiry, msg.enquiry_id) if msg.enquiry_id else (db.get(Enquiry, p.origin_enquiry_id) if p.origin_enquiry_id else None)
+    if e is not None and e.date_email_sent is None:
+        e.date_email_sent = local_today(get_settings().tz, ev.sent_at)
+        record_history(db, "enquiry", e.id, "date_email_sent", None, e.date_email_sent.isoformat(), now=ev.sent_at,
+                       note=f"first email sent (message {msg.id})", actor_user_id=ev.member_id)
+    db.flush()
+    if p.status != "open":
+        # closed / converted: the email is still a real contact - record it, change no status, schedule nothing
+        prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, schedule=False, now=ev.sent_at)
+        return
+    if msg.follow_up_id is not None and p.stage != "new":
+        # E2: the email IS a drafted follow-up - mark exactly THAT reminder done via email (the stage advances). The first
+        # app email of a prospect first contacted by hand also records the email contact date.
+        fu = db.get(FollowUp, msg.follow_up_id)
+        if prior_emails == 0:
+            prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, schedule=False, now=ev.sent_at)
+        if fu is not None and fu.done_at is None and fu.cancelled_at is None and fu.prospect_id == p.id:
+            followups.complete(db, fu.id, actor=actor, note="follow-up email sent", channel="email", now=ev.sent_at)
+    elif p.stage == "new":
+        prospects.mark_contacted(db, p.id, when=ev.sent_at, actor=actor, channel="email", now=ev.sent_at)
+    elif prior_emails == 0:
+        # contacted by hand (LinkedIn/call/sheet) before: the first app email is not a follow-up by itself
+        prospects.record_email_contact(db, p.id, when=ev.sent_at, actor=actor, now=ev.sent_at)
+        any_auto = db.scalar(select(FollowUp.id).where(FollowUp.prospect_id == p.id, FollowUp.auto.is_(True)).limit(1))
+        if any_auto is None:
+            followups.schedule_for_contact(db, p.id, p.contacted_at or ev.sent_at, now=ev.sent_at)
+    else:
+        earliest = db.scalar(
+            select(FollowUp).where(FollowUp.prospect_id == p.id, FollowUp.done_at.is_(None), FollowUp.cancelled_at.is_(None), FollowUp.kind != "custom")
+            .order_by(FollowUp.due_on, FollowUp.id).limit(1)
+        )
+        if earliest is not None:
+            followups.complete(db, earliest.id, actor=actor, note="follow-up email sent", channel="email", now=ev.sent_at)
+
+
+# ---------------------------------------------------------------------------- reply received
+def _on_reply_received(db: Session, ev: events.ReplyReceived) -> None:
+    pid = prospects.resolve_for_message(db, ev.outreach_message_id)
+    if pid is None:
+        return
+    p = db.get(Prospect, pid)
+    if p is None:
+        return
+    if ev.reply_id is not None:
+        for t in db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind.in_(("reply_received", "note")))):
+            if (t.data or {}).get("reply_id") == ev.reply_id:
+                return  # already handled (idempotent)
+    reply = db.get(OutreachReply, ev.reply_id) if ev.reply_id else None
+    stamp = reply.received_at if reply is not None else None
+    if ev.kind != "human":
+        label = "Bounce received (delivery failed)" if ev.kind == "bounce" else "Automatic reply received (not counted as a response)"
+        timeline.add_event(
+            db, subject_type="prospect", subject_id=p.id, kind="note", body=label,
+            data={"system": True, "reply_id": ev.reply_id, "reply_kind": ev.kind}, actor=SYSTEM, occurred_at=stamp,
+        )
+        return
+    prospects.record_response(
+        db, p.id, actor=SYSTEM, source="reply", reply_id=ev.reply_id, now=stamp,
+        note=f"intent: {ev.intent}" if ev.intent else None, data={"intent": ev.intent, "from": ev.from_addr or None},
+    )
+    if ev.intent == "unsubscribe":
+        flags.set_flag(db, "prospect", p.id, "no_follow_up", source="auto",
+                       detail={"reason": "unsubscribe", "reply_id": ev.reply_id}, actor=SYSTEM, now=stamp)
+        return
+    if ev.intent in ("interested", "question", "not_now"):
+        _open_lead_for_reply(db, p, ev, stamp)
+
+
+def _open_lead_for_reply(db: Session, p: Prospect, ev: events.ReplyReceived, stamp: Any) -> None:
+    """A human reply after contact SUGGESTS a lead (the "suggested: Lead" hint on the company); a person accepts or
+    dismisses it. Nothing moves the company by itself, and a closed company is not reopened."""
+    db.refresh(p)
+    if p.contacted_at is None:
+        timeline.add_event(
+            db, subject_type="prospect", subject_id=p.id, kind="note", actor=SYSTEM, occurred_at=stamp,
+            body="Reply recorded but no lead suggested: the company has no recorded contact.",
+            data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent},
+        )
+        return
+    if p.company_id is None:
+        return
+    if lifecycle.suggest_lead(db, p.company_id, "reply", f"{ev.intent} reply", now=stamp):
+        timeline.add_event(
+            db, subject_type="company", subject_id=p.company_id, kind="note", actor=SYSTEM, occurred_at=stamp,
+            company_id=p.company_id, prospect_id=p.id,
+            body=f"Suggested: Lead - a {ev.intent.replace('_', ' ')} reply arrived. A person decides (Mark as lead).",
+            data={"system": True, "reply_id": ev.reply_id, "intent": ev.intent, "suggested": "lead"},
+        )
+
+
+# ---------------------------------------------------------------------------- tracked profile hit (prospect watch)
+def _needs_follow_up(db: Session, p: Prospect) -> bool:
+    """Assumed rule: a hit on a prospect we had given up on (or ran out of reminders for) needs a human follow-up.
+
+    True for: closed as no_response / lost / not_interested; open at the final follow-up stage; converted whose
+    latest lead is lost / no_response. New / contacted / earlier follow-ups, open leads and won leads just get the note.
+    """
+    if p.status == "closed":
+        return p.closed_reason in prospects.UNTRACK_REASONS
+    if p.status == "open":
+        return p.stage == "final_follow_up"
+    ld = db.scalar(select(Lead).where(Lead.prospect_id == p.id).order_by(Lead.id.desc()).limit(1))
+    return ld is not None and ld.stage in ("lost", "no_response")
+
+
+def _on_tracked_profile_hit(db: Session, ev: events.TrackedProfileHit) -> None:
+    p = db.scalar(select(Prospect).where(Prospect.linkedin_profile_id == ev.profile_id))
+    e = db.get(Enquiry, ev.enquiry_id)
+    if p is None or e is None:
+        return
+    for t in db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "note")):
+        if (t.data or {}).get("watch_enquiry_id") == e.id:
+            return  # idempotent: one note per hit
+    if e.prospect_id is None and e.review_status == "accepted":
+        e.prospect_id = p.id  # a pending enquiry is linked by the normal accept flow (identity = the profile)
+    flagged = False
+    if _needs_follow_up(db, p) and flags._active(db, "prospect", p.id, "no_follow_up") is None:  # noqa: SLF001
+        flagged = True
+    timeline.add_event(
+        db, subject_type="prospect", subject_id=p.id, kind="note", prospect_id=p.id, enquiry_id=e.id, company_id=p.company_id,
+        body="New requirement from tracked profile" + (" - follow-up needed" if flagged else ""),
+        data={"system": True, "watch_enquiry_id": e.id, "run_id": ev.run_id, "follow_up_needed": flagged}, actor=SYSTEM,
+    )
+    if flagged:
+        followups.add_custom(
+            db, prospect_id=p.id, due_on=local_today(get_settings().tz), actor=SYSTEM,
+            note="New requirement from a tracked profile - follow up",
+        )
+
+
+on_enquiry_decided = _guarded(_on_enquiry_decided)
+on_message_sent = _guarded(_on_message_sent)
+on_reply_received = _guarded(_on_reply_received)
+on_tracked_profile_hit = _guarded(_on_tracked_profile_hit)
+
+__all__ = ["TEAM", "on_enquiry_decided", "on_message_sent", "on_reply_received", "on_tracked_profile_hit"]

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner, timeline_list %}
+{% block title %}{{ c.full_name or c.email or "Contact" }}{% endblock %}
+{% block page_header %}
+  <div class="crumbs"><a href="/contacts">&larr; Contacts</a></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <section class="card" id="contact-header" aria-labelledby="contact-title">
+      <div class="card__body record-head">
+        <div class="record-head__title"><h1 id="contact-title">{{ c.full_name or c.email or "(unnamed)" }}</h1>
+          <span class="chip chip--source">{{ c.origin|replace("_", " ")|capitalize }}</span></div>
+        <div class="pcard__meta">
+          {% if c.title %}{{ c.title }} · {% endif %}
+          {% if c.company_id %}<a href="/companies/{{ c.company_id }}">{{ c.company_name }}</a>{% elif c.company_name %}{{ c.company_name }}{% endif %}
+          {% if c.linkedin_url and c.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ c.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn</a>{% endif %}
+        </div>
+        <div class="row" id="contact-track">
+          {% if c.linkedin_profile_id and c.tracked %}
+            <span class="tracked tracked--on" id="tracked-state">Tracked</span>
+            <form method="post" action="/tracked/{{ c.linkedin_profile_id }}/untrack"><input type="hidden" name="next" value="/contacts/{{ c.id }}"><button class="btn btn--sm" type="submit">Stop tracking</button></form>
+          {% elif c.linkedin_url %}
+            <form method="post" action="/tracked/add"><input type="hidden" name="profile_url" value="{{ c.linkedin_url }}"><input type="hidden" name="name" value="{{ c.full_name or '' }}"><input type="hidden" name="next" value="/contacts/{{ c.id }}">
+              <button class="btn btn--sm" id="btn-track" type="submit">Track this person</button></form>
+            <span class="hint">Tracking checks their new LinkedIn posts for fresh requirements.</span>
+          {% else %}<span class="hint" id="track-hint">Add a LinkedIn profile link below to be able to track this person's posts.</span>{% endif %}
+        </div>
+        <div id="contact-emails-phones">
+          {% with next_url="/contacts/%d" % c.id, with_notes=True %}{% include "contacts/_editor.html" %}{% endwith %}
+        </div>
+        <div id="contact-tags">
+          <h2 class="group-heading">Tags</h2>
+          <div class="row">
+            {% for t in c.tags %}
+              <span class="tag">{{ t.name }}
+                <form method="post" action="/contacts/{{ c.id }}/tags/{{ t.id }}/delete"><button type="submit" aria-label="Remove tag {{ t.name }}">&times;</button></form></span>
+            {% else %}<span class="muted">No tags yet.</span>{% endfor %}
+          </div>
+          <form class="inline-form" id="tag-form" method="post" action="/contacts/{{ c.id }}/tags">
+            <div class="field"><label class="field__label" for="tag-name">Add a tag</label><input class="input" id="tag-name" name="name" required maxlength="40" list="tag-suggestions" placeholder="e.g. HR head">
+              <datalist id="tag-suggestions">{% for t in all_tags %}<option value="{{ t.name }}">{% endfor %}</datalist></div>
+            <div class="field"><label class="field__label" for="tag-category">Category</label>
+              <select class="input" id="tag-category" name="category">{% for k in tag_categories %}<option value="{{ k }}"{% if k == "custom" %} selected{% endif %}>{{ k|replace("_", " ")|capitalize }}</option>{% endfor %}</select></div>
+            <button class="btn" type="submit">Add tag</button>
+          </form>
+        </div>
+        {% if c.notes %}<p class="timeline__text" id="contact-notes">{{ c.notes }}</p>{% endif %}
+      </div>
+    </section>
+    <div class="grid-2">
+      <section class="card" id="contact-links" aria-labelledby="links-title">
+        <div class="card__header"><h2 id="links-title">Linked to</h2></div>
+        <div class="card__body">
+          {% for l in c.links %}
+            <div class="reply-item"><span class="badge">{{ l.entity_type|replace("_", " ")|capitalize }}</span>
+              {% if l.href %}<a class="contact-link" href="{{ l.href }}">{{ l.label }}</a>{% else %}{{ l.label }}{% endif %}
+              {% if l.role %}<span class="muted"> · {{ l.role }}</span>{% endif %}</div>
+          {% else %}<p class="muted">Not linked to any prospect, lead or enquiry yet.</p>{% endfor %}
+        </div>
+      </section>
+      <section class="card" id="contact-timeline" aria-labelledby="ct-title">
+        <div class="card__header"><h2 id="ct-title">Timeline</h2></div>
+        <div class="card__body"><div id="timeline">{{ timeline_list(c.timeline) }}</div></div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

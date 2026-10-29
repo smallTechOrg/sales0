@@ -1,0 +1,37 @@
+{# Needs: company_board (CompanyBoard), params, today. The Prospects or Leads tab: one column per sub-status, a recent lane
+   (became_lead / won, last 30 days, cards link to the next tab) and a collapsed Closed lane. #}
+{% set any_cards = company_board.columns|sum(attribute="total") %}
+{% set labels = {"prospects": "Prospects", "leads": "Leads"} %}
+{% if not any_cards %}
+  <div class="empty-state" id="pipeline-empty">
+    {% if params.q or params.flag or params.characteristic or params.priority or params.category %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}">Clear filters</a>
+    {% elif params.tab == "prospects" %}<p>No prospects yet - accept an enquiry in the Inbox, or add a company.</p><div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-company">New company</a></div>
+    {% else %}<p>No leads yet - a person marks a prospect as a lead from the company page.</p><a class="btn" href="/pipeline?tab=prospects">See the Prospects</a>{% endif %}
+  </div>
+{% else %}
+<div class="board" id="pipeline-board" role="list" aria-label="{{ labels[params.tab] }} by status">
+  {% for col in company_board.columns if col.key != "closed" %}
+    {% set recent = col.key in ("became_lead", "won") %}
+    <section class="board__col{% if recent %} board__col--recent{% endif %}" role="listitem" data-stage="{{ col.key }}"{% if recent %} id="lane-{{ col.key }}"{% endif %} aria-labelledby="col-{{ col.key }}">
+      <div class="board__head"><h2 id="col-{{ col.key }}">{{ col.label }}</h2><span class="count-pill" title="{{ col.total }} in total">{{ col.total }}</span></div>
+      {% for c in col.cards %}
+        {% include "pipeline/_card.html" %}
+        {% if recent %}<p class="board__more"><a href="/pipeline?{{ qs(tab=('leads' if col.key == 'became_lead' else 'clients'), q=c.name) }}">See in {{ 'Leads' if col.key == 'became_lead' else 'Clients' }}</a></p>{% endif %}
+      {% else %}<p class="board__empty">Nothing here.</p>{% endfor %}
+      {% if col.total > col.cards|length %}
+        <p class="board__more">{% if recent %}<a href="/pipeline?tab={{ 'leads' if col.key == 'became_lead' else 'clients' }}">Show all {{ col.total }}</a>{% else %}<a href="/pipeline?{{ qs(params, sub=col.key, layout='list', page=None) }}">Show all {{ col.total }}</a>{% endif %}</p>
+      {% endif %}
+    </section>
+  {% endfor %}
+</div>
+{% set closed = company_board.columns|selectattr("key", "equalto", "closed")|first %}
+{% if closed and closed.total %}
+<details class="card board__closed" id="closed-lane">
+  <summary><strong>Closed</strong> <span class="count-pill">{{ closed.total }}</span> <span class="muted">not interested, dormant, do not contact - reopen from the company page</span></summary>
+  <div class="board board--closed">
+    {% for c in closed.cards %}{% include "pipeline/_card.html" %}{% endfor %}
+  </div>
+  {% if closed.total > closed.cards|length %}<p class="board__more"><a href="/pipeline?{{ qs(params, closed='1', layout='list', page=None) }}">Show all {{ closed.total }}</a></p>{% endif %}
+</details>
+{% endif %}
+{% endif %}

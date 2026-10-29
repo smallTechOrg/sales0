@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Outreach{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Outreach</h1>
+      <p>Research a company, draft a personalised email, review it, and send it from your own Gmail only after you approve that exact message.</p>
+    </div>
+    <a class="btn btn--primary" href="/outreach/compose">New outreach</a>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "outreach/_subnav.html" %}
+
+    <section class="card" aria-label="Today's sending">
+      <div class="card__body row row--between">
+        <p id="cap-usage" class="{{ 'text-danger' if cap.reached else '' }}"><strong>{{ cap.used }} of {{ cap.cap }}</strong> sent today by {{ acting_member.name }}{% if cap.reached %} - the daily limit is reached, sending resumes tomorrow{% endif %}.</p>
+        <p class="muted">Gmail:
+          <span class="conn conn--{{ connection.status }}"><span class="conn__dot" aria-hidden="true"></span>{{ connection.label }}</span>
+          {% if connection.status != "connected" %} - <a href="/team">connect it on the Team page</a>{% endif %}
+        </p>
+      </div>
+    </section>
+
+    {% from "outreach/_followup_drafts.html" import draft_due_form %}
+    <section class="card" id="due-followups" aria-labelledby="due-fu-title">
+      <div class="card__header"><h2 id="due-fu-title">Follow-ups due by email</h2>
+        <span class="muted">{{ due_followups|length }} due</span></div>
+      <div class="card__body stack">
+        {% set ready = due_followups|selectattr(1)|selectattr("1.ok")|list %}
+        {{ draft_due_form(ready|length, "/outreach", batch=followup_batch) }}
+        {% if due_followups %}
+          <ul class="plain-list" id="due-followup-list">
+            {% for v, el in due_followups %}
+              <li data-ready="{{ 1 if el.ok else 0 }}"><a href="/pipeline/prospects/{{ v.prospect_id }}">{{ v.who }}</a> - {{ v.kind_label }}, due {{ v.due_on.strftime("%d %b") }}:
+                {% if el.ok %}<span class="badge badge--genuine">ready to draft</span>
+                {% elif el.message_id %}<a href="/outreach/messages/{{ el.message_id }}">{{ el.reason }} - open it</a>
+                {% else %}<span class="muted">skipped - {{ el.reason }}</span>{% endif %}</li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="muted" id="due-followup-empty">No follow-up emails are due.</p>{% endif %}
+      </div>
+    </section>
+
+    {% if stuck_count %}
+      <div class="flash flash--error" id="stuck-warning" role="alert">
+        {{ stuck_count }} message{{ "s" if stuck_count != 1 }} {{ "have" if stuck_count != 1 else "has" }} been in "Sending" for over 5 minutes. The send may have been interrupted:
+        open it, check your Gmail Sent folder, and do not send it again until you know.
+      </div>
+    {% endif %}
+
+    <form class="inline-form" method="get" action="/outreach" id="outbox-filters">
+      <div class="field">
+        <label class="field__label" for="filter-state">State</label>
+        <select class="input" id="filter-state" name="state" data-autosubmit>
+          {% for key, label in state_filters %}<option value="{{ key }}"{% if key == state %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      {% if is_admin %}
+        <div class="field">
+          <label class="field__label" for="filter-scope">Show</label>
+          <select class="input" id="filter-scope" name="scope" data-autosubmit>
+            <option value="mine"{% if scope == "mine" %} selected{% endif %}>My messages</option>
+            <option value="all"{% if scope == "all" %} selected{% endif %}>All members' messages (admin)</option>
+          </select>
+        </div>
+      {% endif %}
+      <noscript><button class="btn" type="submit">Filter</button></noscript>
+    </form>
+
+    <section class="card" aria-labelledby="outbox-title">
+      <div class="card__header"><h2 id="outbox-title">{{ "All messages" if scope == "all" else "My messages" }}</h2><span class="muted">{{ items|length }} shown</span></div>
+      <div class="card__body table-wrap">
+        {% if items %}
+        <table class="table" id="outbox-table">
+          <thead><tr><th>State</th><th>To</th><th>Subject</th>{% if scope == "all" %}<th>Owner</th>{% endif %}<th>Replies</th><th>Updated</th></tr></thead>
+          <tbody>
+          {% for it in items %}{% set m = it.msg %}
+            <tr id="message-{{ m.id }}" data-state="{{ m.state }}">
+              <td>{% with s=m.state %}{% include "outreach/_state_badge.html" %}{% endwith %}{% if it.stuck %} <span class="badge badge--warn">Stuck?</span>{% endif %}</td>
+              <td>{{ m.to_addrs or "(no recipient yet)" }}</td>
+              <td><a href="/outreach/messages/{{ m.id }}">{{ m.subject or "(no subject)" }}</a></td>
+              {% if scope == "all" %}<td>{{ it.owner }}</td>{% endif %}
+              <td>{% with m=m, counts=reply_counts.get(m.id, {}) %}{% include "outreach/_reply_badge.html" %}{% endwith %}</td>
+              <td>{{ m.updated_at|ago }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="empty-state empty-state--compact" id="outbox-empty">
+            <p>{% if state %}No {{ state_labels[state]|lower }} messages.{% else %}Nothing here yet. Press <strong>New outreach</strong> to draft your first email.{% endif %}</p>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <p class="muted">The Replies column fills in automatically as people answer; open <a href="/replies">Replies</a> to read and handle them.</p>
+  </div>
+{% endblock %}
