@@ -28,7 +28,7 @@ class TriageCriterion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
-    text: Mapped[str] = mapped_column(String(600), nullable=False)
+    text: Mapped[str] = mapped_column(String(1000), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="team", server_default="team")

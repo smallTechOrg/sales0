@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from sales0.agent.criteria import DEFAULT_SET
+from sales0.agent.criteria import DEFAULT_SET, MAX_RULE_CHARS
 from sales0.clock import utcnow
 from sales0.db.models import Enquiry, LlmCall, SeenPost, TriageCriteriaSet, TriageCriterion
 from sales0.errors import DomainError
@@ -55,7 +55,7 @@ def test_validation_and_duplicates(db: Session) -> None:
     with pytest.raises(DomainError):
         criteria.create_rule(db, "maybe", "A perfectly fine rule text")
     with pytest.raises(DomainError):
-        criteria.create_rule(db, "exclude", "x" * 601)
+        criteria.create_rule(db, "exclude", "x" * (MAX_RULE_CHARS + 1))
     criteria.create_rule(db, "exclude", "Hackathon sponsorship requests")
     with pytest.raises(DomainError) as dup:
         criteria.create_rule(db, "exclude", "hackathon sponsorship requests")

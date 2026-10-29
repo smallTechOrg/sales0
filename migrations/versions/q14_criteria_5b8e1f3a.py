@@ -140,7 +140,7 @@ def _create_tables() -> None:
             "triage_criteria",
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column("kind", sa.String(10), nullable=False),
-            sa.Column("text", sa.String(600), nullable=False),
+            sa.Column("text", sa.String(1000), nullable=False),
             sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
             sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()),
             sa.Column("source", sa.String(10), nullable=False, server_default="team"),

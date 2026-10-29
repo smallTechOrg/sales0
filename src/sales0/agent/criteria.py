@@ -56,7 +56,7 @@ DEFAULT_EXCLUDE: tuple[str, ...] = (
     "Spam, pyramid / MLM schemes, or irrelevant content.",
 )
 
-MAX_RULE_CHARS = 600
+MAX_RULE_CHARS = 1000  # the longest seeded rule is 617 chars; the column is VARCHAR(1000)
 
 
 @dataclass(frozen=True)

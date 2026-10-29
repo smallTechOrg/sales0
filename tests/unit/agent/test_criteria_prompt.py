@@ -6,7 +6,7 @@ import importlib.util
 from pathlib import Path
 
 from sales0.agent import run_triage
-from sales0.agent.criteria import DEFAULT_EXCLUDE, DEFAULT_INCLUDE, DEFAULT_SET, CriteriaSet, Criterion
+from sales0.agent.criteria import DEFAULT_EXCLUDE, DEFAULT_INCLUDE, DEFAULT_SET, MAX_RULE_CHARS, CriteriaSet, Criterion
 from sales0.agent.nodes import PROMPT_VERSION, build_prompt
 from sales0.agent.schemas import TriageInput
 from sales0.agent.state import TriageState
@@ -31,6 +31,14 @@ def test_the_migration_seed_is_a_frozen_copy_of_the_defaults() -> None:
     spec.loader.exec_module(module)
     assert module.SEED_INCLUDE == DEFAULT_INCLUDE and module.SEED_EXCLUDE == DEFAULT_EXCLUDE
     assert (len(DEFAULT_INCLUDE), len(DEFAULT_EXCLUDE)) == (5, 8)
+    # every seeded rule fits the column (PostgreSQL enforces VARCHAR length; SQLite does not) and can be re-saved
+    assert max(map(len, DEFAULT_INCLUDE + DEFAULT_EXCLUDE)) <= MAX_RULE_CHARS
+
+
+def test_rule_column_matches_the_service_limit() -> None:
+    from sales0.db.models.criteria import TriageCriterion
+
+    assert TriageCriterion.__table__.c.text.type.length == MAX_RULE_CHARS
 
 
 def test_defaults_render_the_numbered_rule_lists(make_deps) -> None:  # type: ignore[no-untyped-def]

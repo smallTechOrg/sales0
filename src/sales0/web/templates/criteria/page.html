@@ -36,7 +36,7 @@
                   <details class="inline-edit"><summary>Edit</summary>
                     <form class="stack" method="post" action="/criteria/{{ r.id }}">
                       <div class="field"><label class="field__label" for="ct-{{ r.id }}">Rule</label>
-                        <textarea class="input" id="ct-{{ r.id }}" name="text" rows="3" maxlength="600" required>{{ r.text }}</textarea></div>
+                        <textarea class="input" id="ct-{{ r.id }}" name="text" rows="3" maxlength="1000" required>{{ r.text }}</textarea></div>
                       <div class="field"><label class="field__label" for="ck-{{ r.id }}">List</label>
                         <select class="select" id="ck-{{ r.id }}" name="kind">
                           <option value="include"{% if r.kind == "include" %} selected{% endif %}>Include: genuine when…</option>
@@ -73,7 +73,7 @@
               <option value="include">Include: genuine when…</option>
             </select></div>
           <div class="field"><label class="field__label" for="new-text">Rule</label>
-            <textarea class="input" id="new-text" name="text" rows="3" maxlength="600" required placeholder="e.g. A college asking for free guest lectures or student workshops."></textarea></div>
+            <textarea class="input" id="new-text" name="text" rows="3" maxlength="1000" required placeholder="e.g. A college asking for free guest lectures or student workshops."></textarea></div>
           <div><button class="btn btn--primary" type="submit">Add rule</button></div>
         </form>
       </section>
