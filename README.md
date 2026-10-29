@@ -1,5 +1,7 @@
 # sales0
 
+> **Taking over this repo?** Start with [docs/HANDOVER.md](docs/HANDOVER.md).
+
 AI sales and marketing agent for smallTech (AI corporate workshops, AI training, consulting).
 sales0 finds buyer enquiries on LinkedIn, lets a person review them, tracks the relationship
 in a small CRM, and drafts and sends outreach email from each person's own Gmail.
