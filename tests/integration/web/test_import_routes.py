@@ -66,6 +66,7 @@ def test_import_page_has_both_cards_the_sheet_note_and_empty_batches(web: TestCl
     assert "Coming in Phase 2" not in html
 
 
+@pytest.mark.llm
 def test_paste_a_post_lands_in_review_with_a_verdict_real_haiku(web: TestClient) -> None:
     before = _enquiry_count()
     resp = web.post("/import/paste", data={"text": POST_TEXT, "author": "Pune HR", "link": ""}, follow_redirects=False)
