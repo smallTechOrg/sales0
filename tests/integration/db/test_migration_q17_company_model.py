@@ -91,6 +91,8 @@ def seed(url: str) -> dict[str, int]:
         _enquiry(c, 9, prospect=None, company=None)
         c.execute(text("INSERT INTO follow_ups (id, prospect_id, kind, due_on, auto, created_at, updated_at, planned_channel) "
                        "VALUES (1, 2, 'follow_up_1', '2026-10-05', TRUE, :d, :d, 'email')"), {"d": NOW})
+        if c.dialect.name == "postgresql":  # explicit ids above: move the serial past them, as a live database would be
+            c.execute(text("SELECT setval(pg_get_serial_sequence('companies', 'id'), (SELECT MAX(id) FROM companies))"))
         counts = {t: c.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar() for t in COUNTED}
         counts["companies"] = c.execute(text("SELECT COUNT(*) FROM companies")).scalar()
     engine.dispose()

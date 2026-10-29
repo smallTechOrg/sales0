@@ -259,6 +259,19 @@ def import_batch(db: Session, table_name: str, phase: str, rows: list[dict[str, 
     return {"received": len(rows), "inserted": len(new) if phase == "insert" else 0, "updated": len(old) if phase == "insert" else len(values)}
 
 
+def _refresh_company_lifecycle(db: Session) -> None:
+    """Rows arrive through Core upserts (no ORM flush), and a laptop on an older schema sends no company stage columns:
+    re-derive every company's stage / status from its prospect / lead / client rows once the import is complete."""
+    from sales0.db import company_projection
+    from sales0.db.models import Client, Lead, Prospect
+
+    ids: set[int] = set()
+    for model in (Prospect, Lead, Client):
+        ids |= {int(i) for i in db.execute(select(model.company_id).where(model.company_id.is_not(None)).distinct()).scalars()}
+    if ids:
+        company_projection.recompute(db.connection(), ids, actor="import")
+
+
 def finalize(db: Session, local_counts: dict[str, int]) -> dict[str, Any]:
     """Compare row counts and (PostgreSQL) move every id sequence past MAX(id)."""
     tables = importable_tables()
@@ -266,6 +279,7 @@ def finalize(db: Session, local_counts: dict[str, int]) -> dict[str, Any]:
     if unknown:
         raise DomainError("table_not_allowed", f"Not importable: {unknown}.", 422)
     sync_sequences(db.connection())
+    _refresh_company_lifecycle(db)
     report: dict[str, dict[str, Any]] = {}
     for name, local in local_counts.items():
         remote = db.execute(select(func.count()).select_from(tables[name])).scalar_one()
