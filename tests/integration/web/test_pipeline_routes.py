@@ -217,8 +217,8 @@ def test_status_move_to_contacted_schedules_three_followups_and_updates_the_comp
     page = web.get(f"/companies/{cid}").text
     assert len(re.findall(r'id="fu-\d+"', page)) == 3 and "Follow-up 1" in page and "Final follow-up" in page
     assert re.search(r'<option value="follow_up_1" selected>', page)
-    # the enquiry follows the company's cadence
-    assert 'data-deal-status="follow_up_1"' in page
+    # the enquiry status is its own: the company's cadence never rewrites it
+    assert 'data-deal-status="follow_up_1"' not in page
 
 
 def test_invalid_stage_is_an_error_toast_or_flash(web: TestClient) -> None:
@@ -331,9 +331,10 @@ def test_suggestion_is_a_hint_a_person_accepts_or_dismisses(web: TestClient) -> 
     _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "proposal_sent"})
     _post(web, f"/companies/{cid}/suggestion", {"decision": "accept"})
     assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
-    # the origin enquiry's cadence statuses only move a company that is still a prospect
-    err = _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "follow_up_1"})
-    assert err.status_code == 303 and "flash--error" in web.get(f"/companies/{cid}").text
+    # an enquiry's contacted / follow-up status only moves a company that is still a prospect: a lead is left alone, no error
+    ok = _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "follow_up_1"})
+    assert ok.status_code == 303 and "flash--error" not in web.get(f"/companies/{cid}").text
+    assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
 
 
 def test_do_not_contact_blocks_drafting_and_only_an_admin_reopens(web: TestClient) -> None:
