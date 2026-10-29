@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sales0.db.models import enums, enums_crm
 from sales0.db.models.contacts import Contact, ContactEmail, ContactLink, ContactPhone, ContactTag, Tag
-from sales0.db.models.crm import Client, Company, Flag, FollowUp, Lead, Prospect
+from sales0.db.models.crm import Characteristic, Client, Company, EntityCharacteristic, Flag, FollowUp, Lead, Prospect
 from sales0.db.models._types import UTCDateTime
 from sales0.db.models.decisions import TriageDecision
 from sales0.db.models.enquiries import Enquiry, EnquiryKeywordHit, EnquirySource
@@ -36,6 +36,8 @@ __all__ = [
     "Worker",
     "LINKEDIN_SESSION_ID",
     "ChannelGroup",
+    "Characteristic",
+    "EntityCharacteristic",
     "Client",
     "Company",
     "Competitor",

@@ -10,7 +10,7 @@ import re
 from collections.abc import Sequence
 from urllib.parse import urlsplit
 
-from sales0.linkedin_url import profile_slug
+from sales0.linkedin_url import canonical_linkedin, profile_slug
 
 _WS = re.compile(r"\s+")
 _EMAIL = re.compile(r"[^\s,;<>()\[\]\"']+@[^\s,;<>()\[\]\"']+\.[A-Za-z]{2,}")
@@ -161,3 +161,31 @@ def website_key(text: str | None) -> str | None:
 def website_host(text: str | None) -> str | None:
     key = website_key(text)
     return key.split("/", 1)[0].split("?", 1)[0] if key else None
+
+
+# --- company matching keys (q12). FROZEN copies live in migrations/versions/q12_traits_9d2c4a71.py (backfill);
+# --- tests/unit/crm/test_company_keys.py asserts they stay equal.
+#: Hosts that never identify one company (shared platforms, mail providers, link shorteners).
+GENERIC_HOSTS = frozenset({
+    "linkedin.com", "facebook.com", "fb.com", "instagram.com", "twitter.com", "x.com", "youtube.com", "youtu.be",
+    "google.com", "sites.google.com", "docs.google.com", "forms.gle", "gmail.com", "yahoo.com", "outlook.com",
+    "hotmail.com", "wa.me", "whatsapp.com", "chat.whatsapp.com", "bit.ly", "lnkd.in", "t.me", "medium.com",
+    "github.com", "wordpress.com", "blogspot.com", "wixsite.com", "linktr.ee",
+})
+
+
+def domain_key(website: str | None) -> str | None:
+    """The bare host of a company website (``https://www.Acme.com/about`` -> ``acme.com``); None for a
+    generic platform host (a LinkedIn / Facebook page, a gmail address...) that cannot identify one company."""
+    host = website_host(website)
+    if not host or host in GENERIC_HOSTS or "." not in host:
+        return None
+    return host[:200]
+
+
+def company_linkedin_key(url: str | None) -> str | None:
+    """``company/<slug>`` for a LinkedIn company page (``linkedin.com/company/acme-ltd/about``); else None."""
+    found = canonical_linkedin(url)
+    if found is None or found[0] != "company":
+        return None
+    return f"company/{found[1]}"[:200]

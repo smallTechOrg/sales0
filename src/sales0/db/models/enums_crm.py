@@ -42,4 +42,5 @@ IMPORT_KINDS: tuple[str, ...] = (
 SHEET_ENTITIES: tuple[str, ...] = ("enquiry", "discarded", "prospect", "competitor", "group", "metric")
 SHEET_TARGET_TYPES: tuple[str, ...] = ("enquiry", "prospect", "competitor", "channel_group", "sheet_metric")
 METRIC_SETS: tuple[str, ...] = ("weekly", "secondary")
+CHARACTERISTIC_ENTITY_TYPES: tuple[str, ...] = ("prospect", "client")
 ENQUIRY_ORIGINS: tuple[str, ...] = ("discovery", "sheet", "manual", "import")

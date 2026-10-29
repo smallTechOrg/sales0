@@ -44,3 +44,5 @@ class LinkedinProfile(Base):
     watch_last_status: Mapped[str | None] = mapped_column(String(20))
     # Paused until (a far-future value = paused by the user); NULL = watchable.
     watch_disabled_until: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # q12: why the team tracks this person (typed on /tracked "Add person to track").
+    watch_note: Mapped[str | None] = mapped_column(String(300))
