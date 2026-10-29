@@ -44,3 +44,5 @@ Moves accepted enquiries and shortlisted people through the binding lifecycle: *
 - [ ] Converting a New prospect → `lead_needs_contact`; contacted without a response → `lead_needs_response`.
 - [ ] meeting_scheduled → proposal_sent → won creates exactly one active client; each step has a timeline event; `lost` sets `tracked = false`.
 - [ ] The migration on a DB with 3 accepted enquiries (two from one author) creates 2 prospects.
+
+- CRM feedback (`crm-entity.md`): characteristics on the entity (prospect anchor; shown and editable on prospect / lead / client, filterable), and Inbox Accept straight to Client through `leads.promote_to_client` (lead opened without the contact/response preconditions, then Won).

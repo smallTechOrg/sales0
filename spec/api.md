@@ -84,6 +84,14 @@ Conventions are the Phase 1 ones: forms are `application/x-www-form-urlencoded` 
 | POST | `/contacts/{id}` | `full_name`, `title`, `notes`, `company` | `update_contact` |
 | POST | `/contacts/{id}/tags` · `/contacts/{id}/tags/{tag_id}/delete` | `name`, `category` | `add_tag` / `remove_tag` |
 | POST | `/contacts/merge` | `keep_id`, `drop_id` | `merge` (`hx-confirm`) |
+| GET | `/companies` | `q`, `characteristic`, `page` | `list_companies` (`#company-results`, htmx-searchable; JSON) |
+| POST | `/companies/{id}` · `/companies/{id}/merge` (admin) | `name`, `website`, `linkedin_url`, `city`, `notes` · `drop_id` | `update_company` / `merge` |
+| POST | `/contacts/{id}/emails` · `/emails/{eid}` · `/emails/{eid}/delete` · `/emails/{eid}/primary` (same for `/phones`) | `email` / `phone`, `primary`, `next` | add / change / remove / make primary (303 back to `next`) |
+| POST | `/pipeline/{prospects,leads,clients}/{id}/characteristics` | `characteristic_ids` (the full set) | `characteristics.set_for` (fragment / 303) |
+| POST | `/pipeline/prospects/{id}/contacts` | `full_name`, `email`, `phone`, `title`, `linkedin_url` | `prospects.add_contact` |
+| POST | `/competitors/characteristic` · `/competitors/characteristic/{id}` (admin) | `name` · `name`, `active` | registry create / rename / on-off |
+| POST | `/inbox/decide` (extra fields) | `characteristic_ids`, `as_client` | `prospects.apply_accept_choices` after an accept |
+| POST | `/tracked/add` | `profile_url`, `name`, `note`, `next` | `tracked_profiles.add_by_url` (303 + flash; `/tracked/{id}/track|untrack` also take `next`) |
 
 **Competitors & Groups** (`web/routes/registries.py`)
 | Method | Path | Form fields | Effect |
