@@ -286,3 +286,16 @@ Assumed:
 - Assumed: Dockerfile runs from the source tree (PYTHONPATH=/app/src) so REPO_ROOT resolves to /app for alembic.ini/migrations; playwright is excluded from the image (`--no-install-package playwright`; the web app imports it only lazily, checked with the module blocked).
 - Postgres port findings: migrations p3/p7/p8/p9 had SQLite-only paths (PRAGMA in p7, lastrowid and integer booleans in p8, double-prefixed CHECK names via the naming convention in p3/p9); fixed with dialect branches + op.f(). `alembic upgrade head`, `downgrade base`, `upgrade head` and `alembic check` are clean on PG 17. Row locks: inbox.decide uses SELECT ... FOR UPDATE OF enquiries (no-op on SQLite where begin_write still takes the write lock).
 - Harness friction: the worktree needs its own .env (copied from the main checkout; gitignored). Long suites ran from an rsync snapshot so edits could continue; a PG-backed suite takes ~1 h.
+
+## Inbox feedback slice (branch feature/sales0-fb-inbox, migration q14_criteria_5b8e1f3a after p11_rawcapture_a4d9c7e2)
+Spec: `spec/capabilities/inbox-feedback.md`. Integrator: re-link q14's down_revision; `test_migration_p11_rawcapture` no longer pins head.
+- Assumed: "first in a run" = first PERSISTED (triage runs 4 at a time, so not necessarily first scanned). The per-run key is the matched prospect id, else the bare company id.
+- Assumed: a company row with no prospects at all counts as "in pipeline" (company-only match, links /companies/{id}); a company whose only prospects were closed as `enquiry_discarded` does not.
+- Assumed: Accept joins the existing prospect only for enquiries MARKED at creation (`pipeline_prospect_id`); unmarked/older enquiries and sheet rows keep the CRM identity rules (one prospect per profile, else per enquiry), so existing CRM tests and sheet semantics are unchanged.
+- Assumed: the repeat rule also applies to profile-watch runs and hosted worker runs (same persist path); auto-discarded repeats are not TrackedProfileHits. Outside a run (rescue / retry / paste) enquiries are only marked.
+- Assumed: a team decision on an auto-discarded card clears `discard_source`; the sheet may decide an auto-discarded discovery enquiry (source of truth).
+- Assumed: the seeded rules render a system prompt byte-identical to triage-v3 (checked), so PROMPT_VERSION is not bumped; traceability is `llm_calls.criteria_version` -> `triage_criteria_sets.version` (snapshot per change). Rules are trusted team text: not `inert`-escaped (that would turn "->" into "-&gt;").
+- Assumed: rule edits and "save as rule" are admin-only; discarding with an own reason is open to members. Own reason (<= 200 chars) wins over the preset. No rule delete (disable instead, keeps history).
+- Assumed: AI-skipped posts are grouped by poster type in the breakdown (their one-line reasons are nearly all unique).
+- Card permalinks: `card_post_urn` only reads the already-captured card links/HTML (no navigation); real SDUI cards usually carry no URN, so expect little live gain - "Copy link to post" stays the main source. Not exercised in a real browser.
+- Harness friction: the worktree had no .env; tests ran with `SALES0_ANTHROPIC_API_KEY=sk-test-dummy` and `-m "not llm"`. `test_migration_p9` seeded old-revision enquiries via the ORM and broke on the first new enquiries column since p9; it now seeds via Core.
