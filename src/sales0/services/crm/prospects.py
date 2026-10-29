@@ -158,7 +158,9 @@ def _set_stage(
             data={"from": prev, "to": stage, **({"note": note.strip()} if note and note.strip() else {}), **(extra or {})},
             actor=actor, occurred_at=stamp,
         )
-    if first_contact and schedule:
+    # E1: leaving ``new`` is a first contact even when a (sheet-estimated) contact date already existed; a no-op when
+    # reminders are already open (Log contact planned dates win) or the prospect is marked Do not follow up
+    if (first_contact or (prev == "new" and stage != "new")) and schedule:
         followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates)  # type: ignore[arg-type]
     if stage != "new":
         followups.complete_up_to(db, p.id, stage, actor=actor, now=stamp)
@@ -776,12 +778,20 @@ def resolve_for_message(db: Session, message_id: int) -> int | None:
         cids = list(db.scalars(select(ContactEmail.contact_id).where(ContactEmail.email.in_(addrs))))
         if cids:
             linked = select(ContactLink.entity_id).where(ContactLink.entity_type == "prospect", ContactLink.contact_id.in_(cids))
-            return db.scalar(
+            found = db.scalar(
                 select(Prospect.id)
                 .where(or_(Prospect.contact_id.in_(cids), Prospect.id.in_(linked)))
                 .order_by((Prospect.status == "open").desc(), Prospect.updated_at.desc(), Prospect.id.desc())
                 .limit(1)
             )
+            if found is not None:
+                return found
+    if m.company_id:
+        # drafted from a company page to an address we do not know: the company's ONLY open prospect (never a guess
+        # between several)
+        ids = list(db.scalars(select(Prospect.id).where(Prospect.company_id == m.company_id, Prospect.status == "open").limit(2)))
+        if len(ids) == 1:
+            return ids[0]
     return None
 
 

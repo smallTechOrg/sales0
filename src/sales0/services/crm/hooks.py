@@ -17,6 +17,7 @@ from sales0.config import get_settings
 from sales0.db.models import Enquiry, FollowUp, Lead, OutreachMessage, OutreachReply, Prospect, TimelineEvent
 from sales0.logging import get_logger
 from sales0.services import events
+from sales0.services._common import record_history
 from sales0.services.crm import contacts, flags, followups, leads, prospects, timeline
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor, actor_for
 
@@ -96,6 +97,15 @@ def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
         e = db.get(Enquiry, msg.enquiry_id)
         if e is not None and e.review_status == "accepted":
             pid = prospects.ensure_for_enquiry(db, e.id, actor=_member_actor(db, ev.member_id), now=ev.sent_at).id
+        elif e is not None:
+            # E1: never silent - an email to an enquiry nobody has accepted yet is not a pipeline contact
+            timeline.add_event(
+                db, subject_type="enquiry", subject_id=e.id, kind="note", actor=_member_actor(db, ev.member_id),
+                occurred_at=ev.sent_at,
+                body="An email was sent for this enquiry but it has not been accepted yet, so no prospect was moved to Contacted. "
+                "Accept the enquiry to track it in the pipeline.",
+                data={"system": True, "message_id": msg.id, "review_status": e.review_status},
+            )
     if pid is None:
         return
     p = db.get(Prospect, pid)
@@ -130,6 +140,8 @@ def _on_message_sent(db: Session, ev: events.MessageSent) -> None:
     e = db.get(Enquiry, msg.enquiry_id) if msg.enquiry_id else (db.get(Enquiry, p.origin_enquiry_id) if p.origin_enquiry_id else None)
     if e is not None and e.date_email_sent is None:
         e.date_email_sent = local_today(get_settings().tz, ev.sent_at)
+        record_history(db, "enquiry", e.id, "date_email_sent", None, e.date_email_sent.isoformat(), now=ev.sent_at,
+                       note=f"first email sent (message {msg.id})", actor_user_id=ev.member_id)
     db.flush()
     if p.status != "open":
         # closed / converted: the email is still a real contact - record it, change no status, schedule nothing
