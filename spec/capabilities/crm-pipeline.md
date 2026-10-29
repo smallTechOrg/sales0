@@ -1,4 +1,6 @@
 # Capability: CRM Pipeline (Prospects → Leads → Clients)
+
+> **Superseded in part by [domain-model.md](domain-model.md) (migration q17).** A company is the main record; Prospect / Lead / Client are its stages; a person decides Prospect -> Lead (the app only suggests); an enquiry marked Won makes the company a client; `/leads`, `/clients` and the per-record pages redirect to the company page / filtered pipeline. The stage vocabulary and events below still describe the ledger rows behind a company.
 **Phase 2** · data: `data.md` → Phase 2 entities · API: `architecture.md` → Phase 2 (S1 contract) · screens: `ui.md` → Pipeline
 
 ## What It Does
