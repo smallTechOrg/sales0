@@ -212,6 +212,11 @@ class EnquiryCardView(_View):
     pipeline_match: str | None = None
     # q14: 'auto' = discarded by a system rule (repeat), not by the team
     discard_source: str | None = None
+    # q16: the category the team has (default relevant_prospect) and the AI's suggestion; the competitor it was filed under
+    category: str = "relevant_prospect"
+    ai_category: str | None = None
+    competitor_id: int | None = None
+    competitor_name: str | None = None
 
 
 class SkippedPostView(_View):
@@ -272,6 +277,7 @@ class ProfileView(_View):
 class InboxPage(_View):
     tab: InboxTab
     q: str | None
+    category: str | None = None
     items: list[EnquiryCardView]
     total: int
     page: int

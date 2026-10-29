@@ -30,11 +30,11 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent")
 
-PROMPT_VERSION = "triage-v3"  # bump on any prompt or schema edit
+PROMPT_VERSION = "triage-v4"  # bump on any prompt or schema edit (v4: category suggestion)
 TOOL_NAME = "record_triage"
 TOOL_DESCRIPTION = (
     "Record the triage of ONE post: genuine/discard verdict, one-line reason, poster type, "
-    "requirement summary, priority, best-matching offering id, and contact/requirement details "
+    "requirement summary, priority, category (relevant_prospect / channel_partner / competitor), best-matching offering id, and contact/requirement details "
     "copied from the post (null when absent)."
 )
 MAX_ATTEMPTS = 2

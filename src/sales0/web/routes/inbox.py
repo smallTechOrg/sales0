@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sales0.db.engine import get_db
@@ -46,6 +47,9 @@ DISCARD_REASONS: tuple[str, ...] = (
     "No response",
 )
 PRIORITIES: tuple[tuple[str, str], ...] = (("high", "High"), ("medium", "Medium"), ("low", "Low"))
+CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("relevant_prospect", "Relevant prospect"), ("channel_partner", "Channel partner"), ("competitor", "Competitor"),
+)
 
 DECISION_INVALID = "Choose Accept or Discard for at least one enquiry."
 _URN_RE = re.compile(r"urn:li:(?:activity|ugcPost|share):\d+")
@@ -80,14 +84,18 @@ def first_urn(card: EnquiryCardView) -> str:
     return match.group(0) if match else ""
 
 
-def _load_page(db: Session, tab: Tab, q: str | None, page: int) -> InboxPage:
+def _category(value: str | None) -> str | None:
+    return value if value in {k for k, _ in CATEGORIES} else None
+
+
+def _load_page(db: Session, tab: Tab, q: str | None, page: int, category: str | None = None) -> InboxPage:
     if tab == "skipped":  # cards are never decided from the Skipped tab
         tab = "review"
-    result = inbox_service.list_enquiries(db, tab, q, page=page, page_size=PAGE_SIZE)
+    result = inbox_service.list_enquiries(db, tab, q, page=page, page_size=PAGE_SIZE, category=category)
     if not result.items and page > 1 and result.total:
         # The page emptied (e.g. after deciding its last cards): show the last real page.
         last = max(1, math.ceil(result.total / result.page_size))
-        result = inbox_service.list_enquiries(db, tab, q, page=last, page_size=PAGE_SIZE)
+        result = inbox_service.list_enquiries(db, tab, q, page=last, page_size=PAGE_SIZE, category=category)
     return result
 
 
@@ -163,13 +171,15 @@ def _list_ctx(db: Session, inbox: InboxPage, request: Request | None = None) -> 
         "offerings": offerings_service.list_offerings(db),
         "discard_reasons": DISCARD_REASONS,
         "priorities": PRIORITIES,
+        "categories": CATEGORIES,
+        "category": inbox.category or "",
         "first_urn": first_urn,
         "characteristic_options": characteristics_service.list_characteristics(db, active_only=True),
         "can_save_rule": _is_admin(request, db) if request is not None else False,
     }
 
 
-def _card_html(request: Request, db: Session, card: EnquiryCardView, tab: str, q: str, page: int) -> str:
+def _card_html(request: Request, db: Session, card: EnquiryCardView, tab: str, q: str, page: int, category: str = "") -> str:
     return render_html(
         request,
         "inbox/_card.html",
@@ -178,6 +188,8 @@ def _card_html(request: Request, db: Session, card: EnquiryCardView, tab: str, q
             "tab": _tab(tab),
             "q": q,
             "page": page,
+            "category": _category(category) or "",
+            "categories": CATEGORIES,
             "offerings": offerings_service.list_offerings(db),
             "discard_reasons": DISCARD_REASONS,
             "priorities": PRIORITIES,
@@ -196,6 +208,7 @@ def inbox_page(
     state: str | None = None,
     q: str | None = None,
     page: str | None = None,
+    category: str | None = None,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     if _tab(tab) == "skipped":
@@ -203,7 +216,7 @@ def inbox_page(
         if is_htmx(request) and request.headers.get("HX-Target") == "inbox-list":
             return HTMLResponse(render_html(request, "inbox/_skipped.html", ctx))
         return render_page(request, db, "inbox/page.html", ctx)
-    inbox = _load_page(db, _tab(tab), _q(q), _page_number(page))
+    inbox = _load_page(db, _tab(tab), _q(q), _page_number(page), _category(category))
     return render_page(request, db, "inbox/page.html", _list_ctx(db, inbox, request))
 
 
@@ -221,6 +234,8 @@ def decide(
     page: str = Form("1"),
     characteristic_ids: list[str] = Form(default_factory=list),
     as_client: str = Form(""),
+    category: str = Form(""),
+    as_prospect: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -233,6 +248,8 @@ def decide(
     ids = list(dict.fromkeys(ids))
     if decision not in {"accept", "discard"} or not ids:
         raise DomainError("decision_invalid", DECISION_INVALID, 400)
+    if decision == "accept":
+        _guard_competitors(db, ids, as_prospect.strip().lower() in ("1", "true", "on", "yes"), member)
     reason = _discard_reason(discard_reason, custom_reason) if decision == "discard" else None
     wants_rule = decision == "discard" and save_rule.strip().lower() in ("1", "true", "on", "yes")
     if wants_rule:
@@ -252,10 +269,10 @@ def decide(
             db, reason, enquiry_id=ids[0], actor_member_id=member.id if member else None
         )
         rule_note = " · saved as a triage rule" if rule is not None else " · that rule already exists"
-    current_tab, query, page_no = _tab(tab), _q(q), _page_number(page)
+    current_tab, query, page_no, cat = _tab(tab), _q(q), _page_number(page), _category(category)
     if not is_htmx(request):
-        return redirect("/inbox", tab=current_tab, q=query, page=page_no if page_no > 1 else None)
-    inbox = _load_page(db, current_tab, query, page_no)
+        return redirect("/inbox", tab=current_tab, q=query, category=cat, page=page_no if page_no > 1 else None)
+    inbox = _load_page(db, current_tab, query, page_no, cat)
     ctx = _list_ctx(db, inbox, request)
     verb = "Accepted" if decision == "accept" else "Discarded"
     body = (
@@ -264,6 +281,27 @@ def decide(
         + toast_html(f"{verb} {len(decided) or len(ids)}{rule_note}")
     )
     return HTMLResponse(body)
+
+
+def _guard_competitors(db: Session, ids: list[int], as_prospect: bool, member: TeamMember | None) -> None:
+    """E3: an enquiry categorised Competitor is filed in the Competitors registry, not accepted into the pipeline - unless
+    the person explicitly insists ("Accept as a prospect anyway": the category goes back to Relevant prospect)."""
+    from sales0.db.models import Enquiry
+    from sales0.services import categories
+
+    competitors = [e for e in db.scalars(select(Enquiry).where(Enquiry.id.in_(ids), Enquiry.category == "competitor"))]
+    if not competitors:
+        return
+    if not as_prospect:
+        raise DomainError(
+            "category_competitor",
+            f"{len(competitors)} selected enquir{'y is' if len(competitors) == 1 else 'ies are'} categorised as Competitor. "
+            "File them in Competitors (the button on the card), or change the category first.",
+            409,
+        )
+    for e in competitors:
+        categories.set_category(db, e.id, "relevant_prospect", actor_user_id=member.id if member else None,
+                                acted_by_member_id=acted_by_id(member))
 
 
 def _accept_extras(db: Session, ids: list[int], raw_traits: list[str], to_client: bool, member: TeamMember | None) -> None:
@@ -359,9 +397,11 @@ def update_fields(
     enquiry_id: PathId,
     priority: str | None = Form(None),
     offering_id: str | None = Form(None),
+    category_value: str | None = Form(None, alias="set_category"),
     tab: str = Form("review"),
     q: str = Form(""),
     page: str = Form("1"),
+    category: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -378,15 +418,52 @@ def update_fields(
                 kwargs["offering_id"] = int(offering_id)
             except ValueError:
                 raise DomainError("not_found", "That item no longer exists — refresh the page.", 404) from None
+    if category_value not in (None, ""):
+        kwargs["category"] = category_value
     if not kwargs:
-        raise DomainError("field_invalid", "Choose a priority or an offering to change.", 400)
+        raise DomainError("field_invalid", "Choose a priority, an offering or a category to change.", 400)
     card = inbox_service.update_fields(
         db, enquiry_id, actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member), **kwargs
     )
     if not is_htmx(request):
         return redirect("/inbox", tab=_tab(tab), q=_q(q))
-    message = "Priority updated." if "priority" in kwargs else "Offering updated."
-    return HTMLResponse(_card_html(request, db, card, tab, q, _page_number(page)) + toast_html(message))
+    message = "Priority updated." if "priority" in kwargs else ("Category updated." if "category" in kwargs else "Offering updated.")
+    return HTMLResponse(_card_html(request, db, card, tab, q, _page_number(page), category) + toast_html(message))
+
+
+@router.post("/inbox/{enquiry_id}/competitor", response_model=None)
+def file_competitor(
+    request: Request,
+    enquiry_id: PathId,
+    name: str = Form(""),
+    website: str = Form(""),
+    tab: str = Form("review"),
+    q: str = Form(""),
+    page: str = Form("1"),
+    category: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """E3: file this enquiry's company in the Competitors registry (instead of the prospect pipeline); the enquiry stays
+    as evidence (discarded with the reason "Filed as competitor")."""
+    from sales0.services import categories
+
+    require_admin(request, db)  # the Competitors registry is admin-managed (web/routes/registries.py)
+    row = categories.file_as_competitor(
+        db, enquiry_id, name=name.strip() or None, website=website.strip() or None,
+        actor_user_id=member.id if member else None, acted_by_member_id=acted_by_id(member),
+    )
+    current_tab, query, page_no, cat = _tab(tab), _q(q), _page_number(page), _category(category)
+    if not is_htmx(request):
+        return redirect("/inbox", tab=current_tab, q=query, category=cat)
+    inbox = _load_page(db, current_tab, query, page_no, cat)
+    ctx = _list_ctx(db, inbox, request)
+    body = (
+        render_html(request, "inbox/_list.html", ctx)
+        + render_html(request, "inbox/_tabs.html", {**ctx, "oob": True})
+        + toast_html(f"Filed in Competitors: {row.name}")
+    )
+    return HTMLResponse(body)
 
 
 @router.post("/inbox/{enquiry_id}/retry", response_model=None)

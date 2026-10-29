@@ -27,6 +27,7 @@ PosterType = Literal[
 ]
 OpportunityType = Literal["direct_buyer", "agency_requirement", "individual_trainer_wanted", "other"]
 Priority = Literal["high", "medium", "low"]
+Category = Literal["relevant_prospect", "channel_partner", "competitor"]
 Mode = Literal["online", "offline", "hybrid", "unknown"]
 
 
@@ -90,6 +91,12 @@ class TriageResult(BaseModel):
         "recruiter/company inviting providers, partners or organisations to respond for a concrete programme or "
         "empanelment; individual_trainer_wanted = one or a few freelance trainers wanted; other = anything else.",
     )
+    category: Category = Field(
+        default="relevant_prospect",
+        description="Who the poster is to smallTech: relevant_prospect = a genuine enquiry/prospect (the default); "
+        "channel_partner = wants to partner (resell, white-label, co-deliver, refer); competitor = a trainer/training "
+        "company promoting its own AI-training offer. A suggestion for the team; it does not change verdict or priority.",
+    )
     requirement_summary: str = Field(
         default="",
         description='Format "Company - Topic - City/Mode", max 140 characters, one line.',
@@ -115,7 +122,7 @@ class TriageResult(BaseModel):
     topic: str | None = Field(default=None, description="Short topic, or null.")
     language: str = Field(default="und", description="ISO 639-1 code of the post's main language (en, hi, ...).")
 
-    @field_validator("verdict", "poster_type", "opportunity_type", "priority", "mode", mode="before")
+    @field_validator("verdict", "poster_type", "opportunity_type", "priority", "mode", "category", mode="before")
     @classmethod
     def _normalise_enum(cls, value: Any) -> Any:
         return _lower_strip(value)

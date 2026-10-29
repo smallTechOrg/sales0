@@ -9,7 +9,7 @@
           <span class="bulk-bar__count" aria-live="polite">0 selected</span>
           <input type="hidden" name="tab" value="{{ tab }}">
           <input type="hidden" name="q" value="{{ q }}">
-          <input type="hidden" name="page" value="{{ page }}">
+          <input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="category" value="{{ category|default('') }}">
           {% if tab != "accepted" %}
             <button class="btn btn--primary btn--sm" type="submit" name="decision" value="accept"
                     hx-post="/inbox/decide" hx-target="#inbox-list" hx-vals='{"decision": "accept"}'>Accept selected</button>
@@ -36,9 +36,9 @@
     </div>
     {% if pages > 1 %}
       <nav class="pagination" aria-label="Pages">
-        {% if page > 1 %}<a class="btn" href="/inbox?tab={{ tab }}&q={{ q | urlencode }}&page={{ page - 1 }}">← Prev</a>{% else %}<span></span>{% endif %}
+        {% if page > 1 %}<a class="btn" href="/inbox?tab={{ tab }}&q={{ q | urlencode }}&category={{ category|default('') }}&page={{ page - 1 }}">← Prev</a>{% else %}<span></span>{% endif %}
         <span class="muted">Page {{ page }} of {{ pages }} · {{ inbox.total }} enquiries</span>
-        {% if page < pages %}<a class="btn" href="/inbox?tab={{ tab }}&q={{ q | urlencode }}&page={{ page + 1 }}">Next →</a>{% else %}<span></span>{% endif %}
+        {% if page < pages %}<a class="btn" href="/inbox?tab={{ tab }}&q={{ q | urlencode }}&category={{ category|default('') }}&page={{ page + 1 }}">Next →</a>{% else %}<span></span>{% endif %}
       </nav>
     {% endif %}
   {% elif q %}

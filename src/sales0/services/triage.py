@@ -157,6 +157,8 @@ def triage_enquiry(
         enquiry.ai_poster_type = r.poster_type
         enquiry.ai_opportunity_type = r.opportunity_type
         enquiry.ai_priority = r.priority
+        enquiry.ai_category = r.category
+        enquiry.category = r.category
         enquiry.ai_offering_id = r.offering_id
         enquiry.ai_extraction = r.model_dump(mode="json")
         enquiry.requirement_summary = clip(r.requirement_summary, 140)

@@ -32,6 +32,14 @@ A named contact route (email, phone, "DM me", "reach out", a form) raises the pr
 {% endfor %}
 How to tell the cases apart: a buyer wants training or a solution DELIVERED TO ITS OWN people. An agency wants someone to deliver a SPECIFIC programme for its client: that is still `genuine` (agency_requirement) when the requirement is concrete. A network-building post with no concrete requirement is a discard.
 
+## Category (who is the poster to smallTech)
+
+Also suggest ONE `category` for the post; the sales team confirms or changes it. It does not change the verdict or the priority.
+- `relevant_prospect` (the default): a genuine enquiry or prospect, or anything that does not clearly fit the two below.
+- `channel_partner`: an organisation that wants to PARTNER with smallTech rather than buy from it: reselling, white-labelling or co-delivering programmes, referral / affiliate arrangements, empanelling smallTech as a delivery or content partner for its own clients. A concrete one-off requirement from an agency is still `relevant_prospect`.
+- `competitor`: a training company, trainer or consultancy advertising or promoting its OWN AI-training or AI-services offer (courses, bootcamps, "we deliver corporate AI training"), i.e. someone who sells what smallTech sells.
+When unsure, answer `relevant_prospect`.
+
 ## Priority rules
 
 - `high`: genuine `direct_buyer`, a clear corporate need, a contact or route to respond is available (email, phone, or an explicit "reach out"/"DM"), and it is near-term.
@@ -44,6 +52,7 @@ How to tell the cases apart: a buyer wants training or a solution DELIVERED TO I
 - `poster_type`: `buyer_company` | `training_agency` | `individual_trainer_seeker` | `job_seeker_or_self_promo` | `other`.
 - `poster_type` guidance: an agency, edtech or recruiter posting for its client is `training_agency`; a person or recruiter after ONE tutor/trainer (hourly, per-day, tiny batch) is `individual_trainer_seeker`, never `other`; `other` is for events, news, opinion and spam.
 - `opportunity_type`: `direct_buyer` (the poster's own organisation is the buyer) | `agency_requirement` (an agency / edtech / recruiter seeking a provider or partner for its client) | `individual_trainer_wanted` (one or a few freelance trainers wanted) | `other` (every discard that is not about a trainer requirement).
+- `category`: `relevant_prospect` | `channel_partner` | `competitor` (see the Category section).
 - `requirement_summary`: one line, at most 140 characters, in the form "Company - Topic - City/Mode" (e.g. "Acme Logistics - GenAI workshop for 40 managers - Pune/Offline").
 - `offering_id`: the id of the single best-matching offering from the catalogue below, or null if none fits (always null if the catalogue is empty).
 - `company`, `contact_person`, `email`, `phone`, `city`: copy them exactly as written in the post, or null. NEVER guess, infer, complete or construct an email address or phone number. If the post does not literally contain one, answer null.
@@ -112,6 +121,14 @@ Answer: verdict=genuine, poster_type=buyer_company, opportunity_type=direct_buye
 Example N
 Post: "RFP: Vendor empanelment for AI & digital skills training providers, Harbourline Group, FY27. Eligible training companies may submit EOIs by 10 Jan at procurement@harbourline.example."
 Answer: verdict=genuine, poster_type=buyer_company, opportunity_type=direct_buyer, reason="Company empanelling AI training vendors, EOI by 10 Jan", priority=high, email="procurement@harbourline.example".
+
+Example O
+Post: "We are a corporate training company and are looking for AI / GenAI delivery partners to co-deliver programmes for our enterprise clients across India. White-label and revenue-share models. Write to partnerships@learnbridge.example."
+Answer: verdict=genuine, poster_type=training_agency, opportunity_type=agency_requirement, reason="Training company seeking delivery partners on a revenue-share basis", priority=medium, category=channel_partner, email="partnerships@learnbridge.example".
+
+Example P
+Post: "At BrightMinds Academy we deliver corporate Generative AI training for teams and leaders. Customised workshops, 200+ batches delivered. Book a free demo session."
+Answer: verdict=discard, poster_type=other, opportunity_type=other, reason="Training company promoting its own corporate AI training, not a buyer", priority=low, category=competitor.
 
 For the example answers above, still fill every field of the tool; `email` and `phone` are copied ONLY when they literally appear in the post being triaged. For a discard, `email` and `phone` may be null.
 

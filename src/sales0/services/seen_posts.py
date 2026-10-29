@@ -409,6 +409,8 @@ def _create_enquiry(
         ai_poster_type=row.poster_type or result.poster_type,
         ai_opportunity_type=result.opportunity_type,
         ai_priority=result.priority,
+        ai_category=result.category,
+        category=result.category,
         ai_offering_id=offering_id,
         ai_extraction=result.model_dump(mode="json"),
         requirement_summary=clip(result.requirement_summary, 140),

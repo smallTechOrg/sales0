@@ -45,7 +45,7 @@ def test_triage_enquiry_persists_ai_fields_editable_copies_cost_and_history(db_u
         assert e.email is None  # guard: absent from the text
         assert e.offering_id is None and e.ai_offering_id is None  # guard: not in the catalogue
         assert e.company == "Acme Logistics" and e.ai_extraction is not None
-        assert e.prompt_version == "triage-v3" and e.triaged_at is not None
+        assert e.prompt_version == "triage-v4" and e.triaged_at is not None
         hist = db.scalars(select(StatusHistory).where(StatusHistory.entity_id == eid,
                                                       StatusHistory.field == "triage_status")).one()
         assert (hist.from_value, hist.to_value) == ("pending", "done")

@@ -10,9 +10,10 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import (
-    Enquiry, EnquiryKeywordHit, EnquirySource, LinkedinProfile, LlmCall, Offering, TeamMember, TriageDecision,
+    Competitor, CompetitorMention, Enquiry, EnquiryKeywordHit, EnquirySource, LinkedinProfile, LlmCall, Offering, TeamMember, TriageDecision,
 )
 from sales0.db.locks import begin_write
+from sales0.db.models.enums_crm import ENQUIRY_CATEGORIES
 from sales0.errors import DomainError
 from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.llm import LLMAuthError, LLMModelNotFound
@@ -88,6 +89,15 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
     ).all():
         latest_override[eid] = bool(is_override)  # last write wins = latest decision
 
+    filed: dict[int, tuple[int, str]] = {}
+    for eid, cid, cname in db.execute(
+        select(CompetitorMention.entity_id, Competitor.id, Competitor.name)
+        .join(Competitor, Competitor.id == CompetitorMention.competitor_id)
+        .where(CompetitorMention.entity_type == "enquiry", CompetitorMention.entity_id.in_(ids), CompetitorMention.source == "user")
+        .order_by(CompetitorMention.id)
+    ).all():
+        filed.setdefault(eid, (cid, cname))
+
     offering_ids = {e.offering_id for e in enquiries if e.offering_id is not None}
     names: dict[int, str] = {}
     if offering_ids:
@@ -146,6 +156,10 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 pipeline_href=pipeline[1] if pipeline else None,
                 pipeline_match=pipeline_match.MATCH_LABELS.get(e.pipeline_match or "") if pipeline else None,
                 discard_source=e.discard_source,
+                category=e.category or "relevant_prospect",
+                ai_category=e.ai_category,
+                competitor_id=filed[e.id][0] if e.category == "competitor" and e.id in filed else None,
+                competitor_name=filed[e.id][1] if e.category == "competitor" and e.id in filed else None,
             )
         )
     return cards
@@ -184,6 +198,7 @@ def list_enquiries(
     q: str | None,
     page: int = 1,
     page_size: int = 25,
+    category: str | None = None,
 ) -> InboxPage:
     if tab not in TAB_STATUS:
         tab = "review"
@@ -192,6 +207,9 @@ def list_enquiries(
     query = (q or "").strip() or None
 
     conditions: list[Any] = [Enquiry.review_status == TAB_STATUS[tab]]
+    category = category if category in ENQUIRY_CATEGORIES else None
+    if category:
+        conditions.append(Enquiry.category == category)
     if query:
         pattern = _like(query)
         conditions.append(
@@ -224,6 +242,7 @@ def list_enquiries(
     return InboxPage(
         tab=tab,
         q=query,
+        category=category,
         items=_cards(db, rows),
         total=total,
         page=page,
@@ -381,6 +400,7 @@ def update_fields(
     *,
     actor_user_id: int | None = None,
     acted_by_member_id: int | None = None,
+    category: str | None = None,
 ) -> EnquiryCardView:
     """Edit priority / offering. ``priority=None`` keeps it; ``offering_id`` omitted keeps it,
     ``offering_id=None`` sets "No match". The AI's original values are never changed; the
@@ -396,6 +416,10 @@ def update_fields(
         if value != e.priority:
             changed.append(("priority", e.priority, value))
             e.priority = value
+    if category not in (None, ""):
+        from sales0.services import categories
+
+        categories.set_category(db, e.id, category, actor_user_id=actor_user_id, acted_by_member_id=acted_by_member_id)
     if offering_id is not UNSET:
         new_id = int(offering_id) if offering_id not in (None, "", 0) else None
         if new_id is not None:

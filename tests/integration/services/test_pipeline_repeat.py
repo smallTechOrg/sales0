@@ -39,7 +39,7 @@ def outcome(**overrides: object) -> TriageOutcome:
     answer = triage_answer(**{"company": "Northwind Foods", "contact_person": None, **overrides})
     return TriageOutcome(
         status="done", result=TriageResult.model_validate(answer), error=None,
-        llm_responses=[make_response(answer)], fewshot_count=0, prompt_version="triage-v3",
+        llm_responses=[make_response(answer)], fewshot_count=0, prompt_version="triage-v4",
     )
 
 

@@ -58,4 +58,4 @@ def assert_well_formed(outcome: TriageOutcome) -> None:
         )
         assert resp.cost_usd_micros > 0
         assert resp.model.startswith(settings.llm_model)
-    assert outcome.prompt_version == "triage-v3"
+    assert outcome.prompt_version == "triage-v4"

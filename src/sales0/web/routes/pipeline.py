@@ -380,6 +380,30 @@ def prospect_priority(
     return _prospect_action(request, db, prospect_id, act)
 
 
+@router.post("/pipeline/prospects/{prospect_id}/enquiries/{enquiry_id}/category", response_model=None)
+def prospect_enquiry_category(
+    request: Request,
+    prospect_id: PathId,
+    enquiry_id: PathId,
+    category: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """E3: change an enquiry's category from the prospect page. Channel partner ticks Partner on the prospect; Competitor
+    only labels it here (the Inbox / Competitors registry files it)."""
+    from sales0.db.models import Enquiry
+    from sales0.services import categories
+
+    def act() -> str:
+        e = db.get(Enquiry, enquiry_id)
+        if e is None or e.prospect_id != prospect_id:
+            raise DomainError("not_found", "That enquiry is not linked to this prospect.", 404)
+        categories.set_category(db, enquiry_id, category, actor_user_id=member.id if member else None)
+        return f"Category set to {categories.label(category.strip().lower())}."
+
+    return _prospect_action(request, db, prospect_id, act)
+
+
 @router.post("/pipeline/prospects/{prospect_id}/response", response_model=None)
 def prospect_response(
     request: Request,

@@ -36,6 +36,13 @@
                   <a href="/inbox?tab=accepted&q={{ (e.requirement_summary or '')[:40]|urlencode }}">Open in Inbox</a>
                   <a href="/outreach/compose?enquiry_id={{ e.id }}">Draft from this enquiry</a>
                 </div>
+                <form class="inline-form" id="enquiry-category-form-{{ e.id }}" method="post" action="/pipeline/prospects/{{ p.id }}/enquiries/{{ e.id }}/category" hx-post="/pipeline/prospects/{{ p.id }}/enquiries/{{ e.id }}/category" hx-swap="none" hx-trigger="change">
+                  <label class="field__label" for="enquiry-category-{{ e.id }}">Category</label>
+                  <select class="select" id="enquiry-category-{{ e.id }}" name="category" data-autosubmit="request">
+                    {% for value, label in (("relevant_prospect", "Relevant prospect"), ("channel_partner", "Channel partner"), ("competitor", "Competitor")) %}<option value="{{ value }}"{% if e.category == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                  </select>
+                  <noscript><button class="btn btn--sm" type="submit">Save</button></noscript>
+                </form>
               </div>
             {% else %}<p class="muted">No enquiries are linked to this prospect.</p>{% endfor %}
           </div>

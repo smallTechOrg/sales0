@@ -13,8 +13,17 @@
         <label class="visually-hidden" for="inbox-search">Search this tab</label>
         <input class="input" id="inbox-search" name="q" type="search" value="{{ q }}" placeholder="Search text, company, author…">
       </div>
+      {% if tab != "skipped" %}
+      <div class="field">
+        <label class="visually-hidden" for="inbox-category">Category</label>
+        <select class="select" id="inbox-category" name="category">
+          <option value="">All categories</option>
+          {% for value, label in categories %}<option value="{{ value }}"{% if category == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <button class="btn" type="submit">Search</button>
-      {% if q %}<a class="btn btn--ghost" href="/inbox?tab={{ tab }}">Clear</a>{% endif %}
+      {% if q or category %}<a class="btn btn--ghost" href="/inbox?tab={{ tab }}">Clear</a>{% endif %}
     </form>
   </div>
 {% endblock %}

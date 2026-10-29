@@ -74,7 +74,11 @@ def _on_enquiry_decided(db: Session, ev: events.EnquiryDecided) -> None:
     if e is None:
         return
     if ev.decision == "accept":
-        prospects.ensure_for_enquiry(db, ev.enquiry_id, actor=actor)
+        view = prospects.ensure_for_enquiry(db, ev.enquiry_id, actor=actor)
+        if e.category == "channel_partner":
+            from sales0.services import categories
+
+            categories.tick_partner(db, view.id, actor=actor)  # E3: accepting a channel partner ticks "Partner"
         return
     if ev.decision == "discard" and e.prospect_id:
         priority.refresh(db, e.prospect_id)  # a discarded enquiry no longer counts toward the derived priority

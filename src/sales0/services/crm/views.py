@@ -158,6 +158,7 @@ class SheetSourceView(_View):
 
 class LinkedEnquiryView(_View):
     id: int
+    category: str = "relevant_prospect"  # q16
     requirement_summary: str | None = None
     priority: str | None = None
     review_status: str

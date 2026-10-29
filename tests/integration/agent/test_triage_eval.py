@@ -51,7 +51,7 @@ def test_every_eval_post_is_triaged_and_well_formed(outcomes: dict[str, TriageOu
     for pid, o in outcomes.items():
         assert o.status == "done" and o.result is not None, (pid, o.error)
         assert 1 <= len(o.result.reason) <= 160
-        assert o.prompt_version == "triage-v3"
+        assert o.prompt_version == "triage-v4"
         assert all(r.cost_usd_micros > 0 for r in o.llm_responses)
 
 
