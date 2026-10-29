@@ -1,7 +1,7 @@
 {# Needs: params, layout, and the data for the chosen view. Swapped by the filter form (htmx). #}
 {% from "pipeline/_macros.html" import pager with context %}
 <div id="pipeline-body"{% if oob %} hx-swap-oob="outerHTML:#pipeline-body"{% endif %}>
-  {% if params.view == "enquiries" %}
+  {% if params.tab == "enquiries" %}
     {% include "pipeline/_enquiry_board.html" %}
   {% elif layout == "board" %}
     {% include "pipeline/_board.html" %}

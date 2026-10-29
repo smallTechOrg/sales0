@@ -1,23 +1,50 @@
 {# Needs: enquiry_board (EnquiryBoard), params. Accepted enquiries grouped by deal status; the company name labels each card. #}
-{% from "pipeline/_macros.html" import category_chips, priority_chip %}
+{% from "pipeline/_macros.html" import category_chips, priority_chip with context %}
 {% set any_cards = enquiry_board.columns|sum(attribute="total") %}
 {% if not any_cards %}
   <div class="empty-state" id="pipeline-empty"><p>No accepted enquiries yet - accept one in the Inbox and it appears here with its status.</p><a class="btn btn--primary" href="/inbox">Open the Inbox</a></div>
 {% else %}
-<div class="board board--enquiries" id="enquiry-board" role="list" aria-label="Enquiries by status">
-  {% for col in enquiry_board.columns if col.total %}
-    <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
-      <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
-      {% for e in col.cards %}
-        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}">
+{% macro ecard(e) %}
+        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}"{% if e.is_origin %} data-origin="1"{% endif %}>
           <h3>{% if e.company_id %}<a href="/companies/{{ e.company_id }}">{{ e.company_name or "Company" }}</a>{% else %}{{ e.company_name or "(no company)" }}{% endif %} {{ priority_chip(e.priority) }}</h3>
           <div class="pcard__meta">{{ e.summary or "(no summary)" }}</div>
           <div class="pcard__badges">{{ category_chips([e.category] if e.category != "relevant_prospect" else []) }}</div>
           {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<div class="pcard__meta"><a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">Source</a></div>{% endif %}
+          <form class="inline-form" method="post" action="/pipeline/enquiries/{{ e.id }}/status">
+            <input type="hidden" name="next" value="{{ next }}">
+            <label class="field__label" for="estatus-{{ e.id }}">Status</label>
+            <select class="select" id="estatus-{{ e.id }}" name="status">
+              {% for key, label in (origin_deal_options if e.is_origin else deal_options) %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label if key != "open" else "Open (follow the outreach)" }}</option>{% endfor %}
+              {% if not e.is_origin and e.deal_status in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") %}<option value="" selected disabled>{{ e.deal_status|replace("_", " ")|capitalize }} (follows the outreach)</option>{% endif %}
+            </select>
+            <button class="btn btn--sm" type="submit">Set</button>
+          </form>
         </article>
-      {% endfor %}
+{% endmacro %}
+{% set active = enquiry_board.columns|rejectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
+{% set parked = enquiry_board.columns|selectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
+<div class="board board--enquiries" id="enquiry-board" role="list" aria-label="Enquiries by status">
+  {% for col in active %}
+    <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
+      <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
+      {% for e in col.cards %}{{ ecard(e) }}{% else %}<p class="board__empty">Nothing here.</p>{% endfor %}
       {% if col.total > col.cards|length %}<p class="board__more">{{ col.total - col.cards|length }} more</p>{% endif %}
     </section>
   {% endfor %}
 </div>
+{% set parked_total = parked|sum(attribute="total") %}
+{% if parked_total %}
+<details class="card board__closed" id="enquiry-closed-lane">
+  <summary><strong>Lost, no response, on hold</strong> <span class="count-pill">{{ parked_total }}</span></summary>
+  <div class="board board--enquiries">
+    {% for col in parked if col.total %}
+      <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
+        <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
+        {% for e in col.cards %}{{ ecard(e) }}{% endfor %}
+        {% if col.total > col.cards|length %}<p class="board__more">{{ col.total - col.cards|length }} more</p>{% endif %}
+      </section>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
 {% endif %}

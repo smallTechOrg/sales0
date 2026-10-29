@@ -65,17 +65,17 @@ def _to_company(company_id: int | None) -> RedirectResponse:
 
 @router.get("/leads")
 def old_leads_list() -> RedirectResponse:
-    return RedirectResponse("/pipeline?stage=lead", status_code=307)
+    return RedirectResponse("/pipeline?tab=leads", status_code=307)
 
 
 @router.get("/clients")
 def old_clients_list() -> RedirectResponse:
-    return RedirectResponse("/pipeline?stage=client", status_code=307)
+    return RedirectResponse("/pipeline?tab=clients", status_code=307)
 
 
 @router.get("/prospects")
 def old_prospects_list() -> RedirectResponse:
-    return RedirectResponse("/pipeline?stage=prospect", status_code=307)
+    return RedirectResponse("/pipeline?tab=prospects", status_code=307)
 
 
 @router.get("/prospects/{prospect_id}")
@@ -113,6 +113,8 @@ def company_context(request: Request, db: Session, company_id: int, member: Team
     ctx: dict[str, Any] = {
         "life": life, "co": co, "p": p, "is_admin": _is_admin(request, db), "roles": roles, "contact_details": details,
         "person_role_labels": PERSON_ROLE_LABELS, "deal_options": [(k, deals.deal_label(k)) for k in deals.SETTABLE],
+        "origin_deal_options": [(k, deals.deal_label(k)) for k in ("open", *deals.STAGE_DRIVING, *deals.HAND_DEAL_STATUSES)],
+        "origin_enquiry_id": deals.origin_enquiry_id(db, company_id),
         "characteristic_options": pl._trait_options(db),  # noqa: SLF001
         "team_members": [m for m in _members(db)],
         "company_timeline": co.timeline,
@@ -295,7 +297,7 @@ def enquiry_status(
 
     e = db.get(Enquiry, enquiry_id)
     cid = e.company_id if e else None
-    back = pl._safe_next(next) or (f"/companies/{cid}" if cid else "/pipeline?view=enquiries")  # noqa: SLF001
+    back = pl._safe_next(next) or (f"/companies/{cid}" if cid else "/pipeline?tab=enquiries")  # noqa: SLF001
 
     def run() -> Response:
         row = deals.set_status(db, enquiry_id, status, actor=actor_of(member))

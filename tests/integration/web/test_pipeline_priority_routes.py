@@ -37,14 +37,14 @@ def _prospect(post: str, company: str, prio: str) -> int:
 def test_priority_chips_filters_and_inline_edit(web: TestClient) -> None:
     hi = _prospect("P1", "Hi Co", "high")
     lo = _prospect("P2", "Lo Co", "low")
-    page = web.get("/pipeline").text
+    page = web.get("/pipeline?tab=prospects").text
     assert re.search(r'data-priority="high"[^>]*>High<', page) and re.search(r'data-priority="low"[^>]*>Low<', page)
     assert 'id="f-priority"' in page
-    only_high = web.get("/pipeline?priority=high").text
+    only_high = web.get("/pipeline?tab=prospects&priority=high").text
     assert "Hi Co" in only_high and "Lo Co" not in only_high
-    assert "Lo Co" in web.get("/pipeline?priority=low&view=list&stage=new").text
-    assert "Hi Co" not in web.get("/pipeline?priority=low&view=list&stage=new").text
-    order = web.get("/pipeline?view=list&sort=priority").text
+    assert "Lo Co" in web.get("/pipeline?tab=prospects&priority=low&layout=list&sub=new").text
+    assert "Hi Co" not in web.get("/pipeline?tab=prospects&priority=low&layout=list&sub=new").text
+    order = web.get("/pipeline?tab=prospects&layout=list&sort=priority").text
     assert order.index("Hi Co") < order.index("Lo Co")
     # prospect page: chip + editable select
     detail = web.get(f"/pipeline/prospects/{lo}").text

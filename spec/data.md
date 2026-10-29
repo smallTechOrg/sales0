@@ -622,7 +622,8 @@ This section SUPERSEDES the Lifecycle block above wherever they differ. Words us
 | **Closed (off-ramp)** | `not_interested`, `dormant`, `do_not_contact` (blocks all outreach; admin to reopen), `lost_client`. The stage it was in is kept (`resume_stage`, `resume_sub_status`) and restored on reopen. |
 | **Person** | A contact: belongs to several companies or none, has a role per company (`contact_links` entity `company`, `role`), is who outreach goes to. |
 | **Enquiry** | One specific requirement. Inbox review `pending_review -> accepted / discarded`; after accept a **deal status**. |
-| **Deal status** | `open, contacted, follow_up_1, follow_up_2, final_follow_up` (driven by the company's cadence) and `meeting_scheduled, proposal_sent, won, lost, no_response, on_hold` (hand / sheet). |
+| **Deal status** | `open, contacted, follow_up_1, follow_up_2, final_follow_up` (driven by the company's cadence; also settable on the company's origin enquiry, which moves the company's prospect stage) and `meeting_scheduled, proposal_sent, won, lost, no_response, on_hold` (hand / sheet). |
+| **Pipeline tabs** | Enquiries (default) · Prospects · Leads · Clients. *Prospects* is the pipeline tab for companies in stage prospect (formerly the "Companies" toggle); *Companies* still names the company list page and the record. *Became lead* / *Won* are recent (30 day) lanes. |
 | **Mark as lead / Mark client** | A person's decision. The app only *suggests* a lead. Won on any enquiry -> the company is a client and stays one. |
 
 | Table.column | Type | Notes |

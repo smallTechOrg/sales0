@@ -88,9 +88,9 @@ def test_edit_characteristics_on_pages_and_filter_lists(web: TestClient) -> None
     other = _prospect("P2", company="Globex", email="g@globex.example", contact_person="Gina")
     with session_scope() as db:
         cid, ocid = db.get(Prospect, pid).company_id, db.get(Prospect, other).company_id  # type: ignore[union-attr]
-    listed = web.get(f"/pipeline?layout=list&characteristic={partner}").text
+    listed = web.get(f"/pipeline?tab=prospects&layout=list&characteristic={partner}").text
     assert f'id="company-{cid}"' in listed and f'id="company-{ocid}"' not in listed
-    board = web.get(f"/pipeline?characteristic={tp}").text
+    board = web.get(f"/pipeline?tab=prospects&characteristic={tp}").text
     assert f'id="company-{cid}"' in board and f'id="company-{ocid}"' not in board
     assert 'id="f-characteristic"' in board
     # plain form post (no htmx): 303 back + flash; clearing all

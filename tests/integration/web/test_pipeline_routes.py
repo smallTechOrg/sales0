@@ -89,13 +89,14 @@ def test_empty_pipeline_page_has_every_empty_state(web: TestClient) -> None:
     main = _main(html)
     assert 'id="pipeline-tabs"' in main and 'id="due-today"' in main and 'aria-live="polite"' in main
     assert "Nothing due today." in main
-    assert "No companies in the pipeline yet" in main
-    for tab in ("Prospects", "Leads", "Clients", "Closed"):
+    assert "No accepted enquiries yet" in main  # the default tab is Enquiries
+    for tab in ("Enquiries", "Prospects", "Leads", "Clients"):
         assert tab in main
-    assert 'id="view-toggle"' in main and 'id="pipeline-search"' in main and 'id="pipeline-help"' in main
+    assert 'id="pipeline-search"' in main and 'id="pipeline-help"' in main
     assert "Coming in Phase 2" not in html
-    assert "Nothing matches these filters." in _main(web.get("/pipeline?stage=lead").text)
-    assert "No enquiries yet" in _main(web.get("/pipeline?view=enquiries").text) or "No accepted enquiries yet" in _main(web.get("/pipeline?view=enquiries").text)
+    assert "No prospects yet" in _main(web.get("/pipeline?tab=prospects").text)
+    assert "No leads yet" in _main(web.get("/pipeline?tab=leads").text)
+    assert 'id="view-toggle"' in _main(web.get("/pipeline?tab=prospects").text)
     assert 'id="due-badge"' not in html  # nothing due: no badge
 
 
@@ -104,13 +105,13 @@ def test_accepting_enquiries_of_one_company_puts_one_company_on_the_board(web: T
     second = make_enquiry("P8", **triaged("genuine", "Buyer", summary="AI assistant"), company="Acme Logistics")
     resp = web.post("/inbox/decide", data={"enquiry_ids": [str(first), str(second)], "decision": "accept"}, follow_redirects=False)
     assert resp.status_code == 303
-    html = web.get("/pipeline").text
+    html = web.get("/pipeline?tab=prospects").text
     cards = re.findall(r'<article class="pcard" id="company-(\d+)" data-stage="prospect"', html)
     assert len(cards) == 1  # one company, two enquiries
-    assert 'id="pipeline-board"' in html and 'data-stage="lead"' in html and 'data-stage="client"' in html
+    assert 'id="pipeline-board"' in html and 'data-stage="new"' in html and 'data-stage="lead"' not in html and 'data-stage="client"' not in html
     assert "2 enquiries" in html and 'class="count-pill"' in html
-    # the Enquiries toggle shows both, labelled with the company, grouped by status
-    boards = web.get("/pipeline?view=enquiries").text
+    # the Enquiries tab (the default) shows both, labelled with the company, grouped by status
+    boards = web.get("/pipeline").text
     assert 'id="enquiry-board"' in boards and boards.count('data-status="open"') >= 2 and "Acme Logistics" in boards
 
 
@@ -153,8 +154,9 @@ def test_company_page_has_actions_sections_and_mark_as_lead(web: TestClient) -> 
 def test_old_urls_redirect_and_unknown_ids_are_clean_404s(web: TestClient) -> None:
     pid = _prospect()
     cid = _company_of(pid)
-    assert web.get("/leads", follow_redirects=False).headers["location"] == "/pipeline?stage=lead"
-    assert web.get("/clients", follow_redirects=False).headers["location"] == "/pipeline?stage=client"
+    assert web.get("/leads", follow_redirects=False).headers["location"] == "/pipeline?tab=leads"
+    assert web.get("/clients", follow_redirects=False).headers["location"] == "/pipeline?tab=clients"
+    assert web.get("/prospects", follow_redirects=False).headers["location"] == "/pipeline?tab=prospects"
     assert web.get(f"/prospects/{pid}", follow_redirects=False).headers["location"] == f"/companies/{cid}"
     assert web.get("/pipeline?tab=leads").status_code == 200  # old bookmark
     for path in ("/pipeline/prospects/99999", "/pipeline/leads/99999", "/pipeline/clients/99999", "/prospects/99999", "/leads/99999", "/clients/99999"):
@@ -276,8 +278,9 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     assert resp.status_code == 303 and resp.headers["location"] == f"/companies/{cid}"
     page = web.get(f"/companies/{cid}").text
     assert "Marked as a lead." in page and "Lead" in page and 'id="lead-stage-form"' in page
-    assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline").text)
-    assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?stage=lead").text)
+    assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
+    assert "data-stage=\"lead\"" not in web.get("/pipeline?tab=prospects").text.split('id="lane-became_lead"')[0]  # not in a prospect column
+    assert 'id="lane-became_lead"' in web.get("/pipeline?tab=prospects").text
     # lead status, then Won on the enquiry makes the company a client
     _post(web, f"/companies/{cid}/status", {"sub_status": "proposal_sent", "proposal_sent_on": _today().isoformat()})
     with session_scope() as db:
@@ -287,13 +290,14 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     page = web.get(f"/companies/{cid}").text
     assert "flash--error" not in page, page[page.index("crm-flash"):][:300]
     assert 'stage-badge--client' in page and "client since" in page and 'data-deal-status="won"' in page
-    assert re.search(r'id="company-\d+" data-stage="client"', web.get("/pipeline").text)
+    assert re.search(r'id="company-\d+" data-stage="client"', web.get("/pipeline?tab=clients").text)
+    assert 'id="lane-won"' in web.get("/pipeline?tab=leads").text
     # a churned client goes to Closed and comes back
     _post(web, f"/companies/{cid}/off-ramp", {"off_ramp": "lost_client", "reason": "churned"})
-    closed = web.get("/pipeline?stage=closed").text
+    closed = web.get("/pipeline?tab=clients&closed=1").text
     assert f'id="company-{cid}"' in closed and "Lost client" in closed
     _post(web, f"/companies/{cid}/reopen")
-    assert 'data-stage="client"' in web.get("/pipeline?stage=client").text
+    assert 'data-stage="client"' in web.get("/pipeline?tab=clients").text
 
 
 def test_lost_lead_goes_to_the_closed_lane_and_tracking_stops(web: TestClient) -> None:
@@ -304,13 +308,13 @@ def test_lost_lead_goes_to_the_closed_lane_and_tracking_stops(web: TestClient) -
     assert off.status_code == 303
     with session_scope() as db:
         assert prospects.get_prospect(db, pid).tracked is False
-    board = web.get("/pipeline").text
+    board = web.get("/pipeline?tab=leads").text
     assert 'id="closed-lane"' in board and f'id="company-{cid}"' in board and "Not interested" in board
     page = web.get(f"/companies/{cid}").text
     assert "Not interested" in page and 'id="btn-reopen"' in page and "back to Lead / Meeting scheduled" in page
     assert "flash--error" in web.get(f"/companies/{cid}").text or True
     _post(web, f"/companies/{cid}/reopen")
-    assert 'data-stage="lead"' in web.get("/pipeline?stage=lead").text
+    assert 'data-stage="lead"' in web.get("/pipeline?tab=leads").text
 
 
 def test_suggestion_is_a_hint_a_person_accepts_or_dismisses(web: TestClient) -> None:
@@ -320,14 +324,14 @@ def test_suggestion_is_a_hint_a_person_accepts_or_dismisses(web: TestClient) -> 
         eid = db.scalar(select(Enquiry.id).where(Enquiry.company_id == cid))
     assert _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "meeting_scheduled"}).status_code == 303
     page = web.get(f"/companies/{cid}").text
-    assert 'id="lead-suggestion"' in page and "Suggested: Lead" in page and 'data-stage="prospect"' in web.get("/pipeline").text
-    assert "Suggested: Lead" in web.get("/pipeline").text
+    assert 'id="lead-suggestion"' in page and "Suggested: Lead" in page and 'data-stage="prospect"' in web.get("/pipeline?tab=prospects").text
+    assert "Suggested: Lead" in web.get("/pipeline?tab=prospects").text
     _post(web, f"/companies/{cid}/suggestion", {"decision": "dismiss"})
     assert 'id="lead-suggestion"' not in web.get(f"/companies/{cid}").text
     _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "proposal_sent"})
     _post(web, f"/companies/{cid}/suggestion", {"decision": "accept"})
-    assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline").text)
-    # driven statuses cannot be set by hand
+    assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
+    # the origin enquiry's cadence statuses only move a company that is still a prospect
     err = _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "follow_up_1"})
     assert err.status_code == 303 and "flash--error" in web.get(f"/companies/{cid}").text
 
@@ -386,7 +390,7 @@ def test_flag_tracked_and_close_reopen(web: TestClient) -> None:
     assert "flag--no_follow_up" in flag.text and "reminders cancelled" in flag.text
     page = web.get(f"/companies/{cid}").text
     assert "Allow follow-ups again" in page and "No open follow-ups." in page
-    assert "flag--no_follow_up" in web.get("/pipeline").text or "flag--no_follow_up" in page
+    assert "flag--no_follow_up" in web.get("/pipeline?tab=prospects").text or "flag--no_follow_up" in page
     cleared = _post(web, f"/pipeline/prospects/{pid}/flag", {"kind": "no_follow_up", "on": "false"}, hx=True)
     assert "flag--no_follow_up" not in cleared.text.split('id="company-header"', 1)[1].split("</section>", 1)[0]
     assert "toast--error" in _post(web, f"/pipeline/prospects/{pid}/flag", {"kind": "weird"}, hx=True).text
@@ -397,12 +401,12 @@ def test_flag_tracked_and_close_reopen(web: TestClient) -> None:
 
     closed = _post(web, f"/pipeline/prospects/{pid}/close", {"reason": "not_interested"}, hx=True)
     assert "Prospect closed." in closed.text and 'id="off-ramp-badge"' in closed.text and 'id="btn-reopen"' in closed.text
-    assert f'id="company-{cid}"' in web.get("/pipeline").text  # the closed lane
-    assert 'id="closed-lane"' in web.get("/pipeline").text
-    listing = web.get("/pipeline?stage=closed").text
+    assert f'id="company-{cid}"' in web.get("/pipeline?tab=prospects").text  # the closed lane
+    assert 'id="closed-lane"' in web.get("/pipeline?tab=prospects").text
+    listing = web.get("/pipeline?stage=closed").text  # old bookmark: the Prospects tab, closed
     assert f'id="company-{cid}"' in listing and 'id="pipeline-list"' in listing
     assert "Prospect reopened." in _post(web, f"/pipeline/prospects/{pid}/reopen", hx=True).text
-    assert 'data-stage="prospect"' in web.get("/pipeline").text
+    assert 'data-stage="prospect"' in web.get("/pipeline?tab=prospects").text
     _post(web, f"/pipeline/prospects/{pid}/close", {"reason": "lost"}, hx=True)
     assert "toast--error" in _post(web, f"/pipeline/prospects/{pid}/stage", {"stage": "follow_up_1"}, hx=True).text
 
@@ -439,7 +443,7 @@ def test_legacy_client_create_update_note(web: TestClient) -> None:
     url = resp.headers["location"]
     page = web.get(url).text
     assert "Old Customer Ltd" in page and "client since 01 Mar 2024" in page
-    assert "Old Customer Ltd" in web.get("/pipeline?stage=client").text
+    assert "Old Customer Ltd" in web.get("/pipeline?tab=clients").text
     with session_scope() as db:
         from sales0.db.models import Client
 
@@ -457,14 +461,14 @@ def test_search_and_filters_return_a_fragment_for_htmx_and_a_page_otherwise(web:
     a = _company_of(_prospect("P1", company="Acme Logistics"))
     b = _company_of(_prospect("P8", company="Globex Insurance", email="x@globex.example", contact_person="Gina Globex"))
     assert a != b
-    frag = web.get("/pipeline?q=Globex", headers=HX)
+    frag = web.get("/pipeline?tab=prospects&q=Globex", headers=HX)
     assert frag.status_code == 200 and "<html" not in frag.text and 'id="pipeline-body"' in frag.text
     assert f'id="company-{b}"' in frag.text and f'id="company-{a}"' not in frag.text
-    empty = web.get("/pipeline?q=nomatchatall", headers=HX).text
+    empty = web.get("/pipeline?tab=prospects&q=nomatchatall", headers=HX).text
     assert "Nothing matches" in empty or "Nothing here." in empty
-    listing = web.get("/pipeline?layout=list").text
+    listing = web.get("/pipeline?tab=prospects&layout=list").text
     assert 'id="pipeline-list"' in listing and "<th scope=\"col\">Next follow-up</th>" in listing
-    forced = web.get("/pipeline?stage=prospect&q=nomatchatall").text
+    forced = web.get("/pipeline?tab=prospects&q=nomatchatall").text
     assert "Nothing matches these filters." in forced
     assert "Coming" not in forced
     bogus = web.get("/pipeline?tab=nonsense&view=huh&status=weird&page=-4")
@@ -479,9 +483,9 @@ def test_list_pagination(web: TestClient, monkeypatch: pytest.MonkeyPatch) -> No
     for n in range(12):
         with session_scope() as db:
             prospects.create_manual(db, name=f"Person {n}", company=f"Company {n}", email=f"p{n}@x.example")
-    page1 = web.get("/pipeline?layout=list&stage=prospect").text
+    page1 = web.get("/pipeline?layout=list&tab=prospects").text
     assert "Page 1 of 3" in page1 and "Next &rarr;" in page1 and "Prev" not in page1.split('aria-label="Pages"')[1]
-    page3 = web.get("/pipeline?layout=list&stage=prospect&page=3").text
+    page3 = web.get("/pipeline?layout=list&tab=prospects&page=3").text
     assert "Page 3 of 3" in page3 and "Prev" in page3
     assert len(re.findall(r'<tr id="company-\d+"', page1)) == 5
     assert len(re.findall(r'<tr id="company-\d+"', page3)) == 2

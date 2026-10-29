@@ -33,6 +33,6 @@
       </div>
     </section>
     {% if b.ignored_columns %}<p class="hint" id="ignored-columns">Columns that were ignored (not recognised): {{ b.ignored_columns|join(", ") }}</p>{% endif %}
-    <div class="row"><a class="btn btn--primary" href="/import">Import another</a><a class="btn" href="/pipeline">Open the pipeline</a></div>
+    <div class="row"><a class="btn btn--primary" href="/import">Import another</a><a class="btn" href="/pipeline?tab=prospects">Open the pipeline</a></div>
   </div>
 {% endblock %}

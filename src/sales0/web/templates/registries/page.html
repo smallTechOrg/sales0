@@ -152,7 +152,7 @@
             <tbody>
             {% for ch in characteristics %}
               <tr id="characteristic-{{ ch.id }}" data-active="{{ 1 if ch.active else 0 }}">
-                <td><a href="/pipeline?tab=prospects&view=list&status=all&characteristic={{ ch.id }}">{{ ch.name }}</a></td>
+                <td><a href="/pipeline?tab=prospects&layout=list&characteristic={{ ch.id }}">{{ ch.name }}</a></td>
                 <td class="num">{{ ch.count }}</td>
                 <td>
                   <form method="post" action="/competitors/characteristic/{{ ch.id }}">

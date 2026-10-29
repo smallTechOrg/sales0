@@ -326,8 +326,10 @@ what is due). When the person replies "interested" the company page shows *Sugge
 person presses **Mark as lead** (*Meeting scheduled → Proposal sent*). Marking one of its enquiries
 **Won** (or pressing **Mark client**) makes the company a **Client**. Close a company as *Not
 interested*, *Dormant*, *Do not contact* (blocks all outreach; only an admin reopens it) or *Lost
-client*, and reopen it later. The Pipeline shows companies in Prospect | Lead | Client columns with a
-toggle to see the **enquiries** by status. Every step is on the company's timeline, and you can add
+client*, and reopen it later. The Pipeline has four tabs, **Enquiries** (the default: accepted enquiries by status) |
+**Prospects** (New to Final follow-up, plus a recent *Became lead* lane) | **Leads** (Meeting scheduled,
+Proposal sent, plus a recent *Won* lane) | **Clients**, each with a count. Setting the enquiry that
+brought a company in to Contacted / a Follow-up moves the company's prospect stage with it. Every step is on the company's timeline, and you can add
 notes. **People** is one shared address book (search, tags, merge duplicates; a person can belong to
 several companies, with a role at each); **Competitors & Groups** are flagged when an enquiry
 mentions a competitor; **Import** takes a single pasted post (triaged by Haiku like any
@@ -927,8 +929,8 @@ uv run pytest tests -q               # everything (the suites are also safe to r
   run takes about 10 minutes.
 
 - `tests/e2e/test_company_journey.py` walks the company model without an LLM: accept two enquiries
-  (one company) -> Pipeline companies / enquiries toggle -> Mark as lead -> an enquiry marked Won
-  -> Client -> Lost client in the Closed lane -> reopen; the old `/leads`, `/clients` and
+  (one company) -> Pipeline tabs (Enquiries default, Prospects, Leads, Clients) -> Mark as lead -> an enquiry marked Won
+  -> Client -> Lost client under Clients (Show closed) -> reopen; the old `/leads`, `/clients` and
   `/prospects/{id}` URLs redirect.
 - `tests/e2e/test_phase2_journey.py` (port **8792**, or the next free port) walks the whole CRM:
   login (redirect, wrong password, right password) -> accept two enquiries from one author in

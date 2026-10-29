@@ -162,9 +162,8 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     page.locator(f"#enquiry-{first}").get_by_role("button", name="Accept", exact=True).click()
     expect(page.locator(f"#enquiry-{first}")).to_have_count(0)
     settled(page)
-    page.goto(f"{env.base}/pipeline?stage=prospect")
+    page.goto(f"{env.base}/pipeline?tab=prospects")
     expect(page.locator("#pipeline-tabs .tabs__tab--active .count-pill")).to_have_text("1")
-    page.goto(f"{env.base}/pipeline")
     expect(page.locator('.pcard[data-stage="prospect"]')).to_have_count(1)
 
     # ---- Accept #2 (same author): still ONE prospect, both enquiries linked (idempotent)
@@ -184,7 +183,7 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
         prospect_name = prospects[0].name
         company_pk = prospects[0].company_id
         company_name = db.scalar(select(Company.name).where(Company.id == company_pk))
-    page.goto(f"{env.base}/pipeline")
+    page.goto(f"{env.base}/pipeline?tab=prospects")
     expect(page.locator(".pcard")).to_have_count(1)
     page.locator(f'a[href="/companies/{company_pk}"]').first.click()
     expect(page.locator("#company-title")).to_have_text(company_name)
@@ -254,7 +253,7 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     expect(due).to_contain_text(prospect_name)
     expect(due).to_contain_text("Call the L&D head")
     # the Due filter on the list finds it too
-    page.goto(f"{env.base}/pipeline?layout=list")
+    page.goto(f"{env.base}/pipeline?tab=prospects&layout=list")
     expect(page.locator("#pipeline-body")).to_contain_text(company_name)
 
     # ---- A fake human reply (interested) -> real poller + real Haiku -> Lead "Meeting scheduled"
@@ -298,7 +297,7 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     with get_sessionmaker()() as db:
         client = db.execute(select(Client)).scalar_one()
         assert client.lead_id == lead_id and client.status == "active"
-    page.goto(f"{env.base}/pipeline?stage=client")
+    page.goto(f"{env.base}/pipeline?tab=clients")
     expect(page.locator("#pipeline-tabs .tabs__tab--active .count-pill")).to_have_text("1")
 
     # ---- The timeline lists every step with timestamps
@@ -326,7 +325,7 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
         cells = page.locator(f'#sync-tabs tr[data-tab="{tab}"] td')
         assert cells.nth(2).inner_text() == "0" and cells.nth(3).inner_text() == "0" and cells.nth(5).inner_text() == "0", tab  # added/updated/removed
     # the sheet's people are in the Pipeline, marked "Synced from sheet"; its competitors and groups on their page
-    page.goto(f"{env.base}/pipeline?q=New+Person")
+    page.goto(f"{env.base}/pipeline?tab=prospects&q=New+Person")
     expect(page.locator(".pcard")).to_have_count(1)
     page.locator(".pcard h3 a").click()
     expect(page.locator("#sheet-lock")).to_contain_text("Synced from sheet")

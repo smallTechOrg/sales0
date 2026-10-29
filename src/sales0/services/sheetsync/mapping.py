@@ -759,6 +759,12 @@ def _untouched(p: Prospect) -> bool:
     return p.stage == "new" and p.status == "open" and p.contacted_at is None and p.responded_at is None
 
 
+def _is_origin(db: Session, enquiry: Enquiry) -> bool:
+    from sales0.services.crm import deals
+
+    return enquiry.company_id is None or enquiry.review_status != "accepted" or deals.is_origin(db, enquiry)
+
+
 def _sheet_may_move(p: Prospect) -> bool:
     if p.stage_source == "sheet":
         return p.status != "closed" or p.closed_reason is None or p.closed_reason.startswith("sheet:") or p.closed_reason == "no_response"
@@ -850,7 +856,9 @@ def _apply_outcome(
     if outcome.prospect_status == "open" and prospect.status == "closed":
         prospect.status, prospect.closed_reason, prospect.closed_at = "open", None, None
         changed.append("prospect_status")
-    if outcome.prospect_stage is not None and prospect.stage != outcome.prospect_stage:
+    # origin coupling (services/crm/deals.py): only the enquiry that brought the company in drives its prospect stage
+    drives = enquiry is None or outcome.prospect_stage not in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") or _is_origin(db, enquiry)
+    if outcome.prospect_stage is not None and prospect.stage != outcome.prospect_stage and drives:
         old = prospect.stage
         prospect.stage = outcome.prospect_stage
         stage_change(old, prospect.stage)

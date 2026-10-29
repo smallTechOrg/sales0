@@ -5,7 +5,7 @@
   <div class="page__header">
     <div>
       <h1>Pipeline</h1>
-      <p id="pipeline-help">What is this? Every company we deal with, as a card in Prospect, Lead or Client. A company can have several enquiries (specific requirements) - switch to Enquiries to see them by status. Accepted enquiries start a company as a prospect; a person decides when it becomes a lead; marking an enquiry Won makes it a client.</p>
+      <p id="pipeline-help">{{ tab_help }}</p>
     </div>
   </div>
 {% endblock %}
@@ -14,35 +14,22 @@
     {{ flash_banner(flash) }}
     {% include "pipeline/_due.html" %}
 
-    <div class="row row--between">
-      <div class="view-toggle" id="pipeline-view" role="group" aria-label="Show">
-        <a href="/pipeline?{{ qs(params, view='companies', page=None) }}"{% if params.view == "companies" %} aria-current="true"{% endif %}>Companies</a>
-        <a href="/pipeline?{{ qs(params, view='enquiries', page=None, stage=None) }}"{% if params.view == "enquiries" %} aria-current="true"{% endif %}>Enquiries</a>
-      </div>
-      {% if params.view == "companies" %}
-      <nav class="tabs" id="pipeline-tabs" aria-label="Stages">
-        <a class="tabs__tab{% if not params.stage %} tabs__tab--active{% endif %}" href="/pipeline?{{ qs(params, stage=None, page=None) }}">All stages</a>
-        {% for key, label, count in tabs %}
-          <a class="tabs__tab{% if key == params.stage %} tabs__tab--active{% endif %}" href="/pipeline?{{ qs(params, stage=key, layout='list', page=None) }}"{% if key == params.stage %} aria-current="page"{% endif %}>{{ label }}<span class="count-pill">{{ count }}</span></a>
-        {% endfor %}
-      </nav>
-      {% endif %}
-    </div>
+    <nav class="tabs" id="pipeline-tabs" aria-label="Pipeline">
+      {% for key, label, count in tabs %}
+        <a class="tabs__tab{% if key == params.tab %} tabs__tab--active{% endif %}" id="tab-{{ key }}" href="/pipeline?{{ qs(params, tab=key, layout=None, sub=None, closed=None, flag=None, page=None) }}"{% if key == params.tab %} aria-current="page"{% endif %}>{{ label }} <span class="count-pill">{{ count }}</span></a>
+      {% endfor %}
+    </nav>
 
     <div class="row row--between">
       <form class="filters" id="pipeline-filters" method="get" action="/pipeline" role="search"
             hx-get="/pipeline" hx-target="#pipeline-body" hx-push-url="true" hx-trigger="change, input changed delay:300ms from:#pipeline-search, submit">
-        <input type="hidden" name="view" value="{{ params.view }}">
+        <input type="hidden" name="tab" value="{{ params.tab }}">
         {% if params.layout %}<input type="hidden" name="layout" value="{{ params.layout }}">{% endif %}
         <div class="field field--grow">
           <label class="field__label" for="pipeline-search">Search</label>
           <input class="input" id="pipeline-search" type="search" name="q" value="{{ params.q }}" placeholder="Search company or person…" autocomplete="off">
         </div>
-        {% if params.view == "companies" %}
-          <div class="field"><label class="field__label" for="f-stage">Stage</label>
-            <select class="input" id="f-stage" name="stage"><option value="">All stages</option>
-              {% for key, label in stage_choices %}<option value="{{ key }}"{% if key == params.stage %} selected{% endif %}>{{ label }}</option>{% endfor %}
-            </select></div>
+        {% if params.tab == "prospects" %}
           <div class="field"><label class="field__label" for="f-flag">Flag</label>
             <select class="input" id="f-flag" name="flag"><option value="">Any</option>
               {% for key, label in (("repeat_poster", "Repeat poster"), ("competitor_mention", "Mentions competitor"), ("no_follow_up", "Do not follow up")) %}
@@ -57,7 +44,8 @@
           <select class="input" id="f-category" name="category"><option value="">Any</option>
             {% for key, label in category_choices %}<option value="{{ key }}"{% if key == params.category %} selected{% endif %}>{{ label }}</option>{% endfor %}
           </select></div>
-        {% if params.view == "companies" %}<label class="enquiry__select"><input type="checkbox" name="sort" value="priority"{% if params.sort == "priority" %} checked{% endif %}> Highest priority first</label>{% endif %}
+        {% if params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="sort" value="priority"{% if params.sort == "priority" %} checked{% endif %}> Highest priority first</label>{% endif %}
+        {% if layout == "list" and params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="closed" value="1"{% if params.closed %} checked{% endif %}> Show closed</label>{% endif %}
         {% if characteristic_options %}
           <div class="field"><label class="field__label" for="f-characteristic">Characteristic</label>
             <select class="input" id="f-characteristic" name="characteristic"><option value="">Any</option>
@@ -67,20 +55,19 @@
         <noscript><button class="btn" type="submit">Apply</button></noscript>
       </form>
       <div class="row">
-        {% if params.view == "companies" %}
+        {% if params.tab != "enquiries" %}
           <div class="view-toggle" id="view-toggle" role="group" aria-label="Layout">
-            <a href="/pipeline?{{ qs(params, layout='board', stage=None, page=None) }}"{% if layout == "board" %} aria-current="true"{% endif %}>Board</a>
+            <a href="/pipeline?{{ qs(params, layout='board', sub=None, closed=None, page=None) }}"{% if layout == "board" %} aria-current="true"{% endif %}>Board</a>
             <a href="/pipeline?{{ qs(params, layout='list', page=None) }}"{% if layout == "list" %} aria-current="true"{% endif %}>List</a>
           </div>
-          <a class="btn btn--primary" href="#new-company" id="btn-new-prospect">New company</a>
         {% endif %}
+        {% if params.tab == "prospects" %}<a class="btn btn--primary" href="#new-company" id="btn-new-prospect">New company</a>{% endif %}
       </div>
     </div>
-    {% if forced_list %}<p class="hint" id="board-note">Showing the list because a stage is chosen; the board shows Prospect, Lead and Client side by side.</p>{% endif %}
 
     {% include "pipeline/_body.html" %}
 
-    {% if params.view == "companies" %}
+    {% if params.tab == "prospects" %}
       <section class="card" id="new-company" aria-labelledby="new-company-title">
         <div class="card__header"><h2 id="new-company-title">New company</h2></div>
         <form class="card__body" method="post" action="/pipeline/prospects">
