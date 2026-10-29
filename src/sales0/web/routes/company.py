@@ -113,8 +113,6 @@ def company_context(request: Request, db: Session, company_id: int, member: Team
     ctx: dict[str, Any] = {
         "life": life, "co": co, "p": p, "is_admin": _is_admin(request, db), "roles": roles, "contact_details": details,
         "person_role_labels": PERSON_ROLE_LABELS, "deal_options": [(k, deals.deal_label(k)) for k in deals.SETTABLE],
-        "origin_deal_options": [(k, deals.deal_label(k)) for k in ("open", *deals.STAGE_DRIVING, *deals.HAND_DEAL_STATUSES)],
-        "origin_enquiry_id": deals.origin_enquiry_id(db, company_id),
         "characteristic_options": pl._trait_options(db),  # noqa: SLF001
         "team_members": [m for m in _members(db)],
         "company_timeline": co.timeline,

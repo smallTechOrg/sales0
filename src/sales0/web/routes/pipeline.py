@@ -147,8 +147,8 @@ DEFAULT_TAB = "enquiries"
 TAB_LABELS = {"enquiries": "Enquiries", "prospects": "Prospects", "leads": "Leads", "clients": "Clients"}
 TAB_HELP = {
     "enquiries": "What is this? Every accepted enquiry (one specific requirement) by status, with the company name on each card. "
-                 "The enquiry that brought a company in also moves that company along its prospect stages when you set it to "
-                 "Contacted or a Follow-up. Enquiries still to review stay in the Inbox.",
+                 "An enquiry's status is its own; the one link: setting Contacted or a Follow-up on an enquiry of a new prospect "
+                 "company moves that prospect forward to the same stage (never backwards). Enquiries still to review stay in the Inbox.",
     "prospects": "What is this? Companies we are working towards a first conversation with: New, Contacted, Follow-up 1, "
                  "Follow-up 2, Final follow-up. When a person confirms a meeting or proposal the company becomes a lead "
                  "(see Became lead, last 30 days) and moves to the Leads tab.",
@@ -213,8 +213,7 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
         ctx.update(layout="board", enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
             category=params["category"] or None),
-            deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE],
-            origin_deal_options=[(k, deals_service.deal_label(k)) for k in ("open", *deals_service.STAGE_DRIVING, *deals_service.HAND_DEAL_STATUSES)])
+            deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE])
     else:
         # clients are a list by default (a board of one column adds nothing); prospects and leads default to the board
         layout = params["layout"] or ("list" if tab == "clients" else "board")

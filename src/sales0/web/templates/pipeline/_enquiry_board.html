@@ -6,7 +6,7 @@
 {% else %}
 {% macro ecard(e) %}
         {% set c = e.company_card %}
-        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}"{% if e.is_origin %} data-origin="1"{% endif %}>
+        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}">
           <h3>
             {% if e.company_id %}<a href="/companies/{{ e.company_id }}">{{ e.company_name or "Company" }}</a>
             {% elif e.person_name %}{% if e.contact_id %}<a href="/contacts/{{ e.contact_id }}">{{ e.person_name }}</a>{% else %}{{ e.person_name }}{% endif %}
@@ -30,8 +30,7 @@
             <input type="hidden" name="next" value="{{ next }}">
             <label class="field__label" for="estatus-{{ e.id }}">Status</label>
             <select class="select" id="estatus-{{ e.id }}" name="status">
-              {% for key, label in (origin_deal_options if e.is_origin else deal_options) %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label if key != "open" else "Open" }}</option>{% endfor %}
-              {% if not e.is_origin and e.deal_status in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") %}<option value="" selected disabled>{{ e.deal_status|replace("_", " ")|capitalize }} (auto)</option>{% endif %}
+              {% for key, label in deal_options %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
             </select>
             <button class="btn btn--sm" type="submit">Set</button>
           </form>

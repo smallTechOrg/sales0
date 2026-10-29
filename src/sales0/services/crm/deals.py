@@ -1,32 +1,26 @@
 """Enquiry deal status: where one specific requirement (an accepted enquiry) stands.
 
-Vocabulary = the Active Enquiries sheet's: open, contacted, follow_up_1, follow_up_2, final_follow_up (mirror the
-company's outreach + follow-up cadence; a person may also set them on the ORIGIN enquiry, see below), meeting_scheduled,
-proposal_sent, won, lost, no_response, on_hold (set by a person or by the sheet). "Hot / Warm" are the priority tag.
+ONE list for every enquiry, set by a person (Enquiries board, company page) or by the Active Enquiries sheet: open,
+contacted, follow_up_1, follow_up_2, final_follow_up, meeting_scheduled, proposal_sent, won, lost, no_response,
+on_hold. "Hot / Warm" are the priority tag. The enquiry status and the company's (prospect) status are DIFFERENT things.
 
-ORIGIN COUPLING (owner decision): the ORIGIN enquiry of a company (its earliest accepted enquiry, i.e. the one whose
-acceptance brought the company in) can be set to contacted / follow_up_1 / follow_up_2 / final_follow_up; that moves the
-company's prospect sub-status to the same stage (``_drive_company``). Only while the company is an active prospect
-(stage prospect, no off-ramp). By hand the move is exact (also backwards); any other source only moves forward, never
-past what outreach already recorded. Other enquiries of the company never drive the stage. The reverse direction (the
-company's cadence mirrored onto its OPEN / driven enquiries) is done by the projection with Core SQL and never calls back
-here, so there is no ping-pong. The sheet reaches the same rule through ``sheetsync.mapping`` (it moves the prospect of
-an ORIGIN enquiry row only, and never a stage set in the app).
-
-Side effects (a person confirms, nothing moves a company to Lead by itself): meeting_scheduled / proposal_sent SUGGEST
-moving the company to Lead; won marks the company Client (it stays a client; later enquiries are upsell).
+The only link (owner decision), enquiry -> company, one way, for ANY accepted enquiry of the company:
+* contacted / follow_up_1 / follow_up_2 / final_follow_up: while the company is a NEW prospect (stage prospect, no
+  off-ramp) the prospect sub-status moves to the same stage, FORWARD ONLY (already at or past it: nothing happens).
+* meeting_scheduled / proposal_sent: show "Suggested: Lead"; a person confirms. won: the company becomes a client.
+* open / lost / no_response / on_hold: no effect on the company.
+A company that is not a prospect (lead, client, off-ramp) or no company at all: the status just changes. The company
+never writes back to the enquiry (no ping-pong); its cadence does not touch enquiry statuses.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sales0.db.company_projection import DRIVEN_BY_SUB
 from sales0.db.models import Company, Enquiry
-from sales0.db.models.enums_crm import DRIVEN_DEAL_STATUSES, ENQUIRY_DEAL_STATUSES, HAND_DEAL_STATUSES, PROSPECT_STAGES
+from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES, PROSPECT_STAGES
 from sales0.errors import DomainError
 from sales0.services._common import now_or, not_found
 from sales0.services.crm import lifecycle, timeline
@@ -38,10 +32,9 @@ DEAL_LABELS = {
     "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "proposal_sent": "Proposal sent",
     "won": "Won", "lost": "Lost", "no_response": "No response", "on_hold": "On hold",
 }
-# what a person (or the sheet) can set by hand; "open" means "follow the company's cadence again"
-SETTABLE = ("open", *HAND_DEAL_STATUSES)
+SETTABLE = ENQUIRY_DEAL_STATUSES  # the same list for every enquiry
 BOARD_ORDER = ENQUIRY_DEAL_STATUSES
-# the statuses of the origin enquiry that drive the company's prospect sub-status
+# the enquiry statuses that move a NEW prospect company forward to the same stage
 STAGE_DRIVING = ("contacted", "follow_up_1", "follow_up_2", "final_follow_up")
 
 
@@ -49,46 +42,18 @@ def deal_label(status: str | None) -> str:
     return DEAL_LABELS.get(status or "", "Not accepted yet")
 
 
-def origin_enquiry_id(db: Session, company_id: int | None) -> int | None:
-    """The enquiry that brought the company in: its earliest accepted enquiry (lowest id)."""
-    if company_id is None:
-        return None
-    return db.scalar(select(func.min(Enquiry.id)).where(Enquiry.company_id == company_id, Enquiry.review_status == "accepted"))
-
-
-def is_origin(db: Session, enquiry: Enquiry) -> bool:
-    return enquiry.review_status == "accepted" and origin_enquiry_id(db, enquiry.company_id) == enquiry.id
-
-
-def settable_for(db: Session, enquiry: Enquiry) -> tuple[str, ...]:
-    """What a person may choose for this enquiry: the origin enquiry also gets the stage-driving statuses."""
-    if is_origin(db, enquiry):
-        return ("open", *STAGE_DRIVING, *HAND_DEAL_STATUSES)
-    return SETTABLE
-
-
-def _drive_company(db: Session, e: Enquiry, status: str, *, actor: Actor, source: str, stamp: datetime, note: str | None) -> Enquiry:
-    """Origin enquiry -> contacted / follow-up N: move the company's prospect sub-status to the same stage."""
+def _advance_prospect(db: Session, e: Enquiry, status: str, *, actor: Actor, source: str, stamp: datetime) -> bool:
+    """Move the company's prospect sub-status forward to ``status``. True when it moved; no error when it cannot."""
     co = db.get(Company, e.company_id) if e.company_id else None
     if co is None or co.stage != "prospect" or co.off_ramp:
-        raise DomainError("stage_invalid", "Contacted and follow-up statuses move the company only while it is an active prospect.", 409)
+        return False
+    if source == "sheet" and co.stage_source == "app":
+        return False  # a stage a person set in the app is never moved by the sheet
     current = co.sub_status if co.sub_status in PROSPECT_STAGES else "new"
-    if source != "app" and PROSPECT_STAGES.index(status) <= PROSPECT_STAGES.index(current):
-        return e  # a non-hand source never moves a stage backwards (or sideways) past what outreach recorded
-    prev = e.deal_status  # read before the move: the projection mirrors the new cadence onto driven enquiries
-    if status != current:
-        lifecycle.set_prospect_status(db, co.id, status, actor=actor, note=note or "Set from the enquiry status", now=stamp)
-    e.deal_status, e.deal_status_source = status, "driven"  # it now follows the cadence like every driven enquiry
-    db.flush()
-    db.refresh(co)
-    if prev != status:
-        timeline.add_event(
-            db, subject_type="enquiry", subject_id=e.id, kind="stage_change", enquiry_id=e.id, company_id=e.company_id,
-            prospect_id=e.prospect_id, actor=actor, occurred_at=stamp,
-            body=f"Enquiry status: {deal_label(prev)} -> {deal_label(status)} (the company's prospect stage follows)",
-            data={"from": prev, "to": status, "source": source, "company_sub_status": co.sub_status},
-        )
-    return e
+    if PROSPECT_STAGES.index(status) <= PROSPECT_STAGES.index(current):
+        return False  # forward only
+    lifecycle.set_prospect_status(db, co.id, status, actor=actor, note="Set from an enquiry status", now=stamp)
+    return True
 
 
 def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM, source: str = "app", note: str | None = None,
@@ -101,28 +66,20 @@ def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM
     if e.review_status != "accepted":
         raise DomainError("enquiry_not_accepted", "Accept the enquiry in the Inbox before giving it a status.", 409)
     stamp = now_or(now)
-    if status in DRIVEN_DEAL_STATUSES and status != "open":
-        if not is_origin(db, e):
-            raise DomainError(
-                "status_driven", "Contacted and follow-up statuses are set on the enquiry that brought the company in, or by "
-                "logging the contact / follow-up on the company.", 409)
-        return _drive_company(db, e, status, actor=actor, source=source if source in ("app", "sheet") else "app", stamp=stamp, note=note)
+    src = source if source in ("app", "sheet") else "app"
     prev = e.deal_status
-    if status == "open":  # back to following the company's cadence
-        co = db.get(Company, e.company_id) if e.company_id else None
-        status = DRIVEN_BY_SUB.get(co.sub_status or "", "open") if co is not None and co.stage == "prospect" and not co.off_ramp else "open"
-        e.deal_status_source = "driven"
-    else:
-        e.deal_status_source = source if source in ("app", "sheet") else "app"
+    e.deal_status_source = src
     if status == prev:
         return e
     e.deal_status = status
     db.flush()
+    moved = status in STAGE_DRIVING and _advance_prospect(db, e, status, actor=actor, source=src, stamp=stamp)
     timeline.add_event(
         db, subject_type="enquiry", subject_id=e.id, kind="stage_change", enquiry_id=e.id, company_id=e.company_id,
         prospect_id=e.prospect_id, actor=actor, occurred_at=stamp,
-        body=f"Enquiry status: {deal_label(prev)} -> {deal_label(status)}" + (f" - {note.strip()}" if note and note.strip() else ""),
-        data={"from": prev, "to": status, "source": e.deal_status_source},
+        body=f"Enquiry status: {deal_label(prev)} -> {deal_label(status)}" + (" (the company's prospect stage follows)" if moved else "")
+        + (f" - {note.strip()}" if note and note.strip() else ""),
+        data={"from": prev, "to": status, "source": src, "prospect_moved": moved},
     )
     if e.company_id is not None:
         if status in ("meeting_scheduled", "proposal_sent"):

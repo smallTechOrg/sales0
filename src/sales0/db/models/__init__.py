@@ -103,5 +103,5 @@ __all__ = [
     "enums",
 ]
 
-# q17: keeps companies.stage / sub_status / off_ramp (and driven enquiry deal statuses) current on every flush
+# q17: keeps companies.stage / sub_status / off_ramp current on every flush
 from sales0.db import company_projection as _company_projection  # noqa: E402,F401

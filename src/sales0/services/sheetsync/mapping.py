@@ -36,6 +36,7 @@ from sales0.config import get_settings
 from sales0.db.models import Enquiry, EnquirySource, LinkedinProfile
 from sales0.db.models.contacts import Contact, ContactEmail, ContactPhone
 from sales0.db.models.crm import Client, Company, Lead, Prospect
+from sales0.db.models.enums_crm import PROSPECT_STAGES
 from sales0.db.models.registries import ChannelGroup, Competitor
 from sales0.db.models.sheetdata import SheetSource as SheetSourceRow
 from sales0.db.models.timeline import TimelineEvent
@@ -759,12 +760,6 @@ def _untouched(p: Prospect) -> bool:
     return p.stage == "new" and p.status == "open" and p.contacted_at is None and p.responded_at is None
 
 
-def _is_origin(db: Session, enquiry: Enquiry) -> bool:
-    from sales0.services.crm import deals
-
-    return enquiry.company_id is None or enquiry.review_status != "accepted" or deals.is_origin(db, enquiry)
-
-
 def _sheet_may_move(p: Prospect) -> bool:
     if p.stage_source == "sheet":
         return p.status != "closed" or p.closed_reason is None or p.closed_reason.startswith("sheet:") or p.closed_reason == "no_response"
@@ -856,9 +851,11 @@ def _apply_outcome(
     if outcome.prospect_status == "open" and prospect.status == "closed":
         prospect.status, prospect.closed_reason, prospect.closed_at = "open", None, None
         changed.append("prospect_status")
-    # origin coupling (services/crm/deals.py): only the enquiry that brought the company in drives its prospect stage
-    drives = enquiry is None or outcome.prospect_stage not in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") or _is_origin(db, enquiry)
-    if outcome.prospect_stage is not None and prospect.stage != outcome.prospect_stage and drives:
+    # the enquiry -> prospect link (services/crm/deals.py) is forward only: any enquiry's contacted / follow-up status
+    # moves the prospect ahead, never back
+    forward_only = enquiry is not None and outcome.prospect_stage in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up")
+    behind = forward_only and prospect.stage in PROSPECT_STAGES and PROSPECT_STAGES.index(outcome.prospect_stage) <= PROSPECT_STAGES.index(prospect.stage)  # type: ignore[arg-type]
+    if outcome.prospect_stage is not None and prospect.stage != outcome.prospect_stage and not behind:
         old = prospect.stage
         prospect.stage = outcome.prospect_stage
         stage_change(old, prospect.stage)
@@ -891,9 +888,13 @@ def _apply_outcome(
 
 
 def _deal_status_of(outcome: StatusOutcome) -> str | None:
-    """The hand-set deal status a sheet status means (None = the company's cadence drives it)."""
+    """The enquiry deal status a sheet status means (None = the sheet status says nothing about it)."""
     if outcome.lead_stage is not None:
         return outcome.lead_stage
+    from sales0.services.crm import deals
+
+    if outcome.prospect_status != "closed" and outcome.prospect_stage in deals.STAGE_DRIVING:
+        return outcome.prospect_stage
     if outcome.prospect_status == "closed":
         return "no_response" if outcome.closed_reason == "no_response" else "on_hold"
     return None

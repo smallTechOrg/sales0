@@ -86,8 +86,7 @@
                 <form class="inline-form" id="enquiry-status-form-{{ e.id }}" method="post" action="/pipeline/enquiries/{{ e.id }}/status">
                   <label class="field__label" for="enquiry-status-{{ e.id }}">Status</label>
                   <select class="select" id="enquiry-status-{{ e.id }}" name="status">
-                    {% if e.id != origin_enquiry_id and e.deal_status in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") %}<option value="" selected disabled>{{ e.deal_label }} (follows the outreach)</option>{% endif %}
-                    {% for key, label in (origin_deal_options if e.id == origin_enquiry_id else deal_options) %}<option value="{{ key }}"{% if key == e.deal_status or (key == "open" and e.deal_status == "open") %} selected{% endif %}>{{ label if key != "open" else "Open (follow the outreach)" }}</option>{% endfor %}
+                    {% for key, label in deal_options %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
                   </select>
                   <button class="btn btn--sm" type="submit">Set</button>
                   <button class="btn btn--sm btn--primary" name="status" value="won" type="submit">Won</button>

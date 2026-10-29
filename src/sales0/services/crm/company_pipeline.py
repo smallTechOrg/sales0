@@ -74,7 +74,6 @@ class EnquiryCard(BaseModel):
     category: str = "relevant_prospect"
     date_added: object | None = None
     source_url: str | None = None
-    is_origin: bool = False  # the enquiry that brought its company in: it may also be set to contacted / follow-up N
     contact_id: int | None = None
     person_name: str | None = None  # always shown: the contact on the enquiry, else the contact person / post author
     person_title: str | None = None
@@ -248,13 +247,6 @@ def counts(db: Session) -> dict[str, int]:
     return out
 
 
-def _origin_ids(db: Session, company_ids: set[int]) -> dict[int, int]:
-    if not company_ids:
-        return {}
-    return dict(db.execute(select(Enquiry.company_id, func.min(Enquiry.id)).where(
-        Enquiry.company_id.in_(company_ids), Enquiry.review_status == "accepted").group_by(Enquiry.company_id)).all())
-
-
 def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int | None = None, priority_filter: str | None = None,
                   category: str | None = None, per_column: int = 50) -> EnquiryBoard:
     cols: list[EnquiryColumn] = []
@@ -274,13 +266,12 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
             stmt = stmt.where(Enquiry.company_id.in_(companies_with_trait(characteristic_id)))
         total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
         rows = db.execute(stmt.order_by(priority.rank_order(Enquiry.priority), Enquiry.date_added.desc(), Enquiry.id.desc()).limit(per_column)).all()
-        origins = _origin_ids(db, {e.company_id for e, *_ in rows if e.company_id})
         company_ids = {e.company_id for e, *_ in rows if e.company_id}
         by_company = {c.id: c for c in cards_for(db, list(db.scalars(select(Company).where(Company.id.in_(company_ids))))) } if company_ids else {}
         cols.append(EnquiryColumn(key=status, label=deals.deal_label(status), total=total, cards=[
             EnquiryCard(id=e.id, summary=e.requirement_summary, company_id=e.company_id, company_name=name or e.company,
                         deal_status=e.deal_status, priority=e.priority, category=e.category or "relevant_prospect",
-                        date_added=e.date_added, source_url=e.source_url, is_origin=origins.get(e.company_id) == e.id,
+                        date_added=e.date_added, source_url=e.source_url,
                         contact_id=e.contact_id, person_name=cname or e.contact_person or e.author_name,
                         person_title=ctitle or (e.author_headline if not cname and not e.contact_person else None),
                         company_card=by_company.get(e.company_id))

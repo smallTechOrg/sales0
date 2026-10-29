@@ -78,9 +78,6 @@ ENQUIRY_DEAL_STATUSES: tuple[str, ...] = (
     "open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "proposal_sent",
     "won", "lost", "no_response", "on_hold",
 )
-# contacted / follow_up_N of an OPEN enquiry mirror the company's prospect sub-status (never set by hand).
-DRIVEN_DEAL_STATUSES: tuple[str, ...] = ("open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
-HAND_DEAL_STATUSES: tuple[str, ...] = ("meeting_scheduled", "proposal_sent", "won", "lost", "no_response", "on_hold")
 PERSON_ROLES: tuple[str, ...] = ("decision_maker", "hr_ld", "influencer", "other")
 PERSON_ROLE_LABELS: dict[str, str] = {
     "decision_maker": "Decision maker", "hr_ld": "HR / L&D", "influencer": "Influencer", "other": "Other",

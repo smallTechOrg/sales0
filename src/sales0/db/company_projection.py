@@ -5,7 +5,8 @@ q17 company model: a COMPANY is the main record and Prospect / Lead / Client are
 notes and the timeline hang off them), and the one place that decides what stage a company is in is :func:`derive`.
 A Session ``after_flush`` hook re-derives every company whose ledger rows (or accepted enquiries) changed in the flush,
 so EVERY writer (services, hooks, sheet sync, importers) keeps ``companies.stage`` / ``sub_status`` / ``off_ramp``
-current without knowing about them, and the accepted enquiries' DRIVEN deal statuses follow the company's cadence.
+current without knowing about them. It never touches an enquiry's deal status except to give an accepted enquiry that
+has none the plain default ``open`` (the enquiry status and the company status are different things).
 
 Company-only off-ramps (``do_not_contact``, ``lost_client``) are set by ``services.crm.lifecycle`` and are never
 overwritten here. Pure ``derive`` has no I/O (unit-tested); ``recompute`` runs Core SQL on the flush connection.
@@ -22,18 +23,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Client, Company, Enquiry, Lead, Prospect, TimelineEvent
-from sales0.db.models.enums_crm import COMPANY_ONLY_OFF_RAMPS, DRIVEN_DEAL_STATUSES, PROSPECT_STAGES
+from sales0.db.models.enums_crm import COMPANY_ONLY_OFF_RAMPS, PROSPECT_STAGES
 
 _PROSPECT_RANK = {s: i for i, s in enumerate(PROSPECT_STAGES)}
 _LEAD_RANK = {"meeting_scheduled": 0, "proposal_sent": 1}
 STAGE_NAMES = {"prospect": "Prospect", "lead": "Lead", "client": "Client"}
 # the closed_reason values that mean "they said no"; anything else (no response, sheet "Hold"...) means dormant
 NOT_INTERESTED_REASONS = frozenset({"not_interested", "lost", "enquiry_discarded"})
-# company sub-status -> the DRIVEN enquiry deal status
-DRIVEN_BY_SUB = {
-    "new": "open", "contacted": "contacted", "follow_up_1": "follow_up_1", "follow_up_2": "follow_up_2",
-    "final_follow_up": "final_follow_up",
-}
 
 
 @dataclass(frozen=True)
@@ -131,7 +127,7 @@ def _label(stage: str | None, sub: str | None, off: str | None) -> str:
 
 
 def recompute(conn: Connection, company_ids: set[int], *, actor: str = "system", actor_member_id: int | None = None) -> int:
-    """Re-derive the lifecycle of these companies and drive their enquiries' deal statuses. Returns companies changed."""
+    """Re-derive the lifecycle of these companies (no enquiry statuses are driven). Returns companies changed."""
     ct, et = Company.__table__, Enquiry.__table__
     changed = 0
     now = datetime.now(UTC)
@@ -142,7 +138,6 @@ def recompute(conn: Connection, company_ids: set[int], *, actor: str = "system",
         if cur is None:
             continue
         life = derive(_load(conn, cid))
-        stage, sub, off = cur.stage, cur.sub_status, cur.off_ramp
         if life is not None:
             keep_off = cur.off_ramp in COMPANY_ONLY_OFF_RAMPS
             new_off = cur.off_ramp if keep_off else life.off_ramp
@@ -162,22 +157,10 @@ def recompute(conn: Connection, company_ids: set[int], *, actor: str = "system",
                     actor=actor[:80], actor_member_id=actor_member_id, occurred_at=now, created_at=now,
                 ))
                 changed += 1
-            stage, sub, off = life.stage, life.sub_status, new_off
-        # accepted enquiries' DRIVEN deal status mirrors the company's prospect cadence
-        if stage == "prospect" and off is None and sub in DRIVEN_BY_SUB:
-            target = DRIVEN_BY_SUB[sub]
-            conn.execute(
-                update(et).where(
-                    et.c.company_id == cid, et.c.review_status == "accepted",
-                    (et.c.deal_status.is_(None)) | et.c.deal_status.in_(DRIVEN_DEAL_STATUSES),
-                    (et.c.deal_status.is_(None)) | (et.c.deal_status != target),
-                ).values(deal_status=target, deal_status_source="driven")
-            )
-        elif et is not None:
-            conn.execute(  # accepted but not yet given a status: open
-                update(et).where(et.c.company_id == cid, et.c.review_status == "accepted", et.c.deal_status.is_(None))
-                .values(deal_status="open", deal_status_source="driven")
-            )
+        conn.execute(  # accepted but not yet given a status: open
+            update(et).where(et.c.company_id == cid, et.c.review_status == "accepted", et.c.deal_status.is_(None))
+            .values(deal_status="open")
+        )
     return changed
 
 
