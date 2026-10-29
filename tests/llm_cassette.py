@@ -7,6 +7,7 @@ only ``sdk.messages.create(**params)`` is answered from a cassette.
 * Default (replay): the test's cassette ``tests/fixtures/llm_cassettes/<test module path>.json``
   (shared by the module's tests) answers each request, keyed by a hash of the exact request params. No key, no network, ~0 s.
   A request the cassette does not hold FAILS with the command to re-record.
+  A module with no cassette file at all is skipped (reason names the recorder) unless ``SALES0_TEST_LLM_STRICT=1``.
 * ``SALES0_TEST_LLM_REFRESH=1`` (record): the real Anthropic SDK is called (needs a real key) and
   the cassette is rewritten. Use ``scripts/record_llm_cassettes.sh``.
 
@@ -44,6 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CASSETTE_ROOT = REPO_ROOT / "tests" / "fixtures" / "llm_cassettes"
 BOOT_DIR = Path(__file__).resolve().parent / "llm_cassette_boot"
 REFRESH_ENV = "SALES0_TEST_LLM_REFRESH"
+STRICT_ENV = "SALES0_TEST_LLM_STRICT"  # 1: a module without a cassette FAILS (CI) instead of skipping
 FILE_ENV = "SALES0_LLM_CASSETTE_FILE"  # exported for subprocesses
 RECORD_HINT = "re-record with: scripts/record_llm_cassettes.sh (SALES0_TEST_LLM_REFRESH=1, real key)"
 
@@ -145,6 +147,10 @@ class Cassette:
         elif fresh:
             self.path.unlink(missing_ok=True)
 
+    def reset_counters(self) -> None:
+        with self._lock:
+            self._counts.clear()
+
     def _read(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
@@ -238,6 +244,7 @@ def cassette_path_for(nodeid: str) -> Path:
     return CASSETTE_ROOT / rel.with_suffix(".json")
 
 
+ACTIVE: Cassette | None = None  # the cassette installed for the running module
 _RESET: set[Path] = set()  # record mode: cassettes already wiped in this process
 
 
@@ -254,10 +261,14 @@ def install(path: Path, *, record: bool, fresh: bool = True) -> Any:
         api_key = kwargs.get("api_key") if "api_key" in kwargs else (args[0] if args else None)
         return CassetteSDK(cassette, api_key=api_key, real_factory=real_cls, kwargs=dict(kwargs))
 
+    global ACTIVE
     anthropic.Anthropic = factory  # type: ignore[misc,assignment]
+    ACTIVE = cassette
 
     def undo() -> None:
+        global ACTIVE
         anthropic.Anthropic = real_cls  # type: ignore[misc]
+        ACTIVE = None
 
     return undo
 
@@ -270,42 +281,75 @@ def install_from_env() -> None:
 
 
 # ---------------------------------------------------------------------------- pytest plugin
-def _uses_cassette(request: pytest.FixtureRequest) -> bool:
-    node = request.node
-    if node.get_closest_marker("llm") is None:
+def _eligible(item: pytest.Item) -> bool:
+    if item.get_closest_marker("llm") is None or item.get_closest_marker("eval") is not None:
         return False
-    parts = Path(str(node.path)).parts
-    return "e2e" not in parts and "eval" not in parts and node.get_closest_marker("eval") is None
+    parts = Path(str(item.path)).parts
+    return "e2e" not in parts and "eval" not in parts
 
 
-@pytest.fixture(autouse=True)
-def _llm_cassette(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> Any:
-    if not _uses_cassette(request):
+def _missing_cassette_skips(path: Path) -> bool:
+    return not path.exists() and os.environ.get(STRICT_ENV, "") not in {"1", "true"}
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Transition aid: an eligible llm test whose module has no cassette file yet is skipped (reason names the
+    recorder). Decided at collection because module-scoped fixtures would otherwise run (and miss) first.
+    CI sets SALES0_TEST_LLM_STRICT=1 to fail instead."""
+    if refresh_mode():
+        return
+    for item in items:
+        if _eligible(item) and _missing_cassette_skips(cassette_path_for(item.nodeid)):
+            item.add_marker(pytest.mark.skip(reason=f"no LLM cassette yet for this module; {RECORD_HINT}"))
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _llm_cassette_module(request: pytest.FixtureRequest) -> Any:
+    """Patches ``anthropic.Anthropic`` for the whole module (module-scoped fixtures of real-Haiku tests run
+    before any function fixture) when it holds at least one eligible ``llm`` test."""
+    module = request.node
+    if not any(_eligible(i) for i in request.session.items if getattr(i, "module", None) is getattr(module, "obj", None)):
         yield None
         return
     record = refresh_mode()
+    path = cassette_path_for(str(module.nodeid))
+    mp = pytest.MonkeyPatch()
+    MISSES.clear()
     if record:
         from sales0.config import get_settings, reset_settings
 
         reset_settings()
         if not get_settings().api_key_present:
+            mp.undo()
             pytest.fail(f"{REFRESH_ENV}=1 needs a real SALES0_ANTHROPIC_API_KEY")
-    if not record and not os.environ.get("SALES0_ANTHROPIC_API_KEY"):
-        monkeypatch.setenv("SALES0_ANTHROPIC_API_KEY", "sk-replay-dummy")  # replay needs no real key
-    path = cassette_path_for(request.node.nodeid)
-    monkeypatch.setenv(FILE_ENV, str(path))
-    monkeypatch.setenv(REFRESH_ENV, "1" if record else "0")
-    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in (str(BOOT_DIR), str(REPO_ROOT), os.environ.get("PYTHONPATH", "")) if p))
+    elif not os.environ.get("SALES0_ANTHROPIC_API_KEY"):
+        mp.setenv("SALES0_ANTHROPIC_API_KEY", "sk-replay-dummy")  # replay needs no real key
+    mp.setenv(FILE_ENV, str(path))
+    mp.setenv(REFRESH_ENV, "1" if record else "0")
+    mp.setenv("PYTHONPATH", os.pathsep.join(p for p in (str(BOOT_DIR), str(REPO_ROOT), os.environ.get("PYTHONPATH", "")) if p))
     undo = install(path, record=record)
+    try:
+        yield path
+    finally:
+        undo()
+        mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def _llm_cassette(request: pytest.FixtureRequest, _llm_cassette_module: Any) -> Any:
+    """Per test: fresh replay counters, a clean settings/client, and the test FAILS on any cassette miss
+    (the adapter maps SDK errors, which would otherwise hide it)."""
+    if _llm_cassette_module is None or not _eligible(request.node):
+        yield None
+        return
+    if ACTIVE is not None:
+        ACTIVE.reset_counters()
     from sales0.config import reset_settings
     from sales0.llm import reset_llm_client
 
     reset_settings()
     reset_llm_client()
     MISSES.clear()
-    try:
-        yield path
-    finally:
-        undo()
+    yield _llm_cassette_module
     if MISSES:
         pytest.fail("; ".join(MISSES), pytrace=False)
