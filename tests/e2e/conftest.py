@@ -31,6 +31,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(pytest.mark.e2e)
             item.add_marker(pytest.mark.browser)
             item.add_marker(pytest.mark.llm)
+            if "bulk_journey" in item.path.name:
+                # the longest journey: its own xdist worker (never queued behind others), scheduled first
+                item.add_marker(pytest.mark.xdist_group("e2e-bulk"))
             if item.get_closest_marker("timeout") is None:
                 item.add_marker(pytest.mark.timeout(E2E_TIMEOUT_S))
 
@@ -47,6 +50,13 @@ def server(tmp_path: Path) -> Iterator[LiveServer]:
 @pytest.fixture
 def real_llm_server(tmp_path: Path) -> Iterator[LiveServer]:
     """The full-stack smoke: the real Haiku key from ``.env``."""
+    from sales0.config import get_settings, reset_settings
+
+    reset_settings()
+    present = get_settings().api_key_present
+    reset_settings()
+    if not present:
+        pytest.skip("real-Haiku journey: SALES0_ANTHROPIC_API_KEY not configured")
     with live_server(tmp_path / "e2e", real_llm=True) as srv:
         yield srv
 

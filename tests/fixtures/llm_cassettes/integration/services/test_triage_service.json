@@ -1,0 +1,92 @@
+{
+ "entries": [
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "invalid x-api-key",
+      "type": "authentication_error"
+     },
+     "request_id": "req_011CgWhZcPkH6296CNmqENtK",
+     "type": "error"
+    },
+    "message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CgWhZcPkH6296CNmqENtK'}",
+    "status": 401,
+    "type": "AuthenticationError"
+   },
+   "key": "42d5b5caff5c94c9d9d171ae",
+   "loose": "2ee7520a0d0402bcb63b942c",
+   "lport": null,
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Author\nHeadline: Head of L&D\nDate posted: 2026-10-26\nURL: https://www.linkedin.c",
+   "tool": "record_triage"
+  },
+  {
+   "key": "101ffcf5b70c971c63cc099b",
+   "loose": "badf5c04cf700ad733f4bf1f",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhZei8sK2qJcajsqNr1",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01LJ12W4DiUt2UPDKBpKSN3j",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Pune",
+       "company": "Acme Logistics",
+       "contact_person": "Author",
+       "dates_mentioned": "Week of 17 Nov (2026)",
+       "email": "training@acmelogistics.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": "+91 98200 11111",
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company seeking a training partner for an on-site 2-day GenAI workshop for 40 managers, with contact route",
+       "requirement_summary": "Acme Logistics - 2-day GenAI workshop for 40 managers - Pune/Offline",
+       "topic": "Generative AI workshop for managers",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhZf6TcxYjto6FawY9H",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 412,
+     "output_tokens": 532,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Author\nHeadline: Head of L&D\nDate posted: 2026-10-26\nURL: https://www.linkedin.c",
+   "tool": "record_triage"
+  }
+ ]
+}

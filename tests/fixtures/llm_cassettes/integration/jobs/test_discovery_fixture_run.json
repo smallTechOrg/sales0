@@ -1,0 +1,691 @@
+{
+ "entries": [
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "Invalid bearer token",
+      "type": "authentication_error"
+     },
+     "request_id": "req_011CgWhRqVoaX196pW84Xa53",
+     "type": "error"
+    },
+    "message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'Invalid bearer token'}, 'request_id': 'req_011CgWhRqVoaX196pW84Xa53'}",
+    "status": 401,
+    "type": "AuthenticationError"
+   },
+   "key": "11083591a6d53d560e6b1e37",
+   "loose": "67090151bba400cec3fe8c85",
+   "lport": null,
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Karan Shah\nHeadline: Recruiter at SkillBridge Learning\nDate posted: 2026-10-22\nU",
+   "tool": "record_triage"
+  },
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "Invalid bearer token",
+      "type": "authentication_error"
+     },
+     "request_id": "req_011CgWhRqVpH9eEjLVUh9FFo",
+     "type": "error"
+    },
+    "message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'Invalid bearer token'}, 'request_id': 'req_011CgWhRqVpH9eEjLVUh9FFo'}",
+    "status": 401,
+    "type": "AuthenticationError"
+   },
+   "key": "912362177a88c82cfdc0cc1c",
+   "loose": "ad73f4de2617a5845c225c34",
+   "lport": null,
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Arjun Rao\nHeadline: CTO at Zentrix Retail\nDate posted: 2026-10-26\nURL: https://w",
+   "tool": "record_triage"
+  },
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "Invalid bearer token",
+      "type": "authentication_error"
+     },
+     "request_id": "req_011CgWhRqckwfTCP6FPZCRRX",
+     "type": "error"
+    },
+    "message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'Invalid bearer token'}, 'request_id': 'req_011CgWhRqckwfTCP6FPZCRRX'}",
+    "status": 401,
+    "type": "AuthenticationError"
+   },
+   "key": "2258458e412d12e5fcbfda83",
+   "loose": "a14deca5e8c98ca54464a860",
+   "lport": null,
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Meera Iyer\nHeadline: VP Engineering at Orbit Health\nDate posted: 2026-10-25\nURL:",
+   "tool": "record_triage"
+  },
+  {
+   "error": {
+    "body": {
+     "error": {
+      "message": "Invalid bearer token",
+      "type": "authentication_error"
+     },
+     "request_id": "req_011CgWhRqgUDNEqoNzMDDwoi",
+     "type": "error"
+    },
+    "message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'Invalid bearer token'}, 'request_id': 'req_011CgWhRqgUDNEqoNzMDDwoi'}",
+    "status": 401,
+    "type": "AuthenticationError"
+   },
+   "key": "6d15606bfc2ce008cb16b07f",
+   "loose": "fef018f44935f87efd36a061",
+   "lport": null,
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Priya Menon\nHeadline: Head of L&D at Acme Logistics\nDate posted: 2026-10-28\nURL:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "568a479485c384b19c2c1812",
+   "loose": "f11b0a0bcd7df6437143f35c",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhS4pkUxNfV8ekxSb1R",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01KAGhm2Ktq8i3yEjRYtrXRo",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "SkillBridge Learning",
+       "contact_person": "Rahul Verma",
+       "dates_mentioned": null,
+       "email": "trainers@skillbridge.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Training agency building a freelance trainer panel for future clients, no concrete programme, city, dates or batch",
+       "requirement_summary": "SkillBridge Learning - Freelance GenAI trainer panel - Unknown/Unknown",
+       "topic": "Generative AI, ChatGPT and prompt engineering trainers",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhS5Aq5vjtH3jioS9Sk",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 428,
+     "output_tokens": 521,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Rahul Verma\nHeadline: Talent Acquisition at SkillBridge Learning — corporate tra",
+   "tool": "record_triage"
+  },
+  {
+   "key": "a8a1f6e7404aa0777eb04090",
+   "loose": "09360d6744d1c49b1d150846",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhS4kHbo4kv8TPTn4rW",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_013j81fgzcQpPPx3UXdRVEMS",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Pune",
+       "company": "Acme Logistics",
+       "contact_person": "Priya Menon",
+       "dates_mentioned": "Week of 17 Nov (2026)",
+       "email": "training@acmelogistics.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": "+91 98200 11111",
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (Acme Logistics) seeking a training partner for a 2-day GenAI workshop for 40 managers, with contact route",
+       "requirement_summary": "Acme Logistics - 2-day GenAI workshop for 40 managers - Pune/Offline",
+       "topic": "GenAI fundamentals, prompt writing for operations teams, practical logistics use cases",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhS59qvZSioS8g92YbC",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 456,
+     "output_tokens": 560,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Priya Menon\nHeadline: Head of L&D at Acme Logistics\nDate posted: 2026-10-28\nURL:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "e558fb8300fb0f7a841fda47",
+   "loose": "378abcadf412c9682e878a76",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhS4gKHaRaMrqFWs8pM",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01DTyaaQcyiJH33nbbaCeJJC",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Neha Kapoor",
+       "dates_mentioned": "3-day batch, posted 2026-10-29 (no specific dates)",
+       "email": null,
+       "language": "en",
+       "mode": "online",
+       "offering_id": 1,
+       "opportunity_type": "individual_trainer_wanted",
+       "phone": null,
+       "poster_type": "individual_trainer_seeker",
+       "priority": "low",
+       "reason": "Recruiter seeking one freelance trainer at an hourly rate for a 3-day batch, no organisation or client named",
+       "requirement_summary": "Unnamed client - Prompt Engineering & ChatGPT 3-day online batch - Online",
+       "topic": "Prompt Engineering & ChatGPT",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhS4zfkCCKZ6Xvqm3QM",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 385,
+     "output_tokens": 536,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Neha Kapoor\nHeadline: Freelance IT Recruiter\nDate posted: 2026-10-29\nURL: https:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "746f39fa3d8bad8f112a1593",
+   "loose": "874414652a8f04f756d3ba7d",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhSV42KruT5eWKGWXGN",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01FP8ATXvvwQBF1fGAvbYDN9",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Bengaluru",
+       "company": "Zentrix Retail",
+       "contact_person": "Arjun Rao",
+       "dates_mentioned": null,
+       "email": "arjun.rao@zentrix.example",
+       "language": "hi",
+       "mode": "offline",
+       "offering_id": 2,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "CTO of company seeking a training partner for hands-on AI agents workshop for 30-person tech team, with email contact",
+       "requirement_summary": "Zentrix Retail - Hands-on AI agents workshop for 30-person tech team - Bengaluru/Offline",
+       "topic": "AI agents hands-on workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhSVVoqStH37s6fXsTB",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 463,
+     "output_tokens": 534,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Arjun Rao\nHeadline: CTO at Zentrix Retail\nDate posted: 2026-10-26\nURL: https://w",
+   "tool": "record_triage"
+  },
+  {
+   "key": "38ebbe5c5eabb500578d6c2f",
+   "loose": "51f787c68b5d673898abd6a4",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhSV8yYKf66yCvP6yYh",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01MciCBpZUhWAETeFiWLgnE3",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Orbit Health",
+       "contact_person": "Meera Iyer",
+       "dates_mentioned": "Sometime in December (2026)",
+       "email": null,
+       "language": "en",
+       "mode": "online",
+       "offering_id": 2,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (VP Engineering) seeking a training partner for an online hands-on AI agent workshop for 25 engineers",
+       "requirement_summary": "Orbit Health - \"Build your first AI agent\" workshop for 25 engineers - Online",
+       "topic": "Build your first AI agent hands-on workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhSVdzcPzv2ZGaLue8H",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 398,
+     "output_tokens": 517,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Meera Iyer\nHeadline: VP Engineering at Orbit Health\nDate posted: 2026-10-25\nURL:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "821b929fcd1a0fb13f2b5f7b",
+   "loose": "2038b020ab74ebcb085d4db6",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhTAHh9u2W52g5t1ScG",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_016oPSpY4xPuDKE2Ednx9p25",
+      "input": {
+       "category": "competitor",
+       "city": null,
+       "company": null,
+       "contact_person": "Vikram Shah",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Certified trainer advertising himself as open to freelance work, not a buyer with a requirement",
+       "requirement_summary": "Vikram Shah - Self-promotion as freelance GenAI trainer - Unknown/Unknown",
+       "topic": "Generative AI, ChatGPT, Copilot, prompt engineering training",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhTB73afWpkEWEDUi3b",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 383,
+     "output_tokens": 508,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Vikram Shah\nHeadline: Certified AI Trainer | Open to work\nDate posted: 2026-10-2",
+   "tool": "record_triage"
+  },
+  {
+   "key": "a416292e4f884be14b18e10e",
+   "loose": "7fd6a09ccc4462eb1cca00e5",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhTABjrEDiHJMLT51k2",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01GRofqBgo7eZwYywrU3Zut7",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Mumbai",
+       "company": "Meridian Insurance",
+       "contact_person": "Sanjay Gupta",
+       "dates_mentioned": null,
+       "email": "it-projects@meridian.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 3,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (COO) seeking a partner to design and build an internal AI assistant over its SOP and claims documents",
+       "requirement_summary": "Meridian Insurance - AI assistant over SOP/claims docs, consulting + build - Mumbai/Unknown",
+       "topic": "Internal AI assistant (RAG) over SOP and claims manuals; consulting, architecture, build and handover",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhTAyN9T9mF5dcPNpKM",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 418,
+     "output_tokens": 554,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sanjay Gupta\nHeadline: COO at Meridian Insurance\nDate posted: 2026-10-27\nURL: ht",
+   "tool": "record_triage"
+  },
+  {
+   "key": "2fb8b15e23066922c1ac0cac",
+   "loose": "20fd397a78b2cb2ec27310c4",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhTbevMUgSvu9GpUdxD",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_0118Hxthb7nerEwDkormye9f",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "QuantaWorks",
+       "contact_person": "Anita Desai",
+       "dates_mentioned": "2 half-days, date not specified (posted 2026-10-28)",
+       "email": "lead@quantaworks.example",
+       "language": "en",
+       "mode": "online",
+       "offering_id": 2,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (QuantaWorks) seeking Claude Code training for 15 developers, online 2 half-days, with email contact",
+       "requirement_summary": "QuantaWorks - Claude Code training for 15 developers, 2 half-days - Online",
+       "topic": "Claude Code training with hands-on exercises on own codebase",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhTc7DEUAJUsd3jfVHQ",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 734,
+     "output_tokens": 542,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Recent team decisions (learn from these; they override the built-in examples when they disagree)\n\n<example index=\"1\">",
+   "tool": "record_triage"
+  },
+  {
+   "key": "70a8e49fcb3c47516c4e8ca5",
+   "loose": "ea6b803991c12869de2d1496",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhTbfuytcc8wJ6i9eRc",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01PSgB2LKNVsHZmsrYwjusFk",
+      "input": {
+       "category": "competitor",
+       "city": null,
+       "company": "Briltus Academy",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": "hr@briltus.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Academy onboarding freelance trainers for its batches with no concrete client or programme; a trainer-network post",
+       "requirement_summary": "Briltus Academy - Freelance trainers for Claude Code/AI-agent batches - Unknown/Unknown",
+       "topic": "Claude Code and AI-agents batches",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhTc3yi4rGmXPi1uA5G",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 703,
+     "output_tokens": 504,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Recent team decisions (learn from these; they override the built-in examples when they disagree)\n\n<example index=\"1\">",
+   "tool": "record_triage"
+  }
+ ]
+}

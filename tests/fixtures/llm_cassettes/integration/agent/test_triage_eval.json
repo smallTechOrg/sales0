@@ -1,0 +1,2952 @@
+{
+ "entries": [
+  {
+   "key": "f0da8d814288e1bb87415c38",
+   "loose": "efde36aa5eaf3fdfb2809930",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhP4iTkhTVBjZ7iKY7d",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01WAunG9wU6jbWJogQUcUgbV",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Coimbatore",
+       "company": "Zenith Textiles",
+       "contact_person": "L&D Head",
+       "dates_mentioned": "December",
+       "email": "learning@zenithtextiles.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company seeking a training partner for an offline 2-day GenAI workshop for 35 plant managers in Coimbatore",
+       "requirement_summary": "Zenith Textiles - 2-day GenAI workshop for 35 plant managers - Coimbatore/Offline",
+       "topic": "Generative AI workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhP56n9LpEp2nLUqHxQ",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 349,
+     "output_tokens": 528,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Head\nDate posted: unknown\nURL: unknown\nText:\nZenith ",
+   "tool": "record_triage"
+  },
+  {
+   "key": "034a08708c95004e8a21da2e",
+   "loose": "0c26f5b3cf15617f98fec50e",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhP4ogRtwRDwhGcwswd",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01KA2JSz6aZWi1z77J4QmiEb",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Helio Payments",
+       "contact_person": "Sample Author",
+       "dates_mentioned": "this quarter",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 2,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "Company (L&D head) seeking a provider to train 120 engineers on Claude Code this quarter, no contact route given",
+       "requirement_summary": "Helio Payments - Claude Code and agentic coding training for 120 engineers - Unknown/Unknown",
+       "topic": "Claude Code and agentic coding training",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhP5Aktnf6XNoz5WKCP",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 333,
+     "output_tokens": 515,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Head\nDate posted: unknown\nURL: unknown\nText:\nWe want",
+   "tool": "record_triage"
+  },
+  {
+   "key": "c96fbfbe8633bbe751fd6e62",
+   "loose": "788c924224f88dda9f592a7c",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhP4gjQkGLzTx3LUzFr",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01V7woHukkuLQxSB3w32bk7Z",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Quartz Insurance",
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 3,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company wants a RAG assistant built over its policy PDFs, asks for DM to discuss scope",
+       "requirement_summary": "Quartz Insurance - AI assistant over policy PDFs (design and build) - Unknown/Unknown",
+       "topic": "AI assistant / RAG over policy documents",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhP55o5hmy8WhKkC49f",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 329,
+     "output_tokens": 509,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: COO\nDate posted: unknown\nURL: unknown\nText:\nQuartz Insur",
+   "tool": "record_triage"
+  },
+  {
+   "key": "3e5f60882c32232f1da15a09",
+   "loose": "225df8d3b4424811d684f3e6",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhP4mwZptrsh6qrqvGX",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_012Xavso49ZB5SvXbguPHoca",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Maple Health Systems",
+       "contact_person": "Rohan",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "online",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": "+91 99887 70011",
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company HR team seeking a vendor for an AI productivity workshop for 80 staff, with phone contact given",
+       "requirement_summary": "Maple Health Systems - AI productivity workshop for 80 staff - Online preferred",
+       "topic": "AI productivity workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhP55oETevweu2vZiRb",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 351,
+     "output_tokens": 502,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Head\nDate posted: unknown\nURL: unknown\nText:\nOur HR ",
+   "tool": "record_triage"
+  },
+  {
+   "key": "73f7a266438ab65a3e044bb0",
+   "loose": "5828cb667a36b88abaab28bf",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPEZYz1RyNPX5NFG9q",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_017p3PnpiNFJ23Sn3Yp5e3dS",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Riverbend College of Management",
+       "contact_person": null,
+       "dates_mentioned": "January",
+       "email": "dean.office@riverbend.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Institute seeking a training company for a GenAI faculty development programme for 45 faculty in January",
+       "requirement_summary": "Riverbend College of Management - GenAI in teaching faculty development for 45 - Unknown/Unknown",
+       "topic": "GenAI in teaching faculty development programme",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPEut442MMRbDFRDba",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 347,
+     "output_tokens": 514,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Head\nDate posted: unknown\nURL: unknown\nText:\nOur ins",
+   "tool": "record_triage"
+  },
+  {
+   "key": "a09fc14f7c27a8465d3022fd",
+   "loose": "0f8e508ff09ac142aca2f26c",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPF7J3WQhZ6UCPrvr9",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01NJsFXVKUtHpDCECi7tocKg",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "hybrid",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "Company (VP People) seeking a provider for an AI literacy workshop for its 25-person leadership team",
+       "requirement_summary": "Unnamed company - AI literacy workshop for 25 leadership team - Unknown/Hybrid",
+       "topic": "AI literacy workshop for leadership team",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPFbKZPdqGZLSyNC77",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 325,
+     "output_tokens": 502,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: VP People\nDate posted: unknown\nURL: unknown\nText:\nLookin",
+   "tool": "record_triage"
+  },
+  {
+   "key": "9efe697c7cc249af13db0843",
+   "loose": "4eb053b48793815088865833",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPF8n9p6r7u7FPX4Xu",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_014WQo8xrKTTWdX4MuVoXgBn",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Pune",
+       "company": "BrightKart",
+       "contact_person": null,
+       "dates_mentioned": "next month",
+       "email": "growth@brightkart.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company (BrightKart) seeking a training partner to train 200 sales staff on GenAI tools in Pune next month",
+       "requirement_summary": "BrightKart - GenAI tools training for 200 sales staff - Pune/Offline",
+       "topic": "GenAI tools training for sales force",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPFVND95MxMvatGYVB",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 361,
+     "output_tokens": 508,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: CHRO\nDate posted: unknown\nURL: unknown\nText:\n🚀 We're hir",
+   "tool": "record_triage"
+  },
+  {
+   "key": "1d5a30c098d8885fea0488f0",
+   "loose": "ed750a8772649e710f95f965",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPGoVNQyRvL1DoVWu7",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01AHPPC99kgHGVwj77K7BdLk",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "जयपुर",
+       "company": "सनराइज़ फूड्स",
+       "contact_person": "HR Manager",
+       "dates_mentioned": null,
+       "email": "training@sunrisefoods.example",
+       "language": "hi",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company seeking a training partner for a one-day AI workshop for its managers in Jaipur, with email contact",
+       "requirement_summary": "Sunrise Foods - One-day AI workshop for managers - Jaipur/Offline",
+       "topic": "One-day AI workshop for managers",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPHCoV1cQUskt3TrQm",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 397,
+     "output_tokens": 520,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: HR Manager\nDate posted: unknown\nURL: unknown\nText:\nहमारी",
+   "tool": "record_triage"
+  },
+  {
+   "key": "41d95e1a9efd30ed660b70a2",
+   "loose": "dd5cc349fbb7564e301d6f87",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPQgzoZTrkrV4rLD3Z",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01WFFwVmD3hLny9se6VdWrk4",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": "ops@fleetlane.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 3,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Logistics company seeking AI consulting firms to build an invoice reconciliation agent, contact email given",
+       "requirement_summary": "Logistics startup (Fleetlane) - AI agent for invoice reconciliation build - Unknown/Unknown",
+       "topic": "AI agent for invoice reconciliation",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPR7ZNSqpG59vhAeJV",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 340,
+     "output_tokens": 510,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Founder\nDate posted: unknown\nURL: unknown\nText:\nWe are a",
+   "tool": "record_triage"
+  },
+  {
+   "key": "fceda3e9db2db3d93abbbb21",
+   "loose": "6dc81efb77e86dd1364e980c",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPRCkuhyiHuGKxTfB2",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_015jt6kfsS622B5hswELNRmV",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 4,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "CIO of 300-person consulting firm seeking an AI meeting-notes tool and vendor evaluation; invites demos, no explicit contact details",
+       "requirement_summary": "Consulting firm (300 staff) - AI meeting notes and action items tool - Unknown/Unknown",
+       "topic": "AI meeting notes and action-items tool",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPReZBXVmizKWMnGB4",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 337,
+     "output_tokens": 512,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: CIO\nDate posted: unknown\nURL: unknown\nText:\nLooking for ",
+   "tool": "record_triage"
+  },
+  {
+   "key": "7fa3ef89626d39e892faf794",
+   "loose": "df51649f9a0de72e7c29d101",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPPzLY7V1CvSpZsovh",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_012XGfz4KRg2p5HvxiQpNra3",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Hyderabad",
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "hi",
+       "mode": "unknown",
+       "offering_id": 2,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company engineering manager seeking hands-on LLM app development training for 30 developers, asks for DM",
+       "requirement_summary": "Company (unnamed) - Hands-on LLM app development training for 30 developers - Hyderabad/Unknown",
+       "topic": "LLM app development hands-on training",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPQKgWUFTUgF4p7eZ1",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 343,
+     "output_tokens": 506,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Engineering Manager\nDate posted: unknown\nURL: unknown\nTe",
+   "tool": "record_triage"
+  },
+  {
+   "key": "733bf1ee48545ba8190cf728",
+   "loose": "e9c6ebd5b07d8ddc278bb88b",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPTL1CuCiouLYCULQ7",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01DyAtcXBkCXtptE13rt21Bi",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Mumbai",
+       "company": "Northgate Bank",
+       "contact_person": null,
+       "dates_mentioned": "Q1 (proposals by 30 Nov)",
+       "email": "procurement@northgatebank.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "RFP from Northgate Bank inviting providers for a concrete 3-day Responsible AI/GenAI workshop for 50 managers, Mumbai",
+       "requirement_summary": "Northgate Bank - 3-day Responsible AI & GenAI workshop for 50 senior managers - Mumbai/Offline",
+       "topic": "Responsible AI and GenAI use cases workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPTg5wDSmtF7XWjnAK",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 366,
+     "output_tokens": 562,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Head of Learning\nDate posted: unknown\nURL: unknown\nText:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "66b81c139686d32aa57d38b5",
+   "loose": "060943132e0138c18eeefdc6",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPah1tUQFrMwMcr3Wc",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01WGLMtS7PzbSZGjGUdoPktL",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Cedar Analytics",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "online",
+       "offering_id": 2,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "Company seeking a partner for hands-on agent build training for 20 data engineers, online; no contact route given",
+       "requirement_summary": "Cedar Analytics - Hands-on build-your-first-agent training for 20 data engineers - Online",
+       "topic": "AI agents build-your-first-agent bootcamp",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPb4r37W9629SCnFfF",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 344,
+     "output_tokens": 506,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Director Engineering\nDate posted: unknown\nURL: unknown\nT",
+   "tool": "record_triage"
+  },
+  {
+   "key": "0214037e57eb0345efc773a5",
+   "loose": "7b5d4d0345a2bf2eba421f76",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPdskobDyRviquYLv6",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01RLdteFT37Lb73oUTz5DXND",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Lakeshore Retail",
+       "contact_person": null,
+       "dates_mentioned": "Over the next two quarters",
+       "email": null,
+       "language": "en",
+       "mode": "hybrid",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "Company L&D team seeking a training partner to train 500 employees on GenAI basics over two quarters",
+       "requirement_summary": "Lakeshore Retail - GenAI basics training for 500 employees over two quarters - Unknown/Hybrid",
+       "topic": "GenAI basics training for 500 employees",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPeEqvA7TxcedhCGpt",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 337,
+     "output_tokens": 517,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Lead\nDate posted: unknown\nURL: unknown\nText:\nDoes an",
+   "tool": "record_triage"
+  },
+  {
+   "key": "92aa17ce720e59e3a6430654",
+   "loose": "40a0d782e9434304cc86801a",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPdqHSZMS82X9mDvMU",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01ESRk4fVBL3a5WNLQLKrt4Q",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Noida",
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": "next week; one-day workshop",
+       "email": null,
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": "98100 55512",
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company operations head seeking a training provider for a one-day prompt engineering workshop for 40 staff, Noida, with WhatsApp contact",
+       "requirement_summary": "Company (not named) - Prompt engineering workshop for 40 support executives - Noida/Offline",
+       "topic": "Prompt engineering workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPeH4jbViPeTXekNQ1",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 343,
+     "output_tokens": 521,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Operations Head\nDate posted: unknown\nURL: unknown\nText:\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "ecd9003d55ebf8bad7b5e680",
+   "loose": "a28de5755c30d3922cea30f2",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPbuSXZZZ38bm2M749",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01NQ79W89SpCH4zL9Ti5VsN7",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 3,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Manufacturing company (Plant Head) seeking AI consulting and discovery workshop for leadership, asks to be DMed",
+       "requirement_summary": "Unnamed manufacturer - AI consulting, predictive maintenance and shop-floor Q&A bot - Unknown/Unknown",
+       "topic": "AI consulting for predictive maintenance and shop-floor Q&A bot; leadership discovery workshop",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPcFXF61QzoiHFw9u5",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 347,
+     "output_tokens": 542,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Plant Head\nDate posted: unknown\nURL: unknown\nText:\nConsi",
+   "tool": "record_triage"
+  },
+  {
+   "key": "ec781da069c25e9e5f06c95e",
+   "loose": "a69e711c1538ec9adc4af2b9",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPo8P3PPS6HoXbuSne",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01A5nZwbTQF4YcKyWknxPi3z",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Bengaluru",
+       "company": "Brightpath Edu",
+       "contact_person": null,
+       "dates_mentioned": "First week of December, 2 days",
+       "email": "partners@brightpath.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "agency_requirement",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "medium",
+       "reason": "Edtech agency seeking a training partner for a concrete 2-day AI workshop for a client's analysts in Bengaluru",
+       "requirement_summary": "Brightpath Edu - AI Enablement Workshop for analyst teams, 2 days - Bengaluru/Offline",
+       "topic": "AI Enablement Workshop for analyst teams",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPoWwZwKfCf241vcNr",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 388,
+     "output_tokens": 541,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Business Head, Edtech\nDate posted: unknown\nURL: unknown\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "06070e28f277ec2034086535",
+   "loose": "1ba4b36f302a3d2233bb8512",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPozTtESkVDV7ft1KM",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01MhcyC4qCoTQcwBHH43fMqB",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Orchid Auto Components",
+       "contact_person": "Sample Author",
+       "dates_mentioned": "2027 calendar",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "agency_requirement",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "medium",
+       "reason": "Company compiling a training provider pool for its 2027 calendar (AI, quality, leadership); registration form given",
+       "requirement_summary": "Orchid Auto Components - Training provider pool for 2027 calendar (AI, quality, leadership) - Unknown/Unknown",
+       "topic": "AI, quality, leadership training provider empanelment",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPpM3bxSxnSa17Sqor",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 343,
+     "output_tokens": 530,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Manager\nDate posted: unknown\nURL: unknown\nText:\nCall",
+   "tool": "record_triage"
+  },
+  {
+   "key": "b0ce92e3944a34531502248f",
+   "loose": "9a14c78882f23b986beae1d1",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPpTVto1ReeKzP5ihq",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01PQW2RpmCCxuGqUzRSD8RD1",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Vadodara",
+       "company": "Maplewood Chemicals",
+       "contact_person": "Finance Director",
+       "dates_mentioned": "this month",
+       "email": null,
+       "language": "en",
+       "mode": "offline",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company seeking an AI trainer for a ChatGPT/Copilot session for 25 finance staff in Vadodara, asks for DM",
+       "requirement_summary": "Maplewood Chemicals - ChatGPT/Copilot session for 25 finance staff - Vadodara/Offline",
+       "topic": "ChatGPT and Copilot practical session for finance team",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPpuYFhA4QuhUEms9i",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 346,
+     "output_tokens": 537,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Finance Director\nDate posted: unknown\nURL: unknown\nText:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "baf2a3a1a55ffb0b47e2cecd",
+   "loose": "47bebb2a2b9efbc11cb0c11d",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPsKdnRpvJexAw4sLJ",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01ATzpqc4B49SMQesSbBG7TN",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "Stonebridge Group",
+       "contact_person": "Sample Author",
+       "dates_mentioned": "Last date for EOI: 10 Jan (FY27 programmes)",
+       "email": "procurement@stonebridge.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "direct_buyer",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "high",
+       "reason": "Company empanelling AI and digital-skills training vendors via EOI, last date 10 Jan, contact email given",
+       "requirement_summary": "Stonebridge Group - AI and digital-skills vendor empanelment FY27 - Unknown/Unknown",
+       "topic": "AI and digital-skills training vendor empanelment",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPsjSzB9QWxqeM39yZ",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 356,
+     "output_tokens": 549,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Procurement Head\nDate posted: unknown\nURL: unknown\nText:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "a618fd9648a7c599ec903f5e",
+   "loose": "9a567b1fdc2fc9df4e122ba7",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPyvGFLeiWPJYQTmFe",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01Lf2ZhLBJxvBvAxpQvgSR8M",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "TrainHub",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Agency onboarding a freelance trainer network with no concrete client programme, topic, dates or city",
+       "requirement_summary": "TrainHub - Freelance AI trainer network onboarding - India/Not specified",
+       "topic": "Freelance AI trainer network",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPzHM7rYz2KeCCceg2",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 335,
+     "output_tokens": 481,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "43de8f4154637e46f1fb61f5",
+   "loose": "2f5b61ff091d523a60329dca",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhPzH6WQMyCWF3TMmfe",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01PVSChwkckxJakhLXFgSYWe",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Mumbai",
+       "company": "EduSpark Learning",
+       "contact_person": "L&D Head",
+       "dates_mentioned": null,
+       "email": "trainers@eduspark.example",
+       "language": "en",
+       "mode": "online",
+       "offering_id": 1,
+       "opportunity_type": "agency_requirement",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "medium",
+       "reason": "Agency (EduSpark) seeking GenAI trainers for a bank client, Mumbai, 3 days online; concrete requirement with contact",
+       "requirement_summary": "EduSpark Learning - GenAI training for a leading bank client - Mumbai/Online",
+       "topic": "GenAI for bank client (3 days)",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhPzcvw1mTXR1SuaQ4W",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 354,
+     "output_tokens": 528,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Head\nDate posted: unknown\nURL: unknown\nText:\nTrainer",
+   "tool": "record_triage"
+  },
+  {
+   "key": "3a7164ebc2a04878dfd2a7a1",
+   "loose": "f5f6e1540acde20a79912547",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQ1XkonHcieVjSgSou",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01BQdYAjQ4azZ5nGenCYvsEY",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "LearnBridge",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": "careers@learnbridge.example",
+       "language": "en",
+       "mode": "online",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Agency recruiting freelance trainers for unnamed upcoming batches; no concrete client, dates or city, only trainer-network building",
+       "requirement_summary": "LearnBridge - Freelance trainers for Agentic AI, Prompt Engineering, LLMOps - Remote",
+       "topic": "Agentic AI, Prompt Engineering, LLMOps trainers",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQ1u57vG3RkNqiCWZp",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 369,
+     "output_tokens": 528,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "8a638456ad86ff419553298c",
+   "loose": "f7203d240c93a7aff6d3243b",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQ3s9WTiX99yWRqwRp",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01LGKFfNqiTuZEYhBdgPdNSj",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Bengaluru",
+       "company": "Briltus Learning Partners",
+       "contact_person": null,
+       "dates_mentioned": "5 day batch (dates not stated)",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "individual_trainer_wanted",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Agency needs a freelance GenAI trainer for a 5-day client batch in Bengaluru; concrete but no dates or contact route",
+       "requirement_summary": "Briltus Learning Partners - Generative AI freelance trainer, 5-day batch - Bengaluru/Unknown",
+       "topic": "Generative AI",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQ4Fi4sRh3zxRyySPH",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 360,
+     "output_tokens": 534,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Associate, Briltus-style Edtech\nDate posted: unknown\nURL",
+   "tool": "record_triage"
+  },
+  {
+   "key": "5ca5c3350e2d4188db6b52de",
+   "loose": "9e57df6017fad3922d56c7bf",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQ9Skyw5Hv6Vckyt7T",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_013HijuewegryPNych8WwP2Y",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": "SkillForge Academy",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Academy building a trainer network with no concrete requirement, client, topic list, dates or city",
+       "requirement_summary": "SkillForge Academy - Trainer network expansion for Data Science and AI - Unknown/Unknown",
+       "topic": "Data Science and AI trainer network",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQ9nLkH6cr7Ws5UBLu",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 338,
+     "output_tokens": 490,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "1942706f82fa35cc0d6d03f4",
+   "loose": "18685dcea5bd934399b052f0",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQCESLnWVofYqvxiEj",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_011WcWnk5BDsxnQUPokfkEFa",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": "weekend",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "individual_trainer_wanted",
+       "phone": null,
+       "poster_type": "individual_trainer_seeker",
+       "priority": "low",
+       "reason": "One individual tutor wanted at hourly rates for a weekend batch, no organisation behind it",
+       "requirement_summary": "Individual - Python + ChatGPT weekend batch, hourly tutor - Unknown/Unknown",
+       "topic": "Python + ChatGPT",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQCejmXiZu6g5RN2bA",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 327,
+     "output_tokens": 500,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "d336d1d1782b720529b17d8e",
+   "loose": "4bd9a0902ee377cd5c7fb1f5",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQC1HW4rScTnXo8YJy",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_017stjWFCMLFbwPvrMfZGzJd",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": "Weekend batch; profiles and commercials due by Friday",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 2,
+       "opportunity_type": "agency_requirement",
+       "phone": "+91 90000 11122",
+       "poster_type": "training_agency",
+       "priority": "medium",
+       "reason": "Agency (L&D head) seeking Azure AI and LLM trainers for a client's corporate batch, with deadline and phone contact",
+       "requirement_summary": "Client (unnamed) - Azure AI and LLM trainers for weekend corporate batch - Unknown/Unknown",
+       "topic": "Azure AI and LLM training",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQCRqvCzfABRhuAt7x",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 339,
+     "output_tokens": 538,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: L&D Head\nDate posted: unknown\nURL: unknown\nText:\nLooking",
+   "tool": "record_triage"
+  },
+  {
+   "key": "7daf1184c5de53837fd3fee0",
+   "loose": "7d9c9d3c58e1b853a35f3180",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQJWxjCwaVf1vDw9Y7",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_012yd2iVP3N2Kv4SjihVyWBr",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": "2 hours daily for 5 days",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "individual_trainer_wanted",
+       "phone": null,
+       "poster_type": "individual_trainer_seeker",
+       "priority": "low",
+       "reason": "Individual seeking a freelance AI trainer at Rs 500/hour, no named organisation, cheap hourly tutor request",
+       "requirement_summary": "Unnamed poster - AI trainer for team of 6, 2 hrs/day x 5 days - Unknown/Unknown",
+       "topic": "AI training for small team",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQJumj3hqfGWcHMcEz",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 335,
+     "output_tokens": 527,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "4c9faf784f5084c859fc626f",
+   "loose": "cbc67f3529baeb4b82d7e2e3",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQPTsJrwRgSiFpRSa3",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_011aZvmTVqgnAExgBPKQu4if",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Individual trainer advertising own freelance availability, not a buyer or concrete requirement",
+       "requirement_summary": "Individual freelance facilitator - AI training availability - Unknown/Unknown",
+       "topic": "AI training facilitation (freelance availability)",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQPpC73jmRZVbgzEEj",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 327,
+     "output_tokens": 489,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Freelance Facilitator\nDate posted: unknown\nURL: unknown\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "dfef2853fe82343dfe065d55",
+   "loose": "11eeb11e22c9baa54cbd50f8",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQMLsDSpCUAVNLsxdp",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01JxubEnQ2wXAN1RaBUiNQoP",
+      "input": {
+       "category": "competitor",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": "coach@aiwithmeera.example",
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Trainer advertising own GenAI workshops and booking calls, not a buyer requirement",
+       "requirement_summary": "Sample Author (aiwithmeera) - Self-promotion of GenAI workshops - Unknown/Unknown",
+       "topic": "GenAI workshops",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQMmR3kXnnRYZ8weMg",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 337,
+     "output_tokens": 503,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: AI Trainer & Speaker\nDate posted: unknown\nURL: unknown\nT",
+   "tool": "record_triage"
+  },
+  {
+   "key": "a696eeb466b92f9ebe0f3522",
+   "loose": "e00480635cf7b438f7af11e4",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQJyFKjBEuNvhG9knE",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01XMrotF1ARFmumAG3VCCShX",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Trainer advertising own freelance services and open to work, not a buyer",
+       "requirement_summary": "Individual trainer - Self-promotion for freelance AI and Excel workshops - Unknown/Unknown",
+       "topic": "AI and Excel workshops (freelance trainer self-promotion)",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQKP3LqhsXxWYpPYpV",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 325,
+     "output_tokens": 497,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Corporate Trainer\nDate posted: unknown\nURL: unknown\nText",
+   "tool": "record_triage"
+  },
+  {
+   "key": "c2a555e3c8d1cb1e7e99891f",
+   "loose": "32d6e349ebf18b4faccfdf2d",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQVN55A5AodR5Ktpqb",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01GANonD2rceruqbxDjpiZpD",
+      "input": {
+       "category": "competitor",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": "15 Nov",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "Promotion of a paid 2-day bootcamp with early-bird discount, not a buyer requirement",
+       "requirement_summary": "Edtech founder - Agentic AI bootcamp promotion - Unknown/Unknown",
+       "topic": "Agentic AI bootcamp",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQViuBvdku2XD4HdRi",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 332,
+     "output_tokens": 481,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Founder, Edtech\nDate posted: unknown\nURL: unknown\nText:\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "0e73b3654b60be696d9d3ce1",
+   "loose": "8a2372db6c8a0b1b9f368a15",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQYoS9JJ7vKdcbH3qy",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01PhQ31NEDGZkpnyS2o65Neh",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": "Saturday 11 AM IST",
+       "email": null,
+       "language": "en",
+       "mode": "online",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "Free webinar promotion on Claude Code agents, not a buyer requirement",
+       "requirement_summary": "Unknown - Free webinar on building AI agents with Claude Code - Online",
+       "topic": "Building AI agents with Claude Code (webinar)",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQZ9H5r2E77GZer1Pi",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 334,
+     "output_tokens": 481,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Community Lead\nDate posted: unknown\nURL: unknown\nText:\n📣",
+   "tool": "record_triage"
+  },
+  {
+   "key": "d22a00475a1c424aa48e9ac0",
+   "loose": "ca5f98e134b4555408c55c59",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQdN2ZHyaK3MsNEQ3n",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01LS4A5UtWenYUtVvWgi6msU",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": "+91 98765 00123",
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "Course enrolment and counselling-call promotion for a certification programme, not a buyer requirement",
+       "requirement_summary": "Unknown - Generative AI certification course enrolments - Unknown/Unknown",
+       "topic": "Generative AI certification programme",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQdjbcBgqokJvS8EUd",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 323,
+     "output_tokens": 479,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Admissions\nDate posted: unknown\nURL: unknown\nText:\nEnrol",
+   "tool": "record_triage"
+  },
+  {
+   "key": "6ae6cb16e09d50cc8e5c7966",
+   "loose": "11652f0fe18aca96bcf90d47",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQcg6p9pU7K7DJHCzp",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01VJ95TeaRALcpkxNMz41Hat",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Bengaluru",
+       "company": "AI Summit Bengaluru 2027",
+       "contact_person": null,
+       "dates_mentioned": "2027 (event year, exact dates not given)",
+       "email": "sponsors@aisummit.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "Event promotion (summit ticket sales and sponsorship), not a training or consulting requirement",
+       "requirement_summary": "AI Summit Bengaluru 2027 - Event tickets and sponsorship - Bengaluru/Unknown",
+       "topic": "AI summit event promotion",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQd6QFuMARhkYnTveQ",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 355,
+     "output_tokens": 523,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Event Organiser\nDate posted: unknown\nURL: unknown\nText:\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "8af24ede59905515f5724c99",
+   "loose": "f9002fef572266e8a4782858",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQeobq7FRoeDh31gk2",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01U18wEHtDc9vp4C1rjQpnEx",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Hyderabad",
+       "company": "Orbitlearn",
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Full-time payroll job post (CTC 18-24 LPA), not a training requirement",
+       "requirement_summary": "Orbitlearn - Senior AI Trainer full-time hire - Hyderabad/Unknown",
+       "topic": "Senior AI Trainer full-time hiring",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQfCQuEyMcz7TpsChB",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 345,
+     "output_tokens": 505,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "d73d2acb5836170b5364376b",
+   "loose": "6d7ddcb6568be3c2dd2a2a5f",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQijyYsfD1Ls74YpQX",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01H6wSW5QDZXJi1Dnum6tazF",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Pune",
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": "Immediate joiners preferred",
+       "email": null,
+       "language": "en",
+       "mode": "offline",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Full-time payroll job post for an ML engineer, apply with CV, not a training or build requirement",
+       "requirement_summary": "Datanest - Machine Learning Engineer hiring (payroll) - Pune/Offline",
+       "topic": "Machine Learning Engineer hiring (Python, LLMs, RAG)",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQj7ZGcb961F1oG6CP",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 341,
+     "output_tokens": 515,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "c79609ae3e67e3c1ef4d589a",
+   "loose": "700bd13d8ed3c7a95a92777a",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQoP3RTEAG6YG57q12",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01N9ZdeGmGt391o84EAzoTpG",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "Thought-leadership post about agentic AI training, no requirement",
+       "requirement_summary": "Unknown - Thought leadership on agentic AI training - Unknown/Unknown",
+       "topic": "Agentic AI training thought leadership",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQok7BzZnHwfC6WNcd",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 327,
+     "output_tokens": 466,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Author | Speaker\nDate posted: unknown\nURL: unknown\nText:",
+   "tool": "record_triage"
+  },
+  {
+   "key": "d8dee69272104b57faa27958",
+   "loose": "86ecdafb625c445c402c3a30",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQoP2eRK8Y26EQqgbR",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01FBBftqWoPWwqB9oybHyCgg",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Gurugram",
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Permanent full-time L&D Manager job opening (payroll role), not a training purchase requirement",
+       "requirement_summary": "Fortune 500 company (unnamed) - L&D Manager hiring for AI upskilling - Gurugram/Unknown",
+       "topic": "AI upskilling L&D manager hiring",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQoobEyJmjpbo7SRKd",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 331,
+     "output_tokens": 508,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Talent Acquisition\nDate posted: unknown\nURL: unknown\nTex",
+   "tool": "record_triage"
+  },
+  {
+   "key": "f3a077f5f939dad8c2b9566f",
+   "loose": "feff04464d629b482d9d64c5",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQp4DnpR2mSC4mf4r3",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_018SCHFXs2F7xAe8hu7hCCFY",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "Thought-leadership opinion on AI training for leaders, no concrete buying requirement",
+       "requirement_summary": "Unknown - Opinion on leadership AI training - Unknown/Unknown",
+       "topic": "Leadership AI adoption opinion",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQpS32TCGEDrPtCPw7",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 331,
+     "output_tokens": 472,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Management Consultant\nDate posted: unknown\nURL: unknown\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "43cbab8fcfd1264e522dbcf5",
+   "loose": "53be6afe6161053af1069a25",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQxqJqDMZskZYzwqQP",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01FYjRbTYBAAspGGDZFq96gc",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": null,
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "other",
+       "priority": "low",
+       "reason": "News/thought leadership about AI frameworks and upskilling spend, no training requirement from any organisation",
+       "requirement_summary": "Unknown - News article on AI agent frameworks and upskilling - Unknown/Unknown",
+       "topic": "AI agent frameworks and enterprise AI upskilling news",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQyJ6MubuKTyWCkdWG",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 336,
+     "output_tokens": 489,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Tech Journalist\nDate posted: unknown\nURL: unknown\nText:\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "8565cb3a799998a2adb5f620",
+   "loose": "ecb389b69d53346aec5d0ee8",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQwQVN5gemkzYFXJPw",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01E3Kc2zUU4NDdEMFTEviW1o",
+      "input": {
+       "category": "competitor",
+       "city": null,
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": null,
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "job_seeker_or_self_promo",
+       "priority": "low",
+       "reason": "Celebration post by a training company about its own milestone, no buying requirement",
+       "requirement_summary": "Unknown training company - Celebration of 10,000 GenAI learners trained - Unknown/Unknown",
+       "topic": "Generative AI training milestone celebration",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQwqXreuqaYbhfRFgS",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 328,
+     "output_tokens": 486,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: CEO, Training Company\nDate posted: unknown\nURL: unknown\n",
+   "tool": "record_triage"
+  },
+  {
+   "key": "c007ae303442a487d5932110",
+   "loose": "17ca7b46e02f3e1bc7bfb720",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQyrZyaYGVxDp1u2FC",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01DhtkiVicUZykzpYCKPQJDn",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Chennai",
+       "company": null,
+       "contact_person": "SAP Practice Head",
+       "dates_mentioned": "10-day batch, date not specified",
+       "email": "sapteam@gearworks.example",
+       "language": "en",
+       "mode": "offline",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "buyer_company",
+       "priority": "low",
+       "reason": "Request for SAP ABAP corporate trainer is outside smallTech's AI/technology offerings",
+       "requirement_summary": "Gearworks - SAP ABAP corporate training, 10-day batch - Chennai/Offline",
+       "topic": "SAP ABAP",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQzFszrLs6uMSSBeG5",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 341,
+     "output_tokens": 510,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: SAP Practice Head\nDate posted: unknown\nURL: unknown\nText",
+   "tool": "record_triage"
+  },
+  {
+   "key": "cfa946a430a0c8d0abbd3f92",
+   "loose": "ce39ec60f8f05db01b417883",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhQz2zHtjEhEeMS83ys",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01L1bWz3KfWCg7dpv3Co6oJ6",
+      "input": {
+       "category": "relevant_prospect",
+       "city": "Delhi",
+       "company": null,
+       "contact_person": "Sample Author",
+       "dates_mentioned": "3-day batch (dates not specified)",
+       "email": null,
+       "language": "hi",
+       "mode": "unknown",
+       "offering_id": 1,
+       "opportunity_type": "individual_trainer_wanted",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Agency needs freelance AI trainers for a client's 3-day batch in Delhi, asks for profile and per-day fees",
+       "requirement_summary": "Unnamed client - Freelance AI trainer for 3-day batch - Delhi/Unknown",
+       "topic": "AI training",
+       "verdict": "genuine"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhQzPa7LxKhE3aiyr1N",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 372,
+     "output_tokens": 514,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Sample Author\nHeadline: Training Coordinator\nDate posted: unknown\nURL: unknown\nT",
+   "tool": "record_triage"
+  }
+ ]
+}

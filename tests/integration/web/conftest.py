@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import re
-import socket
 import threading
 import time
 from collections.abc import Iterator
@@ -35,6 +34,9 @@ from sales0.db.models import (
 from sales0.jobs.runner import reset_runner
 from sales0.services.dedupe import content_hash
 from sales0.web.app import create_app
+from tests.support.ports import free_port
+
+_free_port = free_port  # re-exported for test_qa_hardening
 
 HX = {"HX-Request": "true"}
 CORPUS_PATH = REPO_ROOT / "src" / "sales0" / "linkedin_fixture" / "posts.json"
@@ -42,40 +44,6 @@ CORPUS_PATH = REPO_ROOT / "src" / "sales0" / "linkedin_fixture" / "posts.json"
 
 def corpus() -> dict[str, dict[str, Any]]:
     return {p["id"]: p for p in json.loads(Path(CORPUS_PATH).read_text(encoding="utf-8"))}
-
-
-@pytest.fixture(scope="session")
-def _migrated_sqlite_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """One SQLite file migrated to head per process; every web test starts from a copy."""
-    from alembic import command
-
-    from sales0.db.migrate_check import alembic_config
-
-    template = tmp_path_factory.mktemp("web-db-template") / "template.db"
-    command.upgrade(alembic_config(f"sqlite:///{template.as_posix()}"), "head")
-    return template
-
-
-@pytest.fixture
-def db_url(request: pytest.FixtureRequest) -> str:
-    """Overrides the root ``db_url`` (an Alembic upgrade per test): copy the migrated template
-    instead. PostgreSQL / an explicit test database URL keep the root behaviour."""
-    import os
-    import shutil
-
-    url = get_settings().resolved_database_url
-    if os.environ.get("SALES0_TEST_POSTGRES_URL") or os.environ.get("SALES0_TEST_DATABASE_URL") or not url.startswith("sqlite:///"):
-        from alembic import command
-
-        from sales0.db.migrate_check import alembic_config
-
-        command.upgrade(alembic_config(url), "head")
-        return url
-    template = request.getfixturevalue("_migrated_sqlite_template")
-    dest = Path(url.removeprefix("sqlite:///"))
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(template, dest)
-    return url
 
 
 @pytest.fixture
@@ -248,17 +216,11 @@ def oob_fragment(html: str, element_id: str) -> str:
 
 
 # ---------------------------------------------------------------------- live fixture-mode server
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
 @pytest.fixture
 def fixture_server(db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     """The real app on a free port in fixture mode, so the scraper's fake LinkedIn is the
     same server (``base_url`` = http://127.0.0.1:<port>/__fixtures/linkedin)."""
-    port = _free_port()
+    port = free_port()
     monkeypatch.setenv("SALES0_LINKEDIN_MODE", "fixture")
     monkeypatch.setenv("SALES0_HOST", "127.0.0.1")
     monkeypatch.setenv("SALES0_PORT", str(port))

@@ -20,11 +20,10 @@ permissions:
 
 env:
   UV_FROZEN: "1" # uv.lock is committed; never re-resolve in CI
-  # The test harness (tests/conftest.py) aborts the session when an integration/e2e test is
-  # collected and no key is configured. Push/PR jobs therefore set an obviously fake key so
-  # collection passes, and deselect everything marked `llm` (-m "not llm"). It is never
-  # sent anywhere: no unmarked test calls the API. The real key is used ONLY by the
-  # llm-integration job below.
+  SALES0_TEST_LLM_STRICT: "1" # a llm-marked test module without a recorded cassette FAILS (never silently skips)
+  # llm-marked integration tests REPLAY recorded cassettes (tests/fixtures/llm_cassettes, no key, no
+  # network); only re-recording (scripts/record_llm_cassettes.sh) needs a real key. Push/PR jobs still set an
+  # obviously fake key (settings validation); it is never sent anywhere.
   CI_FAKE_ANTHROPIC_KEY: ci-placeholder-not-a-real-key
 
 jobs:
@@ -90,9 +89,9 @@ jobs:
             for d in db services crm outreach research pipeline importer sheetsync scraper jobs web watch worker; do
               ignores="$ignores --ignore=tests/integration/$d"
             done
-            uv run pytest tests/integration $ignores -q -n auto -m "not llm"
+            uv run pytest tests/integration $ignores -q -n auto
           else
-            uv run pytest $SHARD_PATHS -q -n auto -m "not llm"
+            uv run pytest $SHARD_PATHS -q -n auto
           fi
 
   # Every test under tests/e2e carries the `llm` marker (tests/e2e/conftest.py) because the
@@ -175,4 +174,4 @@ jobs:
         env:
           SALES0_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
           SALES0_ANTHROPIC_API_KEY: ${{ env.CI_FAKE_ANTHROPIC_KEY }}
-        run: uv run pytest tests/integration -q -n auto -m "not llm"
+        run: uv run pytest tests/integration -q -n auto

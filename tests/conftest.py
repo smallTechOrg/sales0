@@ -12,9 +12,10 @@
     code under test swallowed the error.
 * Safety cool-downs default to 0 (the cool-down's own tests set them) and the browser
   channel defaults to ``chromium`` so the suite is deterministic on any machine.
-* The Anthropic key is read from the repo-root ``.env`` by ``get_settings()``. If any
-  ``integration``/``e2e`` test is collected and the key is absent, the session FAILS
-  (the gate is BLOCKED, not skipped).
+* The Anthropic key is read from the repo-root ``.env`` by ``get_settings()``. Only RECORDING the LLM cassettes
+  (``SALES0_TEST_LLM_REFRESH=1``) requires it (the session FAILS without one); ``llm`` integration tests replay
+  cassettes (no key, no network) and the e2e journeys use a fake-LLM oracle except the real-Haiku ones, which skip
+  themselves when no key is configured.
 * ``db_url`` returns a fresh SQLite file migrated to head with Alembic.
 * ``SALES0_TEST_POSTGRES_URL`` (e.g. ``postgresql+psycopg://postgres@127.0.0.1:55432/postgres``) runs the same suites on
   PostgreSQL: one template database is migrated to head once per session and every test gets its own
@@ -36,6 +37,8 @@ from alembic import command
 
 from sales0.config import get_settings, reset_settings
 from sales0.db.migrate_check import alembic_config
+
+pytest_plugins = ["tests.llm_cassette"]
 
 KEY_MISSING_MESSAGE = "SALES0_ANTHROPIC_API_KEY missing in .env"
 
@@ -255,13 +258,8 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         _pg_drop_db(template)
 
 
-def _needs_real_key(item: pytest.Item) -> bool:
-    parts = Path(str(item.path)).parts
-    return (
-        "integration" in parts
-        or "e2e" in parts
-        or item.get_closest_marker("llm") is not None
-    )
+def _record_mode() -> bool:
+    return os.environ.get("SALES0_TEST_LLM_REFRESH", "") in {"1", "true", "yes"}
 
 
 def _is_e2e(item: pytest.Item) -> bool:
@@ -278,7 +276,9 @@ def _browser_rank(item: pytest.Item) -> int:
 def pytest_collection_modifyitems(
     session: pytest.Session, config: pytest.Config, items: list[pytest.Item]
 ) -> Iterator[None]:
-    if any(_needs_real_key(item) for item in items):
+    # Only recording needs a real key: llm integration tests replay cassettes (tests/llm_cassette.py) and the
+    # e2e journeys use the fake-LLM oracle, except the few real-Haiku ones, which skip themselves without a key.
+    if _record_mode() and any(item.get_closest_marker("llm") is not None for item in items):
         reset_settings()
         present = get_settings().api_key_present
         reset_settings()
@@ -299,7 +299,7 @@ def pytest_collection_modifyitems(
     # ANY selection (tests/integration alone, tests/e2e alone, all of tests/): everything
     # else first, then the pytest-playwright tests, then E2E last.
     items[:] = sorted(
-        items, key=_browser_rank
+        items, key=lambda item: (_browser_rank(item), 0 if "bulk_journey" in Path(str(item.path)).name else 1)
     )  # stable: keeps the order within each group
     return result
 

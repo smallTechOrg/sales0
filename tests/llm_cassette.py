@@ -67,6 +67,15 @@ def _canonical(params: dict[str, Any], kclass: str) -> str:
     return _UUID.sub("<uuid>", _DATE.sub("<date>", raw))
 
 
+_LOOPBACK_PORT = re.compile(r"127\.0\.0\.1:(\d{2,5})")
+
+
+def loopback_port(params: dict[str, Any]) -> str | None:
+    """The first ``127.0.0.1:<port>`` in the request (a fixture site on a per-run port), else None."""
+    m = _LOOPBACK_PORT.search(json.dumps(params, default=str, ensure_ascii=False))
+    return m.group(1) if m else None
+
+
 def request_keys(params: dict[str, Any], kclass: str = "ok") -> tuple[str, str]:
     """(exact key, loose key). The loose key also masks every run of digits."""
     canon = _canonical(params, kclass)
@@ -166,6 +175,7 @@ class Cassette:
         exact, loose = request_keys(params, kclass)
         summary = (params.get("messages") or [{}])[-1].get("content", "")
         entry = {"key": exact, "loose": loose, "model": params.get("model"), "tool": (params.get("tool_choice") or {}).get("name"),
+                 "lport": loopback_port(params),
                  "preview": (summary if isinstance(summary, str) else json.dumps(summary))[:120], **result}
         with self._lock:
             self.entries = [*self._read(), entry] if self.path.exists() else [*self.entries, entry]
@@ -215,6 +225,10 @@ class CassetteSDK:
         if "error" in rec:
             raise _rebuild_error(rec["error"])
         data = dict(rec["message"])
+        # A fixture site listens on a different port every run: point the recorded URLs at this run's port.
+        old, new = rec.get("lport"), loopback_port(params)
+        if old and new and old != new:
+            data = json.loads(json.dumps(data).replace(f"127.0.0.1:{old}", f"127.0.0.1:{new}"))
         req_id = data.pop("_request_id", None)
         msg = _ns(data)
         if req_id:

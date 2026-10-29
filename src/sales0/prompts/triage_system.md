@@ -130,6 +130,10 @@ Example P
 Post: "At BrightMinds Academy we deliver corporate Generative AI training for teams and leaders. Customised workshops, 200+ batches delivered. Book a free demo session."
 Answer: verdict=discard, poster_type=other, opportunity_type=other, reason="Training company promoting its own corporate AI training, not a buyer", priority=low, category=competitor.
 
+Example Q
+Post: "Expanding our trainer panel! Freelance trainers in Data Science, Cloud and GenAI with 5+ years of experience, send your profile and per-day rates to panel@northwind-learning.example. We will reach out when assignments come up."
+Answer: verdict=discard, poster_type=training_agency, opportunity_type=other, reason="Agency building a trainer panel for future assignments, no concrete requirement", priority=low, email=null.
+
 For the example answers above, still fill every field of the tool; `email` and `phone` are copied ONLY when they literally appear in the post being triaged. For a discard, `email` and `phone` may be null.
 
 ## Offerings catalogue (id | name | group | description)

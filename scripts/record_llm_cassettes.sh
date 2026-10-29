@@ -19,5 +19,5 @@ if [ ${#paths[@]} -eq 0 ]; then
 fi
 
 export SALES0_TEST_LLM_REFRESH=1
-# -p no:xdist: recording is serial (one writer per cassette file)
-exec uv run pytest "${paths[@]}" -m "llm and not eval and not e2e" -p no:xdist -p no:logging -q
+# -n 0: recording is serial (one writer per cassette file)
+exec uv run pytest "${paths[@]}" -m "llm and not eval and not e2e" -n 0 -p no:logging -q

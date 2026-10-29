@@ -25,15 +25,22 @@ def under_xdist() -> bool:
     return bool(os.environ.get("PYTEST_XDIST_WORKER"))
 
 
+_recent: list[int] = []  # last few ports handed out by this process: two calls before the first server binds must differ
+
+
 def free_port() -> int:
-    """First bindable loopback port in this worker's slice."""
+    """First bindable loopback port in this worker's slice (not one of the last few handed out)."""
     base = RANGE_START + (worker_index() % SLICES) * SLICE
     for port in range(base, base + SLICE):
+        if port in _recent:
+            continue
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
                 sock.bind(("127.0.0.1", port))
             except OSError:
                 continue
+            _recent.append(port)
+            del _recent[:-8]
             return port
     raise RuntimeError(f"no free port in {base}-{base + SLICE - 1}")
 

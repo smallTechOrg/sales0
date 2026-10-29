@@ -1,0 +1,71 @@
+{
+ "entries": [
+  {
+   "key": "bf345f9573b79f1db3f721d1",
+   "loose": "e1f9d5cb8fa491afde4b2af5",
+   "lport": null,
+   "message": {
+    "_request_id": "req_011CgWhe86YCRMYeLVeitikT",
+    "container": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_013JbfwfnjNkeDRv3KF3VJRh",
+      "input": {
+       "category": "relevant_prospect",
+       "city": null,
+       "company": null,
+       "contact_person": "Agency Person",
+       "dates_mentioned": "upcoming batches (no specific dates)",
+       "email": null,
+       "language": "en",
+       "mode": "unknown",
+       "offering_id": null,
+       "opportunity_type": "other",
+       "phone": null,
+       "poster_type": "training_agency",
+       "priority": "low",
+       "reason": "Agency sourcing freelance trainers for unspecified future batches, no concrete client, topic, dates or city",
+       "requirement_summary": "Training agency - freelance AI trainers for upcoming batches - India/Unknown",
+       "topic": "Freelance AI trainers",
+       "verdict": "discard"
+      },
+      "name": "record_triage",
+      "toolset_name": null,
+      "type": "tool_use"
+     }
+    ],
+    "diagnostics": null,
+    "id": "msg_011CgWhe8X5vDvS8SyeA5Eci",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "stop_details": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "type": "message",
+    "usage": {
+     "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+     },
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 7820,
+     "inference_geo": "global",
+     "input_tokens": 330,
+     "output_tokens": 496,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "server_tool_use": null,
+     "service_tier": "standard",
+     "speed": "standard"
+    }
+   },
+   "model": "claude-haiku-5-5",
+   "preview": "## Enquiry to triage\n\n<enquiry>\nAuthor: Agency Person\nHeadline: Talent partner\nDate posted: unknown\nURL: unknown\nText:\nH",
+   "tool": "record_triage"
+  }
+ ]
+}
