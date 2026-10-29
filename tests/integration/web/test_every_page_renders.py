@@ -33,11 +33,15 @@ STUB_PAGES = {
 # Phase 2 pages (real since slice S4) and their key text; "/sync" and "/login" belong to S2 / S3 and have their own tests.
 CRM_PAGES = {
     "/pipeline": 'id="pipeline-tabs"',
-    "/pipeline?stage=lead": "Globex",
-    "/pipeline?layout=list": 'id="pipeline-list"',
-    "/pipeline?stage=client": "Old Customer Ltd",
-    "/pipeline?view=enquiries": 'id="pipeline-view"',
-    "/pipeline?stage=prospect&q=zzz": "Nothing matches these filters.",
+    "/pipeline?tab=leads": "Globex",
+    "/pipeline?stage=lead": "Globex",  # old bookmark
+    "/pipeline?tab=prospects&layout=list": 'id="pipeline-list"',
+    "/pipeline?tab=clients": "Old Customer Ltd",
+    "/pipeline?stage=client": "Old Customer Ltd",  # old bookmark
+    "/pipeline?tab=enquiries": 'id="enquiry-board"',
+    "/pipeline?view=enquiries": 'id="enquiry-board"',  # old bookmark
+    "/pipeline?view=companies": 'id="pipeline-board"',  # old bookmark: the Prospects tab
+    "/pipeline?tab=prospects&q=zzz": "Nothing matches these filters.",
     "/contacts": 'id="contact-list"',
     "/contacts?q=zzzz": "No contacts match 'zzzz'.",
     "/contacts/duplicates": 'id="merge-list"',

@@ -29,6 +29,7 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db
 from sales0.db.models import Prospect as Prospect_
 from sales0.db.models import TeamMember
+from sales0.db.models.enums_crm import COMPANY_SUB_STATUSES
 from sales0.errors import DomainError
 from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import clients as clients_service
@@ -36,6 +37,7 @@ from sales0.services.crm import companies as companies_service
 from sales0.services.crm import flags as flags_service
 from sales0.services.crm import followups as followups_service
 from sales0.services.crm import company_pipeline as company_pipeline_service
+from sales0.services.crm import deals as deals_service
 from sales0.services.crm import leads as leads_service
 from sales0.services.crm import lifecycle as lifecycle_service
 from sales0.services.crm import pipeline as pipeline_service
@@ -69,7 +71,6 @@ from sales0.web.envelope import wants_json
 router = APIRouter()
 
 VIEWS = ("board", "list")
-STAGE_CHOICES: tuple[tuple[str, str], ...] = (("prospect", "Prospect"), ("lead", "Lead"), ("client", "Client"), ("closed", "Closed"))
 STATUSES = ("open", "closed", "converted", "all")
 FLAGS = ("repeat_poster", "competitor_mention", "no_follow_up")
 SOURCES = ("enquiry", "sheet", "manual", "import")
@@ -141,21 +142,49 @@ def _fragments(request: Request, parts: list[tuple[str, dict[str, Any]]], messag
 
 
 # ---------------------------------------------------------------------- list page
-VIEWS_OF = ("companies", "enquiries")  # what the board / list shows
-STAGE_FILTERS = ("prospect", "lead", "client", "closed")
+TABS = ("enquiries", "prospects", "leads", "clients")
+DEFAULT_TAB = "enquiries"
+TAB_LABELS = {"enquiries": "Enquiries", "prospects": "Prospects", "leads": "Leads", "clients": "Clients"}
+TAB_HELP = {
+    "enquiries": "What is this? Every accepted enquiry (one specific requirement) by status, with the company name on each card. "
+                 "The enquiry that brought a company in also moves that company along its prospect stages when you set it to "
+                 "Contacted or a Follow-up. Enquiries still to review stay in the Inbox.",
+    "prospects": "What is this? Companies we are working towards a first conversation with: New, Contacted, Follow-up 1, "
+                 "Follow-up 2, Final follow-up. When a person confirms a meeting or proposal the company becomes a lead "
+                 "(see Became lead, last 30 days) and moves to the Leads tab.",
+    "leads": "What is this? Companies that are in conversation: a meeting is scheduled or a proposal has been sent. "
+             "Winning one makes it a client (see Won, last 30 days) and moves it to the Clients tab.",
+    "clients": "What is this? Companies that have bought from us, with their characteristics, priority and next follow-up. "
+               "A new enquiry from a client is an upsell, not a new prospect.",
+}
+TAB_OF_STAGE = {"prospect": "prospects", "lead": "leads", "client": "clients", "closed": "prospects"}
+STAGE_OF_TAB = {"prospects": "prospect", "leads": "lead", "clients": "client"}
 
 
 def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
-    # old bookmarks: ?tab=prospects|leads|clients meant a stage
-    stage = raw.get("stage") if raw.get("stage") in STAGE_FILTERS else ""
-    old = {"prospects": "prospect", "leads": "lead", "clients": "client"}.get(str(raw.get("tab") or ""))
-    if not stage and old:
-        stage = old
+    """Query string -> params. ``tab`` wins; the old bookmarks still work: ``?view=companies`` (the former Companies
+    toggle) is the Prospects tab, ``?view=enquiries`` the Enquiries tab, ``?stage=prospect|lead|client|closed`` and the
+    older ``?tab=prospects|leads|clients`` pick the matching tab."""
+    stage_raw = str(raw.get("stage") or "")
+    tab = str(raw.get("tab") or "")
+    if tab not in TABS:
+        if stage_raw in TAB_OF_STAGE:
+            tab = TAB_OF_STAGE[stage_raw]
+        elif raw.get("view") == "companies":
+            tab = "prospects"
+        elif raw.get("view") == "enquiries":
+            tab = "enquiries"
+        else:
+            tab = DEFAULT_TAB
+    closed = stage_raw == "closed" or str(raw.get("closed") or "") in ("1", "true", "on")
+    view = raw.get("layout") if raw.get("layout") in VIEWS else ("list" if raw.get("view") == "list" else "")
+    sub = str(raw.get("sub") or "")
     return {
-        "view": raw.get("view") if raw.get("view") in VIEWS_OF else "companies",
-        "layout": raw.get("layout") if raw.get("layout") in VIEWS else ("list" if raw.get("view") == "list" else ""),
+        "tab": tab,
+        "layout": view,
         "q": (raw.get("q") or "").strip()[:200],
-        "stage": stage,
+        "sub": sub if any(sub in v for v in COMPANY_SUB_STATUSES.values()) else "",
+        "closed": "1" if closed and tab != "enquiries" else "",
         "flag": raw.get("flag") if raw.get("flag") in FLAGS else "",
         "characteristic": str(raw.get("characteristic") or "") if str(raw.get("characteristic") or "").isdigit() else "",
         "priority": raw.get("priority") if raw.get("priority") in ("high", "medium", "low", "none") else "",
@@ -177,27 +206,28 @@ def _trait_options(db: Session) -> list[Any]:
 def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     params = _normalise(raw)
     trait = _trait_id(params)
+    tab = params["tab"]
     ctx: dict[str, Any] = {"params": params, "characteristic_options": _trait_options(db), "priority_choices": priority_service.FILTER_CHOICES,
-                           "category_choices": CATEGORY_CHOICES, "stage_choices": STAGE_CHOICES}
-    if params["view"] == "enquiries":
-        ctx.update(layout="board", forced_list=False, enquiry_board=company_pipeline_service.enquiry_board(
+                           "category_choices": CATEGORY_CHOICES, "tab_help": TAB_HELP[tab]}
+    if tab == "enquiries":
+        ctx.update(layout="board", enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
-            category=params["category"] or None))
+            category=params["category"] or None),
+            deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE],
+            origin_deal_options=[(k, deals_service.deal_label(k)) for k in ("open", *deals_service.STAGE_DRIVING, *deals_service.HAND_DEAL_STATUSES)])
     else:
-        layout = params["layout"] or "board"
-        # one stage chosen -> the list (the board always shows the three stages side by side)
-        forced = bool(params["stage"]) and layout == "board"
-        if params["stage"]:
+        # clients are a list by default (a board of one column adds nothing); prospects and leads default to the board
+        layout = params["layout"] or ("list" if tab == "clients" else "board")
+        if tab == "clients" or params["sub"] or params["closed"]:
             layout = "list"
-        ctx.update(layout=layout, forced_list=forced)
+        ctx["layout"] = layout
         common = dict(q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
                       category=params["category"] or None, flag=params["flag"] or None, sort=params["sort"] or None)
         if layout == "board":
-            ctx["company_board"] = company_pipeline_service.board(db, **common)
+            ctx["company_board"] = company_pipeline_service.tab_board(db, tab, **common)
         else:
             page = company_pipeline_service.company_list(
-                db, stage=params["stage"] if params["stage"] in ("prospect", "lead", "client") else None,
-                closed=True if params["stage"] == "closed" else False, page=params["page"], **common)
+                db, stage=STAGE_OF_TAB[tab], sub_status=params["sub"] or None, closed=bool(params["closed"]), page=params["page"], **common)
             ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
     ctx["next"] = "/pipeline?" + qs({**params, "page": params["page"] if params["page"] > 1 else None})
     return ctx
@@ -205,8 +235,8 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
 
 def _tab_counts(db: Session) -> list[tuple[str, str, int]]:
     c = company_pipeline_service.counts(db)
-    return [("prospect", "Prospects", c["prospect"]), ("lead", "Leads", c["lead"]), ("client", "Clients", c["client"]),
-            ("closed", "Closed", c["closed"])]
+    return [("enquiries", "Enquiries", c["enquiries"]), ("prospects", "Prospects", c["prospect"]), ("leads", "Leads", c["lead"]),
+            ("clients", "Clients", c["client"])]
 
 
 @router.get("/pipeline", response_class=HTMLResponse)
@@ -923,10 +953,10 @@ def create_client(
         )  # fmt: skip
         if wants_json(request):
             return envelope_ok(view.model_dump(mode="json"), 201)
-        return crm_done(request, f"/companies/{view.company_id}" if view.company_id else "/pipeline?stage=client",
+        return crm_done(request, f"/companies/{view.company_id}" if view.company_id else "/pipeline?tab=clients",
                         f"Added client {view.name}.")
 
-    return crm_guard(request, "/pipeline?stage=client", run, db)
+    return crm_guard(request, "/pipeline?tab=clients", run, db)
 
 
 @router.post("/pipeline/clients/{client_id}", response_model=None)

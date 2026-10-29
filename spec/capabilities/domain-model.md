@@ -29,15 +29,22 @@ Rules:
 
 Vocabulary of the Active Enquiries sheet: `open, contacted, follow_up_1, follow_up_2, final_follow_up, meeting_scheduled, proposal_sent, won, lost, no_response, on_hold`. *Hot / Warm* are a temperature / priority tag, not a status.
 
-* `open / contacted / follow_up_N / final_follow_up` of an open enquiry are **driven**: they mirror the company's prospect sub-status. Nobody sets them by hand.
+* `open / contacted / follow_up_N / final_follow_up` of an open enquiry are **driven**: they mirror the company's prospect sub-status. They can be set by hand only on the company's ORIGIN enquiry (its earliest accepted enquiry), which then moves the company's prospect sub-status to the same stage (rule 5 above).
 * `meeting_scheduled, proposal_sent, won, lost, no_response, on_hold` are set by a person (or by the sheet). A hand status stays until the person sets *Open* again (back to following the cadence).
 * Meeting scheduled / Proposal sent offer (suggest) moving the company to Lead; Won makes the company a client.
 
+5. **Origin-enquiry coupling.** The ORIGIN enquiry of a company is its earliest accepted enquiry (the one whose acceptance brought the company in). Setting its deal status to `contacted / follow_up_1 / follow_up_2 / final_follow_up` (by hand on the company page or the Enquiries board; the sheet through the same rule) moves the company's prospect sub-status to the same stage and writes the prospect / company / enquiry timeline entries. Only while the company is stage prospect and not on an off-ramp (otherwise the change is refused). By hand the move is exact (a person may also go back); any other source only moves forward, never past what outreach already recorded, and a stage set in the app (`stage_source = 'app'`) is never overwritten by the sheet. Non-origin enquiries never drive the stage (cadence statuses are refused on them). `meeting_scheduled / proposal_sent` still only show *Suggested: Lead* and a person confirms; Won makes the company a client. The company's own cadence still mirrors onto its driven / open enquiries (projection, Core SQL, never calls back), so there is no loop.
+
 ## Pipeline and pages
 
-* **Pipeline** (`/pipeline`): default = companies as cards in Prospect | Lead | Client (sub-status chip, priority, characteristics, owner, next follow-up date), off-ramp companies in a collapsed *Closed* lane. A toggle switches to the **Enquiries** board by deal status (company name on each card). Filters (priority, characteristic, category, stage, flag) and the list view stay.
+* **Pipeline** (`/pipeline?tab=enquiries|prospects|leads|clients`, default **Enquiries**; each tab label carries its count, each tab has a one-line "What is this?"). A company is in exactly one tab by its stage.
+  * **Enquiries**: accepted enquiries grouped by deal status (open, contacted, follow_up_1, follow_up_2, final_follow_up, meeting_scheduled, proposal_sent, won), company name as the card label, a collapsed lane for lost / no_response / on_hold. Enquiries still to review stay in the Inbox. Each card has a status control; the ORIGIN enquiry also offers contacted / follow-up N (see the coupling rule below).
+  * **Prospects** (stage prospect): columns New -> Contacted -> Follow-up 1 -> Follow-up 2 -> Final follow-up, a **Became lead** lane (companies that became leads in the last 30 days; cards link to the Leads tab), off-ramp prospects in a collapsed *Closed* lane. Never shows leads or clients in the other columns. Board | List layout, filters (search, priority, category, characteristic, flag, owner via the company page), "New company".
+  * **Leads** (stage lead): Meeting scheduled -> Proposal sent, a **Won** lane (became clients in the last 30 days; links to Clients), closed leads in a collapsed lane.
+  * **Clients**: a list (company, priority, characteristics, enquiries, owner, next follow-up); *Show closed* adds lost clients.
+  * Old links: `?view=companies` = Prospects, `?view=enquiries` = Enquiries, `?stage=prospect|lead|client|closed` and `?tab=` pick the tab. The word *Companies* still names the company list page (`/companies`) and the record; only the pipeline tab is *Prospects*.
 * **Company page** (`/companies/{id}`), one page for every stage: header (name, stage + status control, Mark as lead / Mark client / Close menu / Reopen, priority, characteristics, links, owner), People (role, e-mail / phone editor, add person), Enquiries (status control, source link, Won / Lost), Outreach & follow-ups, Research + account summary + notes, Timeline.
-* Old URLs redirect: `/leads`, `/clients`, `/prospects` -> `/pipeline?stage=...`; `/prospects/{id}`, `/leads/{id}`, `/clients/{id}` and the `/pipeline/...` versions -> the company page.
+* Old URLs redirect: `/leads`, `/clients`, `/prospects` -> `/pipeline?tab=leads|clients|prospects`; `/prospects/{id}`, `/leads/{id}`, `/clients/{id}` and the `/pipeline/...` versions -> the company page.
 
 ## Storage (how it is built)
 

@@ -60,7 +60,7 @@ Conventions are the Phase 1 ones: forms are `application/x-www-form-urlencoded` 
 **Pipeline** (`web/routes/pipeline.py`)
 | Method | Path | Params / form fields | Effect | Returns |
 |---|---|---|---|---|
-| GET | `/pipeline` | `tab=prospects\|leads\|clients` (default prospects), `view=board\|list` (default board for prospects/leads), `stage`, `status=open\|closed\|converted\|all`, `q`, `flag=repeat_poster\|competitor_mention\|no_follow_up`, `source`, `due=today\|overdue`, `page` | `pipeline.summary/board/list_*` | page with the Due-today panel (`#due-today`) |
+| GET | `/pipeline` | `tab=enquiries\|prospects\|leads\|clients` (default enquiries; `view=companies` = prospects, `stage=prospect\|lead\|client\|closed` map to a tab), `layout=board\|list`, `sub` (sub-status), `closed=1`, `q`, `flag=repeat_poster\|competitor_mention\|no_follow_up`, `priority`, `category`, `characteristic`, `sort=priority`, `page` | `pipeline.summary/board/list_*` | page with the Due-today panel (`#due-today`) |
 | GET | `/pipeline/prospects/{id}` · `/pipeline/leads/{id}` · `/pipeline/clients/{id}` | — | `get_prospect/get_lead/get_client` | detail page (timeline, notes, linked enquiries, contacts, outreach messages, replies, flags, follow-ups, sheet panel) |
 | POST | `/pipeline/prospects` | `name`, `company`, `email`, `phone`, `linkedin_url`, `website`, `notes` | `create_manual` | 303 to the new prospect |
 | POST | `/pipeline/prospects/{id}/stage` | `stage`, `note` | `move_stage` | prospect header + timeline fragments |

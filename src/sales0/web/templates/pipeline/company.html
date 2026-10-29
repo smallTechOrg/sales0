@@ -2,7 +2,7 @@
 {% from "pipeline/_macros.html" import flash_banner, flag_badges %}
 {% block title %}{{ life.name }}{% endblock %}
 {% block page_header %}
-  <div class="crumbs"><a href="/pipeline">&larr; Pipeline</a>{% if life.stage %} / <a href="/pipeline?stage={{ life.stage }}">{{ life.stage_label }}s</a>{% endif %} / <a href="/companies">Companies</a></div>
+  <div class="crumbs"><a href="/pipeline">&larr; Pipeline</a>{% if life.stage %} / <a href="/pipeline?tab={{ {'prospect': 'prospects', 'lead': 'leads', 'client': 'clients'}[life.stage] }}">{{ life.stage_label }}s</a>{% endif %} / <a href="/companies">Companies</a></div>
 {% endblock %}
 {% block content %}
   <div class="stack">
@@ -65,7 +65,7 @@
         <section class="card" id="company-enquiries" aria-labelledby="enq-title">
           <div class="card__header"><h2 id="enq-title">Enquiries</h2><span class="muted">{{ co.enquiries|length }}</span></div>
           <div class="card__body">
-            <p class="hint">Each enquiry is one specific requirement. Contacted and follow-up statuses follow this company's outreach; the others are set here.</p>
+            <p class="hint">Each enquiry is one specific requirement. Contacted and follow-up statuses follow this company's outreach; on the enquiry that brought the company in you can also set them here and the company's prospect stage follows. The others are set here.</p>
             {% for e in co.enquiries %}
               <div class="reply-item" id="enquiry-{{ e.id }}">
                 <strong>{{ e.requirement_summary or "(no summary)" }}</strong>
@@ -86,8 +86,8 @@
                 <form class="inline-form" id="enquiry-status-form-{{ e.id }}" method="post" action="/pipeline/enquiries/{{ e.id }}/status">
                   <label class="field__label" for="enquiry-status-{{ e.id }}">Status</label>
                   <select class="select" id="enquiry-status-{{ e.id }}" name="status">
-                    {% if e.deal_status in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") %}<option value="" selected disabled>{{ e.deal_label }} (follows the outreach)</option>{% endif %}
-                    {% for key, label in deal_options %}<option value="{{ key }}"{% if key == e.deal_status or (key == "open" and e.deal_status == "open") %} selected{% endif %}>{{ label if key != "open" else "Open (follow the outreach)" }}</option>{% endfor %}
+                    {% if e.id != origin_enquiry_id and e.deal_status in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up") %}<option value="" selected disabled>{{ e.deal_label }} (follows the outreach)</option>{% endif %}
+                    {% for key, label in (origin_deal_options if e.id == origin_enquiry_id else deal_options) %}<option value="{{ key }}"{% if key == e.deal_status or (key == "open" and e.deal_status == "open") %} selected{% endif %}>{{ label if key != "open" else "Open (follow the outreach)" }}</option>{% endfor %}
                   </select>
                   <button class="btn btn--sm" type="submit">Set</button>
                   <button class="btn btn--sm btn--primary" name="status" value="won" type="submit">Won</button>

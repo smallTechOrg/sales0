@@ -1,22 +1,29 @@
-"""Pipeline read models for the company model: companies as cards in Prospect | Lead | Client (+ a collapsed Closed
-lane), and the enquiries board grouped by deal status. Leads and Clients are filtered views of companies."""
+"""Pipeline read models for the company model, one per Pipeline tab: Enquiries (accepted enquiries grouped by deal
+status), Prospects (companies in stage prospect: New .. Final follow-up, a recent "Became lead" lane, a collapsed Closed
+lane), Leads (Meeting scheduled | Proposal sent, a recent "Won" lane) and Clients (a list). A company is in exactly one
+tab: Leads and Clients never appear in the Prospects columns."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Company, Enquiry, Flag, Prospect, TeamMember
-from sales0.db.models.enums_crm import COMPANY_STAGES, COMPANY_SUB_STATUSES, ENQUIRY_DEAL_STATUSES
+from sales0.db.models import Client, Company, Enquiry, Flag, Lead, Prospect, TeamMember
+from sales0.db.models.enums_crm import COMPANY_STAGES, COMPANY_SUB_STATUSES, ENQUIRY_DEAL_STATUSES, PROSPECT_STAGES
 from sales0.services.crm import _keys, characteristics, companies, deals, lifecycle, priority
 from sales0.services.crm._common import page_params
 from sales0.services.crm.views import CharacteristicView
 
-STAGE_COLUMNS = (*COMPANY_STAGES, "closed")
 COLUMN_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Client", "closed": "Closed"}
+RECENT_DAYS = 30  # the "Became lead" / "Won" lanes only show what happened in the last 30 days
+BECAME_LEAD = "became_lead"
+WON = "won"
+# deal statuses that live in the collapsed lane of the Enquiries tab
+ENQUIRY_CLOSED_STATUSES = ("lost", "no_response", "on_hold")
+ENQUIRY_ACTIVE_STATUSES = tuple(x for x in ENQUIRY_DEAL_STATUSES if x not in ENQUIRY_CLOSED_STATUSES)
 
 
 class CompanyCard(BaseModel):
@@ -67,6 +74,7 @@ class EnquiryCard(BaseModel):
     category: str = "relevant_prospect"
     date_added: object | None = None
     source_url: str | None = None
+    is_origin: bool = False  # the enquiry that brought its company in: it may also be set to contacted / follow-up N
 
 
 class EnquiryColumn(BaseModel):
@@ -163,21 +171,46 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
 
 
 # ---------------------------------------------------------------------------- reads
-def _lane(stmt, key: str):  # type: ignore[no-untyped-def]
-    if key == "closed":
-        return stmt.where(Company.off_ramp.is_not(None), Company.stage.is_not(None))
-    return stmt.where(Company.stage == key, Company.off_ramp.is_(None))
+def _recent_ids(model, cutoff: datetime):  # type: ignore[no-untyped-def]
+    """Company ids that have a ``model`` (Lead / Client) ledger row created since ``cutoff``."""
+    return select(model.company_id).where(model.company_id.is_not(None), model.created_at >= cutoff).union(
+        select(Prospect.company_id).join(model, model.prospect_id == Prospect.id).where(
+            Prospect.company_id.is_not(None), model.created_at >= cutoff))
 
 
-def board(db: Session, *, q: str | None = None, characteristic_id: int | None = None, priority_filter: str | None = None,
-          category: str | None = None, flag: str | None = None, sort: str | None = None, per_column: int = 50) -> CompanyBoard:
-    cols: list[CompanyColumn] = []
-    for key in STAGE_COLUMNS:
-        stmt = _filtered(_lane(select(Company), key), q=q, characteristic_id=characteristic_id, priority_filter=priority_filter,
-                         category=category, flag=flag)
-        total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-        rows = list(db.scalars(stmt.order_by(*_order(sort)).limit(per_column)))
-        cols.append(CompanyColumn(key=key, label=COLUMN_LABELS[key], total=total, cards=cards_for(db, rows)))
+def _column(db: Session, key: str, label: str, stmt, f: dict, sort: str | None, per_column: int) -> CompanyColumn:  # type: ignore[no-untyped-def]
+    stmt = _filtered(stmt, **f)
+    total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    rows = list(db.scalars(stmt.order_by(*_order(sort)).limit(per_column)))
+    return CompanyColumn(key=key, label=label, total=total, cards=cards_for(db, rows))
+
+
+def _stage_columns(stage: str, subs: tuple[str, ...]):  # type: ignore[no-untyped-def]
+    for sub in subs:
+        yield sub, lifecycle.sub_label(sub), select(Company).where(Company.stage == stage, Company.off_ramp.is_(None), Company.sub_status == sub)
+
+
+def tab_board(db: Session, tab: str, *, now: datetime | None = None, q: str | None = None, characteristic_id: int | None = None,
+              priority_filter: str | None = None, category: str | None = None, flag: str | None = None, sort: str | None = None,
+              per_column: int = 50) -> CompanyBoard:
+    """The board of the Prospects or Leads tab. Prospects: New .. Final follow-up, ``became_lead`` (stage lead, a lead
+    row created in the last 30 days), ``closed``. Leads: Meeting scheduled, Proposal sent, ``won`` (stage client, a
+    client row created in the last 30 days), ``closed``."""
+    f = dict(q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag)
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=RECENT_DAYS)
+    cols = [_column(db, k, label, st, f, sort, per_column)
+            for k, label, st in _stage_columns("prospect" if tab == "prospects" else "lead",
+                                               PROSPECT_STAGES if tab == "prospects" else COMPANY_SUB_STATUSES["lead"])]
+    if tab == "prospects":
+        cols.append(_column(db, BECAME_LEAD, "Became lead", select(Company).where(
+            Company.stage == "lead", Company.off_ramp.is_(None), Company.id.in_(_recent_ids(Lead, cutoff))), f, sort, per_column))
+        closed_stage = "prospect"
+    else:
+        cols.append(_column(db, WON, "Won (last 30 days)", select(Company).where(
+            Company.stage == "client", Company.off_ramp.is_(None), Company.id.in_(_recent_ids(Client, cutoff))), f, sort, per_column))
+        closed_stage = "lead"
+    cols.append(_column(db, "closed", "Closed", select(Company).where(Company.stage == closed_stage, Company.off_ramp.is_not(None)),
+                        f, sort, per_column))
     return CompanyBoard(columns=cols)
 
 
@@ -206,14 +239,22 @@ def counts(db: Session) -> dict[str, int]:
     out = {s: 0 for s in COMPANY_STAGES}
     for stage, n in db.execute(select(Company.stage, func.count()).where(Company.stage.is_not(None), Company.off_ramp.is_(None)).group_by(Company.stage)).all():
         out[stage] = int(n)
+    out["enquiries"] = int(db.scalar(select(func.count()).select_from(Enquiry).where(Enquiry.review_status == "accepted")) or 0)
     out["closed"] = int(db.scalar(select(func.count()).select_from(Company).where(Company.off_ramp.is_not(None), Company.stage.is_not(None))) or 0)
     return out
+
+
+def _origin_ids(db: Session, company_ids: set[int]) -> dict[int, int]:
+    if not company_ids:
+        return {}
+    return dict(db.execute(select(Enquiry.company_id, func.min(Enquiry.id)).where(
+        Enquiry.company_id.in_(company_ids), Enquiry.review_status == "accepted").group_by(Enquiry.company_id)).all())
 
 
 def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int | None = None, priority_filter: str | None = None,
                   category: str | None = None, per_column: int = 50) -> EnquiryBoard:
     cols: list[EnquiryColumn] = []
-    for status in ENQUIRY_DEAL_STATUSES:
+    for status in (*ENQUIRY_ACTIVE_STATUSES, *ENQUIRY_CLOSED_STATUSES):
         stmt = select(Enquiry, Company.name).outerjoin(Company, Company.id == Enquiry.company_id).where(
             Enquiry.review_status == "accepted", Enquiry.deal_status == status)
         if q and q.strip():
@@ -229,13 +270,14 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
             stmt = stmt.where(Enquiry.company_id.in_(companies_with_trait(characteristic_id)))
         total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
         rows = db.execute(stmt.order_by(priority.rank_order(Enquiry.priority), Enquiry.date_added.desc(), Enquiry.id.desc()).limit(per_column)).all()
+        origins = _origin_ids(db, {e.company_id for e, _ in rows if e.company_id})
         cols.append(EnquiryColumn(key=status, label=deals.deal_label(status), total=total, cards=[
             EnquiryCard(id=e.id, summary=e.requirement_summary, company_id=e.company_id, company_name=name or e.company,
                         deal_status=e.deal_status, priority=e.priority, category=e.category or "relevant_prospect",
-                        date_added=e.date_added, source_url=e.source_url)
+                        date_added=e.date_added, source_url=e.source_url, is_origin=origins.get(e.company_id) == e.id)
             for e, name in rows
         ]))
     return EnquiryBoard(columns=cols)
 
 
-__all__ = ["CompanyBoard", "CompanyCard", "EnquiryBoard", "board", "cards_for", "company_list", "counts", "enquiry_board"]
+__all__ = ["CompanyBoard", "CompanyCard", "EnquiryBoard", "cards_for", "company_list", "counts", "enquiry_board", "tab_board"]

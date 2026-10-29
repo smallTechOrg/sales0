@@ -60,11 +60,15 @@ def test_cadence_drives_open_enquiry_status(db) -> None:
     assert (co.sub_status, e.deal_status) == ("follow_up_1", "follow_up_1")
 
 
-def test_driven_statuses_cannot_be_set_by_hand(db) -> None:
-    e, _, _ = _accepted(db)
+def test_driven_statuses_cannot_be_set_on_a_non_origin_enquiry(db) -> None:
+    _, v, co = _accepted(db)
+    e2 = h.enquiry(db, profile_row=h.profile(db, slug="in/second"), company="Acme Training")
+    prospects.ensure_for_enquiry(db, e2.id)
     with pytest.raises(DomainError) as ei:
-        deals.set_status(db, e.id, "follow_up_1")
+        deals.set_status(db, e2.id, "follow_up_1")
     assert ei.value.code == "status_driven"
+    db.refresh(co)
+    assert co.sub_status == "new"  # only the origin enquiry drives the stage (tests/integration/crm/test_origin_coupling.py)
 
 
 def test_hand_status_survives_the_cadence(db) -> None:

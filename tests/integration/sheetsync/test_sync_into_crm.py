@@ -392,3 +392,27 @@ def test_repository_protocol_surface(db_url) -> None:  # type: ignore[no-untyped
     assert isinstance(repo, SheetRepository)
     assert repo.get_by_key("enquiry", "nope") is None and repo.drain_errors() == [] and repo.list_keys_for_tab("a", "b") == set()
     assert repo.mark_removed("a", "b", [("enquiry", "nope")]) == 0
+
+
+# --------------------------------------------------------------------------- origin-enquiry coupling (services/crm/deals.py)
+def test_the_sheet_moves_the_company_stage_through_its_origin_enquiry_only(sync) -> None:  # type: ignore[no-untyped-def]
+    header, _ = matrix_csv().split("\n", 1)
+    row = ",02 July 2026,{summary},{mail},High,{status},,Indus,07 July 2026,,,https://www.linkedin.com/posts/synthetic-activity-71000000000000{n}-Zz{n},Synthetic text {n} about training.,,,\n"
+    first = row.format(summary="Indus - Vision - Pune | Online", mail="i1@indus.example", status="Contacted", n="91")
+    second = row.format(summary="Indus - Second need - Pune | Online", mail="i2@indus.example", status="Final Follow Up", n="92")
+    sync({"Active Enquiries": header + "\n" + first + second}, tabs=(ACTIVE,))
+    with session_scope() as db:
+        enquiries = db.scalars(select(Enquiry).where(Enquiry.company == "Indus").order_by(Enquiry.id)).all()
+        assert len(enquiries) == 2
+        co = db.get(Company, enquiries[0].company_id)
+        # the origin row (Contacted) moved the company; the second enquiry's Final follow-up did not
+        assert (co.stage, co.sub_status) == ("prospect", "contacted")
+    # a stage a person set in the app is not overwritten by the sheet
+    with session_scope() as db:
+        co = db.scalar(select(Company).where(Company.name == "Indus"))
+        p = db.scalar(select(Prospect).where(Prospect.company_id == co.id))
+        p.stage, p.stage_source = "follow_up_2", "app"
+    sync({"Active Enquiries": header + "\n" + first.replace("Contacted", "Follow Up 1") + second}, tabs=(ACTIVE,))
+    with session_scope() as db:
+        co = db.scalar(select(Company).where(Company.name == "Indus"))
+        assert co.sub_status == "follow_up_2" and co.stage_source == "app"
