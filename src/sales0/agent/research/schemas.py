@@ -129,7 +129,7 @@ class ResearchResult:
     llm_calls: int = 0
     pages_fetched: int = 0
     error: str | None = None
-    prompt_version: str = "research-v1"
+    prompt_version: str = "research-v2"
 
     @property
     def brief_dict(self) -> dict[str, Any]:

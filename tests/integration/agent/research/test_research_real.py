@@ -72,7 +72,7 @@ def test_research_fixture_site_real_haiku(db_url):
         r.status == "ok" and r.cost_usd_micros > 0 and r.input_tokens > 0 for r in rows
     )
     assert sum(r.cost_usd_micros for r in rows) == res.cost_usd_micros > 0
-    assert all(r.prompt_version == "research-v1" for r in rows)
+    assert all(r.prompt_version == "research-v2" for r in rows)
     # robots-disallowed page never fetched
     assert not any(h.startswith("/private") for h in hits)
     assert "/robots.txt" in hits

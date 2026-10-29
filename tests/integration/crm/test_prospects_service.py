@@ -185,7 +185,9 @@ def test_update_name_notes_company(db) -> None:
     v = _prospect(db)
     out = prospects.update(db, v.id, name="Acme Corp", notes="call after Diwali", company="Acme Corp")
     assert out.name == "Acme Corp" and out.company_name == "Acme Corp"
-    assert prospects.get_prospect(db, v.id).notes == "call after Diwali"
+    from sales0.services.crm import notes as notes_service
+
+    assert [n.body for n in notes_service.list_notes(db, v.id)] == ["call after Diwali"]  # q15: a dated note entry
     with pytest.raises(DomainError):
         prospects.update(db, v.id, name=" ")
     assert prospects.update(db, v.id, company=None).company_id is None
