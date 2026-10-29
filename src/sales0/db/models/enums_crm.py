@@ -58,3 +58,30 @@ ENQUIRY_CATEGORY_LABELS: dict[str, str] = {
 # Prospect priority: ``derived`` = the highest priority of its linked enquiries (recomputed); ``manual`` = a person
 # set it (never overwritten by an enquiry change or a sheet sync).
 PROSPECT_PRIORITY_SOURCES: tuple[str, ...] = ("derived", "manual")
+
+# ---- q17 company model (spec/capabilities/domain-model.md). A COMPANY is the main record; Prospect / Lead / Client are
+# lifecycle STAGES of one company. Stored on ``companies`` (plain columns, validated in the service: no CHECK, so no
+# table rebuild of the FK-referenced ``companies``).
+COMPANY_STAGES: tuple[str, ...] = ("prospect", "lead", "client")
+COMPANY_SUB_STATUSES: dict[str, tuple[str, ...]] = {
+    "prospect": ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up"),
+    "lead": ("meeting_scheduled", "proposal_sent"),
+    "client": ("active",),
+}
+# Off-ramps: company end states a person can reopen (do_not_contact needs an admin). ``lost_client`` = churned client.
+OFF_RAMPS: tuple[str, ...] = ("not_interested", "dormant", "do_not_contact", "lost_client")
+# Off-ramps only a person sets on the company (the lead/prospect/client rows cannot express them); the projection
+# of the ledger rows never overwrites them.
+COMPANY_ONLY_OFF_RAMPS: tuple[str, ...] = ("do_not_contact", "lost_client")
+# Enquiry deal status (after the inbox review accepted it): the Active Enquiries sheet vocabulary.
+ENQUIRY_DEAL_STATUSES: tuple[str, ...] = (
+    "open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "proposal_sent",
+    "won", "lost", "no_response", "on_hold",
+)
+# contacted / follow_up_N of an OPEN enquiry mirror the company's prospect sub-status (never set by hand).
+DRIVEN_DEAL_STATUSES: tuple[str, ...] = ("open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
+HAND_DEAL_STATUSES: tuple[str, ...] = ("meeting_scheduled", "proposal_sent", "won", "lost", "no_response", "on_hold")
+PERSON_ROLES: tuple[str, ...] = ("decision_maker", "hr_ld", "influencer", "other")
+PERSON_ROLE_LABELS: dict[str, str] = {
+    "decision_maker": "Decision maker", "hr_ld": "HR / L&D", "influencer": "Influencer", "other": "Other",
+}

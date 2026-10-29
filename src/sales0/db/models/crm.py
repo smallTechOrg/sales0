@@ -57,6 +57,24 @@ class Company(Base):
     linkedin_url: Mapped[str | None] = mapped_column(String(500))
     city: Mapped[str | None] = mapped_column(String(100))
     notes: Mapped[str | None] = mapped_column(Text)
+    # q17 company model: the lifecycle of the ONE company record. ``stage`` NULL = a known company that is not in the
+    # pipeline yet (e.g. only the employer of a contact). ``off_ramp`` set = the company is closed (stage/sub_status
+    # then hold where it stood, ``resume_*`` what a reopen restores). Maintained by ``services.crm.lifecycle`` (the
+    # only writer) from the prospect / lead / client ledger rows - see db/company_projection.py.
+    stage: Mapped[str | None] = mapped_column(String(10), index=True)
+    sub_status: Mapped[str | None] = mapped_column(String(20))
+    off_ramp: Mapped[str | None] = mapped_column(String(20), index=True)
+    off_ramp_reason: Mapped[str | None] = mapped_column(String(200))
+    off_ramp_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    resume_stage: Mapped[str | None] = mapped_column(String(10))
+    resume_sub_status: Mapped[str | None] = mapped_column(String(20))
+    # 'app' = a person set it (a sheet never overwrites it); 'sheet' = it came from the sheet
+    stage_source: Mapped[str] = mapped_column(String(6), nullable=False, default="app", server_default="app")
+    stage_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # {"kind": "reply"|"enquiry"|"date", "detail": "...", "at": iso, "dismissed_at": iso|null}: "suggested: Lead" hint
+    lead_suggestion: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
+    # plain id (no FK, see migration q17): the team member who owns the account
+    owner_member_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc, onupdate=now_utc)
 

@@ -101,6 +101,10 @@ class Enquiry(Base):
         server_default="pending_review",
     )
     stage: Mapped[str | None] = mapped_column(String(30))
+    # q17: the deal status of an ACCEPTED enquiry (Active Enquiries sheet vocabulary: open, contacted, follow_up_1/2,
+    # final_follow_up, meeting_scheduled, proposal_sent, won, lost, no_response, on_hold). NULL until accepted.
+    deal_status: Mapped[str | None] = mapped_column(String(20), index=True)
+    deal_status_source: Mapped[str | None] = mapped_column(String(6))  # 'app' | 'sheet' | 'driven'
 
     triage_status: Mapped[str] = mapped_column(
         String(10), nullable=False, default="pending", server_default="pending"
