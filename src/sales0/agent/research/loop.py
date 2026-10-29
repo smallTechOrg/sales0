@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -40,7 +41,7 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent.research")
 
-PROMPT_VERSION = "research-v1"  # bump on any prompt or schema edit
+PROMPT_VERSION = "research-v2"  # bump on any prompt or schema edit (v2: own records + LinkedIn page + web findings)
 TOOL_NAME = "research_step"
 TOOL_DESCRIPTION = (
     "Choose the next research action: fetch_url (one page on the company's own site) or finish "
@@ -75,6 +76,35 @@ def render_system() -> str:
 
 def render_user(**ctx: Any) -> str:
     return _env().get_template("research_user.md.j2").render(**ctx).strip() + "\n"
+
+
+SPLIT_MARKER = "\n<!-- volatile -->\n"
+
+
+def user_content(text: str, *, cache: bool) -> str | list[dict[str, Any]]:
+    """The user turn. The stable head (task, records, other sources, offerings) comes first so that, on a
+    multi-step run, it can be a cached prefix; the per-step tail (pages so far, budget, notes, links) follows."""
+    head, sep, tail = text.partition(SPLIT_MARKER)
+    if not sep:
+        return text
+    if not cache:
+        return head.rstrip() + "\n\n" + tail.lstrip()
+    return [
+        {"type": "text", "text": head.rstrip() + "\n", "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": tail.lstrip() or "(continue)"},
+    ]
+
+
+@dataclass(frozen=True)
+class ExtraSource:
+    """Text the research agent did not fetch itself: the LinkedIn company page (laptop worker) or web search
+    findings. Always untrusted DATA. ``url`` may be cited as a source."""
+
+    kind: str  # linkedin_page | web_search
+    label: str
+    url: str | None
+    text: str
+    citable: tuple[str, ...] = ()
 
 
 def _normalise_start_url(website_url: str | None) -> str | None:
@@ -116,9 +146,9 @@ def _error_row(exc: Exception, enquiry_id: int | None, now: datetime) -> LlmCall
 
 
 def _finalise_brief(
-    brief: CompanyBrief, fetched: list[str], offering_names: list[str]
+    brief: CompanyBrief, fetched: list[str], offering_names: list[str], citable: list[str] | None = None
 ) -> CompanyBrief:
-    fetched_set = set(fetched)
+    fetched_set = set(fetched) | set(citable or [])
     sources = [s for s in dict.fromkeys(brief.sources) if s in fetched_set] or list(
         fetched
     )
@@ -131,7 +161,7 @@ def _finalise_brief(
             "sources": sources,
             "matched_offering_name": matched,
             "personalisation_hooks": brief.personalisation_hooks[:3],
-            "limited_information": brief.limited_information or not fetched,
+            "limited_information": brief.limited_information or not (fetched or citable),
         }
     )
 
@@ -159,6 +189,7 @@ def run_research(
     limits: ResearchLimits | None = None,
     enquiry_id: int | None = None,
     clock: Callable[[], float] = time.monotonic,
+    extra_sources: list[ExtraSource] | None = None,
 ) -> ResearchResult:
     """Research one company; one ``llm_calls`` row (feature="research") per Anthropic request.
 
@@ -168,6 +199,8 @@ def run_research(
     """
     limits = limits or ResearchLimits()
     offering_names = list(offerings or [])
+    extras = [e for e in (extra_sources or []) if e.text.strip()]
+    citable = list(dict.fromkeys(u for e in extras for u in ((e.url,) if e.url else ()) + e.citable))
     client = llm or get_llm_client()
     owns_fetcher = fetcher is None
     fetcher = fetcher or SafeFetcher(
@@ -191,7 +224,8 @@ def run_research(
 
     if start_url is None:
         notes.append(
-            "No usable website URL was provided: nothing can be fetched; finish with what the context note supports."
+            "No usable website URL was provided: nothing can be fetched; finish with what our records and the other "
+            "sources support."
         )
 
     def available_links() -> list[str]:
@@ -223,12 +257,13 @@ def run_research(
                 notes=notes[-6:],
                 pages=pages,
                 links=[] if must_finish else available_links(),
+                extras=[{"kind": e.kind, "label": e.label, "url": e.url or "", "text": e.text} for e in extras],
             )
             notes = []  # one-shot notes
             req = StructuredRequest(
                 feature="research",
                 system=render_system(),
-                messages=[{"role": "user", "content": user}],
+                messages=[{"role": "user", "content": user_content(user, cache=start_url is not None)}],
                 tool_name=TOOL_NAME,
                 tool_description=TOOL_DESCRIPTION,
                 input_schema=action_tool_schema(allow_fetch=not must_finish),
@@ -292,7 +327,7 @@ def run_research(
 
             if act.action == "finish":
                 assert act.brief is not None
-                brief = _finalise_brief(act.brief, fetched, offering_names)
+                brief = _finalise_brief(act.brief, fetched, offering_names, citable)
                 steps.append(StepRecord(step, "finish", observation="brief delivered"))
                 break
 
@@ -393,7 +428,7 @@ def run_research(
             error
             or "research ended without a brief (step/time budget exhausted or invalid model output)"
         )
-        brief = _fallback_brief(company_name, page_urls)
+        brief = _fallback_brief(company_name, page_urls + citable)
     pages_fetched = len(pages)
     db_session.flush()
     log.info(
