@@ -33,7 +33,7 @@ from sales0.services.team.connections import connection_status
 
 log = get_logger("sales0.outreach.drafting")
 
-PROMPT_VERSION = "draft-v1"  # bump on any prompt or schema edit
+PROMPT_VERSION = "draft-v2"  # bump on any prompt or schema edit (v2: optional account summary)
 TOOL_NAME = "write_email"
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 FATAL_LLM_ERRORS = (LLMAuthError, LLMModelNotFound)
@@ -165,6 +165,7 @@ def generate_draft(
     prospect_id: int | None = None,
     company_id: int | None = None,
     now: datetime | None = None,
+    account_summary: str | None = None,
 ) -> OutreachMessage:
     """Create an ``OutreachMessage`` in state ``draft`` owned by ``member`` (flushed; caller commits).
 
@@ -190,7 +191,7 @@ def generate_draft(
     t_subject = templates.render(template.subject, values).text if template else ""
     t_body = templates.render(template.body, values).text if template else ""
     facts, hooks = _brief_parts(brief)
-    source_text = "\n".join([requirement, t_subject, t_body, *facts, *hooks, offering.name if offering else ""])
+    source_text = "\n".join([requirement, t_subject, t_body, *facts, *hooks, offering.name if offering else "", account_summary or ""])
 
     client = llm or get_llm_client()
     feedback: list[str] = []
@@ -200,6 +201,7 @@ def generate_draft(
             sender_name=member.name, first_name=first_name, company=company, requirement=requirement[:4000],
             offering=offering.name if offering else None, hooks=hooks, brief_facts=facts,
             template_subject=t_subject, template_body=t_body, feedback=feedback,
+            account_summary=(account_summary or "").strip()[:3000],
         )  # fmt: skip
         req = StructuredRequest(
             feature="drafting",

@@ -374,9 +374,14 @@ def update(
         if new != p.name:
             p.name = new
             changed.append("name")
-    if notes is not UNSET and ((notes or "").strip() or None) != p.notes:
-        p.notes = (notes or "").strip() or None
-        changed.append("notes")
+    if notes is not UNSET and (notes or "").strip():
+        # q15: the single notes field became dated, authored entries; a text passed here is added as a new note
+        # (unless it repeats the newest one). ``prospects.notes`` is legacy and no longer written.
+        from sales0.services.crm import notes as notes_mod
+
+        newest = notes_mod.latest_texts(db, p.id, limit=1)
+        if not newest or newest[0][2] != notes.strip():
+            notes_mod.add_note(db, p.id, notes, actor=actor, now=now)
     if company is not UNSET:
         comp = companies.get_or_create_row(db, company, now=now) if company else None
         if (comp.id if comp else None) != p.company_id:
@@ -630,11 +635,15 @@ def create_manual(
     p = Prospect(
         kind="company_enquiry" if comp is not None else "outreach_person", name=clean, linkedin_profile_id=profile_id,
         company_id=comp.id if comp else None, contact_id=contact_row.id if contact_row else None, stage="new",
-        stage_source="app", status="open", source=src, notes=(notes or "").strip() or None, actor=actor.label[:80],
+        stage_source="app", status="open", source=src, actor=actor.label[:80],
         actor_member_id=actor.member_id, created_at=stamp, updated_at=stamp,
     )
     db.add(p)
     db.flush()
+    if (notes or "").strip():  # q15: notes are dated, authored entries (prospects.notes is legacy, read-only)
+        from sales0.services.crm import notes as notes_mod
+
+        notes_mod.add_note(db, p.id, notes, actor=actor, now=stamp)
     tracked_now = False
     if profile_id:
         prof = db.get(LinkedinProfile, profile_id)

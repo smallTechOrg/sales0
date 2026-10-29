@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import case, delete, func, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from sales0.clock import ensure_utc, local_day_bounds_utc, local_now, utcnow
@@ -240,7 +240,19 @@ def page_loads_today(db: Session, now: datetime | None = None, account_id: int |
             ScrapeRun.started_at >= start, ScrapeRun.started_at < end, mine
         )
     )
-    return int(total or 0)
+    # q15: the laptop worker's one-page company-page visits (prospect research) count in the same daily total.
+    from sales0.db.models import WorkerTask
+
+    account = _account(db, account_id)
+    first = linkedin_accounts.default_account_id(db) == account
+    task_account = WorkerTask.linkedin_account_id == account
+    tasks = db.scalar(
+        select(func.coalesce(func.sum(WorkerTask.page_loads), 0)).where(
+            WorkerTask.claimed_at >= start, WorkerTask.claimed_at < end,
+            or_(task_account, WorkerTask.linkedin_account_id.is_(None)) if first else task_account,
+        )
+    )
+    return int(total or 0) + int(tasks or 0)
 
 
 def watch_day_counts(db: Session, now: datetime | None = None, account_id: int | None = None) -> tuple[int, int]:

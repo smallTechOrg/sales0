@@ -26,6 +26,7 @@ from sales0.db.models import (
     Prospect,
     TeamMember,
     TimelineEvent,
+    WorkerTask,
 )
 from sales0.services._common import now_or, not_found
 from sales0.services.crm import _keys, timeline
@@ -334,7 +335,7 @@ def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: 
         raise invalid("merge_self", "Choose two different companies to merge.")
     keep, drop = _get(db, keep_id), _get(db, drop_id)
     stamp = now_or(now)
-    for model in (Prospect, Lead, Client, Contact, Enquiry, OutreachMessage, Competitor, TimelineEvent):
+    for model in (Prospect, Lead, Client, Contact, Enquiry, OutreachMessage, Competitor, TimelineEvent, WorkerTask):
         db.execute(update(model).where(model.company_id == drop.id).values(company_id=keep.id))
     have = {(ln.contact_id) for ln in db.scalars(select(ContactLink).where(ContactLink.entity_type == "company", ContactLink.entity_id == keep.id))}
     for ln in list(db.scalars(select(ContactLink).where(ContactLink.entity_type == "company", ContactLink.entity_id == drop.id))):
