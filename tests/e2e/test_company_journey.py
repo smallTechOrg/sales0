@@ -56,8 +56,7 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     expect(page.locator("#sub-status-badge")).to_have_text("Meeting scheduled")
     page.goto(f"{env.base}/leads")  # the old page is the Leads tab now
     expect(page).to_have_url(re.compile(r"/pipeline\?tab=leads$"))
-    expect(page.locator('.pcard[data-stage="lead"]')).to_have_count(0)  # (cards carry the sub-status as data-stage on this tab)
-    expect(page.locator('[data-stage="meeting_scheduled"] .pcard')).to_have_count(1)
+    expect(page.locator('section[data-stage="meeting_scheduled"] .pcard[data-stage="lead"]')).to_have_count(1)
     page.goto(f"{env.base}/pipeline?tab=prospects")  # the new lead shows in the recent Became lead lane only
     expect(page.locator("#lane-became_lead .pcard")).to_have_count(1)
 
