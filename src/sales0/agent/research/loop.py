@@ -75,6 +75,7 @@ def render_system() -> str:
 
 
 def render_user(**ctx: Any) -> str:
+    ctx.setdefault("extras", [])
     return _env().get_template("research_user.md.j2").render(**ctx).strip() + "\n"
 
 

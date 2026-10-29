@@ -55,6 +55,12 @@ def fetcher(pages=PAGES, *, hits=None) -> SafeFetcher:
     )
 
 
+def user_text(req) -> str:
+    """The user turn as one string (research-v2 splits it into a cached head + a per-step tail)."""
+    content = req.messages[0]["content"]
+    return content if isinstance(content, str) else "".join(b["text"] for b in content)
+
+
 def fetch_act(url):
     return {"action": "fetch_url", "url": url, "thought": "look"}
 
@@ -105,7 +111,7 @@ def test_happy_path_two_pages_then_finish():
     )
     assert res.cost_usd_micros == sum(r.cost_usd_micros for r in s.rows)
     # page text reached the model wrapped as data, and the first request offered fetch_url
-    last = llm.requests[-1].messages[0]["content"]
+    last = user_text(llm.requests[-1])
     assert (
         '<page_data url="https://www.acme.test/about"' in last
         and "850 employees in Pune." in last
@@ -144,7 +150,7 @@ def test_step_cap_forces_finish_only_schema_on_last_step():
     )
     assert res.status == "done"
     assert llm.requests[-1].input_schema["properties"]["action"]["enum"] == ["finish"]
-    assert "can NOT fetch" in llm.requests[-1].messages[0]["content"]
+    assert "can NOT fetch" in user_text(llm.requests[-1])
 
 
 def test_cap_exhaustion_without_finish_gives_partial_fallback():
@@ -174,7 +180,7 @@ def test_time_budget_forces_finish():
         clock=lambda: next(ticks),
     )
     assert llm.requests[1].input_schema["properties"]["action"]["enum"] == ["finish"]
-    assert "time budget" in llm.requests[1].messages[0]["content"]
+    assert "time budget" in user_text(llm.requests[1])
     assert res.status == "done"
 
 
@@ -215,7 +221,7 @@ def test_injection_in_page_is_inert_data_and_escaped():
         ],
         f=f,
     )
-    text = llm.requests[1].messages[0]["content"]
+    text = user_text(llm.requests[1])
     assert text.count("</page_data>") == 1  # the page could not close the wrapper
     assert "untrusted" in llm.requests[0].system.lower()
     assert res.steps[1].observation == "refused: off-site URL"
@@ -236,7 +242,7 @@ def test_malformed_model_output_consumes_a_step_and_recovers(bad):
     res, llm, s = go([bad, finish()])
     assert res.status == "done"
     assert [st.action for st in res.steps] == ["invalid", "finish"]
-    assert "was invalid" in llm.requests[1].messages[0]["content"]
+    assert "was invalid" in user_text(llm.requests[1])
     assert len(s.rows) == 2  # both responses billed/logged
 
 
@@ -279,7 +285,7 @@ def test_no_website_url_finishes_with_limited_info():
     )
     assert (
         res.brief.limited_information
-        and "No usable website" in llm.requests[0].messages[0]["content"]
+        and "No usable website" in user_text(llm.requests[0])
     )
     assert llm.requests[0].input_schema["properties"]["action"]["enum"] == ["finish"]
 
