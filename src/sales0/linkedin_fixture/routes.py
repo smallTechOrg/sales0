@@ -289,6 +289,24 @@ def company_posts(request: Request, slug: str) -> Response:
     return _activity_page(request, "company", slug)
 
 
+@router.get("/company/{slug}/", name="fixture_company_page")
+def company_page(request: Request, slug: str) -> Response:
+    """A fake company page (about + recent posts) for the laptop worker's company-page task."""
+    if not _logged_in(request):
+        return _to(request, "fixture_authwall")
+    from sales0.linkedin_fixture import watch
+
+    key = slug.lower()
+    if key == watch.CHECKPOINT_PROFILE:
+        return _to(request, "fixture_checkpoint")
+    if key == watch.RATELIMIT_PROFILE:
+        return _page(request, "ratelimit.html", status_code=429)
+    company = watch.company_page(key)
+    if company is None:
+        return _page(request, "post.html", status_code=404, post=None)
+    return _page(request, "company.html", company=company)
+
+
 @router.get("/voyager/api/search/dash/clusters", name="fixture_voyager_clusters")
 def voyager_clusters(request: Request) -> Response:
     """A background API LinkedIn's search page calls; here it is always throttled."""

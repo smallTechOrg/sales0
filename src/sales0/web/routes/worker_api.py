@@ -58,7 +58,20 @@ def _reply(model: object) -> JSONResponse:
 
 @router.post("/claim", dependencies=[Depends(require_worker)])
 def claim(body: p.ClaimRequest, db: Session = Depends(get_db)) -> JSONResponse:
-    return _reply(worker_service.claim(db, body))
+    answer = worker_service.claim(db, body)
+    if answer.task is None:
+        # Old workers parse ClaimResponse strictly (extra=forbid): never send them the q15 ``task`` key.
+        response = ok(answer.model_dump(mode="json", exclude={"task"}))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    return _reply(answer)
+
+
+@router.post("/tasks/{task_id}/result", dependencies=[Depends(require_worker)])
+def task_result(task_id: int, body: p.TaskResultRequest, db: Session = Depends(get_db)) -> JSONResponse:
+    from sales0.services.research import linkedin_page
+
+    return _reply(linkedin_page.record_result(db, task_id, body))
 
 
 @router.post("/runs/{run_id}/heartbeat", dependencies=[Depends(require_worker)])

@@ -29,6 +29,8 @@ from sales0.worker.client import ServerUnavailable, WorkerApiError, WorkerAuthEr
 log = get_logger("sales0.worker")
 
 SearcherFactory = Callable[[Settings, int], Any]  # (settings, page_load_budget) -> context manager yielding a searcher
+PageReader = Callable[[Any, str], Any]  # (open searcher, "company/<x>") -> object with title / url / text
+CAPABILITIES: list[Any] = ["company_page"]  # q15: one-page LinkedIn company tasks (prospect research)
 MAX_BATCH_BYTES = 700_000  # the hosted body cap is 1 MB; stay well under it
 
 
@@ -36,6 +38,12 @@ def default_searcher_factory(settings: Settings, page_load_budget: int) -> Any:
     from sales0.scraper.search import LinkedInSearcher
 
     return LinkedInSearcher(settings, account=None, page_load_budget=page_load_budget)
+
+
+def default_page_reader(searcher: Any, slug: str) -> Any:
+    from sales0.scraper.company_page import read_company_page
+
+    return read_company_page(searcher, slug)
 
 
 def _cap(value: str | None, limit: int) -> str | None:
@@ -126,6 +134,7 @@ class Worker:
         client: WorkerClient,
         *,
         searcher_factory: SearcherFactory = default_searcher_factory,
+        page_reader: PageReader = default_page_reader,
         sleep: Callable[[float], None] = time.sleep,
         rng: random.Random | None = None,
         stop: threading.Event | None = None,
@@ -133,6 +142,8 @@ class Worker:
         self.settings = settings
         self.client = client
         self.factory = searcher_factory
+        self.page_reader = page_reader
+        self._send_capabilities = True  # dropped (once) when an older hosted app rejects the field
         self.sleep = sleep
         self.rng = rng or random.Random()
         self.stop = stop or threading.Event()
@@ -169,13 +180,57 @@ class Worker:
 
     def poll_once(self) -> bool:
         """Ask for work; run it when there is some. True when a run was executed."""
-        reply = self.client.claim(p.ClaimRequest(worker=self.info))
+        reply = self._claim()
+        if reply.task is not None:
+            self.execute_task(reply.task)
+            return True
         if reply.run is None:
             if reply.reason:
                 log.info("worker_idle", reason=reply.reason)
             return False
         self.execute(reply.run)
         return True
+
+    def _claim(self) -> p.ClaimResponse:
+        if self._send_capabilities:
+            try:
+                return self.client.claim(p.ClaimRequest(worker=self.info, capabilities=list(CAPABILITIES)))
+            except WorkerApiError as exc:
+                if exc.status != 422 or isinstance(exc, WorkerAuthError):
+                    raise
+                self._send_capabilities = False  # an older hosted app: keyword runs only
+                log.warning("worker_capabilities_rejected", message=exc.message[:120])
+        return self.client.claim(p.ClaimRequest(worker=self.info))
+
+    # ------------------------------------------------------------------ one task (q15)
+    def execute_task(self, task: p.ClaimedTask) -> None:
+        """Visit ONE LinkedIn page for the hosted app and upload its text. The browser is opened with a budget of
+        one page load; every safety stop is reported so the hosted app pauses the account."""
+        log.info("worker_task_claimed", task_id=task.task_id, kind=task.kind)
+        searcher: Any = None
+        try:
+            with self.factory(self.settings, 1) as searcher:
+                page = self.page_reader(searcher, task.slug)
+            result = p.TaskResultRequest(
+                outcome="done", title=_cap(getattr(page, "title", None), 300), url=_cap(getattr(page, "url", None), 1000),
+                text=_cap(getattr(page, "text", None), 30_000), page_loads=_loads(searcher),
+            )  # fmt: skip
+        except SessionMissing:
+            result = p.TaskResultRequest(outcome="session_missing")
+        except AccountSafetyStop as stop:
+            result = p.TaskResultRequest(outcome="safety_stop", kind=stop.kind, page_loads=_loads(searcher))
+        except BrowserUnavailable as exc:
+            result = p.TaskResultRequest(outcome="open_failed", error=str(exc)[:300])
+        except ScrapeError as exc:
+            result = p.TaskResultRequest(outcome="page_error", error=str(exc)[:300], page_loads=_loads(searcher))
+        except Exception as exc:  # noqa: BLE001 - never leave the task hanging
+            log.exception("worker_task_crashed", task_id=task.task_id)
+            result = p.TaskResultRequest(outcome="crashed", error=type(exc).__name__)
+        try:
+            done = self.client.task_result(task.task_id, result)
+            log.info("worker_task_completed", task_id=task.task_id, status=done.status)
+        except (ServerUnavailable, WorkerApiError) as exc:
+            log.error("worker_task_result_failed", task_id=task.task_id, error=type(exc).__name__)
 
     # ------------------------------------------------------------------ one run
     def execute(self, run: p.ClaimedRun) -> None:

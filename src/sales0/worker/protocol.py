@@ -49,6 +49,9 @@ class LinkedInReport(_Strict):
 class ClaimRequest(_Strict):
     worker: WorkerInfo
     linkedin: LinkedInReport = LinkedInReport()
+    # q15 capability negotiation: task kinds this worker can run besides keyword runs (e.g. "company_page").
+    # Old workers omit it and are never handed a task; a task is never sent to a worker that did not ask.
+    capabilities: list[Literal["company_page"]] = Field(default_factory=list, max_length=8)
 
 
 class PlannedKeyword(_Strict):
@@ -76,11 +79,40 @@ class ClaimedRun(_Strict):
     page_loads_so_far: int = 0
 
 
+class ClaimedTask(_Strict):
+    """A one-page task (q15). ``slug`` is ``company/<x>``: the worker builds the URL on ITS OWN LinkedIn base
+    (live or fixture), so the hosted app can never point the logged-in browser at an arbitrary URL."""
+
+    task_id: int
+    kind: Literal["company_page"]
+    slug: str = Field(min_length=9, max_length=200)
+
+
 class ClaimResponse(_Strict):
     run: ClaimedRun | None = None
     reason: str | None = None  # why nothing was handed out (cool-down, cap, nothing queued)
     poll_s: float | None = None
     protocol: int = PROTOCOL_VERSION
+    # q15: only ever present for a worker that sent ``capabilities``; the hosted app OMITS the key otherwise, so an
+    # old worker (strict model, extra=forbid) keeps parsing the answer.
+    task: ClaimedTask | None = None
+
+
+TaskOutcome = Literal["done", "safety_stop", "session_missing", "open_failed", "page_error", "crashed"]
+
+
+class TaskResultRequest(_Strict):
+    outcome: TaskOutcome
+    kind: str | None = Field(default=None, max_length=20)  # safety kind
+    title: str | None = Field(default=None, max_length=300)
+    url: str | None = Field(default=None, max_length=1000)
+    text: str | None = Field(default=None, max_length=30_000)
+    page_loads: int | None = Field(default=None, ge=0)
+    error: str | None = Field(default=None, max_length=300)
+
+
+class TaskResultResponse(_Strict):
+    status: str
 
 
 class HeartbeatRequest(_Strict):

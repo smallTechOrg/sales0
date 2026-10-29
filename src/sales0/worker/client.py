@@ -63,7 +63,10 @@ class WorkerClient:
         self._http.close()
 
     # ------------------------------------------------------------------ transport
-    def _call(self, method: str, path: str, body: BaseModel | None, model: type[T], *, budget_s: float | None = None) -> T:
+    def _call(
+        self, method: str, path: str, body: BaseModel | None, model: type[T], *, budget_s: float | None = None,
+        exclude: set[str] | None = None,
+    ) -> T:
         budget = self._outage_budget_s if budget_s is None else budget_s
         started = self._clock()
         delay = 1.0
@@ -71,7 +74,7 @@ class WorkerClient:
         while True:
             attempt += 1
             try:
-                response = self._send(method, path, body)
+                response = self._send(method, path, body, exclude)
             except httpx.TransportError as exc:
                 failure = f"{type(exc).__name__}"
             else:
@@ -89,12 +92,12 @@ class WorkerClient:
             self._sleep(delay)
             delay = min(delay * 2, self._backoff_max_s)
 
-    def _send(self, method: str, path: str, body: BaseModel | None) -> httpx.Response:
+    def _send(self, method: str, path: str, body: BaseModel | None, exclude: set[str] | None = None) -> httpx.Response:
         headers = dict(self._headers)
         content: bytes | None = None
         if body is not None:
             headers["Content-Type"] = "application/json"
-            content = body.model_dump_json().encode("utf-8")
+            content = body.model_dump_json(exclude=exclude).encode("utf-8")
         return self._http.request(method, self._base + path, headers=headers, content=content)
 
     @staticmethod
@@ -114,8 +117,13 @@ class WorkerClient:
 
     # ------------------------------------------------------------------ endpoints
     def claim(self, request: p.ClaimRequest) -> p.ClaimResponse:
-        # Idle polling: one quick retry only; the poll loop owns the long backoff.
-        return self._call("POST", "/api/worker/claim", request, p.ClaimResponse, budget_s=5.0)
+        # Idle polling: one quick retry only; the poll loop owns the long backoff. No capabilities = the exact
+        # pre-q15 body (an older hosted app rejects unknown fields).
+        exclude = None if request.capabilities else {"capabilities"}
+        return self._call("POST", "/api/worker/claim", request, p.ClaimResponse, budget_s=5.0, exclude=exclude)
+
+    def task_result(self, task_id: int, request: p.TaskResultRequest) -> p.TaskResultResponse:
+        return self._call("POST", f"/api/worker/tasks/{task_id}/result", request, p.TaskResultResponse)
 
     def heartbeat(self, run_id: int, request: p.HeartbeatRequest) -> p.HeartbeatResponse:
         return self._call("POST", f"/api/worker/runs/{run_id}/heartbeat", request, p.HeartbeatResponse, budget_s=20.0)

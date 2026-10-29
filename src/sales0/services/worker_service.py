@@ -202,6 +202,15 @@ def claim(db: Session, req: p.ClaimRequest, *, now: datetime | None = None) -> p
             poll_s=poll,
         )
 
+    if "company_page" in req.capabilities:  # q15: a one-page task first (a user is waiting on the prospect page)
+        from sales0.services.research import linkedin_page
+
+        task = linkedin_page.claim_next(db, worker.name, now)
+        if task is not None:
+            worker.last_seen_at = now
+            db.commit()
+            return p.ClaimResponse(task=task, poll_s=poll)
+
     run = db.scalar(select(ScrapeRun).where(ScrapeRun.status == "queued").order_by(ScrapeRun.id).limit(1))
     if run is None:
         db.commit()

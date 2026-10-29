@@ -75,3 +75,25 @@ def add_watch_post(slug: str, text: str, *, kind: str = "in", name: str = "Asha 
 def reset_watch_posts() -> None:
     with _lock:
         _extra.clear()
+
+
+# Company pages (prospect research: the laptop worker reads ONE company page). Synthetic data only.
+COMPANY_PAGES: dict[str, dict[str, object]] = {
+    "watch-brightfield": {
+        "name": "Brightfield Pharma",
+        "tagline": "Medicines for everyday health",
+        "industry": "Pharmaceutical Manufacturing",
+        "location": "Hyderabad, Telangana",
+        "size": "1,001-5,000 employees",
+        "about": "Brightfield Pharma makes generic and branded medicines for 30 markets. Our analytics team is "
+                 "building a data and AI practice to speed up quality control and supply planning.",
+        "posts": [
+            "Brightfield Pharma opens a new quality-control lab in Hyderabad with 120 new roles.",
+            "We are looking for a training partner for a data analytics upskilling programme for 25 analysts.",
+        ],
+    },
+}
+
+
+def company_page(slug: str) -> dict[str, object] | None:
+    return COMPANY_PAGES.get(slug.lower())
