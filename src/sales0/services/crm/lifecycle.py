@@ -185,14 +185,16 @@ def mark_lead(db: Session, company_id: int, *, stage: str = "meeting_scheduled",
 
 
 def set_lead_status(db: Session, company_id: int, sub_status: str, *, actor: Actor = TEAM, proposal_sent_on: date | None = None,
-                    meeting_at: datetime | None = None, now: datetime | None = None) -> Company:
+                    meeting_at: datetime | None = None, value_estimate: int | None = None, outcome_note: str | None = None,
+                    now: datetime | None = None) -> Company:
     if sub_status not in COMPANY_SUB_STATUSES["lead"]:
         raise invalid("stage_invalid", "Choose a valid lead status.")
     co = company_row(db, company_id)
     ld = open_lead_of(db, company_id)
     if ld is None:
         raise DomainError("stage_invalid", "This company is not a lead.", 409)
-    leads.move_stage(db, ld.id, sub_status, proposal_sent_on=proposal_sent_on, meeting_at=meeting_at, actor=actor, now=now)
+    leads.move_stage(db, ld.id, sub_status, proposal_sent_on=proposal_sent_on, meeting_at=meeting_at,
+                     value_estimate=value_estimate, outcome_note=outcome_note, actor=actor, now=now)
     _refresh(db, co)
     return co
 

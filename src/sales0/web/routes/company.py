@@ -167,14 +167,15 @@ def add_to_pipeline(request: Request, company_id: PathId, db: Session = Depends(
 @router.post("/companies/{company_id}/status", response_model=None)
 def set_status(
     request: Request, company_id: PathId, sub_status: str = Form(""), proposal_sent_on: str = Form(""), meeting_at: str = Form(""),
-    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+    value_estimate: str = Form(""), outcome_note: str = Form(""), db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def go() -> str:
         co = lifecycle.company_row(db, company_id)
         if co.stage == "lead":
             lifecycle.set_lead_status(db, company_id, sub_status, actor=actor_of(member),
                                       proposal_sent_on=parse_date(proposal_sent_on, label="proposal date"),
-                                      meeting_at=parse_local_datetime(meeting_at))
+                                      meeting_at=parse_local_datetime(meeting_at), value_estimate=opt_int(value_estimate, "value"),
+                                      outcome_note=opt_str(outcome_note))
         else:
             lifecycle.set_prospect_status(db, company_id, sub_status, actor=actor_of(member))
         return f"Now {lifecycle.sub_label(sub_status)}."

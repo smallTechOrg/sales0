@@ -39,7 +39,7 @@ from sales0.db.models import (
     Prospect,
     TimelineEvent,
 )
-from sales0.db.models.crm import FollowUp
+from sales0.db.models.crm import Company, FollowUp
 from sales0.integrations.gmail.auth import SCOPES, StoredToken  # noqa: F401 - parity with the replies journey
 from sales0.integrations.gmail.client import FakeGmailClient
 from sales0.jobs import sheet_sync_job
@@ -162,9 +162,10 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     page.locator(f"#enquiry-{first}").get_by_role("button", name="Accept", exact=True).click()
     expect(page.locator(f"#enquiry-{first}")).to_have_count(0)
     settled(page)
-    page.goto(f"{env.base}/pipeline?tab=prospects")
+    page.goto(f"{env.base}/pipeline?stage=prospect")
     expect(page.locator("#pipeline-tabs .tabs__tab--active .count-pill")).to_have_text("1")
-    expect(page.locator('.pcard[data-stage="new"]')).to_have_count(1)
+    page.goto(f"{env.base}/pipeline")
+    expect(page.locator('.pcard[data-stage="prospect"]')).to_have_count(1)
 
     # ---- Accept #2 (same author): still ONE prospect, both enquiries linked (idempotent)
     page.goto(f"{env.base}/inbox")
@@ -181,12 +182,15 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
         kinds = [t.kind for t in db.execute(select(TimelineEvent).where(TimelineEvent.prospect_id == pid).order_by(TimelineEvent.id)).scalars()]
         assert kinds.count("created") == 1 and kinds.count("enquiry_linked") == 2
         prospect_name = prospects[0].name
-    page.goto(f"{env.base}/pipeline?tab=prospects")
+        company_pk = prospects[0].company_id
+        company_name = db.scalar(select(Company.name).where(Company.id == company_pk))
+    page.goto(f"{env.base}/pipeline")
     expect(page.locator(".pcard")).to_have_count(1)
-    page.locator(f'a[href="/pipeline/prospects/{pid}"]').first.click()
-    expect(page.locator("#prospect-title")).to_have_text(prospect_name)
-    expect(page.locator("#stage-badge")).to_have_text("New")
-    expect(page.locator("#linked-enquiries .reply-item")).to_have_count(2)
+    page.locator(f'a[href="/companies/{company_pk}"]').first.click()
+    expect(page.locator("#company-title")).to_have_text(company_name)
+    expect(page.locator("#stage-badge")).to_have_text("Prospect")
+    expect(page.locator("#sub-status-badge")).to_have_text("New")
+    expect(page.locator("#company-enquiries .reply-item")).to_have_count(2)
     expect(page.locator("#tracked-state")).to_have_text("Tracked")
 
     # ---- Add a note
@@ -227,11 +231,11 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     assert len(env.gmail.sent) == 1
 
     # ---- The prospect is Contacted and the follow-ups are scheduled (+3 / +7 / +14 days)
-    page.goto(f"{env.base}/pipeline/prospects/{pid}")
-    expect(page.locator("#stage-badge")).to_have_text("Contacted")
+    page.goto(f"{env.base}/companies/{company_pk}")
+    expect(page.locator("#sub-status-badge")).to_have_text("Contacted")
     expect(page.locator("#follow-ups .due-row")).to_have_count(3)
     assert "email_sent" in timeline_kinds(page)
-    expect(page.locator("#prospect-outreach")).to_contain_text("Sent")
+    expect(page.locator("#company-outreach")).to_contain_text("Sent")
     with get_sessionmaker()() as db:
         fus = db.execute(select(FollowUp).where(FollowUp.prospect_id == pid).order_by(FollowUp.due_on)).scalars().all()
         assert [f.kind for f in fus] == ["follow_up_1", "follow_up_2", "final_follow_up"]
@@ -250,8 +254,8 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     expect(due).to_contain_text(prospect_name)
     expect(due).to_contain_text("Call the L&D head")
     # the Due filter on the list finds it too
-    page.goto(f"{env.base}/pipeline?tab=prospects&due=today")
-    expect(page.locator("#pipeline-body")).to_contain_text(prospect_name)
+    page.goto(f"{env.base}/pipeline?layout=list")
+    expect(page.locator("#pipeline-body")).to_contain_text(company_name)
 
     # ---- A fake human reply (interested) -> real poller + real Haiku -> Lead "Meeting scheduled"
     with get_sessionmaker()() as db:
@@ -266,40 +270,39 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     with get_sessionmaker()() as db:
         reply = db.execute(select(OutreachReply)).scalar_one()
         assert reply.kind == "human" and reply.intent == "interested"
+        assert db.execute(select(func.count()).select_from(Lead)).scalar_one() == 0  # the app only SUGGESTS a lead
+    page.goto(f"{env.base}/companies/{company_pk}")
+    expect(page.locator("#stage-badge")).to_have_text("Prospect")
+    expect(page.locator("#company-outreach")).to_contain_text("Interested")
+    expect(page.locator("#lead-suggestion")).to_contain_text("Suggested: Lead")
+    assert "reply_received" in set(timeline_kinds(page))
+    page.locator("#lead-suggestion").get_by_role("button", name="Mark as lead").click()  # a person decides
+    expect(page.locator("#stage-badge")).to_have_text("Lead")
+    expect(page.locator("#sub-status-badge")).to_have_text("Meeting scheduled")
+    with get_sessionmaker()() as db:
         lead = db.execute(select(Lead)).scalar_one()
         assert lead.stage == "meeting_scheduled" and lead.prospect_id == pid
         lead_id = lead.id
-    page.goto(f"{env.base}/pipeline/prospects/{pid}")
-    expect(page.locator("#status-badge")).to_contain_text("Converted")
-    expect(page.locator("#prospect-replies")).to_contain_text("Interested")
-    assert {"reply_received", "lead_created"} <= set(timeline_kinds(page))
-    page.locator('#timeline li[data-kind="lead_created"] a').click()  # the timeline links to the new lead
-    expect(page).to_have_url(re.compile(rf"/pipeline/leads/{lead_id}$"))
-    expect(page.locator("#stage-badge")).to_have_text("Meeting scheduled")
+    assert "lead_created" in set(timeline_kinds(page))
 
-    # ---- Proposal sent (date recorded on the origin enquiry) -> Won -> Client
+    # ---- Proposal sent (date recorded on the origin enquiry) -> an enquiry marked Won -> Client
     page.select_option("#lead-stage", label="Proposal sent")
     page.fill("#lead-value", "250000")
     page.get_by_role("button", name="Update lead").click()
-    expect(page.locator("#stage-badge")).to_have_text("Proposal sent")
+    expect(page.locator("#sub-status-badge")).to_have_text("Proposal sent")
     with get_sessionmaker()() as db:
         assert db.get(Lead, lead_id).proposal_sent_on == today
         assert db.execute(select(Enquiry.date_proposal_sent).where(Enquiry.prospect_id == pid, Enquiry.date_proposal_sent.is_not(None))).first()
-    page.select_option("#lead-stage", label="Won")
-    page.get_by_role("button", name="Update lead").click()
-    expect(page.locator("#stage-badge")).to_have_text("Won")
-    expect(page.locator("#client-created")).to_contain_text("Client created")
+    page.locator(f"#enquiry-status-form-{first}").get_by_role("button", name="Won").click()
+    expect(page.locator("#stage-badge")).to_have_text("Client")
     with get_sessionmaker()() as db:
         client = db.execute(select(Client)).scalar_one()
         assert client.lead_id == lead_id and client.status == "active"
-        client_id = client.id
-    page.locator("#client-created a").click()
-    expect(page).to_have_url(re.compile(rf"/pipeline/clients/{client_id}$"))
-    page.goto(f"{env.base}/pipeline?tab=clients")
+    page.goto(f"{env.base}/pipeline?stage=client")
     expect(page.locator("#pipeline-tabs .tabs__tab--active .count-pill")).to_have_text("1")
 
     # ---- The timeline lists every step with timestamps
-    page.goto(f"{env.base}/pipeline/prospects/{pid}")
+    page.goto(f"{env.base}/companies/{company_pk}")
     kinds = set(timeline_kinds(page))
     assert {"created", "enquiry_linked", "note", "email_sent", "follow_up_added", "reply_received", "lead_created"} <= kinds
     assert page.locator("#timeline li time[datetime]").count() == page.locator("#timeline li[data-kind]").count() > 8
@@ -323,9 +326,10 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
         cells = page.locator(f'#sync-tabs tr[data-tab="{tab}"] td')
         assert cells.nth(2).inner_text() == "0" and cells.nth(3).inner_text() == "0" and cells.nth(5).inner_text() == "0", tab  # added/updated/removed
     # the sheet's people are in the Pipeline, marked "Synced from sheet"; its competitors and groups on their page
-    page.goto(f"{env.base}/pipeline?tab=prospects&q=New+Person")
+    page.goto(f"{env.base}/pipeline?q=New+Person")
     expect(page.locator(".pcard")).to_have_count(1)
-    expect(page.locator(".pcard")).to_contain_text("Synced from sheet")
+    page.locator(".pcard h3 a").click()
+    expect(page.locator("#sheet-lock")).to_contain_text("Synced from sheet")
     page.goto(f"{env.base}/competitors")
     expect(page.locator("#competitor-list")).to_contain_text("Rival One")
     expect(page.locator("#competitor-list")).to_contain_text("Synced from sheet")
@@ -405,8 +409,6 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
 
 
 def _company_id(prospect_name: str) -> int:
-    from sales0.db.models.crm import Company
-
     with get_sessionmaker()() as db:
         row = db.execute(select(Company.id).order_by(Company.id)).first()
         assert row is not None, f"no company for {prospect_name}"
