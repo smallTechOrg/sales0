@@ -1,4 +1,10 @@
-"""Follow-up reminders: schedule on contact, due-today panel, complete / snooze / custom / cancel."""
+"""Follow-up reminders: schedule on contact, due-today panel, complete (with the channel) / reschedule / custom / cancel.
+
+The three auto reminders (Follow-up 1, 2, Final) exist from the first contact on, each with an editable date. Before
+the first contact they are only a PLAN (``plan``: contact day + SALES0_FOLLOWUP_DAYS_*, shown in the Log contact form,
+editable there); they become rows when the contact is logged (or an email is sent). Assumed: planned dates are not
+stored before contact - the agent adjusts them in the Log contact form or inline afterwards.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,7 @@ from sqlalchemy.orm import Session
 from sales0.clock import local_today
 from sales0.config import get_settings
 from sales0.db.models import Flag, FollowUp, Lead, Prospect
+from sales0.db.models.enums_crm import FOLLOW_UP_CHANNELS
 from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
 from sales0.services.crm import timeline
@@ -23,6 +30,32 @@ KIND_LABELS = {
     "custom": "Follow-up",
 }
 _OPEN = (FollowUp.done_at.is_(None), FollowUp.cancelled_at.is_(None))
+AUTO_KINDS = ("follow_up_1", "follow_up_2", "final_follow_up")
+CHANNEL_LABELS = {"whatsapp": "WhatsApp", "linkedin": "LinkedIn", "email": "Email", "call": "Call"}
+assert tuple(CHANNEL_LABELS) == FOLLOW_UP_CHANNELS
+
+
+def check_channel(channel: str | None, *, required: bool = False) -> str | None:
+    """A valid channel key (lowercased) or None; ``followup_invalid`` otherwise."""
+    value = (channel or "").strip().lower() or None
+    if value is None and required:
+        raise DomainError("followup_invalid", "Choose how it was done: WhatsApp, LinkedIn, Email or Call.", 400)
+    if value is not None and value not in CHANNEL_LABELS:
+        raise DomainError("followup_invalid", "Choose how it was done: WhatsApp, LinkedIn, Email or Call.", 400)
+    return value
+
+
+def _check_date(d: object) -> date:
+    if not isinstance(d, date) or isinstance(d, datetime) or not (2000 <= d.year <= 2100):
+        raise DomainError("followup_invalid", "Choose a valid date for the follow-up.", 400)
+    return d
+
+
+def plan(contact_day: date) -> list[tuple[str, str, date]]:
+    """(kind, label, due date) of the three auto reminders for a contact on ``contact_day`` (settings offsets)."""
+    s = get_settings()
+    days = (s.followup_days_1, s.followup_days_2, s.followup_days_final)
+    return [(k, KIND_LABELS[k], contact_day + timedelta(days=n)) for k, n in zip(AUTO_KINDS, days, strict=True)]
 
 
 def _today(now: datetime | None = None) -> date:
@@ -34,6 +67,8 @@ def _view(f: FollowUp, who: str, today: date) -> FollowUpView:
         id=f.id, prospect_id=f.prospect_id, lead_id=f.lead_id, who=who, kind=f.kind,
         kind_label=KIND_LABELS.get(f.kind, f.kind), due_on=f.due_on, note=f.note,
         overdue=(f.done_at is None and f.cancelled_at is None and f.due_on < today),
+        auto=bool(f.auto), done=f.done_at is not None, done_at=f.done_at, channel=f.channel,
+        channel_label=CHANNEL_LABELS.get(f.channel or "", None),
     )
 
 
@@ -83,8 +118,11 @@ def _get(db: Session, follow_up_id: int) -> FollowUp:
     return f
 
 
-def schedule_for_contact(db: Session, prospect_id: int, contacted_at: datetime, *, now: datetime | None = None) -> list[FollowUpView]:
-    """The three reminders (calendar days from the contact date). No-op with ``no_follow_up`` or open auto reminders."""
+def schedule_for_contact(
+    db: Session, prospect_id: int, contacted_at: datetime, *, now: datetime | None = None, due_dates: dict[str, date] | None = None,
+) -> list[FollowUpView]:
+    """The three reminders (calendar days from the contact date, or the agent's ``due_dates`` per kind).
+    No-op with ``no_follow_up`` or open auto reminders."""
     s = get_settings()
     p = db.get(Prospect, prospect_id)
     if p is None:
@@ -95,10 +133,10 @@ def schedule_for_contact(db: Session, prospect_id: int, contacted_at: datetime, 
         return []
     stamp = now_or(now)
     base = local_today(s.tz, contacted_at)
-    plan = (("follow_up_1", s.followup_days_1), ("follow_up_2", s.followup_days_2), ("final_follow_up", s.followup_days_final))
     created: list[FollowUp] = []
-    for kind, days in plan:
-        f = FollowUp(prospect_id=p.id, kind=kind, due_on=base + timedelta(days=days), auto=True, created_at=stamp, updated_at=stamp)
+    for kind, _label, default in plan(base):
+        due = _check_date((due_dates or {}).get(kind) or default)
+        f = FollowUp(prospect_id=p.id, kind=kind, due_on=due, auto=True, created_at=stamp, updated_at=stamp)
         db.add(f)
         created.append(f)
     db.flush()
@@ -144,19 +182,28 @@ def due_count(db: Session, *, today: date | None = None) -> int:
     return int(db.scalar(select(func.count()).select_from(_due_query(today).subquery())) or 0)
 
 
-def complete(db: Session, follow_up_id: int, *, actor: Actor = TEAM, note: str | None = None, now: datetime | None = None) -> FollowUpView:
+def complete(
+    db: Session, follow_up_id: int, *, actor: Actor = TEAM, note: str | None = None, channel: str | None = None,
+    now: datetime | None = None,
+) -> FollowUpView:
+    """Mark done, recording HOW (``channel``) and a note; an auto reminder moves the prospect to its stage."""
     f = _get(db, follow_up_id)
+    channel = check_channel(channel)
+    note = (note or "").strip() or None
     stamp = now_or(now)
     if f.done_at is None and f.cancelled_at is None:
-        f.done_at, f.done_actor, f.updated_at = stamp, actor.label[:80], stamp
+        f.done_at, f.done_actor, f.updated_at, f.channel = stamp, actor.label[:80], stamp, channel
         if note:
             f.note = clip(note, 300)
         db.flush()
-        _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done" + (f": {note}" if note else ""), actor, now)
+        how = f" via {CHANNEL_LABELS[channel]}" if channel else ""
+        _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done{how}" + (f": {note}" if note else ""), actor, now,
+               data={**({"channel": channel} if channel else {}), **({"note": note} if note else {})})
         if f.prospect_id and f.kind != "custom":
             from sales0.services.crm import prospects
 
-            prospects.advance_to(db, f.prospect_id, f.kind, actor=actor, now=now, reason=f"{KIND_LABELS[f.kind]} done")
+            prospects.advance_to(db, f.prospect_id, f.kind, actor=actor, now=now, reason=f"{KIND_LABELS[f.kind]} done{how}",
+                                 extra={"channel": channel} if channel else None)
         if f.prospect_id:
             refresh_next(db, f.prospect_id)
     return views_for(db, [f], _today(now))[0]
@@ -184,13 +231,17 @@ def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, n
 
 
 def snooze(db: Session, follow_up_id: int, due_on: date, *, actor: Actor = TEAM, now: datetime | None = None) -> FollowUpView:
+    """Change an open reminder's date (Snooze and the inline date edit). Same date = no-op."""
     f = _get(db, follow_up_id)
     if not isinstance(due_on, date) or isinstance(due_on, datetime) or f.done_at is not None or f.cancelled_at is not None:
         raise DomainError("followup_invalid", "Choose a valid date for the follow-up.", 400)
+    _check_date(due_on)
     old = f.due_on
+    if old == due_on:
+        return views_for(db, [f], _today(now))[0]
     f.due_on, f.updated_at = due_on, now_or(now)
     db.flush()
-    _event(db, f, "follow_up_added", f"Follow-up moved from {old.isoformat()} to {due_on.isoformat()}", actor, now,
+    _event(db, f, "follow_up_added", f"{KIND_LABELS.get(f.kind, f.kind)} moved from {old.isoformat()} to {due_on.isoformat()}", actor, now,
            data={"snoozed_from": old.isoformat()})
     if f.prospect_id:
         refresh_next(db, f.prospect_id)
@@ -263,6 +314,6 @@ def for_lead(db: Session, lead_id: int, *, today: date | None = None) -> list[Fo
 
 
 __all__ = [
-    "add_custom", "cancel_open", "complete", "complete_up_to", "due_count", "for_lead", "for_prospect", "list_due",
-    "refresh_next", "schedule_for_contact", "snooze", "views_for",
+    "AUTO_KINDS", "CHANNEL_LABELS", "add_custom", "cancel_open", "check_channel", "complete", "complete_up_to", "due_count",
+    "for_lead", "for_prospect", "list_due", "plan", "refresh_next", "schedule_for_contact", "snooze", "views_for",
 ]

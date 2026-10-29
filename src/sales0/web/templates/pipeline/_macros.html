@@ -37,7 +37,9 @@
           <div class="timeline__body">
             <div><strong>{% if t.href and k in linkable %}<a href="{{ t.href }}">{{ t.kind_label }}</a>{% else %}{{ t.kind_label }}{% endif %}</strong>
               {% if t.body %}<span class="timeline__text">{{ t.body }}</span>
-              {% elif t.data and t.data.get("from") is not none and t.data.get("to") is not none %}<span class="timeline__text">{{ t.data.get("from") }} &rarr; {{ t.data.get("to") }}</span>{% endif %}</div>
+              {% elif t.data and t.data.get("from") is not none and t.data.get("to") is not none %}<span class="timeline__text">{{ t.data.get("from") }} &rarr; {{ t.data.get("to") }}</span>{% endif %}
+              {% set ch = {"whatsapp": "WhatsApp", "linkedin": "LinkedIn", "email": "Email", "call": "Call"}.get((t.data or {}).get("channel") or "") %}
+              {% if ch %}<span class="chip chip--channel" data-channel="{{ t.data.get('channel') }}">via {{ ch }}</span>{% endif %}</div>
             <div class="timeline__meta">{{ t.actor }} · <time datetime="{{ t.occurred_at.isoformat() }}" title="{{ t.occurred_at|localdt }}">{{ t.occurred_at|ago }}</time></div>
           </div>
         </li>

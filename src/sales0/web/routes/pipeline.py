@@ -225,20 +225,33 @@ def _prospect_parts(db: Session, prospect_id: PathId) -> tuple[Any, list[tuple[s
     parts = [
         ("pipeline/_prospect_header.html", {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS}),
         ("pipeline/_timeline.html", {"timeline": p.timeline, "base": base}),
-        (
-            "pipeline/_followups.html",
-            {"follow_ups": p.follow_ups, "base": base, "can_act": p.status == "open" and p.lead is None, "no_follow_up": no_fu},
-        ),
+        ("pipeline/_followups.html", _followups_ctx(p, base, no_fu)),
     ]
     return p, parts
+
+
+def _followups_ctx(p: Any, base: str, no_fu: bool) -> dict[str, Any]:
+    """The follow-ups card: open + done reminders, the channel choices and, before the first contact, the planned
+    Follow-up 1 / 2 / Final dates (editable in the Log contact form; they become live reminders when it is saved)."""
+    can_act = p.status == "open" and p.lead is None
+    needs_contact = can_act and p.stage == "new" and (p.contacted_at is None or p.contacted_estimated)
+    return {
+        "follow_ups": p.follow_ups, "base": base, "can_act": can_act, "no_follow_up": no_fu,
+        "channels": list(followups_service.CHANNEL_LABELS.items()),
+        "fu_plan": followups_service.plan(_today()) if needs_contact else [],
+        "needs_contact": needs_contact,
+    }  # fmt: skip
 
 
 @router.get("/pipeline/prospects/{prospect_id}", response_class=HTMLResponse)
 def prospect_page(request: Request, prospect_id: PathId, db: Session = Depends(get_db)) -> HTMLResponse:
     p = prospects_service.get_prospect(db, prospect_id)
+    no_fu = any(f.kind == "no_follow_up" for f in p.flags)
+    fu_ctx = _followups_ctx(p, f"/pipeline/prospects/{p.id}", no_fu)
     return _page(
         request, db, "pipeline/prospect.html",
-        {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS},
+        {"p": p, "prospect_stage_options": PROSPECT_STAGE_OPTIONS, "close_reasons": CLOSE_REASONS,
+         **{k: fu_ctx[k] for k in ("channels", "fu_plan", "needs_contact")}},
     )  # fmt: skip
 
 
@@ -476,6 +489,37 @@ def prospect_followup(
     return _prospect_action(request, db, prospect_id, act)
 
 
+@router.post("/pipeline/prospects/{prospect_id}/contact", response_model=None)
+def prospect_log_contact(
+    request: Request,
+    prospect_id: PathId,
+    channel: str = Form(""),
+    note: str = Form(""),
+    contacted_on: str = Form(""),
+    due_follow_up_1: str = Form(""),
+    due_follow_up_2: str = Form(""),
+    due_final_follow_up: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """Log the FIRST contact by hand (WhatsApp / LinkedIn / Email / Call): New -> Contacted + the three follow-ups."""
+
+    def act() -> str:
+        dues = {
+            "follow_up_1": parse_date(due_follow_up_1, label="Follow-up 1 date"),
+            "follow_up_2": parse_date(due_follow_up_2, label="Follow-up 2 date"),
+            "final_follow_up": parse_date(due_final_follow_up, label="Final follow-up date"),
+        }
+        view = prospects_service.log_contact(
+            db, prospect_id, channel=channel, note=opt_str(note), contacted_on=parse_date(contacted_on, label="contact date"),  # type: ignore[arg-type]
+            due_dates=dues, actor=actor_of(member),
+        )  # fmt: skip
+        how = followups_service.CHANNEL_LABELS.get(channel.strip().lower(), channel)
+        return f"Contact via {how} logged - {view.stage_label}; the three follow-ups are scheduled."
+
+    return _prospect_action(request, db, prospect_id, act)
+
+
 # ---------------------------------------------------------------------- follow-up done / snooze
 def _followup_response(request: Request, db: Session, fu: Any, message: str, next_url: str | None) -> Response:
     if wants_json(request):
@@ -499,6 +543,7 @@ def followup_done(
     request: Request,
     follow_up_id: PathId,
     note: str = Form(""),
+    channel: str = Form(""),
     next: str = Form(""),  # noqa: A002
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -506,8 +551,9 @@ def followup_done(
     next_url = _safe_next(next)
 
     def run() -> Response:
-        fu = followups_service.complete(db, follow_up_id, actor=actor_of(member), note=opt_str(note))
-        return _followup_response(request, db, fu, "Follow-up done.", next_url)
+        fu = followups_service.complete(db, follow_up_id, actor=actor_of(member), note=opt_str(note), channel=opt_str(channel))
+        how = f" via {fu.channel_label}" if fu.channel_label else ""
+        return _followup_response(request, db, fu, f"Follow-up done{how}.", next_url)
 
     return crm_guard(request, next_url or "/pipeline", run, db)
 

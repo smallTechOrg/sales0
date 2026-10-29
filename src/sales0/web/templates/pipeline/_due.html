@@ -22,6 +22,11 @@
               <div class="due-row__actions">
                 <form method="post" action="/pipeline/followups/{{ f.id }}/done" hx-post="/pipeline/followups/{{ f.id }}/done" hx-swap="none">
                   <input type="hidden" name="next" value="/pipeline">
+                  <label class="visually-hidden" for="due-ch-{{ f.id }}">How was it done</label>
+                  <select class="select" id="due-ch-{{ f.id }}" name="channel">
+                    <option value="">How?</option>
+                    {% for key, label in (("whatsapp", "WhatsApp"), ("linkedin", "LinkedIn"), ("email", "Email"), ("call", "Call")) %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                  </select>
                   <button class="btn btn--sm btn--primary" type="submit">Done</button>
                 </form>
                 <form method="post" action="/pipeline/followups/{{ f.id }}/snooze" hx-post="/pipeline/followups/{{ f.id }}/snooze" hx-swap="none">
