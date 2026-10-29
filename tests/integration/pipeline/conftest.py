@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from sales0.config import Settings, reset_settings
 from sales0.db.engine import session_scope
+from sales0.scraper import search as search_module
 from tests.integration.scraper.conftest import (  # noqa: F401
     connected_settings,
     fixture_linkedin_server,
@@ -30,6 +31,13 @@ def depth(db_url: str, connected_settings: Settings, monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("SALES0_SCRAPE_DATE_FILTERS", "past-week,past-month")
     monkeypatch.setenv("SALES0_SCRAPE_NO_GROWTH_SCROLLS", "2")
     monkeypatch.setenv("SALES0_SCRAPE_MAX_KEYWORDS_PER_RUN", "6")
+    # Speed only: the fixture serves each bulk page from localhost in milliseconds, so the real-site safety
+    # pacing and the 250 ms poll / 1.2 s "end of results" windows only burn wall time here. Behaviour is
+    # unchanged (still polls, still needs N idle scrolls to stop).
+    monkeypatch.setenv("SALES0_SCRAPE_DELAY_MIN_S", "0")
+    monkeypatch.setenv("SALES0_SCRAPE_DELAY_MAX_S", "0.01")
+    monkeypatch.setattr(search_module, "_POLL_MS", 40)
+    monkeypatch.setattr(search_module, "scroll_settle_ms", lambda _settings: 500)
     reset_settings()
     set_session_status("connected")
     return connected_settings.__class__()
