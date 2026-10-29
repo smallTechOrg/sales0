@@ -70,6 +70,7 @@ HELP: dict[str, str] = {
     "google_userinfo_endpoint": "Google userinfo endpoint (override for tests/proxies).",
     "google_revoke_endpoint": "Google revoke endpoint (override for tests/proxies).",
     "research_web_search": "Prospect research also runs Anthropic's server-side web search (news / public mentions) in one extra Haiku request. `false` turns it off.",
+    "auto_research": "Accepting an enquiry in the Inbox starts research on its company, the enquiry and the people behind it in the background (about 2 cents with web search). `false` = research only runs from the buttons. Hosted: the work may pause while the instance has no open request; the Pipeline button finishes whatever is left.",
     "research_web_search_max_uses": "Most web searches one research run may make (billed per search).",
     "research_web_search_tool": "Anthropic web search tool type sent with the research call (`web_search_20250305` works on Haiku).",
     "llm_price_web_search_usd_per_1k": "Web search price (USD per 1,000 searches) used for the spend estimate.",

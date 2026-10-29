@@ -21,7 +21,25 @@ On the prospect page (`/pipeline/prospects/{id}`), three cards next to the timel
 3. **Our notes** - dated, authored entries: add; edit / delete your OWN; the sheet's notes cell is shown beside them,
    read-only ("From the Google Sheet").
 
-Nothing runs automatically. Hosted mode has no scheduler: research and the summary run INSIDE the request with an htmx
+**Research now covers three things** (prompt `research-v3`): the **company**, the **enquiry** (`enquiry_insights`: what is
+really asked, audience / timing / budget signals, fit, what to clarify) and the **people** behind it (`people`: name,
+title, background, how to approach - the enquiry author first, then contacts; web search also looks up up to two of them,
+professional information only). Each version records what it covered (`inputs.schema`, `enquiry_ids`, `contact_ids`,
+`trigger`).
+
+**Automatic + bulk** (`services/research/auto.py`, `SALES0_AUTO_RESEARCH`, default on):
+- *On accept*: after the Inbox commit, research for the accepted enquiry's prospect starts in a background thread (one
+  version, actor `system`, `trigger: accepted`). A failure never affects the accept; the prospect stays pending.
+- *Bulk*: Pipeline > Enquiries card **Research active enquiries (N)** researches every pending prospect, one at a time,
+  committing after each; stops at the spend cap, after two failures in a row, or (hosted) at
+  `SALES0_HOSTED_ACTION_BUDGET_S` with "N more pending - click again". JSON: `POST /pipeline/research/pending`.
+- *Active* = a prospect with an accepted enquiry that is not won / lost / no response / on hold, prospect not closed,
+  company not off-ramped. *Pending* is derived (no queue table): no usable research, research from before v3, or an
+  active enquiry / contact the newest research did not cover. A newest version a person edited is never replaced
+  automatically (use "Re-run research" on the company).
+- Hosted (Cloud Run bills CPU per request) the on-accept thread may pause between requests; the bulk button finishes it.
+
+Manual runs still work as before. Hosted mode has no scheduler: research and the summary run INSIDE the request with an htmx
 spinner (`hx-indicator`, button disabled). Research is bounded by `SALES0_RESEARCH_TOTAL_TIME_S` (60 s website budget)
 plus one web-search request (typically 5-10 s); the summary is one call (2-4 s). Cloud Run's 900 s timeout is never
 approached.
@@ -41,7 +59,7 @@ approached.
 | Summary version (plain text + structured fields) | `prospect_docs` (doc_type `summary`) |
 | Note entries | `prospect_notes` |
 | Company-page task | `worker_tasks` |
-| Cost rows | `llm_calls` feature `research` (prompt versions `research-web-v1`, `research-v2`) / `summary` (`summary-v1`), `web_search_requests` |
+| Cost rows | `llm_calls` feature `research` (prompt versions `research-web-v2`, `research-v3`) / `summary` (`summary-v1`), `web_search_requests` |
 
 ## Business Rules
 - **Versions.** Every AI run and every human edit appends a version (`version` 1, 2, ... per prospect + doc type,

@@ -61,6 +61,7 @@ _RESET_SEAMS = [
 # Fast, deterministic pacing + caps for tests (architecture.md → Conventions → Tests).
 TEST_ENV = {
     "SALES0_LINKEDIN_MODE": "live",
+    "SALES0_AUTO_RESEARCH": "false",  # accept-triggered research opts in per test (no background AI calls elsewhere)
     "SALES0_RESEARCH_WEB_SEARCH": "false",  # q15: research tests opt in (web search mocked); keeps old fakes valid
     "SALES0_SCHEDULER_ENABLED": "false",  # no background thread; scheduler tests drive tick() themselves
     "SALES0_MONTHLY_SPEND_CAP_USD": "0",

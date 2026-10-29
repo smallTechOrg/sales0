@@ -49,13 +49,48 @@ def basics(db: Session, prospect_id: int) -> Basics:
     )  # fmt: skip
 
 
+PARKED_DEAL_STATUSES: tuple[str, ...] = ("won", "lost", "no_response", "on_hold")
+
+
+def active_enquiry_ids(db: Session, prospect_id: int) -> list[int]:
+    """Accepted enquiries of the prospect that are still being worked (not won / lost / no response / on hold)."""
+    rows = db.execute(
+        select(Enquiry.id, Enquiry.deal_status).where(Enquiry.prospect_id == prospect_id, Enquiry.review_status == "accepted")
+        .order_by(Enquiry.id)
+    ).all()  # fmt: skip
+    return [i for i, status in rows if status not in PARKED_DEAL_STATUSES]
+
+
+def contact_ids(db: Session, prospect_id: int) -> list[int]:
+    return sorted(c.id for c in prospects_service.get_prospect(db, prospect_id).contacts)
+
+
+def people_names(db: Session, prospect_id: int, limit: int = 3) -> list[str]:
+    """The people research covers: authors of the prospect's accepted enquiries first (newest first), then its contacts."""
+    names: list[str] = []
+    rows = db.scalars(
+        select(Enquiry).where(Enquiry.prospect_id == prospect_id, Enquiry.review_status == "accepted")
+        .order_by(Enquiry.date_added.desc())
+    ).all()  # fmt: skip
+    candidates = [e.author_name or e.contact_person for e in rows]
+    p = prospects_service.get_prospect(db, prospect_id)
+    candidates += [c.full_name for c in p.contacts]
+    for raw in candidates:
+        name = _one_line(raw, 120)
+        if name and name.lower() not in {n.lower() for n in names}:
+            names.append(name)
+        if len(names) >= limit:
+            break
+    return names
+
+
 def _brief_lines(data: dict[str, Any]) -> list[str]:
     out = []
     for key, label in (("what_they_do", "What they do"), ("size_hints", "Size"), ("suggested_offering", "Suggested fit")):
         value = str(data.get(key) or "").strip()
         if value and value.lower() != "unknown":
             out.append(f"{label}: {_one_line(value, 400)}")
-    for key, label in (("ai_training_needs", "Possible AI-training needs"), ("personalisation_hooks", "Hooks")):
+    for key, label in (("enquiry_insights", "About the enquiry"), ("ai_training_needs", "Possible AI-training needs"), ("personalisation_hooks", "Hooks")):
         items = [str(x) for x in data.get(key) or [] if str(x).strip()]
         if items:
             out.append(f"{label}: " + "; ".join(_one_line(x, 200) for x in items[:4]))
@@ -99,6 +134,10 @@ def build(db: Session, prospect_id: int, *, detail: str = "research", linkedin_t
         lines.append("Their enquiries / posts (their own words, quoted):")
         for e in enq_rows:
             head = f"- {e.date_added:%d %b %Y}" if e.date_added else "-"
+            if e.review_status == "accepted":
+                head += f" [accepted{', ' + e.deal_status.replace('_', ' ') if e.deal_status else ''}]"
+            if e.priority or e.ai_poster_type:
+                head += f" [{', '.join(x for x in (e.priority and e.priority + ' priority', e.ai_poster_type) if x)}]"
             who = _one_line(e.author_name, 80) + (f" ({_one_line(e.author_headline, 160)})" if e.author_headline else "")
             lines.append(f"{head} {who}: {_one_line(e.requirement_summary, 200)}" if e.requirement_summary else f"{head} {who}")
             lines.append("  \"" + _one_line(e.raw_text, 900 if full else 700) + "\"")
@@ -109,7 +148,8 @@ def build(db: Session, prospect_id: int, *, detail: str = "research", linkedin_t
         lines.append("")
         lines.append("Contacts:")
         for c in p.contacts[:8]:
-            lines.append("- " + ", ".join(x for x in (c.full_name, c.title, c.email if full else None) if x))
+            lines.append("- " + ", ".join(x for x in (c.full_name, c.title, c.email if full else None) if x)
+                         + (f" | LinkedIn {c.linkedin_url}" if getattr(c, "linkedin_url", None) else ""))
 
     if row is not None and (row.sheet_status or row.sheet_notes or row.sheet_fields):
         lines.append("")
@@ -182,4 +222,4 @@ def build(db: Session, prospect_id: int, *, detail: str = "research", linkedin_t
     return _block(text, 20_000 if full else 7_000)
 
 
-__all__ = ["Basics", "basics", "build"]
+__all__ = ["PARKED_DEAL_STATUSES", "Basics", "active_enquiry_ids", "basics", "build", "contact_ids", "people_names"]

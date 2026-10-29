@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     # Anthropic's server-side web search on the research call (one extra Haiku request, at most N searches).
     research_web_search: bool = True
     research_web_search_max_uses: int = Field(3, ge=1, le=10)
+    # Accepting an enquiry starts its research (company + enquiry + people) in the background; the "Research active
+    # enquiries" button does the same for everything still pending.
+    auto_research: bool = True
     # web_search_20250305 = the basic tool (Haiku); the _20260209 dynamic-filtering variant needs Opus/Sonnet.
     research_web_search_tool: str = "web_search_20250305"
     llm_price_web_search_usd_per_1k: float = Field(10.0, ge=0)  # USD per 1,000 web searches

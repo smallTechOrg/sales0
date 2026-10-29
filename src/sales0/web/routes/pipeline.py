@@ -47,6 +47,7 @@ from sales0.services.crm import timeline as timeline_service
 from sales0.services.crm.stages import LEAD_STAGES, PROSPECT_STAGES, STAGE_LABELS
 from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound, get_llm_client
 from sales0.services import followup_drafts as followup_drafts_service
+from sales0.services.research import auto as research_auto
 from sales0.web.acting import clear_flash, get_acting_member, get_acting_member_optional, pop_flash
 from sales0.web.context import PathId
 from sales0.web.context import (
@@ -213,7 +214,8 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
         ctx.update(layout="board", enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
             category=params["category"] or None),
-            deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE])
+            deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE],
+            research_overview=research_auto.overview(db))
     else:
         # clients are a list by default (a board of one column adds nothing); prospects and leads default to the board
         layout = params["layout"] or ("list" if tab == "clients" else "board")
@@ -829,6 +831,35 @@ def followups_draft_due(
                 "stopped": result.stopped,
                 "outcomes": [{"follow_up_id": o.follow_up_id, "prospect": o.prospect_name, "status": o.status, "reason": o.reason,
                               "message_id": o.message_id} for o in result.outcomes],
+            })
+        return crm_done(request, back, result.summary())
+
+    return crm_guard(request, back, run, db)
+
+
+@router.post("/pipeline/research/pending", response_model=None)
+def research_pending(
+    request: Request,
+    next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db),
+    member: TeamMember = Depends(get_acting_member),
+    llm: LLMClient = Depends(get_llm),
+) -> Response:
+    """"Research active enquiries": researches every active enquiry's company, the enquiry and its people where research
+    is missing or out of date (hosted: until the action budget, then "click again"). A newest version a person edited is
+    left alone."""
+    back = _safe_back(next, "/pipeline")
+
+    def run() -> Response:
+        try:
+            result = research_auto.run_pending(db, llm, actor=actor_of(member), trigger="bulk")
+        except (LLMAuthError, LLMModelNotFound) as exc:
+            raise _llm_fatal(db, exc) from exc
+        if wants_json(request):
+            return envelope_ok({
+                "researched": result.researched, "failed": result.failed, "remaining": result.remaining, "stopped": result.stopped,
+                "outcomes": [{"prospect_id": o.prospect_id, "prospect": o.name, "status": o.status, "reason": o.reason,
+                              "version": o.version} for o in result.outcomes],
             })
         return crm_done(request, back, result.summary())
 

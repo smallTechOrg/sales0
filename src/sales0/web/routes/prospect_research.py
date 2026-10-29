@@ -146,6 +146,7 @@ def edit_research(
     ai_training_needs: str = Form(""),
     personalisation_hooks: str = Form(""),
     sources: str = Form(""),
+    enquiry_insights: str | None = Form(None),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
 ) -> Response:
@@ -153,7 +154,7 @@ def edit_research(
         doc = research_service.edit_research(
             db, prospect_id, actor=actor_of(member), what_they_do=what_they_do, size_hints=size_hints,
             suggested_offering=suggested_offering, ai_training_needs=ai_training_needs,
-            personalisation_hooks=personalisation_hooks, sources=sources,
+            personalisation_hooks=personalisation_hooks, sources=sources, enquiry_insights=enquiry_insights,
         )  # fmt: skip
         db.commit()
         return _answer(request, db, prospect_id, member, ("research",), f"Research saved as version {doc.version}.",
