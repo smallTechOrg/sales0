@@ -50,13 +50,28 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run pytest tests/unit -q
+      - run: uv run pytest tests/unit -q -n auto
 
   # SQLite (default) integration suite, no real LLM calls: `llm`-marked tests are deselected.
   # Playwright-driven integration tests (scraper/jobs against fixture pages) need Chromium.
+  # Sharded by directory (the `rest` shard takes every directory not listed in the others) and
+  # parallel inside each shard (-n auto; each xdist worker has its own DB + ports).
   integration-sqlite:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - name: db-services
+            paths: "tests/integration/db tests/integration/services"
+          - name: crm-outreach-research
+            paths: "tests/integration/crm tests/integration/outreach tests/integration/research tests/integration/pipeline tests/integration/importer tests/integration/sheetsync"
+          - name: scraper-jobs-web
+            paths: "tests/integration/scraper tests/integration/jobs tests/integration/web tests/integration/watch tests/integration/worker"
+          - name: rest
+            paths: "REST"
+    name: integration-sqlite (${{ matrix.shard.name }})
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -68,7 +83,17 @@ jobs:
       - name: Integration tests (no real LLM)
         env:
           SALES0_ANTHROPIC_API_KEY: ${{ env.CI_FAKE_ANTHROPIC_KEY }}
-        run: uv run pytest tests/integration -q -m "not llm"
+          SHARD_PATHS: ${{ matrix.shard.paths }}
+        run: |
+          if [ "$SHARD_PATHS" = "REST" ]; then
+            ignores=""
+            for d in db services crm outreach research pipeline importer sheetsync scraper jobs web watch worker; do
+              ignores="$ignores --ignore=tests/integration/$d"
+            done
+            uv run pytest tests/integration $ignores -q -n auto -m "not llm"
+          else
+            uv run pytest $SHARD_PATHS -q -n auto -m "not llm"
+          fi
 
   # Every test under tests/e2e carries the `llm` marker (tests/e2e/conftest.py) because the
   # journeys call real Haiku. So on push/PR this job only installs Chromium and checks that the
@@ -94,7 +119,7 @@ jobs:
         env:
           SALES0_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SALES0_ANTHROPIC_WORKSPACE_ID: ${{ secrets.SALES0_ANTHROPIC_WORKSPACE_ID }}
-        run: uv run pytest tests/e2e -q
+        run: uv run pytest tests/e2e -q -n 2
 
   # Manual only: tests marked `llm` under tests/integration, with the real key.
   llm-integration:
@@ -113,7 +138,7 @@ jobs:
         env:
           SALES0_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SALES0_ANTHROPIC_WORKSPACE_ID: ${{ secrets.SALES0_ANTHROPIC_WORKSPACE_ID }}
-        run: uv run pytest tests/integration -q -m llm
+        run: uv run pytest tests/integration -q -n 2 -m llm
 
   # TODO(deploy): tests/conftest.py on feature/sales0-deploy (not pushed, not in this branch)
   # adds the per-test PostgreSQL database harness driven by SALES0_TEST_POSTGRES_URL. Until
@@ -150,4 +175,4 @@ jobs:
         env:
           SALES0_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
           SALES0_ANTHROPIC_API_KEY: ${{ env.CI_FAKE_ANTHROPIC_KEY }}
-        run: uv run pytest tests/integration -q -m "not llm"
+        run: uv run pytest tests/integration -q -n auto -m "not llm"
