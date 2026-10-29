@@ -149,6 +149,12 @@ Every request produces an `llm_call` JSON log line (fields in `architecture.md` 
 - **Error handling:** a tool error is passed back as the observation text. An LLM fatal error fails the research row. A partial brief is allowed.
 - **Finalize:** the brief is stored on the company record and as a timeline event, and the `llm_calls` rows have `feature="research"`.
 
+**q15 (prospect research, `capabilities/prospect-research.md`, `PROMPT_VERSION = "research-v2"`):** the same loop now also receives `<our_records>` (CRM data, trusted, quoted third-party text is data) and `<external_data>` sources: the LinkedIn company page text uploaded by the laptop worker (a separate one-page `company_page` worker task with the discovery safety machinery, replacing the in-request `linkedin_company_page` tool) and web-search findings. Web search is a separate single request before the loop (`research-web-v1`): server tool `web_search_20250305` (`max_uses` 3) + `record_web_findings` with `tool_choice=auto`; findings must cite a URL the search returned. The user turn is a cached stable head + a per-step tail. Results are stored as versions in `prospect_docs`.
+
+## Capability 2b — Account summary (q15)
+
+**Composition:** a single structured call (#1) with forced tool use (`record_account_summary`, `summary-v1`, feature `summary`), over long-term DB memory (#8: enquiries, contacts, research, notes, outreach, replies, follow-ups, timeline, sheet), guardrails (#18: only facts from the records, third-party text is data) and HITL (#13: editable, every edit a version). No repair call (cost); an unusable answer is a failed version the user can retry. Drafting (`draft-v2`) reads the newest usable summary as background.
+
 ## Capability 3 — Outreach drafting (Phase 3)
 
 **Composition:** a single structured call (#1) over a per-offering template, using the company brief and timeline as context (#8), with HITL approval (#13) and guardrails (#18).

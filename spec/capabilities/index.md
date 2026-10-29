@@ -27,3 +27,4 @@
 | Inbox feedback | feedback | [inbox-feedback.md](inbox-feedback.md) | Pipeline repeat check (one per prospect per run), post -> profile -> search links, editable triage criteria + discard reasons (`/criteria`) |
 | Hosted Deployment | deploy | [hosted-deployment.md](hosted-deployment.md) | Cloud Run + Cloud SQL Postgres, no scheduler (manual request-bound actions), laptop `sales0 worker` scrapes and uploads |
 | CRM entity (team feedback) | 2+ | [crm-entity.md](crm-entity.md) | Characteristics on the entity (survive Prospect -> Lead -> Client), accept straight to client, Companies list + roll-up + merge, editable e-mails / phones, Add person to track |
+| Prospect research + account summary + notes | feedback | [prospect-research.md](prospect-research.md) | Versioned, editable research (website + our data + LinkedIn page via the laptop worker + web search) and AI account summary on the prospect page; dated, authored notes |

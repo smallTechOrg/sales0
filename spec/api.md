@@ -207,3 +207,15 @@ These are mounted at `/__fixtures/linkedin` only when `SALES0_LINKEDIN_MODE=fixt
 **`start_run` / eligibility order** (Phase 1.1; the first failing check wins; `Eligibility.reason_code` is the code): `run_in_progress` → `needs_attention` → `safety_cooldown` → `not_connected` → `job_busy` → `no_keywords` → `daily_run_cap` → `daily_post_cap`. Phase 1.4: `daily_post_cap` counts posts **scanned** today (cap 2000) and `daily_run_cap` caps at 4; `POST /runs` returns immediately (the run is `queued`; the work happens on the job thread).
 
 **Routes are unchanged in Phase 1.1.** `/setup/linkedin/connect`, `/connect/cancel`, `/check` and `/status` keep their paths and fragments. Only the card copy changes (`ui.md`). The CLI gains `python -m sales0.cli check-browser` (`architecture.md` → LinkedIn browser).
+
+## Prospect research / summary / notes (q15; `capabilities/prospect-research.md`)
+All: acting member required; htmx -> out-of-band card + toast; plain form -> 303 + flash; JSON -> envelope.
+- `POST /pipeline/prospects/{id}/research` - run research (website + our data + LinkedIn page text + web search), queue the company-page task; returns the new version.
+- `POST /pipeline/prospects/{id}/research/edit` - fields `what_they_do` (required), `size_hints`, `suggested_offering`, `ai_training_needs` / `personalisation_hooks` / `sources` (one per line; sources http(s) only) -> human version.
+- `POST /pipeline/prospects/{id}/summary` - refresh the AI account summary (one call). `POST .../summary/edit` - `body` (<= 6000 chars) -> human version.
+- `POST /pipeline/prospects/{id}/notes` (`body` <= 4000), `POST /pipeline/notes/{id}/edit`, `POST /pipeline/notes/{id}/delete` - author only (403 `not_owner`).
+- `POST /outreach/research` gains `prospect_id` (saves a prospect research version); `POST /outreach/draft` gains `research_doc_id` and reads the prospect's latest usable research + summary.
+
+### Worker API additions (bearer token)
+- `POST /api/worker/claim`: request may carry `capabilities: ["company_page"]`; the answer then may carry `task: {task_id, kind: "company_page", slug: "company/<x>"}`. Without capabilities the answer has NO `task` key (old strict workers).
+- `POST /api/worker/tasks/{id}/result`: `{outcome: done|safety_stop|session_missing|open_failed|page_error|crashed, kind?, title?, url?, text? (<= 30k), page_loads?, error?}` -> `{status}`; idempotent.

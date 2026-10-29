@@ -1,5 +1,5 @@
 # Capability: Company Research
-**Phase 3**. Composition in `agent.md` → Capability 2.
+**Phase 3**. For CRM prospects this is now versioned, editable and run from the prospect page: see `prospect-research.md` (q15); compose without a prospect keeps the behaviour below. Composition in `agent.md` → Capability 2.
 
 ## What It Does
 On request, an agent looks up a prospect company's website (and its LinkedIn page, if connected) and writes a short brief: what the company does, size hint, AI maturity hint, and three talking points.
