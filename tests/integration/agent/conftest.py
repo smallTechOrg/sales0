@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from sales0.agent.graph import run_triage
 from sales0.agent.schemas import (
     DecisionExample,
@@ -15,8 +17,9 @@ from sales0.llm import get_llm_client
 from sales0.llm.pricing import cost_usd_micros
 from tests.integration.agent.corpus import CORPUS, SEED_OFFERINGS
 
-# One real call per corpus post per session: every expectation test reads the same outcome.
-_CORPUS_OUTCOMES: dict[str, TriageOutcome] = {}
+# One real call per corpus post per test module (the LLM cassette is per module, so the memo is too):
+# every expectation test in the module reads the same outcome.
+_CORPUS_OUTCOMES: dict[tuple[str, str], TriageOutcome] = {}
 
 
 def real_deps(
@@ -35,9 +38,10 @@ def triage_real(inp: TriageInput, **kwargs) -> TriageOutcome:
 
 
 def corpus_outcome(post_id: str) -> TriageOutcome:
-    if post_id not in _CORPUS_OUTCOMES:
-        _CORPUS_OUTCOMES[post_id] = triage_real(CORPUS[post_id])
-    return _CORPUS_OUTCOMES[post_id]
+    key = (os.environ.get("SALES0_LLM_CASSETTE_FILE", ""), post_id)
+    if key not in _CORPUS_OUTCOMES:
+        _CORPUS_OUTCOMES[key] = triage_real(CORPUS[post_id])
+    return _CORPUS_OUTCOMES[key]
 
 
 def assert_well_formed(outcome: TriageOutcome) -> None:
