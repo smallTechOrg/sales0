@@ -58,7 +58,7 @@ def test_suggested_keywords_then_a_deep_run_files_only_relevant_posts_and_run_tw
         seen_moving = _counter(page, "seen") if page.locator('#run-panel [data-counter="seen"]').count() else 0
         if seen_moving > 0:
             break
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(100)
     assert seen_moving > 0, "the live Scanned counter never moved while the run was active"
     expect(panel.locator(".run-keyword-index")).to_contain_text(re.compile(r"Keyword \d+/6"))
     page.wait_for_function(

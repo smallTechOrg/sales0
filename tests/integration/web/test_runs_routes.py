@@ -190,7 +190,7 @@ def test_connect_then_run_now_shows_live_progress_and_triaged_cards(fixture_serv
             status = re.search(r'data-status="([a-z_]+)"', card.text).group(1)  # type: ignore[union-attr]
             if status != "busy":
                 break
-            time.sleep(0.5)
+            time.sleep(0.1)
         assert status == "connected", card.text
         assert "LinkedIn connected" in http.get("/_shell/status-light", headers=HX).text
 
@@ -212,7 +212,7 @@ def test_connect_then_run_now_shows_live_progress_and_triaged_cards(fixture_serv
             if 'hx-trigger="every 1s"' not in panel:
                 final = unescape(progress)
                 break
-            time.sleep(0.5)
+            time.sleep(0.1)
         assert final, f"run did not finish; steps seen: {seen_steps}"
         # Phase 1.4: only the AI-genuine post (P8) becomes an enquiry; P9 is "Skipped by AI".
         assert "Run finished — 1 new enquiry" in final and "Open inbox (1 new)" in final

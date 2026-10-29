@@ -44,6 +44,40 @@ def corpus() -> dict[str, dict[str, Any]]:
     return {p["id"]: p for p in json.loads(Path(CORPUS_PATH).read_text(encoding="utf-8"))}
 
 
+@pytest.fixture(scope="session")
+def _migrated_sqlite_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One SQLite file migrated to head per process; every web test starts from a copy."""
+    from alembic import command
+
+    from sales0.db.migrate_check import alembic_config
+
+    template = tmp_path_factory.mktemp("web-db-template") / "template.db"
+    command.upgrade(alembic_config(f"sqlite:///{template.as_posix()}"), "head")
+    return template
+
+
+@pytest.fixture
+def db_url(request: pytest.FixtureRequest) -> str:
+    """Overrides the root ``db_url`` (an Alembic upgrade per test): copy the migrated template
+    instead. PostgreSQL / an explicit test database URL keep the root behaviour."""
+    import os
+    import shutil
+
+    url = get_settings().resolved_database_url
+    if os.environ.get("SALES0_TEST_POSTGRES_URL") or os.environ.get("SALES0_TEST_DATABASE_URL") or not url.startswith("sqlite:///"):
+        from alembic import command
+
+        from sales0.db.migrate_check import alembic_config
+
+        command.upgrade(alembic_config(url), "head")
+        return url
+    template = request.getfixturevalue("_migrated_sqlite_template")
+    dest = Path(url.removeprefix("sqlite:///"))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(template, dest)
+    return url
+
+
 @pytest.fixture
 def client(db_url: str) -> Iterator[TestClient]:
     with TestClient(create_app()) as c:

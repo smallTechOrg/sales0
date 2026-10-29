@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page
 
-from tests.support.live_server import LiveServer, live_server
+from tests.e2e._fast import free_port, live_server
+from tests.support.live_server import LiveServer
 
 E2E_TIMEOUT_S = 600
 
@@ -34,23 +35,19 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 item.add_marker(pytest.mark.timeout(E2E_TIMEOUT_S))
 
 
-def _free_port(start: int = 8766) -> int:
-    """First free loopback port >= 8766 (other builders/suites may hold 8766); never 8765."""
-    import socket
-
-    for port in range(start, start + 100):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            try:
-                sock.bind(("127.0.0.1", port))
-            except OSError:
-                continue
-            return port
-    raise RuntimeError("no free port for the e2e server")
+_free_port = free_port  # re-exported for the journeys
 
 
 @pytest.fixture
 def server(tmp_path: Path) -> Iterator[LiveServer]:
-    with live_server(tmp_path / "e2e", port=_free_port()) as srv:
+    with live_server(tmp_path / "e2e") as srv:
+        yield srv
+
+
+@pytest.fixture
+def real_llm_server(tmp_path: Path) -> Iterator[LiveServer]:
+    """The full-stack smoke: the real Haiku key from ``.env``."""
+    with live_server(tmp_path / "e2e", real_llm=True) as srv:
         yield srv
 
 
