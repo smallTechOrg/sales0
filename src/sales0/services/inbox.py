@@ -93,9 +93,12 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
     if offering_ids:
         names = {oid: name for oid, name in db.execute(select(Offering.id, Offering.name).where(Offering.id.in_(offering_ids)))}
 
+    from sales0.services.crm import pipeline_match
+
     cards: list[EnquiryCardView] = []
     for e in enquiries:
         cost, tokens = costs.get(e.id, (0, 0))
+        pipeline = pipeline_match.view_for(db, e) if e.pipeline_match else None
         cards.append(
             EnquiryCardView(
                 id=e.id,
@@ -139,6 +142,10 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 ai_opportunity_type=e.ai_opportunity_type,
                 author_profile_id=e.author_profile_id,
                 author_tracked=e.author_profile_id in tracked_ids,
+                pipeline_name=pipeline[0] if pipeline else None,
+                pipeline_href=pipeline[1] if pipeline else None,
+                pipeline_match=pipeline_match.MATCH_LABELS.get(e.pipeline_match or "") if pipeline else None,
+                discard_source=e.discard_source,
             )
         )
     return cards
@@ -327,6 +334,7 @@ def decide(
         e.review_status = to_status
         e.stage = to_stage
         e.discard_reason = reason if decision == "discard" else None
+        e.discard_source = None  # a team decision replaces any system (auto) discard
         e.decided_at = stamp
         e.actor_user_id = actor_user_id
         db.add(

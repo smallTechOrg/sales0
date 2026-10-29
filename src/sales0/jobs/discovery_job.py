@@ -61,6 +61,7 @@ from sales0.logging import bind_context, get_logger, unbind_context
 from sales0.jobs.session_log import log_run_start
 from sales0.scraper.urls import urn_from_href
 from sales0.scraper.errors import AccountSafetyStop, ScrapeError, SessionMissing
+from sales0.services import criteria as criteria_service
 from sales0.services import keywords as keywords_service
 from sales0.services import seen_posts
 from sales0.services import linkedin_accounts
@@ -348,6 +349,7 @@ class _Run:
                 load_candidates(self.db, exclude_enquiry_id=0), settings.fewshot_max_examples, settings.fewshot_text_chars
             ),
             settings=settings,
+            criteria=criteria_service.active_set(self.db),  # q14: the team's active include/exclude rules
         )
         self.db.commit()  # release the read snapshot before the pool starts
         items = [BatchItem(key=sid, inp=inp) for sid, inp in inputs]
@@ -431,6 +433,8 @@ class _Run:
             if prev[1] == "relevant":
                 prev_row.posts_relevant -= 1
                 run.posts_relevant -= 1
+            elif prev[1] == "repeat":
+                run.posts_repeat_skipped -= 1
             elif prev[1] == "skipped":
                 prev_row.posts_skipped_ai -= 1
                 run.posts_skipped_ai -= 1
@@ -439,7 +443,11 @@ class _Run:
         kind = "failed"
         if persisted.triage_status == "done":
             run.enquiries_triaged += 1
-            if persisted.verdict == "genuine" and persisted.enquiry_id is not None:
+            if persisted.verdict == "genuine" and persisted.enquiry_id is not None and persisted.repeat_skipped:
+                # q14: a further enquiry from an existing prospect in this run - auto-discarded, no post-link click
+                kind = "repeat"
+                run.posts_repeat_skipped += 1
+            elif persisted.verdict == "genuine" and persisted.enquiry_id is not None:
                 kind = "relevant"
                 row.posts_relevant += 1
                 run.posts_relevant += 1
@@ -540,9 +548,11 @@ class _Run:
 def summary_text(run: ScrapeRun) -> str:
     """The honest funnel: scanned vs new vs relevant (never "found N enquiries")."""
     pct = f" ({round(run.posts_relevant / run.posts_new * 100)}%)" if run.posts_new else ""
+    repeats = int(getattr(run, "posts_repeat_skipped", 0) or 0)
     return (
         f"scanned {run.posts_seen} · new {run.posts_new} · relevant {run.posts_relevant}{pct}"
         f" · skipped by AI {run.posts_skipped_ai} · already seen {run.posts_dupe}"
+        + (f" · repeats from pipeline skipped {repeats}" if repeats else "")
     )
 
 

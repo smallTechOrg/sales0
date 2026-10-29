@@ -151,6 +151,7 @@ def run_view(run: ScrapeRun, cost_usd_micros: int = 0, layout_warnings: int = 0)
         posts_relevant=run.posts_relevant,
         posts_skipped_ai=run.posts_skipped_ai,
         permalinks_found=run.permalinks_found,
+        posts_repeat_skipped=run.posts_repeat_skipped or 0,
         relevance_pct=round(run.posts_relevant / run.posts_new * 100, 1) if run.posts_new else None,
     )
 

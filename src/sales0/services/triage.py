@@ -97,7 +97,12 @@ def triage_enquiry(
 
     try:
         client = llm or get_llm_client()
-        outcome = run_triage(inp, TriageDeps(llm=client, offerings=offerings, examples=examples, settings=settings))
+        from sales0.services import criteria
+
+        outcome = run_triage(
+            inp,
+            TriageDeps(llm=client, offerings=offerings, examples=examples, settings=settings, criteria=criteria.active_set(db)),
+        )
     except FATAL_LLM_ERRORS as exc:
         _error_row(db, enquiry_id, run_id, exc, len(examples), now_or(now))
         db.flush()
@@ -120,6 +125,7 @@ def triage_enquiry(
                 status="ok",
                 error_type=None,
                 request_id=resp.request_id[:100] if resp.request_id else None,
+                criteria_version=outcome.criteria_version,
                 created_at=stamp,
             )
         )

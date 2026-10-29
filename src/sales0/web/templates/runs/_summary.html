@@ -9,6 +9,7 @@
     <span>Already seen <strong data-counter="dupe">{{ run.posts_dupe }}</strong></span>
     <span>Relevant <strong data-counter="relevant">{{ run.posts_relevant }}</strong></span>
     <span>Skipped by AI <strong data-counter="skipped">{{ run.posts_skipped_ai }}</strong></span>
+    {% if run.posts_repeat_skipped %}<span title="Further posts from a prospect or company already in the pipeline (the first one per run stays in To review)">Repeats from pipeline auto-skipped <strong data-counter="repeats">{{ run.posts_repeat_skipped }}</strong></span>{% endif %}
     <span>Post links <strong data-counter="links">{{ run.permalinks_found }}</strong></span>
     <span>Relevance <strong data-counter="relevance">{{ pct_text(run.posts_relevant, run.posts_new) }}</strong>{% if run.posts_new %} <span class="muted">of new posts</span>{% endif %}</span>
     <span>AI cost <strong data-counter="cost">{{ usd_precise(run.cost_usd_micros) }}</strong></span>

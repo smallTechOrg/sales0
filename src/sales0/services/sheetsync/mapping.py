@@ -638,11 +638,14 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
         enquiry.sheet_fields = new_o
 
     # review status: the sheet decides for rows it owns (or still-pending ones); a human's call stands.
-    may_decide = own or enquiry.review_status == "pending_review"
+    # A SYSTEM auto-discard (repeat from an existing prospect, discard_source='auto') is not a human call: the sheet,
+    # as the source of truth, may still accept the row.
+    may_decide = own or enquiry.review_status == "pending_review" or enquiry.discard_source == "auto"
     flipped_to_discarded = False
     if may_decide and not created:
         if not discarded and enquiry.review_status != "accepted":
             enquiry.review_status, enquiry.decided_at, enquiry.stage = "accepted", ctx.now, "prospect_new"
+            enquiry.discard_source = None
             if enquiry.triage_status == "pending" and own:
                 enquiry.triage_status = "done"
             changed.append("review_status")
