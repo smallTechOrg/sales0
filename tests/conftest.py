@@ -350,9 +350,67 @@ def _isolated_runtime(
     check_guard_violations()
 
 
+@pytest.fixture(scope="session")
+def sqlite_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A SQLite file migrated to head ONCE per session (per xdist worker: each has its own basetemp).
+
+    ``alembic upgrade head`` costs ~0.7-1.3 s; copying this file costs ~2 ms. ``db_url`` copies it into the
+    test's own DB path, so every test still owns a private, fully migrated file."""
+    path = tmp_path_factory.mktemp("template") / "template.db"
+    command.upgrade(alembic_config(f"sqlite:///{path.as_posix()}"), "head")
+    return path
+
+
+def _copy_sqlite(src: Path, dst: Path) -> None:
+    import sqlite3
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    source = sqlite3.connect(str(src))
+    target = sqlite3.connect(str(dst))
+    try:
+        source.backup(target)  # replaces the destination's content atomically; copies WAL state safely
+    finally:
+        target.close()
+        source.close()
+
+
 @pytest.fixture
-def db_url() -> str:
-    """A fresh database migrated to head; the app's settings already point at it."""
+def db_url(request: pytest.FixtureRequest) -> str:
+    """A fresh database migrated to head; the app's settings already point at it.
+
+    SQLite: a copy of the per-session migrated template (no Alembic run). PostgreSQL: the per-test
+    ``CREATE DATABASE ... TEMPLATE`` clone is already migrated. A test that needs the real
+    ``alembic upgrade`` path (migration tests) calls ``command.upgrade`` itself on its own URL."""
+    from sqlalchemy.engine import make_url
+
     url = get_settings().resolved_database_url
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite" and parsed.database and not os.environ.get("SALES0_TEST_DATABASE_URL") and not os.environ.get("SALES0_TEST_MIGRATE_EACH"):
+        _copy_sqlite(request.getfixturevalue("sqlite_template_db"), Path(parsed.database))
+        return url
+    if os.environ.get(_PG_ENV) and request.node.get_closest_marker("unmigrated") is None:
+        return url  # cloned from the migrated template
     command.upgrade(alembic_config(url), "head")
     return url
+
+
+# ------------------------------------------------------------------------------ fast helpers
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Opt in: ``time.sleep`` returns immediately (calls are recorded in the returned list).
+
+    Only patches ``time.sleep``; code that takes an injected ``sleep=`` callable should be given
+    ``lambda _s: None`` directly. Do not use in tests that wait on a thread with ``time.sleep``."""
+    import time as _time
+
+    calls: list[float] = []
+    monkeypatch.setattr(_time, "sleep", lambda seconds=0: calls.append(float(seconds)))
+    return calls
+
+
+@pytest.fixture
+def fake_clock():
+    """Opt in: a controllable clock (``clock.now()``, ``clock.sleep(s)`` advances it, ``clock.advance(...)``)."""
+    from tests.support.clock import FakeClock
+
+    return FakeClock()

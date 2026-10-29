@@ -34,6 +34,7 @@ from typing import Any
 import httpx
 
 from sales0.config import REPO_ROOT
+from tests.support.ports import free_port, under_xdist
 
 E2E_PORT = 8766
 HEALTH_TIMEOUT_S = 30.0
@@ -250,7 +251,12 @@ class LiveServer:
 
 @contextmanager
 def live_server(root: Path, **kwargs: Any) -> Iterator[LiveServer]:
-    """Start a live server; it is torn down on exit even when the test fails."""
+    """Start a live server; it is torn down on exit even when the test fails.
+
+    Under pytest-xdist the requested port is replaced by a free port from this worker's own slice of
+    8790-8999 (tests.support.ports), so parallel workers never collide. Read ``server.port``/``base_url``."""
+    if under_xdist() and kwargs.get("port") != FORBIDDEN_PORT:
+        kwargs["port"] = free_port()
     server = LiveServer(root, **kwargs)
     try:
         server.start()
