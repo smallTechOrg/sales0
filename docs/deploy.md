@@ -264,6 +264,35 @@ The OAuth "state" is kept in the instance's memory; with max-instances 1 and a 1
 consent that takes a minute. If the instance scaled to zero in between, the callback says the sign-in expired: press
 Connect again.
 
+## 6a. Deploy from GitHub Actions (no gcloud needed)
+
+`.github/workflows/deploy.yml` runs `deploy/deploy.sh --apply --step deploy` for you.
+
+- **Automatic:** after the `CI` workflow passes on `main` (a merge), the same commit is deployed.
+- **On demand, from any branch:** GitHub -> Actions -> *Deploy* -> *Run workflow* (choose the branch), or from a terminal / Claude Code session:
+  `gh workflow run deploy.yml --ref <branch>` (add `-f dry_run=true` to only print the commands), then `gh run watch`.
+  The workflow file must exist on `main` for the manual trigger to be listed.
+- **Auth is keyless** (Workload Identity Federation): provider `sales0-github` in pool `github`
+  (`projects/870371939888/locations/global/workloadIdentityPools/github/providers/sales0-github`), restricted to the repository
+  `smallTechOrg/sales0`, impersonating the existing `github-actions-deployer@ai-agent-boilerplate0.iam.gserviceaccount.com`.
+  No key is stored in GitHub. Nothing to configure in repository secrets.
+- **Security note:** the deployer account can deploy Cloud Run services project-wide, and the provider trusts every branch of this
+  repo (needed for manual deploys from branches). Anyone who can push a branch here can therefore run a deploy: keep write
+  access to the repo limited to people you trust. To tighten later, change the provider condition to
+  `assertion.repository=='smallTechOrg/sales0' && assertion.ref=='refs/heads/main'` (manual branch deploys then stop working).
+- The workflow only deploys the app (build + Cloud Run + migrations on boot). Secrets, the database role and the bucket are
+  one-time steps (`deploy.sh --step secrets|db-user|bucket`) and are not re-run.
+- Migrations run on boot, so take a backup first for risky ones (section 8).
+
+### Re-recording LLM cassettes from GitHub (no local key needed)
+
+Tests that call Haiku replay recorded responses. If a prompt change makes CI fail with "no recorded LLM response", run
+`gh workflow run record-cassettes.yml --ref <branch>` (optionally `-f paths="tests/integration/agent/research"`). It records
+against real Haiku with the repository secrets `ANTHROPIC_API_KEY` and `SALES0_ANTHROPIC_WORKSPACE_ID` (copied from Secret Manager
+`sales0-anthropic-*`; rotate both places together), commits the updated cassettes to the branch and re-runs CI. It refuses to run on `main`.
+Anyone with write access to the repo can read these secrets through a workflow, so keep write access limited.
+
+
 ## 7. Rollback
 
 * **Code**: `deploy/deploy.sh rollback` lists the last revisions; `deploy/deploy.sh rollback sales0-00012-abc --apply`

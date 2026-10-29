@@ -1,0 +1,80 @@
+name: Deploy
+
+# Deploys the Cloud Run service `sales0` (project ai-agent-boilerplate0) with deploy/deploy.sh.
+#   - automatically after CI passes on main (i.e. after a merge), and
+#   - on demand from ANY branch: GitHub -> Actions -> Deploy -> "Run workflow" (pick the branch), or
+#       gh workflow run deploy.yml --ref <branch> [-f dry_run=true]
+# Auth is keyless (Workload Identity Federation, provider `sales0-github` in pool `github`, restricted to this
+# repository); no service-account key is stored anywhere. See docs/deploy.md "Deploy from GitHub Actions".
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: print the gcloud commands, change nothing"
+        type: boolean
+        default: false
+
+# One deploy at a time; a newer request waits (never cancel a deploy half way through).
+concurrency:
+  group: deploy-sales0
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # mint the OIDC token Google exchanges for short-lived credentials
+
+env:
+  WORKLOAD_IDENTITY_PROVIDER: projects/870371939888/locations/global/workloadIdentityPools/github/providers/sales0-github
+  DEPLOY_SERVICE_ACCOUNT: github-actions-deployer@ai-agent-boilerplate0.iam.gserviceaccount.com
+  SERVICE_URL: https://sales0-870371939888.us-central1.run.app
+
+jobs:
+  deploy:
+    # Auto runs only for a green CI on main; a manual run is always allowed.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # For the automatic run, deploy exactly the commit CI just verified.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: What is being deployed
+        run: |
+          echo "commit: $(git rev-parse --short HEAD) - $(git log -1 --format=%s)"
+          gcloud config list account project 2>&1 | sed 's/^/  /'
+          gcloud run services describe sales0 --region us-central1 --project ai-agent-boilerplate0 \
+            --format='value(status.latestReadyRevisionName)' | sed 's/^/current revision: /'
+
+      - name: Deploy (dry run)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: bash deploy/deploy.sh --step deploy
+
+      - name: Deploy to Cloud Run
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: bash deploy/deploy.sh --apply --step deploy
+
+      - name: Health check
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS -m 60 "$SERVICE_URL/api/health"; then echo; break; fi
+            echo "not healthy yet (attempt $i)"; sleep 10
+            if [ "$i" = 6 ]; then echo "health check failed"; exit 1; fi
+          done
+          gcloud run services describe sales0 --region us-central1 --project ai-agent-boilerplate0 \
+            --format='value(status.latestReadyRevisionName)' | sed 's/^/serving revision: /'
