@@ -1,5 +1,5 @@
 """The company model: stage / sub-status projection, Mark as lead, Won -> Client, off-ramps, suggest-Lead (never
-auto-moves), Do not contact, driven enquiry statuses."""
+auto-moves), Do not contact."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def test_accept_creates_prospect_new_company_and_open_enquiry(db) -> None:
     db.refresh(co)
     assert (co.stage, co.sub_status, co.off_ramp, co.stage_source) == ("prospect", "new", None, "app")
     db.refresh(e)
-    assert (e.deal_status, e.deal_status_source) == ("open", "driven")
+    assert (e.deal_status, e.deal_status_source) == ("open", None)
 
 
 def test_enquiry_without_company_name_still_gets_a_company(db) -> None:
@@ -50,36 +50,12 @@ def test_second_enquiry_attaches_and_never_demotes_the_stage(db) -> None:
     assert e2.company_id == co.id and co.stage == "client"  # upsell: the company stays a client
 
 
-def test_cadence_drives_open_enquiry_status(db) -> None:
-    e, v, co = _accepted(db)
-    prospects.mark_contacted(db, v.id, when=h.T0, now=h.T0)
-    db.refresh(co), db.refresh(e)
-    assert co.sub_status == "contacted" and e.deal_status == "contacted"
-    prospects.move_stage(db, v.id, "follow_up_1")
-    db.refresh(co), db.refresh(e)
-    assert (co.sub_status, e.deal_status) == ("follow_up_1", "follow_up_1")
-
-
-def test_driven_statuses_cannot_be_set_on_a_non_origin_enquiry(db) -> None:
-    _, v, co = _accepted(db)
-    e2 = h.enquiry(db, profile_row=h.profile(db, slug="in/second"), company="Acme Training")
-    prospects.ensure_for_enquiry(db, e2.id)
-    with pytest.raises(DomainError) as ei:
-        deals.set_status(db, e2.id, "follow_up_1")
-    assert ei.value.code == "status_driven"
-    db.refresh(co)
-    assert co.sub_status == "new"  # only the origin enquiry drives the stage (tests/integration/crm/test_origin_coupling.py)
-
-
-def test_hand_status_survives_the_cadence(db) -> None:
+def test_enquiry_status_survives_the_cadence(db) -> None:
     e, v, co = _accepted(db)
     deals.set_status(db, e.id, "on_hold")
     prospects.mark_contacted(db, v.id, when=h.T0, now=h.T0)
     db.refresh(e)
     assert e.deal_status == "on_hold" and e.deal_status_source == "app"
-    deals.set_status(db, e.id, "open")  # back to following the cadence
-    db.refresh(e)
-    assert e.deal_status == "contacted"
 
 
 def test_meeting_or_proposal_only_suggests_lead(db) -> None:

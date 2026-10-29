@@ -1,5 +1,5 @@
 """The Pipeline page tabs: Enquiries (default) | Prospects | Leads | Clients, their counts, columns and lanes, the old
-URLs (``?view=companies``, ``?stage=``, ``/leads`` ...) and the origin-enquiry status control on the Enquiries board."""
+URLs (``?view=companies``, ``?stage=``, ``/leads`` ...) and the one enquiry status control on the Enquiries board."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from sales0.clock import utcnow
 from sales0.db.engine import session_scope
 from sales0.db.models import Client, Enquiry, Lead, Prospect
 from sales0.llm import set_llm_client
+from sales0.services.crm import deals as deals_service
 from sales0.services.crm import prospects
 from sales0.web.app import create_app
 from tests.integration.web.conftest import HX, make_enquiry, triaged
@@ -173,7 +174,7 @@ def test_filters_work_on_every_tab(web: TestClient) -> None:
     assert "Acme Logistics" in enq and "Beta Skills" not in enq
 
 
-def test_enquiries_tab_groups_by_status_with_a_collapsed_lane_and_origin_status_control(web: TestClient) -> None:
+def test_enquiries_tab_groups_by_status_with_a_collapsed_lane_and_one_status_control(web: TestClient) -> None:
     eid, _, cid = _company("Acme Logistics", "P1")
     other = make_enquiry("P8", **{**triaged("genuine", "Buyer", summary="Second need"), "review_status": "accepted", "company": "Acme Logistics"})
     with session_scope() as db:
@@ -182,19 +183,26 @@ def test_enquiries_tab_groups_by_status_with_a_collapsed_lane_and_origin_status_
     keys = re.findall(r'<section class="board__col"[^>]*data-status="(\w+)"', html)
     assert keys[:8] == ["open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "proposal_sent", "won"]
     assert "enquiry-closed-lane" not in html and 'id="enquiry-' + str(eid) + '"' in _col(html, "open")
-    # the origin enquiry may be set to a cadence stage from the board; the other one may not
+    # every enquiry card offers the same statuses, plain labels, nothing disabled or "(auto)"
     card = re.search(rf'<article class="pcard" id="enquiry-{eid}".*?</article>', html, re.S).group(0)  # type: ignore[union-attr]
     other_card = re.search(rf'<article class="pcard" id="enquiry-{other}".*?</article>', html, re.S).group(0)  # type: ignore[union-attr]
-    assert 'value="follow_up_1"' in card and 'value="follow_up_1"' not in other_card
+    opts = [re.findall(r'<option value="(\w*)"', c) for c in (card, other_card)]
+    assert opts[0] == opts[1] == list(deals_service.SETTABLE)
+    assert "(auto)" not in card and "disabled" not in card and ">Open<" in card
     r = web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "follow_up_1", "next": "/pipeline?tab=enquiries"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/pipeline?tab=enquiries"
     with session_scope() as db:
         assert db.scalar(select(Prospect.stage)) == "follow_up_1"
     prospects_html = web.get("/pipeline?tab=prospects").text
     assert f'id="company-{cid}"' in _col(prospects_html, "follow_up_1")
-    # the non-origin enquiry is refused with a flash, the company does not move
-    bad = web.post(f"/pipeline/enquiries/{other}/status", data={"status": "final_follow_up", "next": "/pipeline"}, follow_redirects=True)
-    assert "flash--error" in bad.text
+    # the second enquiry of the same new prospect moves it forward too, never back
+    ok = web.post(f"/pipeline/enquiries/{other}/status", data={"status": "final_follow_up", "next": "/pipeline"}, follow_redirects=True)
+    assert "flash--error" not in ok.text
+    with session_scope() as db:
+        assert db.scalar(select(Prospect.stage)) == "final_follow_up"
+    web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "contacted", "next": "/pipeline"})
+    with session_scope() as db:
+        assert db.scalar(select(Prospect.stage)) == "final_follow_up" and db.scalar(select(Enquiry.deal_status).where(Enquiry.id == eid)) == "contacted"
     # parked statuses live in a collapsed lane
     assert web.post(f"/pipeline/enquiries/{other}/status", data={"status": "on_hold", "next": "/pipeline"}).status_code in (200, 303)
     html = web.get("/pipeline").text

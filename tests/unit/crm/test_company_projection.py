@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sales0.db.company_projection import DRIVEN_BY_SUB, Rows, derive
-from sales0.db.models.enums_crm import DRIVEN_DEAL_STATUSES, ENQUIRY_DEAL_STATUSES, HAND_DEAL_STATUSES
+from sales0.db.company_projection import Rows, derive
+from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES
 
 T = datetime(2026, 10, 1, tzinfo=UTC)
 T2 = datetime(2026, 10, 5, tzinfo=UTC)
@@ -74,7 +74,5 @@ def test_a_sheet_only_stage_is_marked_sheet_so_the_app_keeps_precedence() -> Non
     assert derive(Rows(prospects=[prospect("contacted", source="sheet"), prospect("new", source="app")])).stage_source == "app"
 
 
-def test_driven_enquiry_statuses_mirror_every_prospect_sub_status() -> None:
-    assert set(DRIVEN_BY_SUB.values()) <= set(DRIVEN_DEAL_STATUSES)
-    assert set(DRIVEN_DEAL_STATUSES) | set(HAND_DEAL_STATUSES) == set(ENQUIRY_DEAL_STATUSES)
-    assert not set(DRIVEN_DEAL_STATUSES) & set(HAND_DEAL_STATUSES)
+def test_one_enquiry_status_list() -> None:
+    assert len(set(ENQUIRY_DEAL_STATUSES)) == 11 and ENQUIRY_DEAL_STATUSES[0] == "open"

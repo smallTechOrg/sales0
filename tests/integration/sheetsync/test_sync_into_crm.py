@@ -394,8 +394,8 @@ def test_repository_protocol_surface(db_url) -> None:  # type: ignore[no-untyped
     assert repo.mark_removed("a", "b", [("enquiry", "nope")]) == 0
 
 
-# --------------------------------------------------------------------------- origin-enquiry coupling (services/crm/deals.py)
-def test_the_sheet_moves_the_company_stage_through_its_origin_enquiry_only(sync) -> None:  # type: ignore[no-untyped-def]
+# --------------------------------------------------------------------------- enquiry -> prospect link (services/crm/deals.py)
+def test_the_sheet_moves_a_new_prospect_forward_through_any_of_its_enquiries(sync) -> None:  # type: ignore[no-untyped-def]
     header, _ = matrix_csv().split("\n", 1)
     row = ",02 July 2026,{summary},{mail},High,{status},,Indus,07 July 2026,,,https://www.linkedin.com/posts/synthetic-activity-71000000000000{n}-Zz{n},Synthetic text {n} about training.,,,\n"
     first = row.format(summary="Indus - Vision - Pune | Online", mail="i1@indus.example", status="Contacted", n="91")
@@ -405,8 +405,9 @@ def test_the_sheet_moves_the_company_stage_through_its_origin_enquiry_only(sync)
         enquiries = db.scalars(select(Enquiry).where(Enquiry.company == "Indus").order_by(Enquiry.id)).all()
         assert len(enquiries) == 2
         co = db.get(Company, enquiries[0].company_id)
-        # the origin row (Contacted) moved the company; the second enquiry's Final follow-up did not
-        assert (co.stage, co.sub_status) == ("prospect", "contacted")
+        # any enquiry's status moves the new prospect forward (the second row's Final follow-up too); each keeps its own status
+        assert (co.stage, co.sub_status) == ("prospect", "final_follow_up")
+        assert [e.deal_status for e in enquiries] == ["contacted", "final_follow_up"]
     # a stage a person set in the app is not overwritten by the sheet
     with session_scope() as db:
         co = db.scalar(select(Company).where(Company.name == "Indus"))
