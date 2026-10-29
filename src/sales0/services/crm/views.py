@@ -144,6 +144,7 @@ class CompanyRow(CompanyView):
     enquiries: int = 0
     open_follow_ups: int = 0
     characteristics: list[CharacteristicView] = Field(default_factory=list)
+    priority: str | None = None  # q16: the highest priority among its open prospects
 
 
 class SheetSourceView(_View):
@@ -216,6 +217,11 @@ class ProspectView(_View):
     open_lead_id: int | None = None
     created_at: datetime
     characteristics: list[CharacteristicView] = Field(default_factory=list)
+    # q16: high | medium | low | None; priority_source 'derived' (from the linked enquiries) | 'manual'
+    priority: str | None = None
+    priority_source: str = "derived"
+    # q16: the non-default enquiry categories among its enquiries (channel_partner, competitor), for the chip
+    categories: list[str] = Field(default_factory=list)
 
 
 class LeadView(_View):
@@ -235,6 +241,7 @@ class LeadView(_View):
     days_since_activity: int | None = None
     company_id: int | None = None
     characteristics: list[CharacteristicView] = Field(default_factory=list)
+    priority: str | None = None  # the prospect's (q16)
 
 
 class ClientView(_View):
@@ -248,6 +255,7 @@ class ClientView(_View):
     prospect_id: int | None = None
     company_name: str | None = None
     characteristics: list[CharacteristicView] = Field(default_factory=list)
+    priority: str | None = None  # the prospect's (q16)
 
 
 class ProspectDetail(ProspectView):

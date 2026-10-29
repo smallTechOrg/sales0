@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from sales0.db.models import Client, Company, CompetitorMention, Competitor, Lead, Prospect
 from sales0.services._common import clip, now_or, not_found
-from sales0.services.crm import _keys, characteristics, companies, contacts, timeline
+from sales0.services.crm import _keys, characteristics, companies, contacts, priority, timeline
 from sales0.services.crm._common import UNSET, invalid, page_params, today_local
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
 from sales0.services.crm.views import ClientDetail, ClientPage, ClientView, CompetitorView
@@ -29,10 +29,12 @@ def views_for(db: Session, rows: Iterable[Client]) -> list[ClientView]:
     cids = {r.company_id for r in rows if r.company_id}
     names = dict(db.execute(select(Company.id, Company.name).where(Company.id.in_(cids))).all()) if cids else {}
     traits = characteristics.for_clients(db, rows)
+    pids = {r.prospect_id for r in rows if r.prospect_id}
+    prios = dict(db.execute(select(Prospect.id, Prospect.priority).where(Prospect.id.in_(pids))).all()) if pids else {}
     return [
         ClientView(id=c.id, name=c.name, company_id=c.company_id, status=c.status, source=c.source, started_on=c.started_on,
                    lead_id=c.lead_id, prospect_id=c.prospect_id, company_name=names.get(c.company_id),
-                   characteristics=traits.get(c.id, []))
+                   characteristics=traits.get(c.id, []), priority=prios.get(c.prospect_id) if c.prospect_id else None)
         for c in rows
     ]
 
@@ -147,10 +149,13 @@ def update_client(
 
 def list_clients(
     db: Session, *, status: str | None = None, q: str | None = None, characteristic_id: int | None = None, page: int = 1,
-    page_size: int | None = None,
+    page_size: int | None = None, priority_filter: str | None = None, sort: str | None = None,
 ) -> ClientPage:
     page, size = page_params(page, page_size)
-    stmt = select(Client)
+    stmt = select(Client).outerjoin(Prospect, Prospect.id == Client.prospect_id)
+    clause = priority.filter_clause(Prospect.priority, priority_filter)
+    if clause is not None:
+        stmt = stmt.where(clause)
     if status:
         stmt = stmt.where(Client.status == status)
     if characteristic_id:
@@ -158,7 +163,9 @@ def list_clients(
     if q and q.strip():
         stmt = stmt.where(func.lower(Client.name).like(f"%{_keys.like_escape(_keys.name_key(q))}%", escape="\\"))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-    rows = db.scalars(stmt.order_by(Client.created_at.desc(), Client.id.desc()).limit(size).offset((page - 1) * size))
+    order = (priority.rank_order(Prospect.priority), Client.created_at.desc(), Client.id.desc()) if sort == "priority" else (
+        Client.created_at.desc(), Client.id.desc())
+    rows = db.scalars(stmt.order_by(*order).limit(size).offset((page - 1) * size))
     return ClientPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 
 

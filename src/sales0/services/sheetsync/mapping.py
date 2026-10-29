@@ -672,6 +672,12 @@ def _apply_enquiry(ctx: Ctx, rec: SheetEnquiry, previous: dict[str, Any] | None)
             result = ApplyResult(result.action, tuple(sorted(set(result.changed_fields) | set(extra))), "enquiry", enquiry.id)
     elif flipped_to_discarded:
         _close_discarded_prospect(ctx, enquiry)
+    if enquiry.prospect_id:
+        # q16: the sheet's priority reaches the ENQUIRY (changed-cell pattern above); the prospect follows it unless a
+        # person set the prospect's priority by hand (priority_source = 'manual' is never overwritten)
+        from sales0.services.crm import priority as prospect_priority
+
+        prospect_priority.refresh(db, enquiry.prospect_id)
     return result
 
 

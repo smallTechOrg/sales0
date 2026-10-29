@@ -1,14 +1,14 @@
 {# Needs: c (ProspectView | LeadView), kind ("prospect" | "lead"), today, next. One board card. #}
-{% from "pipeline/_macros.html" import flag_badges, source_chips, trait_chips %}
+{% from "pipeline/_macros.html" import category_chips, flag_badges, priority_chip, source_chips, trait_chips %}
 {% if kind == "prospect" %}
 <article class="pcard" id="prospect-{{ c.id }}" data-stage="{{ c.stage }}">
-  <h3><a href="/pipeline/prospects/{{ c.id }}">{{ c.name }}</a></h3>
+  <h3><a href="/pipeline/prospects/{{ c.id }}">{{ c.name }}</a> {{ priority_chip(c.priority, c.priority_source == "manual") }}</h3>
   {% if c.company_name %}<div class="pcard__meta">{{ c.company_name }}</div>{% endif %}
   <div class="pcard__meta">
     {% if c.contacted_at %}contacted {{ c.contacted_at|ago }}{% if c.contacted_estimated %} (estimated){% endif %}{% else %}not contacted yet{% endif %}
     {% if c.next_follow_up_on %}<br>Next follow-up <span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b") }}{% if c.next_follow_up_on < today %} (overdue){% endif %}</span>{% endif %}
   </div>
-  <div class="pcard__badges">{{ trait_chips(c.characteristics) }}{{ flag_badges(c.flags) }}{{ source_chips(c) }}
+  <div class="pcard__badges">{{ category_chips(c.categories) }}{{ trait_chips(c.characteristics) }}{{ flag_badges(c.flags) }}{{ source_chips(c) }}
     {% if c.tracked %}<span class="tracked tracked--on" title="Tracked: new posts by this person are watched">Tracked</span>{% endif %}
     {% if c.sheet_removed_at %}<span class="badge badge--warn">Removed from sheet</span>{% endif %}</div>
   {% if c.status == "open" %}
@@ -26,7 +26,7 @@
 </article>
 {% else %}
 <article class="pcard" id="lead-{{ c.id }}" data-stage="{{ c.stage }}">
-  <h3><a href="/pipeline/leads/{{ c.id }}">{{ c.prospect_name }}</a></h3>
+  <h3><a href="/pipeline/leads/{{ c.id }}">{{ c.prospect_name }}</a> {{ priority_chip(c.priority) }}</h3>
   {% if c.company_name %}<div class="pcard__meta">{{ c.company_name }}</div>{% endif %}
   <div class="pcard__meta">opened {{ c.opened_at|ago }}{% if c.days_since_activity is not none %} · last activity {{ c.days_since_activity }}d ago{% endif %}
     {% if c.value_estimate %}<br>Est. ₹{{ "{:,}".format(c.value_estimate) }}{% endif %}</div>

@@ -81,3 +81,37 @@ def test_company_set_in_the_app_stands_until_the_company_cell_changes(sync) -> N
     assert _pat_company() == "Pat Holdings"
     sync(_outreach(company="Pat Group", notes="hot lead"), tabs=(OUTREACH,))  # the company cell changed: the sheet wins
     assert _pat_company() == "Pat Group"
+
+
+# ---------------------------------------------------------------------------------------- E4: prospect priority
+def _prospect_of_acme() -> int:
+    with session_scope() as db:
+        pid = db.scalar(select(Enquiry.prospect_id).where(Enquiry.company == "Acme Corp"))
+        assert pid is not None
+        return pid
+
+
+def _with_priority(value: str, notes: str = "first") -> dict[str, str]:
+    row = fx.active_row(added="12 July", summary="Acme Corp - GenAI workshop - Pune | Online", email="a.one@acme.example", priority=value,
+                        status="New", notes=notes, company="Acme Corp", phone="+91 98765 43210", person="Asha Test",
+                        link="https://www.linkedin.com/posts/x-activity-7000000000000000001-AbCd")
+    return {"Active Enquiries": fx.active_csv([row])}
+
+
+def test_sheet_priority_flows_to_the_prospect_but_never_clobbers_a_manual_one(sync) -> None:  # type: ignore[no-untyped-def]
+    from sales0.services.crm import priority
+
+    sync(_with_priority("High"), tabs=(ACTIVE,))
+    pid = _prospect_of_acme()
+    with session_scope() as db:
+        p = db.get(Prospect, pid)
+        assert (p.priority, p.priority_source) == ("high", "derived")
+    sync(_with_priority("Low"), tabs=(ACTIVE,))  # the sheet cell changed: enquiry and (derived) prospect follow
+    with session_scope() as db:
+        assert db.get(Prospect, pid).priority == "low"
+        priority.set_priority(db, pid, "high")  # a person decides
+    sync(_with_priority("Medium", notes="second"), tabs=(ACTIVE,))  # the sheet changes again
+    with session_scope() as db:
+        p = db.get(Prospect, pid)
+        assert db.scalar(select(Enquiry.priority).where(Enquiry.prospect_id == pid)) == "medium"
+        assert (p.priority, p.priority_source) == ("high", "manual")

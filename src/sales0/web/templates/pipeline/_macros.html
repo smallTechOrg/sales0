@@ -20,6 +20,16 @@
   {%- if p.sheet_tabs %} <span class="lock">Synced from sheet</span>{% endif %}
 {%- endmacro %}
 
+{# q16: the priority chip (high / medium / low); nothing when unset. ``manual`` shows a small marker. #}
+{% macro priority_chip(prio, manual=False) -%}
+  {%- if prio %}<span class="chip-priority" data-priority="{{ prio }}" title="Priority: {{ prio|capitalize }}{% if manual %} (set by hand){% endif %}">{{ prio|capitalize }}</span>{% endif -%}
+{%- endmacro %}
+
+{# q16: category chips (only the non-default ones: channel partner / competitor). ``cats`` = list of keys. #}
+{% macro category_chips(cats) -%}
+  {%- for c in cats or [] %}<span class="chip-category" data-category="{{ c }}">{{ {"channel_partner": "Channel partner", "competitor": "Competitor", "relevant_prospect": "Relevant prospect"}.get(c, c) }}</span>{% endfor -%}
+{%- endmacro %}
+
 {% macro stage_badge(stage, label) -%}
   <span class="badge stage-badge stage-badge--{{ stage }}">{{ label }}</span>
 {%- endmacro %}

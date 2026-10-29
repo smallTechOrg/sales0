@@ -3,7 +3,7 @@
 {% set any_cards = board.columns|sum(attribute="total") %}
 {% if not any_cards %}
   <div class="empty-state" id="pipeline-empty">
-    {% if params.q or params.flag %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ tab }}">Clear filters</a>
+    {% if params.q or params.flag or params.characteristic or params.priority or params.category %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ tab }}">Clear filters</a>
     {% elif tab == "prospects" %}<p>No prospects yet — accept an enquiry in the Inbox, or add one.</p><div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-prospect">New prospect</a></div>
     {% else %}<p>No leads yet. A prospect becomes a lead once it has been contacted and has replied.</p>{% endif %}
   </div>

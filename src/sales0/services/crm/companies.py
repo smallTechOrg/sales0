@@ -268,9 +268,19 @@ def list_companies(
     ids = [r.id for r in rows]
     np_, ncl, nct, nen = (_counts(db, m, ids) for m in (Prospect, Client, Contact, Enquiry))
     fus, traits = _open_follow_ups(db, ids), _characteristics_by_company(db, ids)
+    best: dict[int, str] = {}  # q16: the highest priority among the company's open prospects
+    if ids:
+        from sales0.services.crm.priority import RANK
+
+        for cid, prio in db.execute(
+            select(Prospect.company_id, Prospect.priority).where(Prospect.company_id.in_(ids), Prospect.status == "open", Prospect.priority.is_not(None))
+        ).all():
+            if prio in RANK and RANK[prio] > RANK.get(best.get(cid, ""), 0):
+                best[cid] = prio
     items = [
         CompanyRow(**_view(r).model_dump(), prospects=np_.get(r.id, 0), clients=ncl.get(r.id, 0), contacts=nct.get(r.id, 0),
-                   enquiries=nen.get(r.id, 0), open_follow_ups=fus.get(r.id, 0), characteristics=traits.get(r.id, []))
+                   enquiries=nen.get(r.id, 0), open_follow_ups=fus.get(r.id, 0), characteristics=traits.get(r.id, []),
+                   priority=best.get(r.id))
         for r in rows
     ]
     return CompanyPage(items=items, total=total, page=page, page_size=size)

@@ -33,7 +33,7 @@ from sales0.errors import DomainError
 from sales0.scraper.urls import link_kind_of
 from sales0.services import profiles
 from sales0.services._common import clip, now_or, not_found
-from sales0.services.crm import _keys, characteristics, companies, contacts, flags, followups, timeline
+from sales0.services.crm import _keys, characteristics, companies, contacts, flags, followups, priority, timeline
 from sales0.services.crm._common import UNSET, invalid, page_params, today_local
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
 from sales0.services.crm.stages import stage_label, stage_rank
@@ -92,6 +92,14 @@ def views_for(db: Session, rows: Iterable[Prospect]) -> list[ProspectView]:
     ).all():
         if tab not in tabs[pid]:
             tabs[pid].append(tab)
+    cats: dict[int, list[str]] = defaultdict(list)
+    for pid, cat in db.execute(
+        select(Enquiry.prospect_id, Enquiry.category)
+        .where(Enquiry.prospect_id.in_(ids), Enquiry.category != "relevant_prospect")
+        .distinct()
+        .order_by(Enquiry.prospect_id, Enquiry.category)
+    ).all():
+        cats[pid].append(cat)
     out: list[ProspectView] = []
     for r in rows:
         prof = profs.get(r.linkedin_profile_id) if r.linkedin_profile_id else None
@@ -105,6 +113,7 @@ def views_for(db: Session, rows: Iterable[Prospect]) -> list[ProspectView]:
                 responded_at=r.responded_at, next_follow_up_on=r.next_follow_up_on, flags=flag_map.get(r.id, []),
                 sheet_status=r.sheet_status, sheet_removed_at=r.sheet_removed_at, sheet_tabs=tabs.get(r.id, []),
                 open_lead_id=open_leads.get(r.id), created_at=r.created_at, characteristics=traits.get(r.id, []),
+                priority=r.priority, priority_source=r.priority_source, categories=cats.get(r.id, []),
             )
         )
     return out
@@ -572,6 +581,7 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
         data={"enquiry_id": e.id}, actor=actor, occurred_at=stamp, **scope,
     )
     flags.on_enquiry_linked(db, e.id, now=stamp)
+    priority.refresh(db, p.id)
     return _view(db, p)
 
 
@@ -726,13 +736,27 @@ def _client_view(c: Client) -> ClientView:
     return clients_mod.views_for(db, [c])[0] if db is not None else clients_mod.view_of(c)
 
 
+def apply_priority_category(stmt, priority_filter: str | None, category: str | None, prospect_col=None):  # type: ignore[no-untyped-def]
+    """The shared priority / enquiry-category filters of the pipeline (prospects, board, leads)."""
+    col = prospect_col if prospect_col is not None else Prospect.id
+    prio_col = Prospect.priority
+    clause = priority.filter_clause(prio_col, priority_filter)
+    if clause is not None:
+        stmt = stmt.where(clause)
+    if category in ("channel_partner", "competitor", "relevant_prospect"):
+        stmt = stmt.where(exists().where(Enquiry.prospect_id == col, Enquiry.category == category, Enquiry.review_status != "discarded"))
+    return stmt
+
+
 def list_prospects(
     db: Session, *, stage: str | None = None, status: str = "open", q: str | None = None, company_id: int | None = None,
     source: str | None = None, flag: str | None = None, due: str | None = None, characteristic_id: int | None = None,
+    priority_filter: str | None = None, category: str | None = None, sort: str | None = None,
     page: int = 1, page_size: int | None = None,
 ) -> ProspectPage:
     page, size = page_params(page, page_size)
     stmt = select(Prospect)
+    stmt = apply_priority_category(stmt, priority_filter, category)
     if characteristic_id:
         stmt = stmt.where(characteristics.prospect_filter(characteristic_id))
     if status and status != "all":
@@ -759,7 +783,9 @@ def list_prospects(
         cond = FollowUp.due_on == today if due == "today" else FollowUp.due_on < today
         stmt = stmt.where(exists().where(FollowUp.prospect_id == Prospect.id, FollowUp.done_at.is_(None), FollowUp.cancelled_at.is_(None), cond))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-    rows = list(db.scalars(stmt.order_by(Prospect.updated_at.desc(), Prospect.id.desc()).limit(size).offset((page - 1) * size)))
+    order = (priority.rank_order(Prospect.priority), Prospect.updated_at.desc(), Prospect.id.desc()) if sort == "priority" else (
+        Prospect.updated_at.desc(), Prospect.id.desc())
+    rows = list(db.scalars(stmt.order_by(*order).limit(size).offset((page - 1) * size)))
     return ProspectPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 
 
@@ -801,7 +827,7 @@ def local_today(now: datetime | None = None) -> date:
 
 __all__ = [
     "SYSTEM", "add_contact", "advance_to", "apply_accept_choices", "close", "create_manual", "ensure_for_enquiry", "get_prospect",
-    "linked_enquiry_view", "log_contact",
+    "apply_priority_category", "linked_enquiry_view", "log_contact",
     "list_prospects", "mark_contacted", "move_stage", "record_email_contact", "record_response", "reopen", "resolve_for_message", "set_tracked",
     "update", "views_for",
 ]

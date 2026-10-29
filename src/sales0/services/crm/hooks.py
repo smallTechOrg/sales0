@@ -18,7 +18,7 @@ from sales0.db.models import Enquiry, FollowUp, Lead, OutreachMessage, OutreachR
 from sales0.logging import get_logger
 from sales0.services import events
 from sales0.services._common import record_history
-from sales0.services.crm import contacts, flags, followups, leads, prospects, timeline
+from sales0.services.crm import contacts, flags, followups, leads, priority, prospects, timeline
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor, actor_for
 
 log = get_logger("sales0.crm.hooks")
@@ -77,6 +77,7 @@ def _on_enquiry_decided(db: Session, ev: events.EnquiryDecided) -> None:
         prospects.ensure_for_enquiry(db, ev.enquiry_id, actor=actor)
         return
     if ev.decision == "discard" and e.prospect_id:
+        priority.refresh(db, e.prospect_id)  # a discarded enquiry no longer counts toward the derived priority
         p = db.get(Prospect, e.prospect_id)
         if p is None or p.status != "open" or p.stage != "new" or p.stage_source == "sheet":
             return

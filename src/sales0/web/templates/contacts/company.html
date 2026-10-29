@@ -48,7 +48,7 @@
           <div class="card__header"><h2 id="cp-title">Prospects, leads &amp; clients</h2></div>
           <div class="card__body">
             {% for p in co.prospects %}
-              <div class="reply-item"><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a> <span class="badge stage-badge">{{ p.stage_label }}</span>
+              <div class="reply-item"><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a> <span class="badge stage-badge">{{ p.stage_label }}</span>{% if p.priority %} <span class="chip-priority" data-priority="{{ p.priority }}">{{ p.priority|capitalize }}</span>{% endif %}
                 {% if p.status != "open" %}<span class="badge">{{ p.status|capitalize }}</span>{% endif %} {{ flag_badges(p.flags) }} {{ trait_chips(p.characteristics) }}
                 {% if p.open_lead_id %} · <a href="/pipeline/leads/{{ p.open_lead_id }}">Open lead</a>{% endif %}</div>
             {% else %}<p class="muted">No prospects at this company.</p>{% endfor %}

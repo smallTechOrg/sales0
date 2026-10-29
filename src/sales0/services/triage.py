@@ -184,6 +184,10 @@ def triage_enquiry(
         now=stamp,
     )
     db.flush()
+    if enquiry.prospect_id and outcome.status == "done":
+        from sales0.services.crm import priority as prospect_priority
+
+        prospect_priority.refresh(db, enquiry.prospect_id)
     return outcome
 
 

@@ -428,6 +428,10 @@ def update_fields(
         if latest is not None:
             latest.field_overrides = _field_overrides(e)
     db.flush()
+    if any(f == "priority" for f, _b, _a in changed):
+        from sales0.services.crm import priority as prospect_priority
+
+        prospect_priority.refresh_for_enquiry(db, e.id)  # q16: the prospect's derived priority follows
     return _cards(db, [e])[0]
 
 

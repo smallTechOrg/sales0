@@ -12,7 +12,7 @@ from sales0.db.models import Client, Company, Enquiry, Lead, OutreachMessage, Pr
 from sales0.db.models.enums_crm import LEAD_STAGES
 from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
-from sales0.services.crm import _keys, characteristics, clients, contacts, flags, followups, timeline
+from sales0.services.crm import _keys, characteristics, clients, contacts, flags, followups, priority, timeline
 from sales0.services.crm._common import invalid, page_params, today_local
 from sales0.services.crm.actor import TEAM, Actor
 from sales0.services.crm.stages import TERMINAL_LEAD_STAGES, stage_label
@@ -48,7 +48,7 @@ def views_for(db: Session, rows: Iterable[Lead], *, now: datetime | None = None)
                 opened_at=r.opened_at, closed_at=r.closed_at, meeting_at=r.meeting_at, proposal_sent_on=r.proposal_sent_on,
                 value_estimate=r.value_estimate, outcome_note=r.outcome_note, flags=flag_map.get(r.prospect_id, []),
                 days_since_activity=max((stamp - seen).days, 0) if seen is not None else None,
-                company_id=r.company_id or p.company_id, characteristics=traits.get(r.prospect_id, []),
+                company_id=r.company_id or p.company_id, characteristics=traits.get(r.prospect_id, []), priority=p.priority,
             )
         )
     return out
@@ -253,10 +253,14 @@ def get_lead(db: Session, lead_id: int) -> LeadDetail:
 
 def list_leads(
     db: Session, *, stage: str | None = None, open_only: bool = True, q: str | None = None,
-    characteristic_id: int | None = None, page: int = 1, page_size: int | None = None,
+    characteristic_id: int | None = None, priority_filter: str | None = None, category: str | None = None,
+    sort: str | None = None, page: int = 1, page_size: int | None = None,
 ) -> LeadPage:
+    from sales0.services.crm import prospects as prospects_mod
+
     page, size = page_params(page, page_size)
     stmt = select(Lead).join(Prospect, Prospect.id == Lead.prospect_id)
+    stmt = prospects_mod.apply_priority_category(stmt, priority_filter, category, Lead.prospect_id)
     if characteristic_id:
         stmt = stmt.where(characteristics.prospect_filter(characteristic_id, Lead.prospect_id))
     if open_only:
@@ -268,7 +272,9 @@ def list_leads(
         stmt = stmt.where(or_(func.lower(Prospect.name).like(like, escape="\\"),
                               Prospect.company_id.in_(select(Company.id).where(Company.name_key.like(like, escape="\\")))))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-    rows = list(db.scalars(stmt.order_by(Lead.updated_at.desc(), Lead.id.desc()).limit(size).offset((page - 1) * size)))
+    order = (priority.rank_order(Prospect.priority), Lead.updated_at.desc(), Lead.id.desc()) if sort == "priority" else (
+        Lead.updated_at.desc(), Lead.id.desc())
+    rows = list(db.scalars(stmt.order_by(*order).limit(size).offset((page - 1) * size)))
     return LeadPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 
 

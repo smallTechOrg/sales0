@@ -36,6 +36,7 @@ from sales0.services.crm import flags as flags_service
 from sales0.services.crm import followups as followups_service
 from sales0.services.crm import leads as leads_service
 from sales0.services.crm import pipeline as pipeline_service
+from sales0.services.crm import priority as priority_service
 from sales0.services.crm import prospects as prospects_service
 from sales0.services.crm import timeline as timeline_service
 from sales0.services.crm.stages import LEAD_STAGES, PROSPECT_STAGES, STAGE_LABELS
@@ -74,6 +75,9 @@ CLOSE_REASONS: tuple[tuple[str, str], ...] = (
 )
 CLIENT_STATUSES: tuple[tuple[str, str], ...] = (("active", "Active"), ("legacy", "Legacy"))
 OPEN_LEAD_STAGES = ("meeting_scheduled", "proposal_sent")
+CATEGORY_CHOICES: tuple[tuple[str, str], ...] = (
+    ("relevant_prospect", "Relevant prospect"), ("channel_partner", "Channel partner"), ("competitor", "Competitor"),
+)
 
 
 def _stage_options(stages: tuple[str, ...]) -> list[tuple[str, str]]:
@@ -135,6 +139,9 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
         "due": raw.get("due") if raw.get("due") in ("today", "overdue") else "",
         "show_removed": "1" if raw.get("show_removed") in ("1", "true", "on", True) else "",
         "characteristic": str(raw.get("characteristic") or "") if str(raw.get("characteristic") or "").isdigit() else "",
+        "priority": raw.get("priority") if raw.get("priority") in ("high", "medium", "low", "none") else "",
+        "category": raw.get("category") if raw.get("category") in ("relevant_prospect", "channel_partner", "competitor") else "",
+        "sort": "priority" if raw.get("sort") == "priority" else "",
         "page": page_number(raw.get("page")),
     }
 
@@ -155,11 +162,15 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     valid_stages = {k for k, _ in stage_options}
     if params["stage"] not in valid_stages:
         params["stage"] = ""
-    ctx: dict[str, Any] = {"tab": tab, "params": params, "stage_options": stage_options, "characteristic_options": _trait_options(db)}
+    ctx: dict[str, Any] = {"tab": tab, "params": params, "stage_options": stage_options, "characteristic_options": _trait_options(db),
+                           "priority_choices": priority_service.FILTER_CHOICES, "category_choices": CATEGORY_CHOICES}
     trait = _trait_id(params)
 
     if tab == "clients":
-        page = clients_service.list_clients(db, q=params["q"] or None, characteristic_id=trait, page=params["page"])
+        page = clients_service.list_clients(
+            db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
+            sort=params["sort"] or None, page=params["page"],
+        )
         ctx.update(view="list", forced_list=False, items=page.items, total=page.total, page=page.page, page_size=page.page_size)
     else:
         filtered = bool(
@@ -173,20 +184,23 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
         if view == "board":
             board = pipeline_service.board(
                 db, kind=tab, q=params["q"] or None, flag=(params["flag"] or None) if tab == "prospects" else None,
-                characteristic_id=trait,
+                characteristic_id=trait, priority_filter=params["priority"] or None, category=params["category"] or None,
+                sort=params["sort"] or None,
             )
             ctx["board"] = board
         elif tab == "prospects":
             page = prospects_service.list_prospects(
                 db, stage=params["stage"] or None, status=params["status"], q=params["q"] or None,
                 source=params["source"] or None, flag=params["flag"] or None, due=params["due"] or None,
-                characteristic_id=trait, page=params["page"],
+                characteristic_id=trait, priority_filter=params["priority"] or None, category=params["category"] or None,
+                sort=params["sort"] or None, page=params["page"],
             )  # fmt: skip
             ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
         else:
             page = leads_service.list_leads(
                 db, stage=params["stage"] or None, open_only=params["status"] == "open", q=params["q"] or None,
-                characteristic_id=trait, page=params["page"],
+                characteristic_id=trait, priority_filter=params["priority"] or None, category=params["category"] or None,
+                sort=params["sort"] or None, page=params["page"],
             )  # fmt: skip
             ctx.update(items=page.items, total=page.total, page=page.page, page_size=page.page_size)
     ctx["view_param"] = params["view"]
@@ -347,6 +361,23 @@ def prospect_stage(
         return f"Moved to {view.stage_label}."
 
     return _prospect_action(request, db, prospect_id, act, next_url=_safe_next(next))
+
+
+@router.post("/pipeline/prospects/{prospect_id}/priority", response_model=None)
+def prospect_priority(
+    request: Request,
+    prospect_id: PathId,
+    priority: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    def act() -> str:
+        p = priority_service.set_priority(db, prospect_id, priority, actor=actor_of(member))
+        if p.priority_source == "manual":
+            return f"Priority set to {priority_service.LABELS[p.priority or 'low']}."
+        return "Priority is automatic again" + (f" ({priority_service.LABELS[p.priority]})." if p.priority else ".")
+
+    return _prospect_action(request, db, prospect_id, act)
 
 
 @router.post("/pipeline/prospects/{prospect_id}/response", response_model=None)

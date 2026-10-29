@@ -1,5 +1,5 @@
 {# Needs: p (ProspectDetail), prospect_stage_options, close_reasons, characteristic_options, company (CompanyView|None); oob optional. #}
-{% from "pipeline/_macros.html" import flag_badges, source_chips, trait_editor %}
+{% from "pipeline/_macros.html" import category_chips, flag_badges, priority_chip, source_chips, trait_editor %}
 {% set is_open = p.status == "open" %}
 {% set no_fu = p.flags|selectattr("kind", "equalto", "no_follow_up")|list|length > 0 %}
 <section class="card" id="prospect-header" aria-labelledby="prospect-title"{% if oob %} hx-swap-oob="outerHTML:#prospect-header"{% endif %}>
@@ -8,8 +8,19 @@
       <h1 id="prospect-title">{{ p.name }}</h1>
       <span class="badge stage-badge" id="stage-badge">{{ p.stage_label }}</span>
       {% if p.status != "open" %}<span class="badge" id="status-badge">{{ p.status|capitalize }}{% if p.closed_reason %} · {{ p.closed_reason|replace("_", " ") }}{% endif %}</span>{% endif %}
+      <span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>
+      {{ category_chips(p.categories) }}
       {{ flag_badges(p.flags) }}
     </div>
+    <form class="row" id="priority-form" method="post" action="/pipeline/prospects/{{ p.id }}/priority" hx-post="/pipeline/prospects/{{ p.id }}/priority" hx-swap="none">
+      <label class="field__label" for="priority-select">Priority</label>
+      <select class="select" id="priority-select" name="priority" data-autosubmit="request">
+        <option value=""{% if p.priority_source != "manual" %} selected{% endif %}>Automatic{% if p.priority_source != "manual" %}{% if p.priority %} ({{ p.priority|capitalize }}){% else %} (none){% endif %}{% endif %}</option>
+        {% for key, label in (("high", "High"), ("medium", "Medium"), ("low", "Low")) %}<option value="{{ key }}"{% if p.priority_source == "manual" and p.priority == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn--sm" type="submit">Save priority</button></noscript>
+      <span class="hint">Automatic = the highest priority of its enquiries; a value you pick is kept.</span>
+    </form>
     <div class="pcard__meta">
       {% if p.company_name %}{% if p.company_id %}<a href="/companies/{{ p.company_id }}">{{ p.company_name }}</a>{% else %}{{ p.company_name }}{% endif %} · {% endif %}
       {% if p.contacted_at %}contacted {{ p.contacted_at|ago }}{% if p.contacted_estimated %} (date estimated){% endif %}{% else %}not contacted yet{% endif %}

@@ -41,9 +41,10 @@ def summary(db: Session, *, today: date | None = None, now: datetime | None = No
 
 def board(
     db: Session, *, kind: str = "prospects", q: str | None = None, flag: str | None = None, per_column: int = 50,
-    characteristic_id: int | None = None, now: datetime | None = None,
+    characteristic_id: int | None = None, priority_filter: str | None = None, category: str | None = None,
+    sort: str | None = None, now: datetime | None = None,
 ) -> Board:
-    from sales0.services.crm import characteristics, leads, prospects
+    from sales0.services.crm import characteristics, leads, priority, prospects
 
     if kind not in ("prospects", "leads"):
         raise invalid("stage_invalid", "The board shows prospects or leads.")
@@ -60,8 +61,11 @@ def board(
                 stmt = stmt.where(exists().where(Flag.entity_type == "prospect", Flag.entity_id == Prospect.id, Flag.kind == flag, Flag.cleared_at.is_(None)))
             if characteristic_id:
                 stmt = stmt.where(characteristics.prospect_filter(characteristic_id))
+            stmt = prospects.apply_priority_category(stmt, priority_filter, category)
             total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-            rows = list(db.scalars(stmt.order_by(Prospect.updated_at.desc(), Prospect.id.desc()).limit(per_column)))
+            order = (priority.rank_order(Prospect.priority), Prospect.updated_at.desc(), Prospect.id.desc()) if sort == "priority" else (
+                Prospect.updated_at.desc(), Prospect.id.desc())
+            rows = list(db.scalars(stmt.order_by(*order).limit(per_column)))
             columns.append(BoardColumn(stage=stage, label=STAGE_LABELS[stage], total=total, cards=prospects.views_for(db, rows)))
     else:
         for stage in LEAD_STAGES:
@@ -77,8 +81,11 @@ def board(
                 stmt = stmt.where(exists().where(Flag.entity_type == "prospect", Flag.entity_id == Lead.prospect_id, Flag.kind == flag, Flag.cleared_at.is_(None)))
             if characteristic_id:
                 stmt = stmt.where(characteristics.prospect_filter(characteristic_id, Lead.prospect_id))
+            stmt = prospects.apply_priority_category(stmt, priority_filter, category, Lead.prospect_id)
             total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-            rows = list(db.scalars(stmt.order_by(Lead.updated_at.desc(), Lead.id.desc()).limit(per_column)))
+            order = (priority.rank_order(Prospect.priority), Lead.updated_at.desc(), Lead.id.desc()) if sort == "priority" else (
+                Lead.updated_at.desc(), Lead.id.desc())
+            rows = list(db.scalars(stmt.order_by(*order).limit(per_column)))
             columns.append(BoardColumn(stage=stage, label=STAGE_LABELS[stage], total=total, cards=leads.views_for(db, rows, now=stamp)))
     return Board(kind=kind, columns=columns)
 

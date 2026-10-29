@@ -301,6 +301,19 @@ a:hover { color: var(--color-primary-hover); }
 .chip-opportunity[data-opportunity="agency_requirement"] { background: #e8eefb; color: #23407a; }
 .chip-opportunity[data-opportunity="individual_trainer_wanted"] { background: #f3ece0; color: #6b4a14; }
 
+/* q16: priority and category chips (colour is never the only cue: the word is always shown) */
+.chip-priority, .chip-category {
+  display: inline-flex; align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap; border: 1px solid transparent;
+}
+.chip-priority[data-priority="high"] { background: #fbe4e1; color: #8a1f12; border-color: #f0b9b2; }
+.chip-priority[data-priority="medium"] { background: #fdf0d2; color: #7a4d00; border-color: #ecd290; }
+.chip-priority[data-priority="low"] { background: #e8eef3; color: #3a4a5a; border-color: #c9d5df; }
+.chip-category { background: #efe8f8; color: #4b2a7a; border-color: #d6c7ec; }
+.chip-category[data-category="competitor"] { background: #f6e3ea; color: #7a1f43; border-color: #e6b9cb; }
+
 /* ------------------------------------------------------------------ forms */
 .field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .field__label { font-weight: 600; font-size: var(--font-size-sm); }

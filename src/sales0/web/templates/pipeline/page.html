@@ -57,6 +57,17 @@
               <option value="overdue"{% if params.due == "overdue" %} selected{% endif %}>Overdue</option></select></div>
           <label class="enquiry__select"><input type="checkbox" name="show_removed" value="1"{% if params.show_removed %} checked{% endif %}> Show removed from sheet</label>
         {% endif %}
+        <div class="field"><label class="field__label" for="f-priority">Priority</label>
+          <select class="input" id="f-priority" name="priority"><option value="">Any</option>
+            {% for key, label in priority_choices %}<option value="{{ key }}"{% if key == params.priority %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select></div>
+        {% if tab != "clients" %}
+          <div class="field"><label class="field__label" for="f-category">Category</label>
+            <select class="input" id="f-category" name="category"><option value="">Any</option>
+              {% for key, label in category_choices %}<option value="{{ key }}"{% if key == params.category %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select></div>
+        {% endif %}
+        <label class="enquiry__select"><input type="checkbox" name="sort" value="priority"{% if params.sort == "priority" %} checked{% endif %}> Highest priority first</label>
         {% if characteristic_options %}
           <div class="field"><label class="field__label" for="f-characteristic">Characteristic</label>
             <select class="input" id="f-characteristic" name="characteristic"><option value="">Any</option>

@@ -1,5 +1,5 @@
 {# Needs: l (LeadDetail), lead_stage_options, today, characteristic_options; oob optional. #}
-{% from "pipeline/_macros.html" import flag_badges, trait_editor %}
+{% from "pipeline/_macros.html" import flag_badges, priority_chip, trait_editor %}
 {% set order = lead_stage_options|map(attribute=0)|list %}
 {% set open_steps = ["meeting_scheduled", "proposal_sent"] %}
 <section class="card" id="lead-header" aria-labelledby="lead-title"{% if oob %} hx-swap-oob="outerHTML:#lead-header"{% endif %}>
@@ -7,6 +7,7 @@
     <div class="record-head__title">
       <h1 id="lead-title">{{ l.prospect_name }}</h1>
       <span class="badge stage-badge stage-badge--{{ l.stage }}" id="stage-badge">{{ l.stage_label }}</span>
+      {{ priority_chip(l.priority) }}
       {{ flag_badges(l.flags) }}
     </div>
     <div class="pcard__meta">
