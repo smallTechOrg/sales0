@@ -1,6 +1,6 @@
 """Enquiry status <-> prospect status (deals.py module doc). They are different things; the ONE link: contacted /
 follow-up N on ANY accepted enquiry of a company that is still a new prospect moves the prospect forward to the same
-stage (forward only, no error when it cannot). The company's own cadence never rewrites enquiry statuses."""
+stage (forward only, no error when it cannot). The prospect's own forward moves carry its open enquiries along (parked statuses stay)."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def test_meeting_or_proposal_still_only_suggests_lead(db) -> None:
     assert co.stage == "client"
 
 
-def test_company_cadence_does_not_touch_enquiry_statuses(db) -> None:
+def test_company_cadence_moves_open_enquiries_but_not_parked_ones(db) -> None:
     e1, v, co = _accepted(db)
     e2 = _second(db)
     deals.set_status(db, e2.id, "on_hold", now=h.T0)
@@ -121,7 +121,7 @@ def test_company_cadence_does_not_touch_enquiry_statuses(db) -> None:
     prospects.move_stage(db, v.id, "follow_up_2")
     db.refresh(co), db.refresh(e1), db.refresh(e2)
     assert co.sub_status == "follow_up_2"
-    assert e1.deal_status == "open" and e2.deal_status == "on_hold"  # nothing written back to the enquiries
+    assert e1.deal_status == "follow_up_2" and e2.deal_status == "on_hold"  # parked statuses stay
 
 
 def test_no_ping_pong(db) -> None:
@@ -181,3 +181,32 @@ def test_attach_requires_a_name(db) -> None:
     e = h.enquiry(db, profile_row=None, company=None)
     with pytest.raises(DomainError):
         companies.attach_to_enquiry(db, e.id, name="  ")
+
+
+def test_contacting_the_prospect_moves_its_enquiries_forward(db) -> None:
+    e1, v, _ = _accepted(db)
+    e2 = _second(db)
+    prospects.log_contact(db, v.id, channel="email", actor=Actor("Ana", None), now=h.T0)
+    db.refresh(e1), db.refresh(e2)
+    assert (e1.deal_status, e2.deal_status) == ("contacted", "contacted")
+
+
+def test_prospect_stage_never_moves_an_enquiry_backwards_or_out_of_a_parked_status(db) -> None:
+    e1, v, _ = _accepted(db)
+    e2 = _second(db)
+    deals.set_status(db, e1.id, "on_hold", now=h.T0)
+    deals.set_status(db, e2.id, "follow_up_2", now=h.T0)
+    prospects.move_stage(db, v.id, "contacted", now=h.T0)
+    db.refresh(e1), db.refresh(e2)
+    assert (e1.deal_status, e2.deal_status) == ("on_hold", "follow_up_2")
+
+
+def test_relinking_heals_an_empty_derived_priority(db) -> None:
+    e, v, _ = _accepted(db)
+    e.priority = "high"
+    db.flush()
+    p = db.get(Prospect, v.id)
+    assert p.priority is None
+    prospects.ensure_for_enquiry(db, e.id)
+    db.refresh(p)
+    assert p.priority == "high"

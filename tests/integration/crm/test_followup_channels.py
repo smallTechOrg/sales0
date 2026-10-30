@@ -26,7 +26,7 @@ def _rows(db, pid):
 
 
 def _events(db, pid, kind):
-    return list(db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == pid, TimelineEvent.kind == kind).order_by(TimelineEvent.id)))
+    return list(db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == pid, TimelineEvent.kind == kind, TimelineEvent.subject_type == "prospect").order_by(TimelineEvent.id)))
 
 
 def test_plan_is_contact_day_plus_settings_offsets() -> None:

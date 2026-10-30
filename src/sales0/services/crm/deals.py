@@ -4,19 +4,23 @@ ONE list for every enquiry, set by a person (Enquiries board, company page) or b
 contacted, follow_up_1, follow_up_2, final_follow_up, meeting_scheduled, proposal_sent, won, lost, no_response,
 on_hold. "Hot / Warm" are the priority tag. The enquiry status and the company's (prospect) status are DIFFERENT things.
 
-The only link (owner decision), enquiry -> company, one way, for ANY accepted enquiry of the company:
+Link 1 (owner decision), enquiry -> company, for ANY accepted enquiry of the company:
 * contacted / follow_up_1 / follow_up_2 / final_follow_up: while the company is a NEW prospect (stage prospect, no
   off-ramp) the prospect sub-status moves to the same stage, FORWARD ONLY (already at or past it: nothing happens).
 * meeting_scheduled / proposal_sent: show "Suggested: Lead"; a person confirms. won: the company becomes a client.
 * open / lost / no_response / on_hold: no effect on the company.
-A company that is not a prospect (lead, client, off-ramp) or no company at all: the status just changes. The company
-never writes back to the enquiry (no ping-pong); its cadence does not touch enquiry statuses.
+A company that is not a prospect (lead, client, off-ramp) or no company at all: the status just changes.
+
+Link 2, prospect -> enquiry: when the prospect itself moves forward to contacted / follow-up 1 / 2 / final (a logged
+contact, a sent email, a completed reminder), its accepted enquiries that are still behind that stage follow it, FORWARD
+ONLY. Parked or finished enquiry statuses (meeting scheduled .. on hold) are never touched.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Company, Enquiry
@@ -54,6 +58,26 @@ def _advance_prospect(db: Session, e: Enquiry, status: str, *, actor: Actor, sou
         return False  # forward only
     lifecycle.set_prospect_status(db, co.id, status, actor=actor, note="Set from an enquiry status", now=stamp)
     return True
+
+
+def advance_from_prospect(db: Session, prospect_id: int, stage: str, *, actor: Actor, stamp: datetime) -> int:
+    """Move the prospect's accepted enquiries forward to ``stage`` (forward only). Returns how many moved."""
+    if stage not in STAGE_DRIVING:
+        return 0
+    target = STAGE_DRIVING.index(stage)
+    moved = 0
+    for e in db.scalars(select(Enquiry).where(Enquiry.prospect_id == prospect_id, Enquiry.review_status == "accepted")).all():
+        cur = e.deal_status
+        if cur in (None, "open"):
+            behind = True
+        elif cur in STAGE_DRIVING:
+            behind = STAGE_DRIVING.index(cur) < target
+        else:
+            behind = False
+        if behind:
+            set_status(db, e.id, stage, actor=actor, note="Prospect moved to the same stage", now=stamp)
+            moved += 1
+    return moved
 
 
 def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM, source: str = "app", note: str | None = None,
