@@ -18,13 +18,14 @@ from tests.support.fake_llm import FakeLLMClient
 JSON = {"Accept": "application/json"}
 
 
-def test_prospect_page_shows_the_three_cards_empty(web: TestClient) -> None:
+def test_prospect_page_shows_the_research_and_summary_cards_empty(web: TestClient) -> None:
     pid = make_prospect()
     html = web.get(f"/pipeline/prospects/{pid}").text
-    for hook in ('id="research-card"', 'id="summary-card"', 'id="notes-card"', 'id="btn-research"', 'id="btn-summary"',
+    for hook in ('id="research-card"', 'id="summary-card"', 'id="btn-research"', 'id="btn-summary"',
                  'id="research-empty"', 'id="summary-empty"', 'id="linkedin-page-status"', 'hx-indicator="#research-run-indicator"'):
         assert hook in html, hook
     assert 'data-state="unavailable"' in html  # no SALES0_WORKER_TOKEN here: says the worker is needed
+    assert 'id="notes-card"' not in html  # "Our notes" was dropped from the company page
     assert 'id="ed-notes"' not in html  # the old single notes field is gone from Edit details
 
 
@@ -69,14 +70,15 @@ def test_summary_refresh_and_edit_routes(web: TestClient) -> None:
 def test_notes_routes_add_edit_delete(web: TestClient) -> None:
     pid = make_prospect()
     added = web.post(f"/pipeline/prospects/{pid}/notes", headers=HX, data={"body": "Asked for a December slot"})
-    assert added.status_code == 200 and "Note added." in added.text and "Asked for a December slot" in added.text
+    assert added.status_code == 200 and "Note added." in added.text
     with session_scope() as db:
         nid = db.scalar(select(ProspectNote.id))
     assert web.post(f"/pipeline/notes/{nid}/edit", headers=HX, data={"body": "Asked for 9 Dec"}).status_code == 200
-    page = web.get(f"/pipeline/prospects/{pid}").text
-    assert "Asked for 9 Dec" in page and f'id="note-{nid}"' in page and "edited" in page
+    with session_scope() as db:
+        assert db.get(ProspectNote, nid).body == "Asked for 9 Dec"
     assert web.post(f"/pipeline/notes/{nid}/delete", headers=HX).status_code == 200
-    assert 'id="notes-empty"' in web.get(f"/pipeline/prospects/{pid}").text
+    with session_scope() as db:
+        assert db.get(ProspectNote, nid) is None
     gone = web.post("/pipeline/notes/999/delete", headers=HX)  # htmx errors are a 200 toast
     assert gone.headers.get("HX-Retarget") == "#toasts" and "no longer exists" in gone.text
     assert web.post("/pipeline/notes/999/delete", headers=JSON).status_code == 404

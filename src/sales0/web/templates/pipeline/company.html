@@ -13,7 +13,6 @@
         {% if p %}
           {% include "pipeline/_summary.html" %}
           {% include "pipeline/_research.html" %}
-          {% include "pipeline/_notes.html" %}
         {% endif %}
         {% with timeline=company_timeline, base=(("/pipeline/prospects/%d" % p.id) if p else ("/companies/%d" % life.company_id)) %}{% include "pipeline/_timeline.html" %}{% endwith %}
       </div>

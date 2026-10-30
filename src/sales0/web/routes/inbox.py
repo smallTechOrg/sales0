@@ -21,11 +21,12 @@ from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
 from sales0.services.research import auto as research_auto
 from sales0.services.crm import characteristics as characteristics_service
+from sales0.services.crm import companies as companies_service
 from sales0.services.crm import prospects as prospects_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
 from sales0.web.acting import acted_by_id, get_acting_member_optional, require_admin
 from sales0.web.context import PathId
-from sales0.web.context import cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
+from sales0.web.context import actor_of, cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
 
 router = APIRouter()
 
@@ -157,6 +158,12 @@ def _discard_reason(preset: str, custom: str) -> str | None:
     return text or (preset.strip() or None)
 
 
+def _company_names(db: Session) -> list[str]:
+    from sales0.db.models import Company
+
+    return list(db.scalars(select(Company.name).where(~Company.name.like("Company TBD #%")).order_by(Company.name).limit(2000)))
+
+
 def _list_ctx(db: Session, inbox: InboxPage, request: Request | None = None) -> dict:
     pages = max(1, math.ceil(inbox.total / inbox.page_size)) if inbox.page_size else 1
     has_runs = bool(runs_service.list_runs(db, limit=1)) if inbox.tab == "review" and not inbox.total and not inbox.q else True
@@ -177,6 +184,7 @@ def _list_ctx(db: Session, inbox: InboxPage, request: Request | None = None) -> 
         "first_urn": first_urn,
         "characteristic_options": characteristics_service.list_characteristics(db, active_only=True),
         "can_save_rule": _is_admin(request, db) if request is not None else False,
+        "company_names": _company_names(db),
     }
 
 
@@ -434,6 +442,26 @@ def update_fields(
         return redirect("/inbox", tab=_tab(tab), q=_q(q))
     message = "Priority updated." if "priority" in kwargs else ("Category updated." if "category" in kwargs else "Offering updated.")
     return HTMLResponse(_card_html(request, db, card, tab, q, _page_number(page), category) + toast_html(message))
+
+
+@router.post("/inbox/{enquiry_id}/company", response_model=None)
+def attach_company(
+    request: Request,
+    enquiry_id: PathId,
+    company_name: str = Form(""),
+    tab: str = Form("review"),
+    q: str = Form(""),
+    page: str = Form("1"),
+    category: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """Attach a company (existing, picked by name, or new) to this enquiry."""
+    companies_service.attach_to_enquiry(db, enquiry_id, name=company_name, actor=actor_of(member))
+    if not is_htmx(request):
+        return redirect("/inbox", tab=_tab(tab), q=_q(q))
+    card = inbox_service.get_card(db, enquiry_id)
+    return HTMLResponse(_card_html(request, db, card, tab, q, _page_number(page), category) + toast_html("Company attached."))
 
 
 @router.post("/inbox/{enquiry_id}/competitor", response_model=None)

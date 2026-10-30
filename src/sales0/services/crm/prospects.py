@@ -488,6 +488,18 @@ def _by_origin(db: Session, enquiry_id: int) -> Prospect | None:
     return db.scalar(select(Prospect).where(Prospect.origin_enquiry_id == enquiry_id).order_by(Prospect.id).limit(1))
 
 
+def placeholder_company_name(e: Enquiry) -> str:
+    """A unique stand-in company name for an enquiry that names no company, e.g. ``Company TBD #62 - Priyanka``.
+    The enquiry id keeps two such enquiries from ever sharing one company; rename or attach the real one later."""
+    hint = (e.author_name or e.contact_person or "").strip()
+    if not hint and e.email and "@" in e.email:
+        hint = e.email.split("@", 1)[1].strip()
+    if not hint:
+        hint = (e.requirement_summary or "").strip()
+    base = f"Company TBD #{e.id}"
+    return f"{base} - {hint[:60]}" if hint else base
+
+
 def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ProspectView:
     e = db.get(Enquiry, enquiry_id)
     if e is None:
@@ -495,10 +507,9 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
     stamp = now_or(now)
     comp = companies.get_or_create_row(db, e.company, now=stamp, actor=actor)
     if comp is None and e.company_id is None:
-        # company model: an accepted enquiry always belongs to a company; a poster without one is a company of one
-        # (named after the person) until someone fills the real name in
-        fallback = (e.author_name or e.contact_person or "").strip() or f"Unnamed company (enquiry {e.id})"
-        comp = companies.get_or_create_row(db, fallback, now=stamp, actor=actor)
+        # company model: an accepted enquiry always belongs to a company; one without a company gets its OWN
+        # placeholder (never a shared "Unnamed" bucket) until someone attaches or renames the real company
+        comp = companies.get_or_create_row(db, placeholder_company_name(e), now=stamp, actor=actor)
     elif comp is None and e.company_id is not None:
         comp = db.get(Company, e.company_id)
     if e.company_id is None and comp is not None:
@@ -540,7 +551,7 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
     if p is None:
         name = (e.company or "").strip() or (e.author_name or "").strip() or (e.contact_person or "").strip() or (
             (prof.display_name or "").strip() if prof else ""
-        ) or "Unnamed prospect"
+        ) or (comp.name if comp else placeholder_company_name(e))
         p = Prospect(
             kind="company_enquiry", name=name[:200], linkedin_profile_id=profile_id, company_id=comp.id if comp else None,
             origin_enquiry_id=e.id, stage="new", stage_source="app", status="open", source=_source_of(e),

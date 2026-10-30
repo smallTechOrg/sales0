@@ -394,3 +394,15 @@ def test_card_without_source_url_falls_back_to_the_author_profile(client: TestCl
     card = _card(unescape(client.get("/inbox").text), eid)
     assert _link(card) == ("profile", "https://www.linkedin.com/in/asha-rao/", "Author profile (post link unavailable) ↗")
     assert "posted ~2d before sales0 found it" in card
+
+
+def test_attach_company_route_sets_the_company_and_shows_the_form(client: TestClient) -> None:
+    ids = _seed_corpus()
+    page = client.get("/inbox").text
+    assert 'id="company-names"' in page and f'action="/inbox/{ids["P1"]}/company"' in page
+    resp = client.post(f"/inbox/{ids['P1']}/company", data={"company_name": "Real Co Pvt Ltd", "tab": "review"}, headers=HX)
+    assert resp.status_code == 200 and "Company attached." in resp.text
+    with session_scope() as db:
+        assert db.get(Enquiry, ids["P1"]).company == "Real Co Pvt Ltd"
+    bad = client.post(f"/inbox/{ids['P1']}/company", data={"company_name": " "}, headers={"Accept": "application/json"})
+    assert bad.status_code == 400
