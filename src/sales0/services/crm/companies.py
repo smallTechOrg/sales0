@@ -405,3 +405,52 @@ __all__ = [
     "duplicate_candidates", "find_match", "get_company", "get_or_none", "get_or_create", "get_or_create_row", "list_companies", "merge",
     "update_company",
 ]
+
+
+PLACEHOLDER_PREFIXES = ("Company TBD #", "Unnamed")
+
+
+def is_placeholder(name: str | None) -> bool:
+    return bool(name) and name.startswith(PLACEHOLDER_PREFIXES)
+
+
+def attach_to_enquiry(
+    db: Session, enquiry_id: int, *, name: str | None = None, company_id: int | None = None,
+    actor: Actor = TEAM, now: datetime | None = None,
+) -> CompanyView:
+    """Attach a company to an enquiry: an existing one (``company_id``, or ``name`` matching one) or a new one
+    (``name``). The enquiry's own prospect follows it. A placeholder company left empty by the move is folded
+    into the real one, so nothing is left behind."""
+    e = db.get(Enquiry, enquiry_id)
+    if e is None:
+        raise not_found()
+    stamp = now_or(now)
+    if company_id is not None:
+        target = _get(db, company_id)
+    else:
+        target = get_or_create_row(db, name, now=stamp, actor=actor)
+        if target is None:
+            raise invalid("company_invalid", "Type the company's name (or pick one from the list).")
+    old_id = e.company_id
+    if old_id == target.id:
+        e.company = target.name
+        db.flush()
+        return _view(target)
+    old = db.get(Company, old_id) if old_id else None
+    e.company, e.company_id = target.name, target.id
+    p = db.get(Prospect, e.prospect_id) if e.prospect_id else None
+    if p is not None:
+        if is_placeholder(p.name) or (old is not None and p.name == old.name):
+            p.name = target.name[:200]
+        p.company_id = target.id
+    db.flush()
+    timeline.add_event(
+        db, subject_type="enquiry", subject_id=e.id, kind="note", actor=actor, occurred_at=stamp,
+        body=f"Company set to {target.name}" + (f" (was {old.name})." if old is not None else "."),
+        data={"system": True, "company_id": target.id, "previous_company_id": old_id},
+    )
+    if old is not None and is_placeholder(old.name):
+        still_used = db.scalar(select(func.count()).select_from(Enquiry).where(Enquiry.company_id == old.id))
+        if not still_used:
+            merge(db, target.id, old.id, actor=actor, now=stamp)
+    return _view(target)

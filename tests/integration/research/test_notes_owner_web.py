@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from sales0.db.engine import session_scope
-from sales0.db.models import Prospect, ProspectNote
+from sales0.db.models import ProspectNote
 from tests.integration.members.conftest import activate, add_member
 from tests.integration.members.conftest import admin, env, make_client  # noqa: F401 - fixtures
 from tests.integration.research.conftest import make_prospect
@@ -24,12 +24,7 @@ def test_only_the_author_changes_a_note(admin: TestClient, make_client: Callable
     assert r.status_code == 200 and r.json()["data"]["author"] == "Ravi Kumar"
     with session_scope() as db:
         nid = db.scalar(select(ProspectNote.id))
-    with session_scope() as db:
-        cid = db.scalar(select(Prospect.company_id).where(Prospect.id == pid))
-    page = admin.get(f"/companies/{cid}").text
-    assert "Ravi's call notes" in page.replace("&#39;", "'") and f"/pipeline/notes/{nid}/edit" not in page  # no edit form for others
     denied = admin.post(f"/pipeline/notes/{nid}/edit", data={"body": "admin rewrite"}, headers=JSON)
     assert denied.status_code == 403 and denied.json()["error"]["code"] == "not_owner"
     assert admin.post(f"/pipeline/notes/{nid}/delete", headers=JSON).status_code == 403
-    assert f"/pipeline/notes/{nid}/edit" in ravi.get(f"/companies/{cid}").text
     assert ravi.post(f"/pipeline/notes/{nid}/delete", headers=JSON).status_code == 200

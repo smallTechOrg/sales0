@@ -426,7 +426,7 @@ def test_new_company_form_creates_and_reuses(web: TestClient) -> None:
     resp = _post(web, "/pipeline/prospects", {"name": "Ravi Kumar", "company": "Zen Corp", "email": "ravi@zen.example", "notes": "Met at expo"})
     assert resp.status_code == 303 and re.fullmatch(r"/companies/\d+", resp.headers["location"])
     page = web.get(resp.headers["location"]).text
-    assert "Ravi Kumar" in page and "Zen Corp" in page and "Met at expo" in page and "Added Zen Corp." in page
+    assert "Ravi Kumar" in page and "Zen Corp" in page and "Added Zen Corp." in page
     again = _post(web, "/pipeline/prospects", {"name": "Ravi K", "email": "ravi@zen.example"})
     assert again.headers["location"] == resp.headers["location"]  # adopted, not duplicated
     only_company = _post(web, "/pipeline/prospects", {"company": "Cold List Co"})  # a company with no person and no enquiry

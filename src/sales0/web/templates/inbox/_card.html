@@ -97,6 +97,15 @@
       <p><span class="muted">Discard reason:</span> {{ card.discard_reason }}</p>
     {% endif %}
 
+    <details class="inline-edit" id="enquiry-{{ card.id }}-company">
+      <summary>{{ "Change company" if card.company else "Attach a company" }}</summary>
+      <form class="inline-form" method="post" action="/inbox/{{ card.id }}/company" hx-post="/inbox/{{ card.id }}/company" hx-target="#enquiry-{{ card.id }}" hx-swap="outerHTML">
+        <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="category" value="{{ category }}">
+        <label class="visually-hidden" for="company-name-{{ card.id }}">Company</label>
+        <input class="input" id="company-name-{{ card.id }}" name="company_name" maxlength="200" list="company-names" placeholder="Pick an existing company or type a new name" required>
+        <button class="btn btn--sm" type="submit">Attach</button>
+      </form>
+    </details>
     <div class="row">
       {# Link order (inbox feedback A2): post permalink -> author profile -> only if neither, the search page.
          A search page is never labelled or shown as "the post". #}

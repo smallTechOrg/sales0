@@ -34,7 +34,7 @@ def test_enquiry_without_company_name_still_gets_a_company(db) -> None:
     prospects.ensure_for_enquiry(db, e.id)
     db.refresh(e)
     co = db.get(Company, e.company_id)
-    assert co is not None and co.name == "Solo Founder" and co.stage == "prospect"
+    assert co is not None and co.name.startswith("Company TBD #") and "Solo Founder" in co.name and co.stage == "prospect"
 
 
 def test_second_enquiry_attaches_and_never_demotes_the_stage(db) -> None:

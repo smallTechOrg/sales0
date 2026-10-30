@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-from sales0.db.models import Company, Enquiry, TimelineEvent
+from sales0.db.models import Company, Enquiry, Prospect, TimelineEvent
 from sales0.errors import DomainError
 from sales0.services.crm import deals, lifecycle, prospects
 from sales0.services.crm.actor import Actor
@@ -139,3 +139,45 @@ def test_invalid_status_is_refused(db) -> None:
     e1, _, _ = _accepted(db)
     with pytest.raises(DomainError):
         deals.set_status(db, e1.id, "nonsense")
+
+
+def test_enquiries_without_a_company_each_get_their_own_placeholder(db) -> None:
+    a = h.enquiry(db, profile_row=None, company=None)
+    b = h.enquiry(db, profile_row=None, company=None)
+    prospects.ensure_for_enquiry(db, a.id)
+    prospects.ensure_for_enquiry(db, b.id)
+    db.flush()
+    ca, cb = db.get(Enquiry, a.id).company_id, db.get(Enquiry, b.id).company_id
+    assert ca and cb and ca != cb  # never one shared "Unnamed" bucket
+    assert db.get(Company, ca).name.startswith(f"Company TBD #{a.id}")
+    assert "Unnamed" not in db.get(Company, cb).name
+
+
+def test_attaching_a_company_replaces_the_placeholder(db) -> None:
+    from sales0.services.crm import companies
+
+    e = h.enquiry(db, profile_row=None, company=None)
+    prospects.ensure_for_enquiry(db, e.id)
+    db.flush()
+    old_id = db.get(Enquiry, e.id).company_id
+    companies.attach_to_enquiry(db, e.id, name="Real Co Pvt Ltd")
+    db.flush()
+    row = db.get(Enquiry, e.id)
+    new = db.get(Company, row.company_id)
+    assert new.name == "Real Co Pvt Ltd" and row.company == "Real Co Pvt Ltd" and row.company_id != old_id
+    assert db.get(Company, old_id) is None  # the emptied placeholder was folded away
+    assert db.get(Prospect, row.prospect_id).company_id == new.id
+    # attaching an existing company by name joins it instead of duplicating
+    f = h.enquiry(db, profile_row=None, company=None)
+    prospects.ensure_for_enquiry(db, f.id)
+    companies.attach_to_enquiry(db, f.id, name="real co pvt ltd")
+    db.flush()
+    assert db.get(Enquiry, f.id).company_id == new.id
+
+
+def test_attach_requires_a_name(db) -> None:
+    from sales0.services.crm import companies
+
+    e = h.enquiry(db, profile_row=None, company=None)
+    with pytest.raises(DomainError):
+        companies.attach_to_enquiry(db, e.id, name="  ")
