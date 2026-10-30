@@ -33,6 +33,9 @@ class TriageCriterion(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="team", server_default="team")
     from_enquiry_id: Mapped[int | None] = mapped_column(Integer)  # the enquiry whose discard reason became this rule
+    # q22: the offering this rule belongs to (None = applies to every post). Rendered as "(only for offering X)" and
+    # left out of the prompt while that offering is switched off.
+    offering_id: Mapped[int | None] = mapped_column(ForeignKey("offerings.id", ondelete="SET NULL"), index=True)
     created_by_member_id: Mapped[int | None] = mapped_column(ForeignKey("team_members.id", ondelete="SET NULL"))
     updated_by_member_id: Mapped[int | None] = mapped_column(ForeignKey("team_members.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)

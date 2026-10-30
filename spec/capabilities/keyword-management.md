@@ -1,5 +1,21 @@
-# Capability: Keyword Management and AI Keyword Ideas
-**Keywords page (`/keywords`).** Builds on `search-setup.md` (keyword CRUD on Setup still works) and
+# Capability: Offerings, Keywords and Criteria (Setup tabs) and AI Keyword Ideas
+**Setup > Offerings & keywords (`/keywords`).** Setup has three tabs: General (`/setup`: LinkedIn / worker, safety limits),
+**Offerings & keywords** (`/keywords`) and **Criteria** (`/criteria`); the main nav shows only Setup for all three.
+
+**Offering-first (default view).** One card per offering (catalogue order, offerings without keywords included): its
+group, on/off switch, description, enquiry results (matched to the offering: matched / accepted / contacted / leads /
+won), **discards** (team / automatic / skipped by AI and the top 3 team reasons, linking to the filtered breakdown), its
+**own triage rules** (list, enable/disable, add a rule for it), **Edit offering** (name, group, description, delete) and
+its keywords with tiers below. Add an offering and the 60 starter keywords from the same tab.
+
+**Criteria per offering (q22, `triage_criteria.offering_id`).** A rule either applies to every post or belongs to one
+offering; it reaches the triage prompt as `(Only for posts about the offering "X") <rule>` and is left out while that
+offering is off (snapshots record the offering). The Criteria tab shows an "Applies to" column, an offering picker on
+add/edit and a filter; the discard breakdown follows the same filter. **A discarded post belongs to an offering** when
+the AI matched it to that offering, else when one of the offering's keywords found it; AI-skipped posts (never
+enquiries) go by their keyword.
+
+**Keywords.** Builds on `search-setup.md` (keyword CRUD on Setup still works) and
 `proactive-suggestions.md` (the Haiku Suggestions page stays). Composition in `agent.md` -> keyword ideas.
 
 ## What It Does

@@ -13,10 +13,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sales0.db.engine import get_db
-from sales0.db.models import TeamMember
+from sales0.db.models import Offering, TeamMember
 from sales0.errors import DomainError
 from sales0.services import criteria as criteria_service
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
@@ -42,8 +43,10 @@ def _is_admin(request: Request, db: Session) -> bool:
 
 @router.get("/criteria", response_class=HTMLResponse)
 def criteria_page(request: Request, db: Session = Depends(get_db)) -> Response:
-    rules = criteria_service.list_rules(db)
-    breakdown = criteria_service.discard_breakdown(db)
+    raw = str(request.query_params.get("offering") or "")
+    scope: Any = "any" if not raw else (None if raw == "none" else int(raw) if raw.isdigit() else "any")
+    rules = criteria_service.list_rules(db, offering_id=scope)
+    breakdown = criteria_service.discard_breakdown(db, offering_id=scope if isinstance(scope, int) else None)
     active = criteria_service.active_set(db)
     if wants_json(request):
         return envelope_ok({
@@ -59,6 +62,8 @@ def criteria_page(request: Request, db: Session = Depends(get_db)) -> Response:
         "breakdown": breakdown,
         "can_edit": _is_admin(request, db),
         "flash": flash,
+        "offerings": list(db.scalars(select(Offering).order_by(Offering.sort_order, Offering.id))),
+        "offering_filter": raw if raw == "none" or raw.isdigit() else "",
     }
     response = render_page(request, db, "criteria/page.html", ctx)
     if flash:
@@ -71,13 +76,16 @@ def create_rule(
     request: Request,
     kind: str = Form(""),
     text: str = Form(""),
+    offering_id: str = Form(""),
     db: Session = Depends(get_db),
     admin: TeamMember = Depends(require_admin),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def run() -> Response:
-        view = criteria_service.create_rule(db, kind, text, actor_member_id=_member_id(member, admin))
-        return crm_done(request, BACK, f"Added {view.kind} rule.", {"id": view.id})
+        view = criteria_service.create_rule(db, kind, text, actor_member_id=_member_id(member, admin),
+                                            offering_id=int(offering_id) if offering_id.isdigit() else None)
+        where = f" for {view.offering_name}" if view.offering_name else ""
+        return crm_done(request, BACK, f"Added {view.kind} rule{where}.", {"id": view.id})
 
     return crm_guard(request, BACK, run, db)
 
@@ -88,14 +96,18 @@ def update_rule(
     criterion_id: PathId,
     text: str = Form(""),
     kind: str = Form(""),
+    offering_id: str | None = Form(None),  # absent (or blank, which FastAPI reads as absent) = keep; "none" = every post
     db: Session = Depends(get_db),
     admin: TeamMember = Depends(require_admin),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def run() -> Response:
+        extra: dict[str, Any] = {}
+        if offering_id is not None and (offering_id.isdigit() or offering_id == "none"):
+            extra["offering_id"] = int(offering_id) if offering_id.isdigit() else None
         criteria_service.update_rule(
             db, criterion_id, text=text if text.strip() else None, kind=kind or None,
-            actor_member_id=_member_id(member, admin),
+            actor_member_id=_member_id(member, admin), **extra,
         )
         return crm_done(request, BACK, "Rule saved.")
 

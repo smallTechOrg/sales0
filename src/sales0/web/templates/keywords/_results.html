@@ -6,7 +6,7 @@
     <div class="field field--grow"><label class="field__label" for="kw-q">Search</label>
       <input class="input" id="kw-q" type="search" name="q" value="{{ params.q }}" placeholder="Find a keyword…" autocomplete="off"></div>
     <div class="field"><label class="field__label" for="kw-view">Organise by</label>
-      <select class="input" id="kw-view" name="view">{% for v, label in (("tier", "Performance tier"), ("offering", "Offering"), ("outcome", "Enquiry outcome"), ("table", "One table")) %}<option value="{{ v }}"{% if params.view == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <select class="input" id="kw-view" name="view">{% for v, label in (("offering", "Offering"), ("tier", "Performance tier"), ("outcome", "Enquiry outcome"), ("table", "One table")) %}<option value="{{ v }}"{% if params.view == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
     <div class="field"><label class="field__label" for="kw-sort">Sort</label>
       <select class="input" id="kw-sort" name="sort">{% for v, label in (("tier", "Tier"), ("relevant", "Most relevant"), ("rate", "Relevant %"), ("accepted", "Most accepted"), ("won", "Most won / leads"), ("scanned", "Most scanned"), ("recent", "Newest"), ("text", "A-Z")) %}<option value="{{ v }}"{% if params.sort == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
     <div class="field"><label class="field__label" for="kw-tier">Tier</label>
@@ -18,6 +18,7 @@
         {% for o in offerings %}<option value="{{ o.id }}"{% if params.offering == o.id|string %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select></div>
     <noscript><button class="btn" type="submit">Apply</button></noscript>
   </form>
+  <datalist id="offering-group-names">{% for n in group_names %}<option value="{{ n }}"></option>{% endfor %}</datalist>
   <p class="muted" id="kw-counts">Showing {{ shown }} of {{ total }} · {% for t in tiers %}{{ tier_labels[t] }} <span class="mono">{{ tier_counts[t] }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
 
   <form id="kw-bulk-form" class="row" method="post" action="/keywords/bulk" hx-post="/keywords/bulk" hx-swap="none" hx-disabled-elt="find button">
@@ -33,9 +34,46 @@
   </form>
     {% for group in groups %}
       <section class="card keyword-tier" data-group="{{ group.key }}" aria-label="{{ group.label }}">
-        <div class="card__header"><h2>{{ group.label }} <span class="muted">({{ group.keywords|length }})</span></h2>
-          <span class="muted">{% if group.help %}{{ group.help }} · {% endif %}scanned <span class="mono">{{ group.scanned }}</span> · relevant <span class="mono">{{ group.relevant }}</span> · accepted <span class="mono">{{ group.accepted }}</span></span></div>
+        <div class="card__header"><h2>{{ group.label }} <span class="muted">({{ group.keywords|length }} keyword{{ "" if group.keywords|length == 1 else "s" }})</span></h2>
+          {% if group.offering %}{% set o = group.offering %}<span class="chip">{{ o.group.name }}</span>
+            <button class="btn btn--sm{{ '' if o.active else ' btn--ghost' }}" type="button" hx-post="/keywords/offerings/{{ o.id }}/toggle" hx-swap="none"
+                    hx-vals='{"active": "{{ 'false' if o.active else 'true' }}", "back": "{{ back }}"}' aria-label="Switch offering {{ o.name }} {{ 'off' if o.active else 'on' }}">{{ "Offering on" if o.active else "Offering off" }}</button>{% endif %}
+          <span class="muted">{% if group.help %}{{ group.help }} · {% endif %}keywords: scanned <span class="mono">{{ group.scanned }}</span> · relevant <span class="mono">{{ group.relevant }}</span> · accepted <span class="mono">{{ group.accepted }}</span></span></div>
+        {% if group.offering %}{% set o = group.offering %}{% set os = group.offering_stat %}{% set rules = rules_by_offering.get(o.id, []) %}
+        <div class="card__body stack stack--tight offering-card" id="offering-card-{{ o.id }}" data-offering-id="{{ o.id }}">
+          <p class="muted">{{ o.description or "No description - the AI matches enquiries to offerings by this text, so write one." }}</p>
+          <p class="offering-results">Enquiries matched <span class="mono">{{ os.matched }}</span> · accepted <span class="mono">{{ os.accepted }}</span> · contacted <span class="mono">{{ os.contacted }}</span> · leads <span class="mono">{{ os.leads }}</span> · won <span class="mono">{{ os.won }}</span></p>
+          {% set dc = discards.get(o.id) %}
+          <p class="offering-discards" id="offering-discards-{{ o.id }}">Discarded: {% if dc and dc.total %}team <span class="mono">{{ dc.team }}</span> · automatic <span class="mono">{{ dc.system }}</span> · skipped by AI <span class="mono">{{ dc.ai }}</span>{% if dc.top_reasons %} · top reasons: {% for label, n in dc.top_reasons %}"{{ label }}" ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
+            · <a href="/criteria?offering={{ o.id }}#discard-reasons">see all</a>{% else %}<span class="muted">nothing yet</span>{% endif %}</p>
+          <details class="inline-edit"><summary>Criteria for this offering ({{ rules|selectattr("active")|list|length }} active)</summary>
+            <ul class="item-list" id="offering-rules-{{ o.id }}">
+              {% for r in rules %}<li data-active="{{ 'true' if r.active else 'false' }}"><span class="badge">{{ "Include" if r.kind == "include" else "Exclude" }}</span> {{ r.text }}
+                <button class="btn btn--sm btn--ghost" type="button" hx-post="/keywords/criteria/{{ r.id }}/active" hx-swap="none" hx-vals='{"active": "{{ 'false' if r.active else 'true' }}", "back": "{{ back }}"}'>{{ "Disable" if r.active else "Enable" }}</button></li>
+              {% else %}<li class="muted">No rules of its own - the general criteria apply.</li>{% endfor %}
+            </ul>
+            <form class="stack stack--tight" method="post" action="/keywords/offerings/{{ o.id }}/criteria" hx-post="/keywords/offerings/{{ o.id }}/criteria" hx-swap="none" hx-disabled-elt="find button">
+              <input type="hidden" name="back" value="{{ back }}">
+              <div class="row"><select class="select" name="kind" aria-label="Rule list"><option value="include">Include: genuine when…</option><option value="exclude">Exclude: discard when…</option></select></div>
+              <textarea class="input" name="text" rows="2" maxlength="1000" required aria-label="New rule for {{ o.name }}" placeholder="e.g. A company asking for a GenAI workshop for its non-technical staff."></textarea>
+              <div><button class="btn btn--sm btn--primary" type="submit">Add rule for {{ o.name }}</button> <a class="btn btn--sm btn--ghost" href="/criteria?offering={{ o.id }}">All its rules</a></div>
+            </form>
+          </details>
+          <details class="inline-edit"><summary>Edit offering</summary>
+            <form class="stack stack--tight" method="post" action="/keywords/offerings/{{ o.id }}" hx-post="/keywords/offerings/{{ o.id }}" hx-swap="none" hx-disabled-elt="find button">
+              <input type="hidden" name="back" value="{{ back }}">
+              <div class="field"><label class="field__label" for="off-name-{{ o.id }}">Name</label><input class="input" id="off-name-{{ o.id }}" name="name" maxlength="80" required value="{{ o.name }}"></div>
+              <div class="field"><label class="field__label" for="off-group-{{ o.id }}">Group</label><input class="input" id="off-group-{{ o.id }}" name="group_name" maxlength="60" required value="{{ o.group.name }}" list="offering-group-names"></div>
+              <div class="field"><label class="field__label" for="off-desc-{{ o.id }}">Description <span class="muted">(shown to the AI)</span></label><textarea class="input" id="off-desc-{{ o.id }}" name="description" rows="3" maxlength="500">{{ o.description }}</textarea></div>
+              <div class="row"><button class="btn btn--primary btn--sm" type="submit">Save offering</button>
+                <button class="btn btn--danger btn--sm" type="button" hx-post="/keywords/offerings/{{ o.id }}/delete" hx-vals='{"back": "{{ back }}"}' hx-swap="none"
+                        hx-confirm="Delete '{{ o.name }}'? One that enquiries point at is switched off instead.">Delete offering</button></div>
+            </form>
+          </details>
+        </div>
+        {% endif %}
         <div class="card__body table-wrap">
+          {% if not group.keywords %}<p class="muted">No keywords yet - add some above (pick this offering) or ask the AI.</p>{% else %}
           <table class="table kw-table">
             <thead><tr><th scope="col"><span class="visually-hidden">Pick</span></th><th scope="col">Keyword</th><th scope="col">Offering</th><th scope="col">Tier</th>
               <th scope="col" class="num">Scanned</th><th scope="col" class="num">Relevant</th><th scope="col" class="num">Rate</th>
@@ -66,6 +104,7 @@
             {% endfor %}
             </tbody>
           </table>
+          {% endif %}
         </div>
       </section>
     {% else %}

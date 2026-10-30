@@ -21,7 +21,10 @@ from sales0.db.models import Offering, TeamMember
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound, get_llm_client
 from sales0.services import keyword_insights as insights
+from sales0.services import criteria as criteria_service
 from sales0.services import keywords as keywords_service
+from sales0.services import offerings as offerings_service
+from sales0.services.views import OfferingInput
 from sales0.web.acting import clear_flash, pop_flash, require_admin
 from sales0.web.context import PathId, cost_badge_oob, crm_guard, flash_redirect, is_htmx, render_html, render_page, toast_html
 from sales0.web.envelope import ok as envelope_ok
@@ -44,7 +47,7 @@ def _params(raw: dict[str, Any]) -> dict[str, str]:
     offering = str(raw.get("offering") or "")
     return {
         "q": str(raw.get("q") or "").strip()[:100],
-        "view": pick("view", insights.VIEWS, "tier"),
+        "view": pick("view", insights.VIEWS, "offering"),
         "sort": pick("sort", insights.SORTS, "tier"),
         "tier": pick("tier", insights.TIER_ORDER),
         "status": pick("status", ("active", "paused")),
@@ -57,8 +60,20 @@ def _ctx(db: Session, params: dict[str, str]) -> dict[str, Any]:
     shown = insights.filtered(stats, q=params["q"], tier=params["tier"], status=params["status"], offering=params["offering"],
                               sort=params["sort"])
     offerings = list(db.scalars(select(Offering).order_by(Offering.sort_order, Offering.id)))
+    if params["view"] == "offering":
+        narrowed = any(params[k] for k in ("q", "tier", "status"))
+        pool = [o for o in offerings if not params["offering"] or str(o.id) == params["offering"]] if params["offering"] != "none" else []
+        groups = insights.by_offering(shown, pool, insights.offering_stats(db), include_empty=not narrowed)
+    else:
+        groups = insights.grouped(shown, params["view"])
+    rules: dict[int, list[Any]] = {}
+    for r in criteria_service.list_rules(db):
+        if r.offering_id:
+            rules.setdefault(r.offering_id, []).append(r)
     return {
-        "params": params, "groups": insights.grouped(shown, params["view"]), "shown": len(shown), "total": len(stats),
+        "params": params, "groups": groups, "shown": len(shown), "total": len(stats), "rules_by_offering": rules,
+        "discards": criteria_service.discards_by_offering(db) if params["view"] == "offering" else {},
+        "group_names": offerings_service.list_group_names(db),
         "tier_counts": insights.tier_counts(stats), "tier_labels": insights.TIER_LABELS, "tiers": insights.TIER_ORDER,
         "offerings": offerings, "views": insights.VIEWS, "sorts": insights.SORTS,
     }
@@ -155,6 +170,94 @@ def toggle_keyword(
     def act() -> Response:
         view = keywords_service.set_keyword_active(db, keyword_id, active.strip().lower() in {"true", "1", "on"}, actor_user_id=admin.id)
         return _done(request, db, back, f"'{view.text}' {'active' if view.active else 'paused'}.")
+
+    return crm_guard(request, BACK, act, db)
+
+
+# ---------------------------------------------------------------------- offerings (on their cards)
+@router.post("/keywords/offerings", response_model=None)
+def add_offering(
+    request: Request, name: str = Form(""), group_name: str = Form(""), description: str = Form(""), back: str = Form(""),
+    db: Session = Depends(get_db), admin: TeamMember = Depends(require_admin),
+) -> Response:
+    def act() -> Response:
+        o = offerings_service.create_offering(db, OfferingInput(name=name, group_name=group_name, description=description))
+        return _done(request, db, back, f"Added offering '{o.name}' to {o.group_name}.", {"id": o.id})
+
+    return crm_guard(request, BACK, act, db)
+
+
+@router.post("/keywords/offerings/{offering_id}", response_model=None)
+def edit_offering(
+    request: Request, offering_id: PathId, name: str = Form(""), group_name: str = Form(""), description: str = Form(""),
+    back: str = Form(""), db: Session = Depends(get_db), admin: TeamMember = Depends(require_admin),
+) -> Response:
+    def act() -> Response:
+        o = offerings_service.update_offering(db, offering_id, OfferingInput(name=name, group_name=group_name, description=description))
+        return _done(request, db, back, f"Saved offering '{o.name}'.")
+
+    return crm_guard(request, BACK, act, db)
+
+
+@router.post("/keywords/offerings/{offering_id}/toggle", response_model=None)
+def toggle_offering(
+    request: Request, offering_id: PathId, active: str = Form("true"), back: str = Form(""),
+    db: Session = Depends(get_db), admin: TeamMember = Depends(require_admin),
+) -> Response:
+    def act() -> Response:
+        on = active.strip().lower() in {"true", "1", "on"}
+        o = offerings_service.set_offering_active(db, offering_id, on)
+        what = "on" if on else "off - its keywords and rules are skipped"
+        return _done(request, db, back, f"'{o.name}' is {what}.")
+
+    return crm_guard(request, BACK, act, db)
+
+
+@router.post("/keywords/offerings/{offering_id}/delete", response_model=None)
+def delete_offering(
+    request: Request, offering_id: PathId, back: str = Form(""), db: Session = Depends(get_db),
+    admin: TeamMember = Depends(require_admin),
+) -> Response:
+    def act() -> Response:
+        outcome = offerings_service.delete_offering(db, offering_id)
+        msg = "Offering deleted." if outcome == "deleted" else "Offering switched off (enquiries still point at it)."
+        return _done(request, db, back, msg)
+
+    return crm_guard(request, BACK, act, db)
+
+
+@router.post("/keywords/offerings/{offering_id}/criteria", response_model=None)
+def add_offering_rule(
+    request: Request, offering_id: PathId, kind: str = Form(""), text: str = Form(""), back: str = Form(""),
+    db: Session = Depends(get_db), admin: TeamMember = Depends(require_admin),
+) -> Response:
+    """A triage rule that belongs to this offering (it reaches the AI as "only for posts about <offering>")."""
+
+    def act() -> Response:
+        view = criteria_service.create_rule(db, kind, text, actor_member_id=admin.id, offering_id=offering_id)
+        return _done(request, db, back, f"Added {view.kind} rule for {view.offering_name}.", {"id": view.id})
+
+    return crm_guard(request, BACK, act, db)
+
+
+@router.post("/keywords/criteria/{criterion_id}/active", response_model=None)
+def toggle_rule(
+    request: Request, criterion_id: PathId, active: str = Form("true"), back: str = Form(""),
+    db: Session = Depends(get_db), admin: TeamMember = Depends(require_admin),
+) -> Response:
+    def act() -> Response:
+        on = active.strip().lower() in {"true", "1", "on"}
+        criteria_service.set_active(db, criterion_id, on, actor_member_id=admin.id)
+        return _done(request, db, back, "Rule enabled." if on else "Rule disabled.")
+
+    return crm_guard(request, BACK, act, db)
+
+
+@router.post("/keywords/library", response_model=None)
+def add_library(request: Request, back: str = Form(""), db: Session = Depends(get_db), admin: TeamMember = Depends(require_admin)) -> Response:
+    def act() -> Response:
+        r = keywords_service.seed_suggested(db)
+        return _done(request, db, back, f"Added {r.added} starter keywords · {r.already_present} already present.")
 
     return crm_guard(request, BACK, act, db)
 
