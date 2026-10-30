@@ -50,11 +50,17 @@ def client(db_url: str, source: StaticSource) -> Iterator[TestClient]:
         yield c
 
 
-def wait_idle(client: TestClient, timeout: float = 15.0) -> dict:
+def _status(client: TestClient) -> dict:
+    return client.get("/api/sync/status", headers={"Accept": "application/json"}).json()["data"]
+
+
+def wait_idle(client: TestClient, timeout: float = 15.0, *, after: object = None) -> dict:
+    """Wait until the sync is idle AND has finished a run newer than ``after`` (the ``last_finished_at`` seen before
+    the click). Idle alone is not enough: the job thread may not have started yet, so ``running`` is still false."""
     end = time.monotonic() + timeout
     while time.monotonic() < end:
-        data = client.get("/api/sync/status", headers={"Accept": "application/json"}).json()["data"]
-        if not data["running"]:
+        data = _status(client)
+        if not data["running"] and data.get("last_finished_at") != after and data.get("last_status") is not None:
             return data
         time.sleep(0.05)
     raise AssertionError("sync never finished")
@@ -68,9 +74,10 @@ def test_page_before_any_sync(client: TestClient) -> None:
 
 
 def test_sync_now_runs_the_job_and_shows_per_tab_counts(client: TestClient) -> None:
+    before = _status(client).get("last_finished_at")
     r = client.post("/sync/run", headers=HX)
     assert r.status_code == 200 and 'id="sync-status"' in r.text and "Sync started." in r.text
-    status = wait_idle(client)
+    status = wait_idle(client, after=before)
     assert status["last_status"] == "ok" and status["last_error"] is None
     tabs = {t["tab"]: t for t in status["tabs"]}
     assert tabs["Active Enquiries"]["added"] == 7 and tabs["Active Enquiries"]["errors"] == 1
@@ -84,8 +91,9 @@ def test_sync_now_runs_the_job_and_shows_per_tab_counts(client: TestClient) -> N
         row = db.get(SheetSyncState, 1)
         assert row is not None and row.runs_total == 1 and row.last_dry_run is False
     # a second run is a no-op and the state survives (persisted)
+    before = _status(client).get("last_finished_at")
     client.post("/sync/run", headers=HX)
-    again = wait_idle(client)
+    again = wait_idle(client, after=before)
     assert sum(t["added"] + t["updated"] + t["removed"] for t in again["tabs"]) == 0
 
 
