@@ -13,14 +13,17 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from sales0.config import get_settings
 from sales0.db.engine import get_db
-from sales0.db.models import TeamMember
+from sales0.db.models import Prospect, TeamMember
 from sales0.errors import DomainError
 from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import companies as companies_service
 from sales0.services.crm import contacts as contacts_service
 from sales0.services.crm._common import UNSET
-from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
+from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound
+from sales0.services.research import auto as research_auto
+from sales0.web.acting import clear_flash, get_acting_member, get_acting_member_optional, pop_flash, require_admin
 from sales0.web.context import PathId
 from sales0.web.context import (
     actor_of,
@@ -37,6 +40,13 @@ from sales0.web.envelope import ok as envelope_ok
 from sales0.web.envelope import wants_json
 
 router = APIRouter()
+
+
+def get_llm() -> LLMClient:
+    """LLM seam (``app.dependency_overrides[get_llm]`` in tests)."""
+    from sales0.llm import get_llm_client
+
+    return get_llm_client()
 
 TAG_CATEGORIES = ("custom", "role", "industry", "source", "relationship")
 DUPLICATE_SCAN_LIMIT = 50
@@ -129,6 +139,38 @@ def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
     if is_htmx(request) and request.headers.get("HX-Target") == "company-results":
         return HTMLResponse(render_html(request, "contacts/_companies.html", ctx))
     return _page(request, db, "contacts/companies.html", ctx)
+
+
+@router.post("/companies/research", response_class=HTMLResponse, response_model=None)
+def research_companies(
+    request: Request,
+    company_ids: list[int] = Form(default_factory=list),
+    db: Session = Depends(get_db),
+    member: TeamMember = Depends(get_acting_member),
+    llm: LLMClient = Depends(get_llm),
+) -> Response:
+    """Bulk research from the Companies page: the ticked companies, one chunk per click (``SALES0_RESEARCH_BULK_CHUNK``,
+    hosted: also the action budget). The answer lists what happened and carries a "Continue" form for the rest."""
+    ids = [i for i in dict.fromkeys(company_ids) if 0 < i < 2**31][:500]
+    if not ids:
+        raise DomainError("nothing_selected", "Tick at least one company to research.", 400)
+    pids, skipped = research_auto.prospects_for_companies(db, ids)
+    try:
+        result = research_auto.run_selected(db, llm, pids, limit=get_settings().research_bulk_chunk, actor=actor_of(member))
+    except (LLMAuthError, LLMModelNotFound) as exc:
+        db.commit()  # keep the error llm_calls row
+        raise DomainError("llm_unavailable", f"The AI service refused the request ({type(exc).__name__}) - check the API key and model in .env.", 502) from exc
+    todo = pids[len(pids) - result.remaining:] if result.remaining else []
+    remaining_company_ids = [int(c) for c in (db.get(Prospect, pid).company_id for pid in todo) if c] if todo else []
+    if wants_json(request):
+        return envelope_ok({
+            "researched": result.researched, "failed": result.failed, "remaining": result.remaining, "stopped": result.stopped,
+            "skipped": skipped, "remaining_company_ids": remaining_company_ids,
+            "outcomes": [{"prospect_id": o.prospect_id, "name": o.name, "status": o.status, "reason": o.reason, "version": o.version}
+                         for o in result.outcomes],
+        })
+    ctx = {"result": result, "skipped": skipped, "remaining_company_ids": remaining_company_ids, "summary": result.summary()}
+    return HTMLResponse(render_html(request, "contacts/_research_bulk.html", ctx))
 
 
 @router.post("/companies/{company_id}", response_model=None)

@@ -27,6 +27,22 @@ title, background, how to approach - the enquiry author first, then contacts; we
 professional information only). Each version records what it covered (`inputs.schema`, `enquiry_ids`, `contact_ids`,
 `trigger`).
 
+**Structured record, written by the research model (schema 4, `agent/research/synth.py`).** The cheap model still reads
+the website (ReAct loop) and does the web search. A final call on `SALES0_RESEARCH_MODEL` (Sonnet 5.5, forced tool
+`record_research`, prompt `research-synth-v1`) turns pages + web findings + LinkedIn page + our records into one typed record:
+`profile` (industry, headquarters, size band, business model, customer segments), `enquiry` (need, audience, timing,
+budget signal, urgency, fit, open questions), `facts` (section, claim, source, confidence - a URL source is kept only if it
+was really in the input, else `our records`), `gaps` (what could not be established) and `completeness` (0-100, computed in
+code). The flat fields drafting reads (`what_they_do`, `personalisation_hooks`, `enquiry_insights`, `people`, ...) are still
+filled. If the call fails or is off (`SALES0_RESEARCH_SYNTHESIS=false`) the loop's own brief is kept as schema 3 and the
+prospect stays pending for the bulk run. Every entry point (button, on accept, Pipeline bulk, Companies bulk) goes
+through `research_prospect`, so all of them get this.
+
+**Bulk from the Companies page**: tick companies > **Research selected** (`POST /companies/research`, JSON too). Each
+company is researched through its primary prospect with a fresh version, in chunks of `SALES0_RESEARCH_BULK_CHUNK` per
+click (hosted: also the action budget); the answer lists outcomes and a "Continue with N more" form. Companies with no
+prospect, or whose newest research a person edited, are skipped and named.
+
 **Automatic + bulk** (`services/research/auto.py`, `SALES0_AUTO_RESEARCH`, default on):
 - *On accept*: after the Inbox commit, research for the accepted enquiry's prospect starts in a background thread (one
   version, actor `system`, `trigger: accepted`). A failure never affects the accept; the prospect stays pending.

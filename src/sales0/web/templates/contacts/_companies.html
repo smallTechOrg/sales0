@@ -4,11 +4,20 @@
   <section class="card" aria-label="Companies">
     <div class="card__body table-wrap">
       {% if page.items %}
+        <form id="research-bulk-form" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
+              hx-swap="innerHTML" hx-indicator="#research-bulk-indicator" hx-disabled-elt="#btn-research-selected">
+          <div class="row">
+            <button class="btn btn--primary" id="btn-research-selected" type="submit">Research selected</button>
+            <span class="htmx-indicator" id="research-bulk-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching... a few companies at a time, about a minute each.</span>
+          </div>
+          <p class="hint">Tick companies, then press the button. Each gets a fresh research version (company, enquiry and people). Companies whose research you edited by hand are skipped.</p>
+          <div id="research-bulk-result" aria-live="polite"></div>
         <table class="table" id="company-list">
-          <thead><tr><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Characteristics</th><th scope="col" class="num">People</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
+          <thead><tr><th scope="col"><input type="checkbox" id="research-select-all" aria-label="Select all companies on this page" onclick="document.querySelectorAll('.research-pick').forEach(function(c){c.checked=this.checked}.bind(this))"></th><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Characteristics</th><th scope="col" class="num">People</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
           <tbody>
           {% for co in page.items %}
             <tr id="company-{{ co.id }}">
+              <td><input type="checkbox" class="research-pick" name="company_ids" value="{{ co.id }}" aria-label="Select {{ co.name }}"></td>
               <td><a href="/companies/{{ co.id }}">{{ co.name }}</a>{% if co.website %}<div class="muted">{{ co.website }}</div>{% endif %}</td>
               <td>{% if co.priority %}<span class="chip-priority" data-priority="{{ co.priority }}">{{ co.priority|capitalize }}</span>{% endif %}</td>
               <td>{% if co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% if co.off_ramp %} <span class="badge badge--warn">{{ co.off_ramp|replace("_", " ")|capitalize }}</span>{% endif %}{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
@@ -20,6 +29,7 @@
           {% endfor %}
           </tbody>
         </table>
+        </form>
       {% elif params.q or params.characteristic %}
         <div class="empty-state empty-state--compact" id="companies-empty"><p>No companies match these filters.</p><a class="btn" href="/companies">Clear filters</a></div>
       {% else %}

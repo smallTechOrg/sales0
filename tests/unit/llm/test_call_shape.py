@@ -119,3 +119,14 @@ def test_effort_low_is_sent_as_output_config_alongside_forced_tool_choice() -> N
 def test_effort_rejects_values_outside_the_allowed_set(bad: Any) -> None:
     with pytest.raises(ValidationError):
         _request(effort=bad)
+
+
+def test_research_model_override_is_sent_and_priced_with_the_research_price() -> None:
+    client, bodies = _client({**_tool_message(), "model": "claude-sonnet-5-5"})
+    base = client.structured(_request())
+    over = client.structured(_request(model="claude-sonnet-5-5"))
+    assert bodies[0]["model"] == "claude-haiku-5-5" and bodies[1]["model"] == "claude-sonnet-5-5"
+    s = Settings(_env_file=None)
+    assert base.cost_usd_micros == round(100 * s.llm_price_input_usd_per_mtok + 20 * s.llm_price_output_usd_per_mtok)
+    assert over.cost_usd_micros == round(100 * s.research_price_input_usd_per_mtok + 20 * s.research_price_output_usd_per_mtok)
+    assert over.cost_usd_micros > base.cost_usd_micros

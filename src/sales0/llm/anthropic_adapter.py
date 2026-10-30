@@ -159,7 +159,7 @@ class AnthropicClient:
     # ------------------------------------------------------------------ public API
     def structured(self, req: StructuredRequest) -> LLMResponse:
         params: dict[str, Any] = {
-            "model": self._settings.llm_model,
+            "model": req.model or self._settings.llm_model,
             "system": _system_blocks(req.system) if req.cache_system else req.system,
             "messages": req.messages,
             "tools": [
@@ -200,11 +200,12 @@ class AnthropicClient:
         base = min(BACKOFF_CAP_S, BACKOFF_BASE_S * (2**attempt))
         return base + self._rng.uniform(0, base / 2)
 
-    def _map_error(self, exc: Exception) -> LLMError:
+    def _map_error(self, exc: Exception, model: str | None = None) -> LLMError:
+        model = model or self._settings.llm_model
         if isinstance(exc, anthropic.AuthenticationError | anthropic.PermissionDeniedError):
             return LLMAuthError(AUTH_MESSAGE)
         if isinstance(exc, anthropic.NotFoundError):
-            return LLMModelNotFound(f"Model '{self._settings.llm_model}' not found — check SALES0_LLM_MODEL")
+            return LLMModelNotFound(f"Model '{model}' not found — check SALES0_LLM_MODEL / SALES0_RESEARCH_MODEL")
         if _is_transient(exc):
             return LLMTransientError(f"LLM unavailable — retry later ({type(exc).__name__})")
         if isinstance(exc, anthropic.APIStatusError):
@@ -237,7 +238,7 @@ class AnthropicClient:
                     log.warning(
                         "llm_retry",
                         feature=feature,
-                        model=self._settings.llm_model,
+                        model=params.get("model"),
                         attempt=attempt + 1,
                         max_retries=max_retries,
                         error_type=type(exc).__name__,
@@ -253,10 +254,10 @@ class AnthropicClient:
                     and "cache_control" in _api_error_message(exc)
                 ):
                     # The API rejected prompt caching: fall back to the plain string system.
-                    log.warning("llm_cache_control_rejected", feature=feature, model=self._settings.llm_model)
+                    log.warning("llm_cache_control_rejected", feature=feature, model=params.get("model"))
                     params = _plain_system(params)
                     continue
-                mapped = self._map_error(exc)
+                mapped = self._map_error(exc, str(params.get("model") or ""))
                 self._log_call(
                     feature=feature,
                     prompt_version=prompt_version,
@@ -289,13 +290,13 @@ class AnthropicClient:
         cache_write = _int_field(usage, "cache_creation_input_tokens")
         cache_read = _int_field(usage, "cache_read_input_tokens")
         searches = _int_field(getattr(usage, "server_tool_use", None), "web_search_requests")
-        cost = cost_usd_micros(input_tokens, output_tokens, self._settings, cache_write, cache_read)
+        cost = cost_usd_micros(input_tokens, output_tokens, self._settings, cache_write, cache_read, params.get("model"))
         cost += web_search_cost_usd_micros(searches, self._settings)
         text = "".join(texts) or None
         response = LLMResponse(
             tool_input=tool_input,
             text=text,
-            model=str(getattr(message, "model", None) or self._settings.llm_model),
+            model=str(getattr(message, "model", None) or params.get("model") or self._settings.llm_model),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd_micros=cost,

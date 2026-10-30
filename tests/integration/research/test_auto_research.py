@@ -33,6 +33,8 @@ def _v3_responder() -> Any:
         out = base(req)
         if req.tool_name == "research_step" and isinstance(out, dict) and out.get("action") == "finish":
             out["brief"] = brief(enquiry_insights=INSIGHTS, people=PEOPLE)
+        if req.tool_name == "record_research":
+            out = {**out, "enquiry_insights": INSIGHTS, "people": PEOPLE}
         return out
 
     return answer
@@ -99,7 +101,7 @@ def test_brief_has_enquiry_insights_and_people_and_the_run_records_what_it_cover
     with session_scope() as db:
         doc, _ = research.research_prospect(db, fake, None, pid, actor=Actor("Ann"), queue_linkedin=False, fetcher=mock_fetcher())
     assert doc.data["enquiry_insights"] == INSIGHTS and doc.data["people"][0]["name"] == "Priya Menon"
-    assert doc.inputs["schema"] == 3 and doc.inputs["enquiry_ids"] == [eid] and doc.inputs["trigger"] == "manual"
+    assert doc.inputs["schema"] == 4 and doc.inputs["enquiry_ids"] == [eid] and doc.inputs["trigger"] == "manual"
     step = next(r for r in fake.requests if r.tool_name == "research_step")
     text = step.messages[0]["content"]
     text = text if isinstance(text, str) else "".join(b["text"] for b in text)

@@ -22,10 +22,11 @@ from sqlalchemy.orm import Session
 from sales0.agent.research import ResearchLimits, SafeFetcher, run_research
 from sales0.agent.research.loop import ExtraSource
 from sales0.agent.research.web import WebFindings, search_web
+from sales0.agent.research import synth
 from sales0.config import get_settings
 from sales0.db.models import CompanyBrief, Prospect, TeamMember
 from sales0.errors import DomainError
-from sales0.llm import LLMClient
+from sales0.llm import LLMClient, get_llm_client
 from sales0.logging import get_logger
 from sales0.services._common import clip, now_or
 from sales0.services.costs_report import ensure_within_spend_cap
@@ -37,7 +38,13 @@ from sales0.services.triage import active_offering_refs
 
 log = get_logger("sales0.research.prospect")
 
-RESEARCH_SCHEMA = 3  # briefs with enquiry insights + people; older versions are re-researched by the bulk run
+RESEARCH_SCHEMA = 4  # v4 = structured record written by the research model; v3 = enquiry insights + people only
+LEGACY_SCHEMA = 3
+
+
+def required_schema() -> int:
+    """The schema a research version needs to count as up to date (3 when the synthesis step is switched off)."""
+    return RESEARCH_SCHEMA if get_settings().research_synthesis else LEGACY_SCHEMA
 BRIEF_TEXT_FIELDS = ("what_they_do", "size_hints", "suggested_offering")
 BRIEF_LIST_FIELDS = ("ai_training_needs", "personalisation_hooks")
 FIELD_LIMITS = {"what_they_do": 1200, "size_hints": 600, "suggested_offering": 600}
@@ -131,40 +138,58 @@ def research_prospect(
         db, llm, company_name=company_name, website_url=website, context_text=records, offerings=names,
         fetcher=fetcher, limits=limits or ResearchLimits.from_env(), extra_sources=extras, **kwargs,
     )  # fmt: skip
+    # the final, structured record is written by the research model from everything gathered above; when it is off or
+    # fails the loop's own brief is kept (schema 3, so a later bulk run tries again)
+    synth_cost, synth_model, synthesised = 0, None, False
+    sources_out = list(result.sources)
+    status, error = result.status, result.error
+    if settings.research_synthesis and not (result.error or "").startswith("LLM unavailable"):
+        sr = synth.synthesize(
+            db, llm or get_llm_client(), company_name=company_name, website_url=website, context_text=records,
+            pages=result.pages, extras=extras, offerings=names, now=stamp,
+        )  # fmt: skip
+        if sr is not None:
+            synth_cost, synth_model = sr.cost_usd_micros, sr.model
+        if sr is not None and sr.brief is not None:
+            synthesised = True
+            result.brief = sr.brief
+            sources_out = list(sr.brief.sources)
+            status, error = ("done" if result.status != "failed" else "partial"), None
     data = result.brief_dict
     data.pop("sources", None)
-    cost = result.cost_usd_micros + (findings.cost_usd_micros if findings else 0)
+    cost = result.cost_usd_micros + synth_cost + (findings.cost_usd_micros if findings else 0)
     searches = findings.searches if findings else 0
     inputs = {
         "website": website, "pages_fetched": result.pages_fetched, "own_data": True,
         "linkedin_page": linkedin.finished_at.isoformat() if linkedin is not None and linkedin.finished_at else None,
         "web_search": (findings.status if findings else "off"), "web_searches": searches,
         "web_results": [r["url"] for r in (findings.results if findings else [])][:10],
-        "llm_calls": result.llm_calls + (1 if findings else 0), "prompt_version": result.prompt_version,
+        "llm_calls": result.llm_calls + (1 if findings else 0) + (1 if synth_model else 0), "prompt_version": result.prompt_version,
+        "synthesis": {"model": synth_model, "ok": synthesised, "prompt_version": synth.PROMPT_VERSION} if settings.research_synthesis else None,
         # what this run covered: the bulk / auto runs re-research when an enquiry or contact is not in these lists
-        "schema": RESEARCH_SCHEMA, "enquiry_ids": context.active_enquiry_ids(db, prospect_id),
+        "schema": RESEARCH_SCHEMA if synthesised else LEGACY_SCHEMA, "enquiry_ids": context.active_enquiry_ids(db, prospect_id),
         "contact_ids": context.contact_ids(db, prospect_id), "trigger": trigger,
     }  # fmt: skip
     row = CompanyBrief(
         company_name=clip(company_name, 200) or "unknown", website=clip(website, 300),
-        brief_json=json.dumps({**data, "sources": result.sources, "research_status": result.status,
-                               "research_error": result.error}, ensure_ascii=False),
-        sources_json=json.dumps(result.sources, ensure_ascii=False), cost_usd_micros=cost, prospect_id=prospect_id,
+        brief_json=json.dumps({**data, "sources": sources_out, "research_status": status,
+                               "research_error": error}, ensure_ascii=False),
+        sources_json=json.dumps(sources_out, ensure_ascii=False), cost_usd_micros=cost, prospect_id=prospect_id,
         created_at=stamp,
     )  # fmt: skip
     db.add(row)
     db.flush()
     version = docs.add_version(
-        db, prospect_id, "research", origin="ai", actor=actor, status=result.status, error=result.error, data=data,
-        sources=_sources(result.sources, website, linkedin, findings), inputs=inputs, cost_usd_micros=cost,
+        db, prospect_id, "research", origin="ai", actor=actor, status=status, error=error, data=data,
+        sources=_sources(sources_out, website, linkedin, findings), inputs=inputs, cost_usd_micros=cost,
         web_search_requests=searches, company_brief_id=row.id, now=stamp,
     )  # fmt: skip
     timeline.add_event(
         db, subject_type="prospect", subject_id=prospect_id, kind="research",
-        body=f"Research version {version.version} ({result.status})", data={"doc_id": version.id, "cost_usd_micros": cost},
+        body=f"Research version {version.version} ({status})", data={"doc_id": version.id, "cost_usd_micros": cost},
         actor=actor, occurred_at=stamp,
     )  # fmt: skip
-    log.info("prospect_researched", prospect_id=prospect_id, version=version.version, status=result.status, cost=cost,
+    log.info("prospect_researched", prospect_id=prospect_id, version=version.version, status=status, cost=cost,
              searches=searches, member_id=member.id if member else None)
     return version, li_note
 

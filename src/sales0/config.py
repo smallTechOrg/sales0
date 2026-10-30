@@ -148,6 +148,16 @@ class Settings(BaseSettings):
     # though they are private. Ignored unless linkedin_mode == "fixture" (see ``research_private_hosts``).
     research_allow_private_hosts: str = ""
     # --- Prospect research / account summary (q15) ---
+    # The final research brief is written by a stronger model than the cheap triage / website-reading calls. Its own
+    # price (USD per 1M tokens) feeds the cost view; ``research_synthesis = false`` goes back to the single-model flow.
+    research_synthesis: bool = True
+    research_model: str = "claude-sonnet-5-5"
+    research_price_input_usd_per_mtok: float = Field(3.0, ge=0)
+    research_price_output_usd_per_mtok: float = Field(15.0, ge=0)
+    research_synthesis_max_tokens: int = Field(4000, ge=500, le=16000)
+    # Bulk research from the Companies page works in chunks of this many companies per click (hosted: also bounded
+    # by the action budget).
+    research_bulk_chunk: int = Field(5, ge=1, le=50)
     # Anthropic's server-side web search on the research call (one extra Haiku request, at most N searches).
     research_web_search: bool = True
     research_web_search_max_uses: int = Field(3, ge=1, le=10)

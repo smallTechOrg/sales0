@@ -62,6 +62,58 @@ class PersonBrief(BaseModel):
         return "" if v is None else " ".join(str(v).split())
 
 
+Confidence = Literal["high", "medium", "low"]
+
+
+class CompanyProfile(BaseModel):
+    """v4 structured company facts; every field is 'unknown' when the sources do not say."""
+
+    industry: str = Field(default="unknown", max_length=200)
+    headquarters: str = Field(default="unknown", max_length=200)
+    size_band: str = Field(default="unknown", max_length=100)
+    business_model: str = Field(default="unknown", max_length=300)
+    customer_segments: list[str] = Field(default_factory=list, max_length=5)
+
+    @field_validator("industry", "headquarters", "size_band", "business_model", mode="before")
+    @classmethod
+    def _text(cls, v: Any) -> Any:
+        return "unknown" if v is None or not str(v).strip() else " ".join(str(v).split())
+
+
+class EnquiryAnalysis(BaseModel):
+    """v4 structured read of the enquiry itself."""
+
+    need: str = Field(default="unknown", max_length=500)
+    audience: str = Field(default="unknown", max_length=200)
+    timing: str = Field(default="unknown", max_length=200)
+    budget_signal: str = Field(default="unknown", max_length=200)
+    urgency: Literal["high", "medium", "low", "unknown"] = "unknown"
+    fit: Literal["strong", "possible", "weak", "unknown"] = "unknown"
+    open_questions: list[str] = Field(default_factory=list, max_length=4)
+
+    @field_validator("need", "audience", "timing", "budget_signal", mode="before")
+    @classmethod
+    def _text(cls, v: Any) -> Any:
+        return "unknown" if v is None or not str(v).strip() else " ".join(str(v).split())
+
+    @field_validator("urgency", "fit", mode="before")
+    @classmethod
+    def _enum(cls, v: Any) -> Any:
+        return str(v).strip().lower() if v else "unknown"
+
+
+class Fact(BaseModel):
+    """One checkable claim and where it came from (a fetched / searched URL, or 'our records')."""
+
+    section: Literal["company", "enquiry", "people"] = "company"
+    claim: str = Field(min_length=1, max_length=300)
+    source: str = Field(min_length=1, max_length=500)
+    confidence: Confidence = "medium"
+
+
+OWN_RECORDS = "our records"
+
+
 class CompanyBrief(BaseModel):
     company_name: str = Field(min_length=1, max_length=200)
     what_they_do: str = Field(min_length=1, max_length=1200)
@@ -76,9 +128,15 @@ class CompanyBrief(BaseModel):
     people: list[PersonBrief] = Field(default_factory=list, max_length=3)
     sources: list[str] = Field(default_factory=list)
     limited_information: bool = False
+    # v4 (written by the synthesis step; empty on older briefs and when synthesis is off or fails)
+    profile: CompanyProfile | None = None
+    enquiry: EnquiryAnalysis | None = None
+    facts: list[Fact] = Field(default_factory=list, max_length=24)
+    gaps: list[str] = Field(default_factory=list, max_length=8)
+    completeness: int | None = Field(default=None, ge=0, le=100)
 
     @field_validator(
-        "ai_training_needs", "personalisation_hooks", "enquiry_insights", "sources", mode="before"
+        "ai_training_needs", "personalisation_hooks", "enquiry_insights", "sources", "gaps", mode="before"
     )
     @classmethod
     def _clean_list(cls, v: Any) -> Any:
@@ -163,6 +221,7 @@ class ResearchResult:
     pages_fetched: int = 0
     error: str | None = None
     prompt_version: str = "research-v3"
+    pages: list[dict[str, str]] = field(default_factory=list)  # {url, title, text} the loop read (input of the synthesis)
 
     @property
     def brief_dict(self) -> dict[str, Any]:

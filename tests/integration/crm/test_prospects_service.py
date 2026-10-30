@@ -102,7 +102,7 @@ def test_move_stage_any_direction_sets_app_source_and_records_events(db) -> None
     assert back.stage == "contacted"
     row = db.get(Prospect, v.id)
     assert row.stage_source == "app"
-    changes = [t for t in prospects.get_prospect(db, v.id).timeline if t.kind == "stage_change"]
+    changes = [t for t in prospects.get_prospect(db, v.id).timeline if t.kind == "stage_change" and t.subject_type == "prospect"]
     assert [(c.data["from"], c.data["to"]) for c in changes][:3] == [("follow_up_2", "contacted"), ("contacted", "follow_up_2"), ("new", "contacted")]
 
 
