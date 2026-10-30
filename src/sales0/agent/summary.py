@@ -21,7 +21,7 @@ from sales0.db.models import LlmCall
 from sales0.llm import LLMBadResponse, LLMClient, LLMError, get_llm_client
 from sales0.llm.client import StructuredRequest
 
-PROMPT_VERSION = "summary-v1"
+PROMPT_VERSION = "summary-v2"  # v2: short one-line fields
 TOOL_NAME = "record_account_summary"
 MAX_INPUT_CHARS = 24_000
 
@@ -36,12 +36,12 @@ SECTIONS: tuple[tuple[str, str], ...] = (
 
 
 class AccountSummary(BaseModel):
-    who_they_are: str = Field(min_length=1, max_length=800)
-    what_they_want: str = Field(default="unknown", max_length=800)
-    where_we_stand: str = Field(default="unknown", max_length=800)
-    characteristics: list[str] = Field(default_factory=list, max_length=8)
-    open_follow_ups: list[str] = Field(default_factory=list, max_length=8)
-    next_best_step: str = Field(default="unknown", max_length=500)
+    who_they_are: str = Field(min_length=1, max_length=240)
+    what_they_want: str = Field(default="unknown", max_length=240)
+    where_we_stand: str = Field(default="unknown", max_length=240)
+    characteristics: list[str] = Field(default_factory=list, max_length=6)
+    open_follow_ups: list[str] = Field(default_factory=list, max_length=5)
+    next_best_step: str = Field(default="unknown", max_length=200)
 
     @field_validator("characteristics", "open_follow_ups", mode="before")
     @classmethod
@@ -51,7 +51,7 @@ class AccountSummary(BaseModel):
         if isinstance(v, str):
             v = [v]
         if isinstance(v, list):
-            return [" ".join(str(x).split())[:300] for x in v if str(x).strip()][:8]
+            return [" ".join(str(x).split())[:120] for x in v if str(x).strip()][:5]
         return v
 
 
@@ -59,12 +59,12 @@ def tool_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
-            "who_they_are": {"type": "string", "description": "1-2 sentences: the company / person, sector, size hints"},
-            "what_they_want": {"type": "string", "description": "what they asked for or are likely to need from smallTech, or 'unknown'"},
-            "where_we_stand": {"type": "string", "description": "relationship status: stage, contacts made, emails sent, replies, lead / client status"},
+            "who_they_are": {"type": "string", "description": "ONE short line (max ~20 words): company / person, sector, size, city"},
+            "what_they_want": {"type": "string", "description": "ONE short line (max ~20 words): what they asked for or likely need, or 'unknown'"},
+            "where_we_stand": {"type": "string", "description": "ONE short line (max ~20 words): stage, last contact, reply, lead / client status"},
             "characteristics": {"type": "array", "items": {"type": "string"}, "description": "e.g. Training provider, Partner, Outreach client (only from the records)"},
-            "open_follow_ups": {"type": "array", "items": {"type": "string"}, "description": "open reminders / promises with their dates"},
-            "next_best_step": {"type": "string", "description": "one concrete next action for the salesperson"},
+            "open_follow_ups": {"type": "array", "items": {"type": "string"}, "description": "open reminders / promises, each a few words with its date; at most 5"},
+            "next_best_step": {"type": "string", "description": "ONE concrete action, max ~15 words"},
         },
         "required": ["who_they_are", "what_they_want", "where_we_stand", "characteristics", "open_follow_ups", "next_best_step"],
     }  # fmt: skip

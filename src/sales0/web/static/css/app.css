@@ -641,6 +641,15 @@ progress.progress::-moz-progress-bar { background: var(--color-primary); border-
 .actions .select { min-height: 2.25rem; }
 .btn[aria-disabled="true"] { cursor: not-allowed; }
 .hint { font-size: var(--font-size-sm); color: var(--color-muted); }
+/* "i" info toggle: the long explanation of a card lives behind a small circled i (no JS: <details>) */
+.info-tip { position: relative; flex: 0 0 auto; }
+.info-tip > summary { list-style: none; cursor: pointer; width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 1px solid var(--color-muted);
+  color: var(--color-muted); font-size: var(--font-size-sm); font-style: italic; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.info-tip > summary::-webkit-details-marker { display: none; }
+.info-tip[open] > summary { background: var(--color-muted); color: var(--color-bg, #fff); }
+.info-tip__body { position: absolute; z-index: 5; right: 0; top: 1.9rem; width: min(22rem, 80vw); margin: 0; padding: var(--space-3);
+  background: var(--color-surface, #fff); border: 1px solid var(--color-border, #ccc); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  font-size: var(--font-size-sm); font-weight: 400; font-style: normal; }
 .lock { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 0.8125rem; color: #1a4fae; }
 .lock::before { content: "\1F512"; font-size: 0.75rem; }
 .notice { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid #f1d29c; background: var(--color-warn-soft); color: var(--color-warn); }

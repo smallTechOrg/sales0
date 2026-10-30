@@ -39,11 +39,11 @@ def test_summary_is_one_call_over_everything_and_versioned(db_url: str) -> None:
         assert req.feature == "summary" and req.tool_name == "record_account_summary"
         text = req.messages[0]["content"]
         assert "budget approved in Q4" in text and "Latest research (version 1" in text and "<records>" in text
-        assert s.version == 1 and s.origin == "ai" and s.body.startswith("Who they are: Acme Logistics")
+        assert s.version == 2 and s.origin == "ai" and s.body.startswith("Who they are: Acme Logistics")  # v1 came with the research
         assert db.scalar(select(LlmCall.feature).order_by(LlmCall.id.desc()).limit(1)) == "summary"
         ravi = _member(db, "Ravi")
         edited = summary_service.edit_summary(db, pid, s.body + "\nAlso: decision maker is the COO.", actor=Actor("Ravi", ravi.id))
-        assert edited.version == 2 and edited.origin == "human" and edited.based_on_version == 1
+        assert edited.version == 3 and edited.origin == "human" and edited.based_on_version == 2
         assert summary_service.summary_for_drafting(db, pid).endswith("decision maker is the COO.")
         with pytest.raises(DomainError):
             summary_service.edit_summary(db, pid, "  ", actor=Actor("Ravi"))

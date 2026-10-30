@@ -38,7 +38,12 @@ filled. If the call fails or is off (`SALES0_RESEARCH_SYNTHESIS=false`) the loop
 prospect stays pending for the bulk run. Every entry point (button, on accept, Pipeline bulk, Companies bulk) goes
 through `research_prospect`, so all of them get this.
 
-**Bulk from the Companies page**: tick companies > **Research selected** (`POST /companies/research`, JSON too). Each
+**Summary follows research.** Every research run (`research_prospect`: button, on accept, both bulk runs) ends by rewriting the
+account summary (`summary-v2`, brief: one short line per field, at most 5 list items). A summary a person edited is never
+replaced; a failed summary never fails the research (it is stored as a failed version the card explains). The card
+explanations live behind a small "i" on the Research and Account summary cards.
+
+**Bulk from the Companies page**: tick companies (the header box ticks the page) > **Research selected**, or **Research all N** for every company the search / characteristic filter matches (up to 500, asks to confirm) (`POST /companies/research`, JSON too). Each
 company is researched through its primary prospect with a fresh version, in chunks of `SALES0_RESEARCH_BULK_CHUNK` per
 click (hosted: also the action budget); the answer lists outcomes and a "Continue with N more" form. Companies with no
 prospect, or whose newest research a person edited, are skipped and named.

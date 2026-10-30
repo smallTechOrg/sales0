@@ -130,7 +130,7 @@ def run_research(
         db.commit()
         status = {"done": "Research finished", "partial": "Research finished with limited information", "failed": "Research found little"}
         message = f"{status.get(doc.status, 'Research finished')} - version {doc.version}. {li_note}".strip()
-        return _answer(request, db, prospect_id, member, ("research",), message, "ok" if doc.status != "failed" else "error",
+        return _answer(request, db, prospect_id, member, ("research", "summary"), message, "ok" if doc.status != "failed" else "error",
                        doc.model_dump(mode="json"), cost=True)
 
     return _guard(request, db, prospect_id, act)
