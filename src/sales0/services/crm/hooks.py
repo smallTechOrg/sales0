@@ -257,6 +257,7 @@ def _on_tracked_profile_hit(db: Session, ev: events.TrackedProfileHit) -> None:
             return  # idempotent: one note per hit
     if e.prospect_id is None and e.review_status == "accepted":
         e.prospect_id = p.id  # a pending enquiry is linked by the normal accept flow (identity = the profile)
+        priority.refresh(db, p.id)
     flagged = False
     if _needs_follow_up(db, p) and flags._active(db, "prospect", p.id, "no_follow_up") is None:  # noqa: SLF001
         flagged = True

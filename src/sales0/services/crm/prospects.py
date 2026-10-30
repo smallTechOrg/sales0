@@ -181,6 +181,10 @@ def _set_stage(
     if stage != "new":
         followups.complete_up_to(db, p.id, stage, actor=actor, now=stamp)
     followups.refresh_next(db, p.id)
+    if prev != stage:
+        from sales0.services.crm import deals
+
+        deals.advance_from_prospect(db, p.id, stage, actor=actor, stamp=stamp)  # the prospect's enquiries follow it forward
     return True
 
 
@@ -522,6 +526,7 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
         if p.company_id is None and comp is not None:
             p.company_id = comp.id
         db.flush()
+        priority.refresh(db, p.id)  # heal a derived priority that missed an earlier link
         return _view(db, p)
     # --- identity: one prospect per linkedin profile
     profile_id = e.author_profile_id
