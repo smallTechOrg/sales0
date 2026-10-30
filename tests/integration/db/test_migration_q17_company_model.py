@@ -137,6 +137,7 @@ def test_upgrade_maps_every_row_without_loss(db_url: str, tmp_path: Path) -> Non
             assert deal == {1: "open", 2: "follow_up_1", 3: "meeting_scheduled", 4: "won", 5: "no_response", 6: "lost",
                             7: None, 8: None, 9: "open"}
             assert c.execute(text("SELECT company_id FROM enquiries WHERE id = 1")).scalar() == 1  # inherited from the prospect
+        command.upgrade(cfg, "head")  # later schema revisions are part of the models drift is checked against
         assert drift(engine) == []
         command.downgrade(cfg, PARENT)
         insp = inspect(engine)
