@@ -72,3 +72,33 @@ def test_runs_without_warnings_or_still_running_show_no_drift_alert(client: Test
                       keywords_planned=2, keywords_done=1)
     assert 'id="run-drift-alert"' not in _panel(client.get("/runs").text)
     assert 'id="run-drift-alert"' not in client.get(f"/runs/{active}/progress", headers=HX).text
+
+
+def test_run_detail_offers_kept_layout_samples_as_a_download_never_rendered(client: TestClient) -> None:
+    import json
+
+    from sqlalchemy import select
+
+    from sales0.db.engine import session_scope
+    from sales0.db.models import ScrapeRunKeyword
+
+    run_id = make_run(keywords=[("ai workshop", "warning"), ("ai training", "done")], keywords_planned=2, keywords_done=2)
+    sample = {"reason": "0 posts parsed; no posts parsed", "strategy": "main", "path": "/search/results/content/",
+              "html": '<div role="listitem"><a href="https://www.linkedin.com/in/x/">X</a> -- dash</div>', "counts": {"time": 0}}
+    with session_scope() as db:
+        row = db.scalar(select(ScrapeRunKeyword).where(ScrapeRunKeyword.run_id == run_id, ScrapeRunKeyword.keyword_text == "ai workshop"))
+        row.layout_sample_json, row.error_message = json.dumps(sample), "No posts parsed -- LinkedIn layout may have changed"
+    html = unescape(client.get(f"/runs/{run_id}").text)
+    assert f'href="/runs/{run_id}/layout-samples.html"' in html and "Download page samples (1)" in html
+    assert html.count("page sample kept") == 1
+    resp = client.get(f"/runs/{run_id}/layout-samples.html")
+    assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/plain")
+    assert resp.headers["content-disposition"] == f'attachment; filename="sales0-run-{run_id}-layout-samples.html"'
+    assert "sandbox" in resp.headers["content-security-policy"] and resp.headers["x-content-type-options"] == "nosniff"
+    body = resp.text
+    assert "keyword: ai workshop" in body and '<a href="https://www.linkedin.com/in/x/">X</a>' in body
+    assert "No posts parsed - - LinkedIn" in body  # "--" can't close the facts comment early
+
+    plain = make_run(keywords=[("ai workshop", "done")])
+    assert "Download page samples" not in client.get(f"/runs/{plain}").text
+    assert client.get(f"/runs/{plain}/layout-samples.html").status_code == 404

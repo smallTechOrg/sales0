@@ -58,6 +58,7 @@ from playwright.sync_api import Error as PlaywrightError
 from sales0.clock import local_today
 from sales0.config import Settings
 from sales0.logging import get_logger
+from sales0.scraper import layout_sample
 from sales0.scraper.browser import first_page, open_context
 from sales0.scraper.detection import (
     CONTENT_READY_JS,
@@ -432,6 +433,10 @@ class LinkedInSearcher:
         extra: dict[str, Any] = {}
         if "page_loads" in KeywordScrapeResult.__dataclass_fields__:  # types.py field (cross-slice)
             extra["page_loads"] = self._page_loads - loads_before
+        facts = dict(posts=len(posts), parse_errors=parse_errors, drift=drift, field_misses=field_misses)
+        if self._settings.scrape_layout_samples and layout_sample.needs_sample(**facts):
+            # the page of the last pass is still loaded: copy what it shows (no extra LinkedIn request)
+            extra["layout_sample"] = layout_sample.capture(page, reason=layout_sample.reason_of(**facts))
         return KeywordScrapeResult(
             keyword=keyword,
             posts=posts,

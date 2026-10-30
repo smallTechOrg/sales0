@@ -13,6 +13,8 @@
   <div id="run-detail" class="stack"
     {% if active %}hx-get="/runs/{{ run.id }}" hx-select="#run-detail" hx-target="#run-detail" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
     {% if drift_alert %}{% with drift_run=run %}{% include "runs/_drift_alert.html" %}{% endwith %}{% endif %}
+    {% if detail.layout_samples %}<p id="layout-samples" class="row"><a class="btn btn--sm" href="/runs/{{ run.id }}/layout-samples.html" download>Download page samples ({{ detail.layout_samples }})</a>
+      <span class="hint">Cleaned copies of the result cards LinkedIn showed for the warned keywords (no scripts, images or cookies). Send this file with a scraper fix request.</span></p>{% endif %}
     <section class="card" aria-labelledby="totals-title">
       <div class="card__header">
         <h2 id="totals-title">Totals</h2>
@@ -59,7 +61,7 @@
                     <td class="num">{{ kw.permalinks_found }}</td>
                     <td class="num">{{ usd_precise(kw.cost_usd_micros) }}</td>
                     <td class="num">{{ duration_text(kw.duration_ms) }}</td>
-                    <td>{{ kw.error_message or "" }}</td>
+                    <td>{{ kw.error_message or "" }}{% if kw.has_layout_sample %} <span class="chip" title="A cleaned copy of these result cards was kept">page sample kept</span>{% endif %}</td>
                   </tr>
                 {% endfor %}
               </tbody>

@@ -67,6 +67,8 @@ class KeywordScrapeResult:
     expanded: int = 0  # Phase 1.4: "see more" clicks made
     stop_reason: StopReason = "cap"  # Phase 1.4: why the scan ended
     page_loads: int = 0  # audit #8: search page loads this scan spent (daily page-load budget)
+    # Cleaned copy of the result cards when the scan ends with a layout warning (``scraper.layout_sample``), else None.
+    layout_sample: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

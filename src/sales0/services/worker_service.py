@@ -326,6 +326,7 @@ def _result_of(row: ScrapeRunKeyword, meta: p.KeywordResultMeta) -> SimpleNamesp
         expanded=meta.expanded,
         stop_reason=meta.stop_reason,
         page_loads=meta.page_loads,
+        layout_sample=meta.layout_sample.model_dump() if meta.layout_sample is not None else None,
     )
 
 

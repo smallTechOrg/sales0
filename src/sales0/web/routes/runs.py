@@ -203,6 +203,20 @@ def run_detail(request: Request, run_id: PathId, db: Session = Depends(get_db)) 
     )
 
 
+@router.get("/runs/{run_id}/layout-samples.html", response_model=None)
+def layout_samples(run_id: PathId, db: Session = Depends(get_db)) -> Response:
+    """The run's layout samples as a DOWNLOAD only: untrusted markup, so it is never rendered by the app (attachment,
+    text/plain, sandboxed)."""
+    body = runs_service.layout_samples_file(db, run_id)
+    return Response(
+        content=body, media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="sales0-run-{run_id}-layout-samples.html"',
+            "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/api/runs/{run_id}")
 def api_run(run_id: PathId, db: Session = Depends(get_db)) -> JSONResponse:
     return ok(runs_service.get_run(db, run_id).model_dump(mode="json"))

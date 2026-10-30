@@ -401,3 +401,35 @@ def test_the_schedule_page_has_no_toggles_and_the_watch_job_refuses(hosted: Test
     assert page.status_code == 200 and "/enable" not in page.text and "Nothing on this hosted app runs on a timer" in page.text
     r = hosted.post("/schedule/profile_watch/run", follow_redirects=False)
     assert r.status_code in (409, 303)
+
+
+# ---------------------------------------------------------------------- layout samples
+SAMPLE = {"reason": "0 posts parsed; no posts parsed", "strategy": "listitem_fallback", "html": '<div role="listitem">x</div>',
+          "cards_total": 3, "cards_sampled": 3, "path": "/search/results/content/", "title": "Search", "counts": {"sdui_listitem": 3}}
+
+
+def test_a_layout_sample_travels_with_the_keyword_result_and_is_stored(worker_client: WorkerClient) -> None:
+    seed_keywords("ai workshop", "corporate ai training")
+    run_id = queue()
+    searcher = FakeSearcher(corpus(), drift={"ai workshop"}, extra={"ai workshop": {"layout_sample": SAMPLE}})
+    make_worker(worker_client, searcher).poll_once()
+    with session_scope() as db:
+        rows = {r.keyword_text: r for r in db.scalars(select(ScrapeRunKeyword).where(ScrapeRunKeyword.run_id == run_id))}
+        assert rows["ai workshop"].status == "warning"
+        assert '"listitem_fallback"' in rows["ai workshop"].layout_sample_json and 'role=\\"listitem\\"' in rows["ai workshop"].layout_sample_json
+        assert rows["corporate ai training"].layout_sample_json is None
+        detail = runs.get_run(db, run_id)
+        assert detail.layout_samples == 1 and [k.has_layout_sample for k in detail.keywords if k.keyword_text == "ai workshop"] == [True]
+        bundle = runs.layout_samples_file(db, run_id)
+    assert "keyword: ai workshop" in bundle and '<div role="listitem">x</div>' in bundle and '"counts": {"sdui_listitem": 3}' in bundle
+
+
+def test_an_oversized_or_malformed_sample_never_costs_the_keyword(worker_client: WorkerClient) -> None:
+    seed_keywords("ai workshop")
+    run_id = queue()
+    bad = {**SAMPLE, "cards_total": -5}  # fails validation on the worker: dropped, the upload still goes through
+    make_worker(worker_client, FakeSearcher(corpus(), drift={"ai workshop"}, extra={"ai workshop": {"layout_sample": bad}})).poll_once()
+    assert run_row(run_id)["status"] == "succeeded"
+    with session_scope() as db:
+        row = db.scalar(select(ScrapeRunKeyword).where(ScrapeRunKeyword.run_id == run_id))
+        assert row.status == "warning" and row.layout_sample_json is None

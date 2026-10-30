@@ -39,6 +39,8 @@ and ``permalinks_found``; posts are identified by ``source_ref`` (a URN or ``ck:
 
 from __future__ import annotations
 
+import json
+
 import random
 import time
 from collections.abc import Callable
@@ -322,6 +324,9 @@ class _Run:
         if message:
             row.error_message = clip(message, 300)
         row.status = status
+        sample = getattr(result, "layout_sample", None)
+        if isinstance(sample, dict) and sample.get("html"):
+            row.layout_sample_json = json.dumps(sample, ensure_ascii=False)
         row.duration_ms = int((time.monotonic() - started) * 1000)
         self.run.keywords_done += 1
         self._mark_keyword_run(row)
