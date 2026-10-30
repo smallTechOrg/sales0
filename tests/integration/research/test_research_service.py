@@ -138,7 +138,6 @@ def test_synthesis_stores_a_structured_record_and_drops_facts_with_unseen_source
 
 def test_synthesis_failure_keeps_the_loop_brief_and_leaves_it_pending(db_url: str) -> None:
     from sales0.llm import LLMTransientError
-    from sales0.services.research import auto
 
     pid = make_prospect()
     base = responder()

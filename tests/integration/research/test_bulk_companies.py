@@ -15,7 +15,7 @@ from sales0.services.crm.actor import Actor
 from sales0.services.research import auto
 from sales0.services.research import prospect as research
 from sales0.web.routes import contacts as contacts_routes
-from tests.integration.research.conftest import HX, SITE, make_prospect, mock_fetcher
+from tests.integration.research.conftest import HX, make_prospect, mock_fetcher
 from tests.support.fake_llm import FakeLLMClient
 
 
