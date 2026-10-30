@@ -116,6 +116,7 @@ class RunKeywordView(_View):
     permalinks_found: int = 0
     scrolls: int = 0
     cost_usd_micros: int = 0
+    has_layout_sample: bool = False  # q21: a cleaned copy of the result cards was kept (layout warning)
 
 
 class RunView(_View):
@@ -158,6 +159,7 @@ class RunView(_View):
 class RunDetailView(_View):
     run: RunView
     keywords: list[RunKeywordView]
+    layout_samples: int = 0  # keywords of this run with a kept layout sample
 
 
 class EnquiryCardView(_View):

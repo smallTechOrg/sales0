@@ -361,8 +361,20 @@ class Worker:
             page_loads=int(getattr(result, "page_loads", 0) or 0),
             page_loads_total=_loads(searcher, self._base_loads),
             duration_ms=int((time.monotonic() - started) * 1000),
+            layout_sample=_sample(result),
         )
         return self.client.upload_posts(run_id, kw.row_id, p.UploadPostsRequest(seq=seq, final=True, result=meta))
+
+
+def _sample(result: Any) -> p.LayoutSamplePayload | None:
+    raw = getattr(result, "layout_sample", None)
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return p.LayoutSamplePayload.model_validate({**raw, "html": str(raw.get("html") or "")[:130_000]})
+    except Exception:  # noqa: BLE001 - a malformed sample must never cost the keyword's upload
+        log.warning("layout_sample_dropped")
+        return None
 
 
 def _loads(searcher: Any, base: int = 0) -> int | None:

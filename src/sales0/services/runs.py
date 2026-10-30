@@ -157,8 +157,9 @@ def run_view(run: ScrapeRun, cost_usd_micros: int = 0, layout_warnings: int = 0)
     )
 
 
-def _keyword_view(row: ScrapeRunKeyword) -> RunKeywordView:
+def _keyword_view(row: ScrapeRunKeyword, has_sample: bool = False) -> RunKeywordView:
     return RunKeywordView(
+        has_layout_sample=has_sample,
         keyword_text=row.keyword_text,
         status=row.status,
         posts_seen=row.posts_seen,
@@ -184,7 +185,42 @@ def get_run(db: Session, run_id: int) -> RunDetailView:
     ).all()
     cost = _run_costs(db, [run_id]).get(run_id, 0)
     warnings = sum(1 for k in keywords if k.status == "warning")
-    return RunDetailView(run=run_view(run, cost, warnings), keywords=[_keyword_view(k) for k in keywords])
+    sampled = set(db.scalars(select(ScrapeRunKeyword.id).where(
+        ScrapeRunKeyword.run_id == run_id, ScrapeRunKeyword.layout_sample_json.is_not(None))))
+    return RunDetailView(run=run_view(run, cost, warnings), keywords=[_keyword_view(k, k.id in sampled) for k in keywords],
+                         layout_samples=len(sampled))
+
+
+def layout_samples_file(db: Session, run_id: int) -> str:
+    """One downloadable HTML file with every layout sample of the run (``scraper.layout_sample``): per keyword a comment
+    with the facts (reason, strategy, page path, selector counts), then the cleaned cards. Raises not_found when none."""
+    import json
+
+    if db.get(ScrapeRun, run_id) is None:
+        raise not_found()
+    rows = db.execute(
+        select(ScrapeRunKeyword.keyword_text, ScrapeRunKeyword.error_message, ScrapeRunKeyword.layout_sample_json)
+        .where(ScrapeRunKeyword.run_id == run_id, ScrapeRunKeyword.layout_sample_json.is_not(None))
+        .order_by(ScrapeRunKeyword.id)
+    ).all()
+    if not rows:
+        raise not_found()
+
+    def comment(text: str) -> str:
+        return text.replace("--", "- -")
+
+    out = [f"<!doctype html>\n<!-- sales0 layout samples, run {run_id}: cleaned LinkedIn result cards (no scripts, images, "
+           "cookies or styles). Attach this file when asking for a scraper fix. -->"]
+    for keyword, message, raw in rows:
+        try:
+            sample = json.loads(raw)
+        except ValueError:
+            continue
+        facts = {k: sample.get(k) for k in ("reason", "strategy", "path", "title", "cards_total", "cards_sampled", "counts")}
+        out.append(f"\n<!-- ===== keyword: {comment(keyword)} =====\n message: {comment(message or '')}\n"
+                   f" facts: {comment(json.dumps(facts, ensure_ascii=False))} -->\n<section data-sales0-keyword>\n"
+                   f"{sample.get('html') or ''}\n</section>")
+    return "\n".join(out) + "\n"
 
 
 def list_runs(db: Session, limit: int = 20) -> list[RunView]:

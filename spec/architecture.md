@@ -805,6 +805,19 @@ A stop is never retried and never pushed through. `li_at` disappearing mid-run i
 
 **Layout drift.** After the content wait (`wait_for_function` until `cards_found > 0`, or `no_results`, or the timeout) and an `ok` safety checkpoint, a drift check runs. `drift_warning = (posts parsed == 0) and (cards_found > 0 or not no_results)`. In words: a logged-in results page that has result containers, or that lacks a "no results" marker, but yields 0 posts. When it is true, it logs WARNING `scraper_layout_drift` with `keyword`, `final_path`, `cards_found`, `parse_errors`. The keyword row becomes `warning`, and the run-level alert shows (data flow steps 3 and 7). Partial field failures are counted in `field_misses` and surfaced the same way. Nothing is silent.
 
+**Layout samples (q21, `scraper/layout_sample.py`).** A warning says THAT the markup moved; the sample says HOW. When a
+keyword's scan ends with drift, an unreadable card, or a watched field missing on at least half of the posts
+(`needs_sample`, the same rule as `keyword_outcome`), the searcher copies the still-loaded page (no extra LinkedIn
+request): up to 3 result containers (winning strategy's cards, else SDUI list items, else `<main>`'s children), with
+scripts, styles, SVG, images, media, iframes, form fields and comments removed, only structural attributes kept
+(`data-view-name`, `data-testid`, `role`, `componentkey`, `aria-*`, `href` without query/fragment, `datetime`, `class`
+cut to 120 chars, ...), every text node cut to 300 chars and the sample to 120 KB, plus page path, title and per-selector
+counts. Nothing from cookies or storage is read. The local job stores it on `scrape_run_keywords.layout_sample_json`;
+the laptop worker sends it in `KeywordResultMeta.layout_sample` (a malformed sample is dropped, never the keyword).
+The run page shows "page sample kept" on those rows and **Download page samples (N)**: one HTML file served as an
+attachment only (`text/plain`, `Content-Security-Policy: sandbox`, `nosniff`); the app never renders it.
+`SALES0_SCRAPE_LAYOUT_SAMPLES=false` turns capture off.
+
 ### Saved page samples (`tests/fixtures/linkedin_pages/`, slice R2)
 
 These are authored, realistic HTML files modelled on CURRENT LinkedIn. They use obfuscated, random-looking class names (e.g. `class="t8kq2 _p3z9x"`), and no element has a `global-nav` id or class. A test greps every logged-in sample for `global-nav` and requires 0 hits. There is no personal data: fictional names, `.example` emails, `+91 90000 0000x` phones. `manifest.json` lists one entry per case: `{file, url, status, cookie, expect: {kind, reason?, posts?, urns?, drift?, no_results?, cards_found?, fields?, field_misses?, soft_hints_nonempty?}}`.

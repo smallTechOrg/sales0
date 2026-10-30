@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from sales0.db.base import Base
 from sales0.db.models._types import UTCDateTime, in_check
@@ -110,6 +110,9 @@ class ScrapeRunKeyword(Base):
     error_message: Mapped[str | None] = mapped_column(String(300))
     # p10 (hosted): highest post-upload batch number applied (a retried upload is acknowledged, not re-applied)
     upload_seq: Mapped[int] = _counter()
+    # q21: JSON of ``scraper.layout_sample.capture`` when the keyword ended with a layout warning (deferred: it can be
+    # ~120 KB and is only read by the download route)
+    layout_sample_json: Mapped[str | None] = deferred(mapped_column(Text, nullable=True))
 
     run: Mapped[ScrapeRun] = relationship(back_populates="keywords")
 

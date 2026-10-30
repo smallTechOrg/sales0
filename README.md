@@ -484,6 +484,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_SCRAPE_MAX_RUNS_PER_DAY` | int | `2` | Max discovery runs per LinkedIn account per day (default 2; was 4). Watch runs have their own cap. |
 | `SALES0_SCRAPE_MAX_PAGELOADS_PER_DAY` | int | `600` | Max LinkedIn page loads (search passes, profile visits, permalink pages) per account per day (default 600). A run ends early when it is used up. |
 | `SALES0_SCRAPE_MAX_CONSECUTIVE_ERRORS` | int | `3` | Consecutive page errors (timeouts, failed loads) that stop a run as rate-limited and start the cool-down (default 3). |
+| `SALES0_SCRAPE_LAYOUT_SAMPLES` | bool | `True` | When a keyword ends with a layout warning, keep a cleaned copy of its result cards (structure and visible text only; no cookies, scripts or images) that the run page offers for download, so a LinkedIn markup change can be fixed from evidence. `false` = never keep one. |
 | `SALES0_SCRAPE_DELAY_MIN_S` | float | `3.0` | Min human-like delay between actions (seconds). |
 | `SALES0_SCRAPE_DELAY_MAX_S` | float | `9.0` | Max delay between actions (seconds). |
 | `SALES0_SCRAPE_KEYWORD_PAUSE_MIN_S` | float | `20.0` | Min pause between phrases (seconds). |

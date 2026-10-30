@@ -148,6 +148,19 @@ class PostPayload(_Strict):
         return value
 
 
+class LayoutSamplePayload(_Strict):
+    """``scraper.layout_sample.capture``'s dict (diagnostics; untrusted markup, only ever served as a download)."""
+
+    reason: str = Field(default="", max_length=200)
+    strategy: str = Field(default="none", max_length=40)
+    html: str = Field(default="", max_length=130_000)
+    cards_total: int = Field(default=0, ge=0)
+    cards_sampled: int = Field(default=0, ge=0)
+    path: str = Field(default="", max_length=200)
+    title: str = Field(default="", max_length=200)
+    counts: dict[str, int] = Field(default_factory=dict, max_length=40)
+
+
 class KeywordResultMeta(_Strict):
     """Scan-level facts, sent with the keyword's last batch (``final=True``)."""
 
@@ -165,6 +178,7 @@ class KeywordResultMeta(_Strict):
     page_loads_total: int | None = Field(default=None, ge=0)  # the browser session's cumulative count
     scan_error: str | None = Field(default=None, max_length=300)  # a ScrapeError: the keyword ends 'error'
     duration_ms: int | None = Field(default=None, ge=0)  # the worker's scan + upload time for this keyword
+    layout_sample: LayoutSamplePayload | None = None  # cleaned result cards when the scan ended with a layout warning
 
 
 class UploadPostsRequest(_Strict):

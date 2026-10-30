@@ -203,6 +203,8 @@ class Settings(BaseSettings):
     scrape_max_pageloads_per_day: int = Field(600, ge=1)
     # Consecutive page errors (timeouts / failed loads) that stop a run as 'rate_limited' (cool-down).
     scrape_max_consecutive_errors: int = Field(3, ge=1)
+    # Keep a cleaned copy of the result cards when a keyword ends with a layout warning (Runs page > download).
+    scrape_layout_samples: bool = True
     scrape_delay_min_s: float = Field(3.0, ge=0)
     scrape_delay_max_s: float = Field(9.0, ge=0)
     scrape_keyword_pause_min_s: float = Field(20.0, ge=0)

@@ -97,6 +97,7 @@ HELP: dict[str, str] = {
     "scrape_max_posts_per_day": "Max posts read per day.",
     "scrape_max_runs_per_day": "Max discovery runs per LinkedIn account per day (default 2; was 4). Watch runs have their own cap.",
     "scrape_max_pageloads_per_day": "Max LinkedIn page loads (search passes, profile visits, permalink pages) per account per day (default 600). A run ends early when it is used up.",
+    "scrape_layout_samples": "When a keyword ends with a layout warning, keep a cleaned copy of its result cards (structure and visible text only; no cookies, scripts or images) that the run page offers for download, so a LinkedIn markup change can be fixed from evidence. `false` = never keep one.",
     "scrape_max_consecutive_errors": "Consecutive page errors (timeouts, failed loads) that stop a run as rate-limited and start the cool-down (default 3).",
     "scrape_delay_min_s": "Min human-like delay between actions (seconds).",
     "scrape_delay_max_s": "Max delay between actions (seconds).",

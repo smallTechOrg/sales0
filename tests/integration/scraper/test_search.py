@@ -154,6 +154,7 @@ def test_legacy_urn_layout_still_parses_through_the_urn_strategy(connected_setti
     assert [p.source_ref for p in result.posts] == [p.urn for p in corpus] and len(result.posts) == 10
     assert all(p.link_kind == "post" and p.url == permalink(base, p.source_ref) for p in result.posts)
     assert (result.permalink_attempts, result.permalinks_found) == (0, 0)
+    assert result.layout_sample is None  # a page that reads fine keeps no sample
     assert result.drift_warning is False and result.parse_errors == 0
 
 
@@ -185,6 +186,10 @@ def test_sdui_listitems_without_posts_flag_layout_drift(connected_settings: Sett
     assert result.posts == [] and result.drift_warning is True and result.strategy == "none"
     assert result.no_results is False and result.cards_found == 3  # the listitems are counted
     assert (result.permalink_attempts, result.permalinks_found) == (0, 0)
+    sample = result.layout_sample  # the drifted page is kept as cleaned markup for the next selector fix
+    assert sample is not None and sample["reason"].startswith("0 posts parsed; no posts parsed")
+    assert sample["strategy"] == "listitem_fallback" and sample["cards_total"] == 3 and sample["cards_sampled"] == 3
+    assert "componentkey=" in sample["html"] and "<script" not in sample["html"] and sample["counts"]["sdui_listitem"] == 3
 
 
 def test_an_http_error_on_the_search_document_fails_only_that_keyword(connected_settings: Settings) -> None:
