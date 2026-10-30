@@ -18,6 +18,7 @@ from sales0.jobs.runner import get_runner, job_busy_error
 from sales0.logging import get_logger
 from sales0.services._common import not_found, now_or, record_history
 from sales0.services import linkedin_accounts
+from sales0.services.keywords import searchable_clause
 from sales0.services.views import Eligibility, RunDetailView, RunKeywordView, RunView
 
 if TYPE_CHECKING:
@@ -274,7 +275,7 @@ def watch_day_counts(db: Session, now: datetime | None = None, account_id: int |
 
 
 def _active_keyword_count(db: Session) -> int:
-    return int(db.scalar(select(func.count(Keyword.id)).where(Keyword.active.is_(True))) or 0)
+    return int(db.scalar(select(func.count(Keyword.id)).where(searchable_clause())) or 0)
 
 
 def safety_cooldown_until(
@@ -521,7 +522,7 @@ def plan_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
             .where(
                 ScrapeRunKeyword.run_id == previous.id,
                 ScrapeRunKeyword.status.in_(("pending", "running", "skipped")),
-                Keyword.active.is_(True),
+                searchable_clause(),
             )
             .order_by(ScrapeRunKeyword.id)
         ).all()
@@ -535,7 +536,7 @@ def plan_keywords(db: Session, limit: int) -> list[tuple[int, str]]:
     if len(chosen) < limit:
         rest = db.execute(
             select(Keyword.id, Keyword.text)
-            .where(Keyword.active.is_(True))
+            .where(searchable_clause())
             .order_by(case((Keyword.last_run_at.is_(None), 0), else_=1), Keyword.last_run_at, Keyword.id)
         ).all()
         for kid, text in rest:

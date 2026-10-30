@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, true
-from sqlalchemy.orm import Mapped, mapped_column, validates
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from sales0.db.base import Base
+from sales0.db.models.offerings import Offering
 from sales0.db.models._types import UTCDateTime, collapse_ws, now_utc
 
 
@@ -22,6 +23,10 @@ class Keyword(Base):
         Boolean, nullable=False, default=True, server_default=true()
     )
     group_name: Mapped[str | None] = mapped_column(String(40))
+    # The offering this phrase searches for; an inactive offering pauses its keywords in runs.
+    offering_id: Mapped[int | None] = mapped_column(
+        ForeignKey("offerings.id", ondelete="SET NULL"), index=True
+    )
     suggested_key: Mapped[str | None] = mapped_column(String(60))
     scanned_total: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
@@ -42,6 +47,8 @@ class Keyword(Base):
     actor_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("team_members.id", ondelete="SET NULL")
     )
+
+    offering: Mapped[Offering | None] = relationship(lazy="joined")
 
     @validates("text")
     def _normalise_text(self, _key: str, value: str) -> str:

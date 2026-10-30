@@ -364,6 +364,17 @@ def _offering_or_none(db: Session, offering_id: int | None) -> int | None:
     return offering_id if db.get(Offering, offering_id) is not None else None
 
 
+def _keyword_offering(db: Session, keyword_id: int | None) -> int | None:
+    """The active offering a keyword is tied to (the fallback when the AI picks none)."""
+    if keyword_id is None:
+        return None
+    return db.scalar(
+        select(Offering.id)
+        .join(Keyword, Keyword.offering_id == Offering.id)
+        .where(Keyword.id == keyword_id, Offering.active.is_(True))
+    )
+
+
 def _search_url_for(row: SeenPost) -> str | None:
     if not row.keyword_text:
         return None
@@ -415,7 +426,7 @@ def _create_enquiry(
         ai_extraction=result.model_dump(mode="json"),
         requirement_summary=clip(result.requirement_summary, 140),
         priority=result.priority,
-        offering_id=offering_id,
+        offering_id=offering_id if offering_id is not None else _keyword_offering(db, keyword_id),
         company=clip(result.company, 200),
         contact_person=clip(result.contact_person, 200),
         email=clip(result.email, 254),

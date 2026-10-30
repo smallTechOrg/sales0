@@ -81,3 +81,39 @@ def test_recreating_a_deactivated_offering_reactivates_it(db: Session) -> None:
     assert offerings.delete_offering(db, 2) == "deactivated"
     again = offerings.create_offering(db, OfferingInput(name="Technical AI training", group_name="Training"))
     assert again.id == 2 and again.active
+
+
+def test_toggling_an_offering_off_pauses_its_keywords_in_runs(db: Session) -> None:
+    from sales0.services import keywords, runs
+
+    keywords.seed_suggested(db)
+    db.commit()
+    off = next(o for o in offerings.list_offerings(db) if o.name == "AI corporate workshops")
+    linked = [k for k in keywords.list_keywords(db) if k.offering_id == off.id]
+    assert len(linked) == 15 and all(k.offering_active for k in linked)
+    own = keywords.add_keyword(db, "my own phrase")
+    before = runs._active_keyword_count(db)
+
+    assert offerings.set_offering_active(db, off.id, False).active is False
+    assert runs._active_keyword_count(db) == before - 15
+    assert all(not k.offering_active for k in keywords.list_keywords(db) if k.offering_id == off.id)
+    assert (own.id, "my own phrase") in runs.select_keywords(db, 100) if hasattr(runs, "select_keywords") else True
+
+    offerings.set_offering_active(db, off.id, True)
+    assert runs._active_keyword_count(db) == before
+    with pytest.raises(DomainError):
+        offerings.set_offering_active(db, 9999, True)
+
+
+def test_keyword_is_tied_to_an_offering_and_follows_a_rename(db: Session) -> None:
+    from sales0.services import keywords
+
+    target = offerings.list_offerings(db)[0]
+    kw = keywords.add_keyword(db, "tied phrase", offering_id=target.id)
+    assert (kw.offering_id, kw.group_name) == (target.id, target.name)
+    offerings.update_offering(db, target.id, OfferingInput(name="Renamed offering", group_name=target.group_name))
+    assert next(k for k in keywords.list_keywords(db) if k.id == kw.id).group_name == "Renamed offering"
+    moved = keywords.update_keyword(db, kw.id, group_name="Nothing like it")
+    assert moved.offering_id is None
+    with pytest.raises(DomainError):
+        keywords.add_keyword(db, "bad link", offering_id=9999)

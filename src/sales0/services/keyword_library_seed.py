@@ -17,6 +17,7 @@ from sales0.config import get_settings
 from sales0.db.models import AppMeta, Keyword
 from sales0.logging import get_logger
 from sales0.services.keyword_library import SUGGESTED_KEYWORDS_V2
+from sales0.services.keywords import offering_ids_by_name
 
 log = get_logger("sales0.services.keyword_library_seed")
 
@@ -31,11 +32,17 @@ def seed_new_phrases(db: Session) -> int:
         return 0
     keys = {k for k in db.scalars(select(Keyword.suggested_key)).all() if k}
     texts = set(db.scalars(select(Keyword.text_key)).all())
+    offerings = offering_ids_by_name(db)
     added = 0
     for item in SUGGESTED_KEYWORDS_V2:
         if item.key in keys or item.text.lower() in texts:
             continue
-        db.add(Keyword(text=item.text, active=True, group_name=item.group, suggested_key=item.key))
+        db.add(
+            Keyword(
+                text=item.text, active=True, group_name=item.group, suggested_key=item.key,
+                offering_id=offerings.get(item.group.strip().lower()),
+            )
+        )
         keys.add(item.key)
         texts.add(item.text.lower())
         added += 1

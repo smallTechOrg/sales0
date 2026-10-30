@@ -1,9 +1,16 @@
 {# Needs: offering (OfferingView). #}
-<li id="offering-{{ offering.id }}">
+<li id="offering-{{ offering.id }}" data-active="{{ 'true' if offering.active else 'false' }}">
   <div class="item-list__main">
     <strong>{{ offering.name }}{% if not offering.active %} <span class="badge">Inactive</span>{% endif %}</strong>
     <span class="muted">{{ offering.description or "No description" }}</span>
   </div>
+  <button class="switch" type="button" role="switch" aria-checked="{{ 'true' if offering.active else 'false' }}"
+          aria-label="Use '{{ offering.name }}' for matching and keyword searches"
+          hx-post="/setup/offerings/{{ offering.id }}/toggle" hx-vals='{"active": "{{ 'false' if offering.active else 'true' }}"}'
+          hx-target="#offering-list" hx-disabled-elt="this">
+    <span class="switch__track" aria-hidden="true"></span>
+    <span>{{ "Active" if offering.active else "Off" }}</span>
+  </button>
   <button class="btn btn--sm" type="button" hx-get="/setup/offerings/{{ offering.id }}/edit" hx-target="#offering-{{ offering.id }}">Edit</button>
   <button class="btn btn--danger btn--sm" type="button"
           hx-post="/setup/offerings/{{ offering.id }}/delete" hx-target="#offering-list"

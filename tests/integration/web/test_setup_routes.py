@@ -140,10 +140,24 @@ def test_delete_unused_offering_removes_it_and_used_one_is_deactivated(client: T
     make_enquiry("P8", **triaged("genuine", "Insurer wants an AI assistant built", offering_id=consulting))
     resp = unescape(client.post(f"/setup/offerings/{consulting}/delete", headers=HX).text)
     assert "deactivated — still used by 1 enquiry" in resp
-    assert "<strong>AI consulting & build services" not in resp
+    assert "Inactive" in resp  # still listed so it can be switched back on
     with session_scope() as db:
         row = db.get(Offering, consulting)
         assert row is not None and row.active is False
+
+
+def test_toggle_offering_off_and_on_pauses_its_keywords(client: TestClient) -> None:
+    from sales0.services import keywords as keywords_service
+
+    consulting = _offering_id("AI consulting & build services")
+    with session_scope() as db:
+        keywords_service.add_keyword(db, "build me an agent", offering_id=consulting)
+    off = unescape(client.post(f"/setup/offerings/{consulting}/toggle", data={"active": "false"}, headers=HX).text)
+    assert "is off" in off and "Offering off" in off and "paused (offering off)" in off
+    with session_scope() as db:
+        assert db.get(Offering, consulting).active is False
+    on = unescape(client.post(f"/setup/offerings/{consulting}/toggle", data={"active": "true"}, headers=HX).text)
+    assert "is on" in on and "paused (offering off)" not in on
 
 
 def test_linkedin_card_busy_state_polls_and_signals_header_on_change(client: TestClient) -> None:

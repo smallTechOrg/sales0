@@ -6,11 +6,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import ColumnElement, delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from sales0.config import get_settings
-from sales0.db.models import AppMeta, Keyword
+from sales0.db.models import AppMeta, Keyword, Offering
 from sales0.errors import DomainError
 from sales0.logging import get_logger
 from sales0.services._common import clip, not_found
@@ -39,11 +39,32 @@ def normalize_keyword(text: str | None) -> str:
     return _WS.sub(" ", text or "").strip()
 
 
+def searchable_clause() -> ColumnElement[bool]:
+    """Keywords a run may search: switched on, and not tied to an offering that is switched off."""
+    return Keyword.active.is_(True) & or_(
+        Keyword.offering_id.is_(None),
+        Keyword.offering_id.in_(select(Offering.id).where(Offering.active.is_(True))),
+    )
+
+
+def offering_ids_by_name(db: Session) -> dict[str, int]:
+    return {n.strip().lower(): int(i) for i, n in db.execute(select(Offering.id, Offering.name)).all()}
+
+
+def _link_group(db: Session, row: Keyword, group_name: str | None) -> None:
+    """Set the group label and tie the keyword to the offering of that name (none = unlinked)."""
+    row.group_name = clip(group_name, 40) if isinstance(group_name, str) and group_name.strip() else None
+    row.offering_id = offering_ids_by_name(db).get((row.group_name or "").strip().lower())
+
+
 def _view(row: Keyword) -> KeywordView:
+    offering = row.offering
     return KeywordView(
         id=row.id,
         text=row.text,
         active=row.active,
+        offering_id=row.offering_id,
+        offering_active=offering.active if offering is not None else True,
         last_run_at=row.last_run_at,
         created_at=row.created_at,
         group_name=row.group_name,
@@ -60,7 +81,9 @@ def list_keywords(db: Session) -> list[KeywordView]:
     return [_view(r) for r in rows]
 
 
-def add_keyword(db: Session, text: str, actor_user_id: int | None = None) -> KeywordView:
+def add_keyword(
+    db: Session, text: str, actor_user_id: int | None = None, offering_id: int | None = None
+) -> KeywordView:
     clean = normalize_keyword(text)
     if not (MIN_LEN <= len(clean) <= MAX_LEN):
         raise DomainError("keyword_invalid", "Keyword must be 2–100 characters.", 400)
@@ -68,8 +91,14 @@ def add_keyword(db: Session, text: str, actor_user_id: int | None = None) -> Key
     if existing is not None:
         raise DomainError("keyword_duplicate", f"'{existing.text}' is already in your keywords.", 409)
     row = Keyword(text=clean, active=True, actor_user_id=actor_user_id)
+    if offering_id is not None:
+        offering = db.get(Offering, offering_id)
+        if offering is None:
+            raise not_found()
+        row.group_name, row.offering_id = clip(offering.name, 40), offering.id
     db.add(row)
     db.flush()
+    db.refresh(row)
     return _view(row)
 
 
@@ -106,7 +135,7 @@ def update_keyword(
     actor_user_id: int | None = None,
 ) -> KeywordView:
     """Edit text and/or group in place. ``text=None`` keeps the text; ``group_name`` omitted keeps the
-    group, ``None``/blank clears it. A seeded keyword keeps its ``suggested_key`` whatever the edit."""
+    group, ``None``/blank clears it. A group named like an offering ties the keyword to that offering. A seeded keyword keeps its ``suggested_key`` whatever the edit."""
     row = db.get(Keyword, keyword_id)
     if row is None:
         raise not_found()
@@ -117,7 +146,7 @@ def update_keyword(
             raise DomainError("keyword_duplicate", f"'{other.text}' is already in your keywords.", 409)
         row.text = clean
     if group_name is not UNSET:
-        row.group_name = clip(group_name, 40) if isinstance(group_name, str) else None
+        _link_group(db, row, group_name if isinstance(group_name, str) else None)
     if actor_user_id is not None:
         row.actor_user_id = actor_user_id  # last member to touch it
     db.flush()
@@ -153,11 +182,17 @@ def seed_suggested(db: Session) -> SeedResult:
     updates, re-activates, re-groups or re-texts anything."""
     keys = {k for k in db.scalars(select(Keyword.suggested_key)).all() if k}
     texts = set(db.scalars(select(Keyword.text_key)).all())
+    offerings = offering_ids_by_name(db)
     added = 0
     for item in SUGGESTED_KEYWORDS:
         if item.key in keys or item.text.lower() in texts:
             continue
-        db.add(Keyword(text=item.text, active=True, group_name=item.group, suggested_key=item.key))
+        db.add(
+            Keyword(
+                text=item.text, active=True, group_name=item.group, suggested_key=item.key,
+                offering_id=offerings.get(item.group.strip().lower()),
+            )
+        )
         keys.add(item.key)
         texts.add(item.text.lower())
         added += 1
@@ -184,9 +219,11 @@ __all__ = [
     "add_keyword",
     "list_keywords",
     "normalize_keyword",
+    "offering_ids_by_name",
     "record_yield",
     "remove_keyword",
     "seed_suggested",
+    "searchable_clause",
     "seed_suggested_once",
     "set_keyword_active",
     "update_keyword",
