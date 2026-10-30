@@ -54,9 +54,9 @@ def _safety_caps(session: SessionStatusView) -> list[tuple[str, str]]:
 
 
 def _offerings_ctx(db: Session) -> dict:
-    """Active offerings grouped by group name, keeping the service's order (groups shown once)."""
+    """Offerings (inactive ones included, so they can be switched back on) grouped by group name, keeping the service's order (groups shown once)."""
     groups: dict[str, list[OfferingView]] = {}
-    for offering in offerings_service.list_offerings(db):
+    for offering in offerings_service.list_offerings(db, include_inactive=True):
         groups.setdefault(offering.group_name, []).append(offering)
     return {
         "offering_groups": list(groups.items()),
@@ -116,7 +116,9 @@ def _keywords_ctx(db: Session) -> dict:
     by_group: dict[str, list] = {}
     for keyword in rows:
         by_group.setdefault(keyword.group_name or OWN_GROUP, []).append(keyword)
-    offering_names = [o.name for o in offerings_service.list_offerings(db)]
+    all_offerings = offerings_service.list_offerings(db, include_inactive=True)
+    offering_names = [o.name for o in all_offerings]
+    inactive_names = {o.name for o in all_offerings if not o.active}
     order = [n for n in offering_names if n in by_group]
     order += [n for n in by_group if n not in order and n != OWN_GROUP]
     if OWN_GROUP in by_group:
@@ -127,6 +129,7 @@ def _keywords_ctx(db: Session) -> dict:
             "keywords": by_group[name],
             "scanned": sum(k.scanned_total for k in by_group[name]),
             "relevant": sum(k.relevant_total for k in by_group[name]),
+            "offering_off": name in inactive_names,
         }
         for name in order
     ]
@@ -171,10 +174,13 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 # ---------------------------------------------------------------------- keywords
 @router.post("/setup/keywords", response_model=None, dependencies=[Depends(require_admin)])
 def add_keyword(
-    request: Request, text: str = Form(""), db: Session = Depends(get_db),
+    request: Request, text: str = Form(""), offering_id: str = Form(""), db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    keyword = keywords_service.add_keyword(db, text, actor_user_id=member.id if member else None)
+    keyword = keywords_service.add_keyword(
+        db, text, actor_user_id=member.id if member else None,
+        offering_id=int(offering_id) if offering_id.strip().isdigit() else None,
+    )
     if not is_htmx(request):
         return redirect("/setup")
     return _html(_keyword_list_html(request, db), toast_html(f"Added keyword '{keyword.text}'."))
@@ -274,6 +280,23 @@ def update_offering(
     if not is_htmx(request):
         return redirect("/setup")
     return _html(_offering_list_html(request, db), toast_html(f"Saved '{offering.name}'."))
+
+
+@router.post("/setup/offerings/{offering_id}/toggle", response_model=None, dependencies=[Depends(require_admin)])
+def toggle_offering(request: Request, offering_id: PathId, active: str = Form("true"), db: Session = Depends(get_db)) -> Response:
+    on = active.strip().lower() in {"true", "1", "on", "yes"}
+    offering = offerings_service.set_offering_active(db, offering_id, on)
+    if not is_htmx(request):
+        return redirect("/setup")
+    message = (
+        f"'{offering.name}' is on — triage can match it and its keywords are searched."
+        if on
+        else f"'{offering.name}' is off — hidden from triage and the inbox selects, and its keywords are skipped in runs."
+    )
+    return _html(
+        _offering_list_html(request, db), toast_html(message),
+        render_html(request, "setup/_keyword_list.html", {**_keywords_ctx(db), "oob": True}),
+    )
 
 
 @router.post("/setup/offerings/{offering_id}/delete", response_model=None, dependencies=[Depends(require_admin)])

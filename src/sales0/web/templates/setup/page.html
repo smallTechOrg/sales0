@@ -31,6 +31,13 @@
               <input class="input" id="keyword-input" name="text" type="text" minlength="2" maxlength="100" required
                      placeholder="e.g. corporate AI training" autocomplete="off">
             </div>
+            <div class="field">
+              <label class="field__label" for="keyword-offering">Offering</label>
+              <select class="select" id="keyword-offering" name="offering_id">
+                <option value="">{{ own_group }}</option>
+                {% for group_name, items in offering_groups %}{% for o in items %}<option value="{{ o.id }}">{{ o.name }}{% if not o.active %} (off){% endif %}</option>{% endfor %}{% endfor %}
+              </select>
+            </div>
             <button class="btn btn--primary" type="submit">Add keyword</button>
           </form>
           <form method="post" action="/setup/keywords/suggested" hx-post="/setup/keywords/suggested" hx-target="#keyword-list" hx-disabled-elt="find button">

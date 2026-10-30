@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Enquiry, Offering, OfferingGroup
+from sales0.db.models import Enquiry, Keyword, Offering, OfferingGroup
 from sales0.db.models._types import name_key
 from sales0.errors import DomainError
 from sales0.services._common import not_found
@@ -139,6 +139,20 @@ def update_offering(db: Session, offering_id: int, data: OfferingInput) -> Offer
         row.group_id = group.id
         row.sort_order = _next_sort_order(db, group.id)
     db.flush()
+    # Keywords tied to this offering follow a rename.
+    db.execute(update(Keyword).where(Keyword.offering_id == row.id).values(group_name=data.name[:40]))
+    db.flush()
+    db.expire_all()
+    return _one_view(db, row)
+
+
+def set_offering_active(db: Session, offering_id: int, active: bool) -> OfferingView:
+    """Switch an offering on/off. Off hides it from triage and the inbox selects and pauses its keywords."""
+    row = db.get(Offering, offering_id)
+    if row is None:
+        raise not_found()
+    row.active = bool(active)
+    db.flush()
     db.refresh(row)
     return _one_view(db, row)
 
@@ -152,8 +166,10 @@ def delete_offering(db: Session, offering_id: int) -> Literal["deleted", "deacti
         row.active = False
         db.flush()
         return "deactivated"
+    db.execute(update(Keyword).where(Keyword.offering_id == offering_id).values(offering_id=None))
     db.delete(row)
     db.flush()
+    db.expire_all()
     return "deleted"
 
 
@@ -162,5 +178,6 @@ __all__ = [
     "delete_offering",
     "list_group_names",
     "list_offerings",
+    "set_offering_active",
     "update_offering",
 ]

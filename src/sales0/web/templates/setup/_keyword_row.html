@@ -4,7 +4,7 @@
     <strong>{{ keyword.text }}</strong>
     {% if keyword.suggested %}<span class="badge badge--stub" title="From the suggested keyword library">suggested</span>{% endif %}
     {% if keyword.scanned_total >= 80 and keyword.relevant_total == 0 %}<span class="badge badge--stub" title="Scanned 80+ posts and none were relevant — consider editing or removing it">No yield</span>{% endif %}
-    <span class="muted keyword__yield">Scanned <span class="mono">{{ keyword.scanned_total }}</span> · Relevant <span class="mono">{{ keyword.relevant_total }}</span> ({{ pct_text(keyword.relevant_total, keyword.scanned_total) }}) · {% if keyword.last_run_at %}last run {{ keyword.last_run_at | ago }}{% else %}not run yet{% endif %}{% if not keyword.active %} · paused{% endif %}</span>
+    <span class="muted keyword__yield">Scanned <span class="mono">{{ keyword.scanned_total }}</span> · Relevant <span class="mono">{{ keyword.relevant_total }}</span> ({{ pct_text(keyword.relevant_total, keyword.scanned_total) }}) · {% if keyword.last_run_at %}last run {{ keyword.last_run_at | ago }}{% else %}not run yet{% endif %}{% if not keyword.active %} · paused{% elif not keyword.offering_active %} · paused (offering off){% endif %}</span>
   </div>
   <button class="switch" type="button" role="switch" aria-checked="{{ 'true' if keyword.active else 'false' }}"
           aria-label="Search '{{ keyword.text }}' in runs"
@@ -22,7 +22,7 @@
         <input class="input" id="keyword-{{ keyword.id }}-text" name="text" type="text" minlength="2" maxlength="100" required value="{{ keyword.text }}">
       </div>
       <div class="field">
-        <label class="field__label" for="keyword-{{ keyword.id }}-group">Group</label>
+        <label class="field__label" for="keyword-{{ keyword.id }}-group">Offering</label>
         <select class="select" id="keyword-{{ keyword.id }}-group" name="group_name">
           <option value="none"{% if not keyword.group_name %} selected{% endif %}>{{ own_group }}</option>
           {% for choice in keyword_group_choices %}<option value="{{ choice }}"{% if keyword.group_name == choice %} selected{% endif %}>{{ choice }}</option>{% endfor %}

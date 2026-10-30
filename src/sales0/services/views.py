@@ -31,6 +31,8 @@ class KeywordView(_View):
     created_at: datetime
     # Phase 1.4
     group_name: str | None = None
+    offering_id: int | None = None
+    offering_active: bool = True  # False = its offering is off, so runs skip it
     suggested: bool = False
     scanned_total: int = 0
     relevant_total: int = 0
