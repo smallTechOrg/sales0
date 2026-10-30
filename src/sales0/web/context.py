@@ -54,8 +54,6 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Runs", "/runs", None),
     ("Tracked", "/tracked", None),
     ("Setup", "/setup", None),
-    ("Keywords", "/keywords", None),
-    ("Criteria", "/criteria", None),
     ("Pipeline", "/pipeline", None),
     ("People", "/contacts", None),
     ("Companies", "/companies", None),
@@ -72,6 +70,8 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Users", "/users", None),
     ("WhatsApp", "/whatsapp", 5),
 )
+# Pages that live under another nav item (Setup's tabs): the item stays highlighted on them.
+NAV_ALIASES: dict[str, tuple[str, ...]] = {"/setup": ("/keywords", "/criteria")}
 # The nav is one flat list (it scrolls as a single row on phones); these hrefs open a visual group:
 # find leads (Inbox .. Criteria) | CRM (Pipeline .. Sync) | outreach (Outreach, Replies) | insights (Metrics .. Schedule) | admin.
 NAV_GROUP_STARTS = frozenset({"/pipeline", "/outreach", "/metrics", "/users"})
@@ -96,7 +96,8 @@ def nav_items(path: str, due: int = 0, *, admin: bool = False) -> list[NavItem]:
     for label, href, phase in NAV:
         if href == "/users" and not admin:
             continue  # admins only
-        active = path == href or path.startswith(href + "/")
+        active = path == href or path.startswith(href + "/") or any(
+            path == a or path.startswith(a + "/") for a in NAV_ALIASES.get(href, ()))
         shown: str = label
         if href == "/pipeline" and due > 0:
             # base.html prints ``item.label``; the count badge rides along as safe markup.

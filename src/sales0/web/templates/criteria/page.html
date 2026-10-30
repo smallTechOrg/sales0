@@ -12,7 +12,7 @@
     <div class="card__body table-wrap">
       {% if rules %}
         <table class="table" id="{{ kind }}-list">
-          <thead><tr><th scope="col" class="num">#</th><th scope="col">Rule</th><th scope="col">Source</th><th scope="col">State</th>{% if can_edit %}<th scope="col">Actions</th>{% endif %}</tr></thead>
+          <thead><tr><th scope="col" class="num">#</th><th scope="col">Rule</th><th scope="col">Applies to</th><th scope="col">Source</th><th scope="col">State</th>{% if can_edit %}<th scope="col">Actions</th>{% endif %}</tr></thead>
           <tbody>
           {% set ns = namespace(n=0) %}
           {% for r in rules %}
@@ -20,6 +20,7 @@
             <tr id="criterion-{{ r.id }}" data-active="{{ 1 if r.active else 0 }}" data-kind="{{ r.kind }}">
               <td class="num">{{ ns.n if r.active else "–" }}</td>
               <td>{{ r.text }}</td>
+              <td data-offering="{{ r.offering_id or '' }}">{% if r.offering_name %}<span class="chip">{{ r.offering_name }}</span>{% if not r.offering_active %} <span class="badge" title="The offering is off, so this rule is not used">offering off</span>{% endif %}{% else %}<span class="muted">Every post</span>{% endif %}</td>
               <td>{% if r.source == "seed" %}<span class="chip">Built-in</span>{% elif r.source == "discard" %}<span class="chip">From a discard</span>{% else %}<span class="chip">Team</span>{% endif %}
                 <div class="muted">{{ ago_text(r.updated_at) }}</div></td>
               <td>{% if r.active %}<span class="badge badge--genuine">Active</span>{% else %}<span class="badge">Disabled</span>{% endif %}</td>
@@ -42,6 +43,9 @@
                           <option value="include"{% if r.kind == "include" %} selected{% endif %}>Include: genuine when…</option>
                           <option value="exclude"{% if r.kind == "exclude" %} selected{% endif %}>Exclude: discard when…</option>
                         </select></div>
+                      <div class="field"><label class="field__label" for="co-{{ r.id }}">Applies to</label>
+                        <select class="select" id="co-{{ r.id }}" name="offering_id"><option value="none">Every post</option>
+                          {% for o in offerings %}<option value="{{ o.id }}"{% if r.offering_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select></div>
                       <div><button class="btn btn--primary btn--sm" type="submit">Save</button></div>
                     </form>
                   </details>
@@ -59,7 +63,14 @@
 {% endmacro %}
 {% block content %}
   <div class="stack">
+    {% include "setup/_tabs.html" %}
     {{ flash_banner(flash) }}
+    <form class="filters" id="criteria-filter" method="get" action="/criteria">
+      <div class="field"><label class="field__label" for="criteria-offering">Show rules for</label>
+        <select class="input" id="criteria-offering" name="offering" data-autosubmit><option value="">All rules</option><option value="none"{% if offering_filter == "none" %} selected{% endif %}>Every post (no offering)</option>
+          {% for o in offerings %}<option value="{{ o.id }}"{% if offering_filter == o.id|string %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select></div>
+      <noscript><button class="btn" type="submit">Show</button></noscript>
+    </form>
     {{ rule_table(include, "include", "Include: genuine when ANY of these is true", "A post matching one of these goes to To review.") }}
     {{ rule_table(exclude, "exclude", "Exclude: discard ONLY when one of these is clear", "A post matching one of these is skipped by the AI (see Inbox → Skipped by AI).") }}
 
@@ -72,6 +83,9 @@
               <option value="exclude">Exclude: discard when…</option>
               <option value="include">Include: genuine when…</option>
             </select></div>
+          <div class="field"><label class="field__label" for="new-offering">Applies to</label>
+            <select class="select" id="new-offering" name="offering_id"><option value="">Every post</option>
+              {% for o in offerings %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select></div>
           <div class="field"><label class="field__label" for="new-text">Rule</label>
             <textarea class="input" id="new-text" name="text" rows="3" maxlength="1000" required placeholder="e.g. A college asking for free guest lectures or student workshops."></textarea></div>
           <div><button class="btn btn--primary" type="submit">Add rule</button></div>
@@ -81,7 +95,7 @@
 
     <section class="card" id="discard-reasons" aria-labelledby="reasons-title">
       <div class="card__header"><div><h2 id="reasons-title">Why posts were discarded</h2>
-        <p class="muted">Counts for the last 30 days and all time. Team = a person's discard (the AI learns from these); System = automatic repeat skips (not used for learning); AI = posts the AI skipped, by poster type.</p></div></div>
+        <p class="muted">{% if offering_filter %}Only posts that belong to the chosen offering (matched to it by the AI, else found by one of its keywords). {% endif %}Counts for the last 30 days and all time. Team = a person's discard (the AI learns from these); System = automatic repeat skips (not used for learning); AI = posts the AI skipped, by poster type.</p></div></div>
       <div class="card__body table-wrap">
         {% set groups = breakdown.team + breakdown.system + breakdown.ai %}
         {% if groups %}

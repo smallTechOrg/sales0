@@ -1,0 +1,7 @@
+{# Setup tabs: General (/setup), Offerings & keywords (/keywords), Criteria (/criteria). Active tab from the path. #}
+{% set _p = request.url.path %}
+<nav class="tabs" id="setup-tabs" aria-label="Setup sections">
+  <a class="tabs__tab{% if _p == "/setup" %} tabs__tab--active{% endif %}" href="/setup"{% if _p == "/setup" %} aria-current="page"{% endif %}>General</a>
+  <a class="tabs__tab{% if _p.startswith("/keywords") %} tabs__tab--active{% endif %}" href="/keywords"{% if _p.startswith("/keywords") %} aria-current="page"{% endif %}>Offerings &amp; keywords</a>
+  <a class="tabs__tab{% if _p.startswith("/criteria") %} tabs__tab--active{% endif %}" href="/criteria"{% if _p.startswith("/criteria") %} aria-current="page"{% endif %}>Criteria</a>
+</nav>

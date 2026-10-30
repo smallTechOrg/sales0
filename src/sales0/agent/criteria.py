@@ -63,6 +63,12 @@ MAX_RULE_CHARS = 1000  # the longest seeded rule is 617 chars; the column is VAR
 class Criterion:
     kind: CriterionKind
     text: str
+    offering: str | None = None  # q22: the offering the rule belongs to (None = every post)
+
+    @property
+    def prompt_text(self) -> str:
+        """The line in the system prompt: an offering rule says which offering it is about."""
+        return f"(Only for posts about the offering \"{self.offering}\") {self.text}" if self.offering else self.text
 
 
 DEFAULT_RULES: tuple[Criterion, ...] = tuple(Criterion("include", t) for t in DEFAULT_INCLUDE) + tuple(
@@ -80,11 +86,11 @@ class CriteriaSet:
 
     @property
     def include(self) -> list[str]:
-        return [r.text for r in self.rules if r.kind == "include"]
+        return [r.prompt_text for r in self.rules if r.kind == "include"]
 
     @property
     def exclude(self) -> list[str]:
-        return [r.text for r in self.rules if r.kind == "exclude"]
+        return [r.prompt_text for r in self.rules if r.kind == "exclude"]
 
 
 DEFAULT_SET = CriteriaSet()

@@ -15,13 +15,13 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from sales0.agent.criteria import DEFAULT_SET, MAX_RULE_CHARS, CriteriaSet, Criterion
-from sales0.db.models import Enquiry, LinkedinProfile, SeenPost, TriageCriteriaSet, TriageCriterion, TriageDecision
+from sales0.db.models import Enquiry, EnquiryKeywordHit, Keyword, LinkedinProfile, Offering, SeenPost, TriageCriteriaSet, TriageCriterion, TriageDecision
 from sales0.errors import DomainError
 from sales0.scraper.urls import link_kind_of
 from sales0.services._common import not_found, now_or
@@ -54,6 +54,9 @@ class CriterionView:
     from_enquiry_id: int | None
     created_at: datetime
     updated_at: datetime
+    offering_id: int | None = None  # q22: None = applies to every post
+    offering_name: str | None = None
+    offering_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -95,11 +98,25 @@ class DiscardBreakdown:
         }
 
 
-def _view(row: TriageCriterion) -> CriterionView:
+def _offerings(db: Session) -> dict[int, Offering]:
+    return {o.id: o for o in db.scalars(select(Offering))}
+
+
+def _view(row: TriageCriterion, offerings: dict[int, Offering] | None = None) -> CriterionView:
+    o = (offerings or {}).get(row.offering_id) if row.offering_id else None
     return CriterionView(
         id=row.id, kind=row.kind, text=row.text, position=row.position, active=bool(row.active), source=row.source,
         from_enquiry_id=row.from_enquiry_id, created_at=row.created_at, updated_at=row.updated_at,
+        offering_id=row.offering_id, offering_name=o.name if o else None, offering_active=o.active if o else True,
     )
+
+
+def _criterion(row: TriageCriterion, offerings: dict[int, Offering]) -> Criterion | None:
+    """The prompt rule, or None when its offering is switched off (its rules wait with its keywords)."""
+    o = offerings.get(row.offering_id) if row.offering_id else None
+    if o is not None and not o.active:
+        return None
+    return Criterion(row.kind, row.text, o.name if o else None)  # type: ignore[arg-type]
 
 
 def _ordered(db: Session, *, active_only: bool = False) -> list[TriageCriterion]:
@@ -120,12 +137,18 @@ def active_set(db: Session) -> CriteriaSet:
     """The rules the next triage call renders (prompt order) and their snapshot version."""
     if db.scalar(select(func.count(TriageCriterion.id))) == 0:
         return DEFAULT_SET
-    rules = tuple(Criterion(r.kind, r.text) for r in _ordered(db, active_only=True))  # type: ignore[arg-type]
+    offerings = _offerings(db)
+    rules = tuple(c for c in (_criterion(r, offerings) for r in _ordered(db, active_only=True)) if c is not None)
     return CriteriaSet(rules=rules, version=current_version(db))
 
 
-def list_rules(db: Session) -> list[CriterionView]:
-    return [_view(r) for r in _ordered(db)]
+def list_rules(db: Session, *, offering_id: int | None | Literal["any"] = "any") -> list[CriterionView]:
+    """Every rule in display order; ``offering_id`` narrows to one offering's rules (None = the global ones)."""
+    offerings = _offerings(db)
+    rows = _ordered(db)
+    if offering_id != "any":
+        rows = [r for r in rows if r.offering_id == offering_id]
+    return [_view(r, offerings) for r in rows]
 
 
 def history(db: Session, limit: int = 10) -> list[CriteriaVersionView]:
@@ -153,7 +176,9 @@ def _kind(kind: str | None) -> str:
 def _snapshot(db: Session, *, actor_member_id: int | None, note: str, now: datetime) -> int:
     db.flush()
     version = (current_version(db) or 0) + 1
-    rules = [{"kind": r.kind, "text": r.text} for r in _ordered(db, active_only=True)]
+    offerings = _offerings(db)
+    rules = [{"kind": c.kind, "text": c.text, **({"offering": c.offering} if c.offering else {})}
+             for c in (_criterion(r, offerings) for r in _ordered(db, active_only=True)) if c is not None]
     db.add(TriageCriteriaSet(version=version, rules=rules, note=note[:200], actor_member_id=actor_member_id, created_at=now))
     db.flush()
     return version
@@ -166,57 +191,73 @@ def _get(db: Session, criterion_id: int) -> TriageCriterion:
     return row
 
 
-def _same_text(db: Session, kind: str, text: str, exclude_id: int | None = None) -> TriageCriterion | None:
+def _same_text(db: Session, kind: str, text: str, exclude_id: int | None = None, offering_id: int | None = None) -> TriageCriterion | None:
     for row in db.scalars(select(TriageCriterion).where(TriageCriterion.kind == kind)).all():
-        if row.id != exclude_id and row.text.casefold() == text.casefold():
+        if row.id != exclude_id and row.offering_id == offering_id and row.text.casefold() == text.casefold():
             return row
     return None
 
 
 def create_rule(
     db: Session, kind: str, text: str, *, actor_member_id: int | None = None, source: str = "team",
-    from_enquiry_id: int | None = None, now: datetime | None = None,
+    from_enquiry_id: int | None = None, now: datetime | None = None, offering_id: int | None = None,
 ) -> CriterionView:
-    """Append an active rule at the end of its list. A rule with the same text is re-enabled instead of duplicated."""
+    """Append an active rule at the end of its list (``offering_id``: the offering it belongs to, None = every post).
+    A rule with the same text (and offering) is re-enabled instead of duplicated."""
     stamp = now_or(now)
     kind, text = _kind(kind), _clean(text)
-    existing = _same_text(db, kind, text)
+    offering_id = _offering_id(db, offering_id)
+    existing = _same_text(db, kind, text, offering_id=offering_id)
     if existing is not None:
         if existing.active:
             raise DomainError("criterion_exists", "That rule already exists.", 409)
         existing.active, existing.updated_at, existing.updated_by_member_id = True, stamp, actor_member_id
         _snapshot(db, actor_member_id=actor_member_id, note=f"Re-enabled {kind} rule #{existing.id}", now=stamp)
-        return _view(existing)
+        return _view(existing, _offerings(db))
     last = db.scalar(select(func.max(TriageCriterion.position)).where(TriageCriterion.kind == kind)) or 0
     row = TriageCriterion(
         kind=kind, text=text, position=int(last) + 10, active=True, source=source if source in ("team", "discard") else "team",
         from_enquiry_id=from_enquiry_id, created_by_member_id=actor_member_id, updated_by_member_id=actor_member_id,
-        created_at=stamp, updated_at=stamp,
+        created_at=stamp, updated_at=stamp, offering_id=offering_id,
     )
     db.add(row)
     db.flush()
     _snapshot(db, actor_member_id=actor_member_id, note=f"Added {kind} rule #{row.id}", now=stamp)
-    return _view(row)
+    return _view(row, _offerings(db))
+
+
+_KEEP: Any = object()
+
+
+def _offering_id(db: Session, offering_id: int | None) -> int | None:
+    if offering_id is None:
+        return None
+    if db.get(Offering, int(offering_id)) is None:
+        raise DomainError("criterion_invalid", "That offering no longer exists.", 400)
+    return int(offering_id)
 
 
 def update_rule(
     db: Session, criterion_id: int, *, text: str | None = None, kind: str | None = None,
-    actor_member_id: int | None = None, now: datetime | None = None,
+    actor_member_id: int | None = None, now: datetime | None = None, offering_id: Any = _KEEP,
 ) -> CriterionView:
+    """Edit text / list / offering (``offering_id`` omitted keeps it; None = every post)."""
     stamp = now_or(now)
     row = _get(db, criterion_id)
     new_kind = _kind(kind) if kind is not None else row.kind
     new_text = _clean(text) if text is not None else row.text
-    if new_kind == row.kind and new_text == row.text:
-        return _view(row)
-    if _same_text(db, new_kind, new_text, exclude_id=row.id) is not None:
+    new_offering = row.offering_id if offering_id is _KEEP else _offering_id(db, offering_id)
+    if new_kind == row.kind and new_text == row.text and new_offering == row.offering_id:
+        return _view(row, _offerings(db))
+    if _same_text(db, new_kind, new_text, exclude_id=row.id, offering_id=new_offering) is not None:
         raise DomainError("criterion_exists", "Another rule already says that.", 409)
     if new_kind != row.kind:
         last = db.scalar(select(func.max(TriageCriterion.position)).where(TriageCriterion.kind == new_kind)) or 0
         row.position = int(last) + 10
     row.kind, row.text, row.updated_at, row.updated_by_member_id = new_kind, new_text, stamp, actor_member_id
+    row.offering_id = new_offering
     _snapshot(db, actor_member_id=actor_member_id, note=f"Edited rule #{row.id}", now=stamp)
-    return _view(row)
+    return _view(row, _offerings(db))
 
 
 def set_active(
@@ -225,10 +266,10 @@ def set_active(
     stamp = now_or(now)
     row = _get(db, criterion_id)
     if bool(row.active) == bool(active):
-        return _view(row)
+        return _view(row, _offerings(db))
     row.active, row.updated_at, row.updated_by_member_id = bool(active), stamp, actor_member_id
     _snapshot(db, actor_member_id=actor_member_id, note=f"{'Enabled' if active else 'Disabled'} rule #{row.id}", now=stamp)
-    return _view(row)
+    return _view(row, _offerings(db))
 
 
 def move(
@@ -243,13 +284,13 @@ def move(
     i = same.index(row)
     j = i - 1 if direction == "up" else i + 1
     if not 0 <= j < len(same):
-        return _view(row)
+        return _view(row, _offerings(db))
     same[i], same[j] = same[j], same[i]
     for n, r in enumerate(same, start=1):
         r.position = n * 10
     row.updated_at, row.updated_by_member_id = stamp, actor_member_id
     _snapshot(db, actor_member_id=actor_member_id, note=f"Moved rule #{row.id} {direction}", now=stamp)
-    return _view(row)
+    return _view(row, _offerings(db))
 
 
 def rule_from_discard(
@@ -281,7 +322,79 @@ def _add(groups: OrderedDict[str, ReasonGroup], key: str, group: ReasonGroup, at
         g.examples.append(example)
 
 
-def _team_groups(db: Session, since: datetime) -> list[ReasonGroup]:
+# ---------------------------------------------------------------------------- discards per offering
+# A discarded post belongs to an offering when the AI matched it to that offering, else when a keyword of that
+# offering found it. AI-skipped posts never became enquiries, so only their keyword decides.
+def _offering_keys(db: Session, offering_id: int) -> tuple[list[int], list[str]]:
+    rows = db.execute(select(Keyword.id, Keyword.text_key).where(Keyword.offering_id == offering_id)).all()
+    return [int(i) for i, _ in rows], [str(t) for _, t in rows]
+
+
+def _enquiry_in_offering(db: Session, offering_id: int):  # type: ignore[no-untyped-def]
+    ids, texts = _offering_keys(db, offering_id)
+    via_keyword = select(EnquiryKeywordHit.enquiry_id).where(
+        EnquiryKeywordHit.keyword_id.in_(ids or [-1]) | func.lower(EnquiryKeywordHit.keyword_text).in_(texts or [""]))
+    return (Enquiry.offering_id == offering_id) | (Enquiry.offering_id.is_(None) & Enquiry.id.in_(via_keyword))
+
+
+def _seen_in_offering(db: Session, offering_id: int):  # type: ignore[no-untyped-def]
+    _ids, texts = _offering_keys(db, offering_id)
+    return func.lower(SeenPost.keyword_text).in_(texts or [""])
+
+
+@dataclass
+class OfferingDiscards:
+    team: int = 0
+    system: int = 0
+    ai: int = 0
+    top_reasons: list[tuple[str, int]] = field(default_factory=list)
+
+    @property
+    def total(self) -> int:
+        return self.team + self.system + self.ai
+
+
+def discards_by_offering(db: Session) -> dict[int, OfferingDiscards]:
+    """Per offering: how many posts were discarded by the team, automatically, or skipped by the AI, and the team's
+    top 3 reasons (one pass; the same assignment rule as ``discard_breakdown(offering_id=...)``)."""
+    kw_offering = {int(i): int(o) for i, o in db.execute(select(Keyword.id, Keyword.offering_id).where(Keyword.offering_id.is_not(None)))}
+    text_offering = {str(t): int(o) for t, o in db.execute(select(Keyword.text_key, Keyword.offering_id).where(Keyword.offering_id.is_not(None)))}
+    hits: dict[int, set[int]] = {}
+    for eid, kid, text in db.execute(select(EnquiryKeywordHit.enquiry_id, EnquiryKeywordHit.keyword_id, EnquiryKeywordHit.keyword_text)):
+        o = kw_offering.get(kid) if kid else None
+        o = o or text_offering.get((text or "").strip().lower())
+        if o:
+            hits.setdefault(int(eid), set()).add(o)
+    out: dict[int, OfferingDiscards] = {}
+    reasons: dict[int, dict[str, int]] = {}
+    latest: dict[int, str] = {}
+    for eid, reason in db.execute(
+        select(TriageDecision.enquiry_id, TriageDecision.reason).where(TriageDecision.decision == "discard")
+        .order_by(TriageDecision.decided_at, TriageDecision.id)
+    ):
+        latest[int(eid)] = " ".join((reason or "").split()) or "No reason given"
+    for eid, oid, source in db.execute(select(Enquiry.id, Enquiry.offering_id, Enquiry.discard_source).where(Enquiry.review_status == "discarded")):
+        for o in ({int(oid)} if oid else hits.get(int(eid), set())):
+            d = out.setdefault(o, OfferingDiscards())
+            if source == "auto":
+                d.system += 1
+            elif int(eid) in latest:
+                d.team += 1
+                label = latest[int(eid)]
+                reasons.setdefault(o, {})[label] = reasons.setdefault(o, {}).get(label, 0) + 1
+    for text, n in db.execute(
+        select(func.lower(SeenPost.keyword_text), func.count(SeenPost.id))
+        .where(SeenPost.verdict == "discard", SeenPost.enquiry_id.is_(None)).group_by(func.lower(SeenPost.keyword_text))
+    ):
+        o = text_offering.get(str(text))
+        if o:
+            out.setdefault(o, OfferingDiscards()).ai += int(n or 0)
+    for o, counts in reasons.items():
+        out[o].top_reasons = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+    return out
+
+
+def _team_groups(db: Session, since: datetime, offering_id: int | None = None) -> list[ReasonGroup]:
     ranked = select(
         TriageDecision.id.label("decision_id"),
         func.row_number()
@@ -292,7 +405,8 @@ def _team_groups(db: Session, since: datetime) -> list[ReasonGroup]:
         select(TriageDecision.reason, TriageDecision.decided_at, Enquiry.raw_text, Enquiry.source_url)
         .join(ranked, ranked.c.decision_id == TriageDecision.id)
         .join(Enquiry, Enquiry.id == TriageDecision.enquiry_id)
-        .where(ranked.c.rn == 1, TriageDecision.decision == "discard", Enquiry.review_status == "discarded")
+        .where(ranked.c.rn == 1, TriageDecision.decision == "discard", Enquiry.review_status == "discarded",
+               *((_enquiry_in_offering(db, offering_id),) if offering_id else ()))
         .order_by(TriageDecision.decided_at.desc(), TriageDecision.id.desc())
         .limit(5000)
     ).all()
@@ -304,10 +418,11 @@ def _team_groups(db: Session, since: datetime) -> list[ReasonGroup]:
     return sorted(groups.values(), key=lambda g: (-g.count_all, g.label))[:MAX_GROUPS]
 
 
-def _system_groups(db: Session, since: datetime) -> list[ReasonGroup]:
+def _system_groups(db: Session, since: datetime, offering_id: int | None = None) -> list[ReasonGroup]:
     rows = db.execute(
         select(Enquiry.decided_at, Enquiry.raw_text, Enquiry.source_url, Enquiry.discard_reason)
-        .where(Enquiry.review_status == "discarded", Enquiry.discard_source == "auto")
+        .where(Enquiry.review_status == "discarded", Enquiry.discard_source == "auto",
+               *((_enquiry_in_offering(db, offering_id),) if offering_id else ()))
         .order_by(Enquiry.decided_at.desc(), Enquiry.id.desc())
         .limit(5000)
     ).all()
@@ -318,8 +433,10 @@ def _system_groups(db: Session, since: datetime) -> list[ReasonGroup]:
     return list(groups.values())
 
 
-def _ai_groups(db: Session, since: datetime) -> list[ReasonGroup]:
+def _ai_groups(db: Session, since: datetime, offering_id: int | None = None) -> list[ReasonGroup]:
     condition = (SeenPost.verdict == "discard") & SeenPost.enquiry_id.is_(None)
+    if offering_id:
+        condition = condition & _seen_in_offering(db, offering_id)
     counts = db.execute(
         select(
             SeenPost.poster_type,
@@ -348,9 +465,11 @@ def _ai_groups(db: Session, since: datetime) -> list[ReasonGroup]:
     return out[:MAX_GROUPS]
 
 
-def discard_breakdown(db: Session, *, now: datetime | None = None, days: int = 30) -> DiscardBreakdown:
+def discard_breakdown(db: Session, *, now: datetime | None = None, days: int = 30, offering_id: int | None = None) -> DiscardBreakdown:
+    """Discard reasons, all of them or (``offering_id``) only the posts that belong to that offering."""
     since = now_or(now) - timedelta(days=days)
-    return DiscardBreakdown(team=_team_groups(db, since), system=_system_groups(db, since), ai=_ai_groups(db, since))
+    return DiscardBreakdown(team=_team_groups(db, since, offering_id), system=_system_groups(db, since, offering_id),
+                            ai=_ai_groups(db, since, offering_id))
 
 
 __all__ = [

@@ -1,16 +1,17 @@
 {% extends "base.html" %}
 {% from "pipeline/_macros.html" import flash_banner %}
-{% block title %}Keywords{% endblock %}
+{% block title %}Offerings & keywords{% endblock %}
 {% block page_header %}
   <div class="page__header">
     <div>
-      <h1>Keywords</h1>
-      <p>Every LinkedIn search phrase, what it actually found and where those enquiries went. Edit, pause or move them here, and ask the AI for better ones.</p>
+      <h1>Setup</h1>
+      <p>Each offering with its results, its LinkedIn search keywords and its own triage rules. Edit, pause or move them here, and ask the AI for better keywords.</p>
     </div>
   </div>
 {% endblock %}
 {% block content %}
   <div class="stack">
+    {% include "setup/_tabs.html" %}
     {{ flash_banner(flash) }}
     <div class="grid-2">
       <section class="card" aria-labelledby="kw-add-title">
@@ -45,6 +46,20 @@
           </form>
         </div>
       </section>
+    </div>
+    <div class="row">
+      <details class="inline-edit" id="add-offering"><summary class="btn">Add an offering</summary>
+        <form class="stack stack--tight" method="post" action="/keywords/offerings" hx-post="/keywords/offerings" hx-swap="none" hx-disabled-elt="find button" data-reset-on-success>
+          <div class="field"><label class="field__label" for="offering-name">Name</label><input class="input" id="offering-name" name="name" maxlength="80" required></div>
+          <div class="field"><label class="field__label" for="offering-group">Group</label><input class="input" id="offering-group" name="group_name" maxlength="60" required list="offering-group-names" placeholder="Pick an existing group or type a new one"></div>
+          <div class="field"><label class="field__label" for="offering-description">Description <span class="muted">(shown to the AI)</span></label><textarea class="input" id="offering-description" name="description" maxlength="500" rows="3"></textarea></div>
+          <div><button class="btn btn--primary" type="submit">Add offering</button></div>
+        </form>
+      </details>
+      <form method="post" action="/keywords/library" hx-post="/keywords/library" hx-swap="none" hx-disabled-elt="find button">
+        <button id="add-suggested-keywords" class="btn" type="submit">Add starter keywords</button>
+        <span class="muted">60 buyer-intent phrases; never changes keywords you already have.</span>
+      </form>
     </div>
     <div id="kw-ideas"></div>
     {% include "keywords/_results.html" %}

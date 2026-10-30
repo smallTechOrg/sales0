@@ -39,14 +39,12 @@ def _offering_id(name: str) -> int:
 
 def test_setup_page_lists_seeded_offerings_by_group_and_empty_keywords(client: TestClient) -> None:
     html = unescape(client.get("/setup").text)
-    offering_list = html.split('id="offering-list"', 1)[1].split("</datalist>", 1)[0]
-    headings = re.findall(r'<h3 class="group-heading">([^<]+)</h3>', offering_list)
-    assert headings == ["Training", "Services", "Products"]
-    names = re.findall(r"<strong>([^<]+?)(?: <span|</strong>)", offering_list)
-    assert names == ["AI corporate workshops", "Technical AI training", "AI consulting & build services", "Products"]
-    assert "No keywords yet — press Add suggested keywords for 60 phrases buyers use, or add your own." in html
-    assert 'id="add-suggested-keywords"' in html
-    assert 'id="keyword-input"' in html and 'id="keyword-list"' in html
+    tab = unescape(client.get("/keywords").text)  # offerings + keywords live on Setup > Offerings & keywords
+    cards = re.findall(r'<section class="card keyword-tier" data-group="\d+" aria-label="([^"]+)"', tab)
+    assert cards == ["AI corporate workshops", "Technical AI training", "AI consulting & build services", "Products"]
+    assert re.findall(r'<span class="chip">([^<]+)</span>\s*<button', tab)[:4] == ["Training", "Training", "Services", "Products"]
+    assert "No keywords yet - add some above (pick this offering) or ask the AI." in tab
+    assert 'id="add-suggested-keywords"' in tab and 'id="kw-add-form"' in tab and 'id="setup-tabs"' in html
     assert "Change these in .env" in html and "Posts scanned per day" in html and "2000" in html
     card = html.split('id="linkedin-card"', 1)[1].split("</section>", 1)[0]
     assert "sales0 opens Google Chrome with its own sales0 profile on this computer." in card
@@ -79,8 +77,8 @@ def test_add_keyword_too_short_shows_keyword_invalid_toast(client: TestClient) -
 def test_keyword_survives_reload_and_non_htmx_post_redirects(client: TestClient) -> None:
     resp = client.post("/setup/keywords", data={"text": "ai workshop"}, follow_redirects=False)
     assert resp.status_code == 303 and resp.headers["location"] == "/setup"
-    html = unescape(client.get("/setup").text)
-    assert "<strong>ai workshop</strong>" in html and "not run yet" in html
+    html = unescape(client.get("/keywords").text)
+    assert "<strong>ai workshop</strong>" in html and ">never<" in html
 
 
 def test_toggle_and_remove_keyword(client: TestClient) -> None:

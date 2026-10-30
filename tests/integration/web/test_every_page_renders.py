@@ -331,8 +331,9 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
 
     setup = page("/setup", state.setup_key, ['id="browser-note"', "Cool-down after rate limit / captcha", *state.extra_setup])
     assert "Browser window during runs" not in setup, where("/setup")
-    _assert_contains(setup, ['id="add-suggested-keywords"', 'data-group="Training"', "No yield"], where("/setup"))
-    _assert_contains(_get(client, "/keywords"), ['id="keyword-results"', 'id="kw-ideas-form"', 'id="kw-add-form"'], where("/keywords"))
+    _assert_contains(setup, ['id="setup-tabs"'], where("/setup"))
+    _assert_contains(_get(client, "/keywords"), ['id="keyword-results"', 'id="kw-ideas-form"', 'id="kw-add-form"',
+                                                 'id="add-suggested-keywords"', "offering-card-"], where("/keywords"))
     page("/runs", state.runs_key, ['id="run-panel"', 'id="run-history"', *state.extra_runs])
     if state.name == "active_run":
         _assert_contains(_get(client, "/runs"), ['id="run-summary"', "Keyword 2/2"], where("/runs summary"))

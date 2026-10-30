@@ -4,81 +4,19 @@
   <div class="page__header">
     <div>
       <h1>Setup</h1>
-      <p>{% if worker %}Check the laptop worker, choose{% else %}Connect LinkedIn once, choose{% endif %} the phrases to search for, and keep the offerings catalogue the AI matches against.</p>
+      <p>{% if worker %}Check the laptop worker, choose{% else %}Connect LinkedIn once, choose{% endif %} the safety limits. Offerings, keywords and the triage criteria are in the tabs below.</p>
     </div>
   </div>
 {% endblock %}
 {% block content %}
   <div class="stack">
+    {% include "setup/_tabs.html" %}
     {% if worker %}
       {% include "setup/_worker_card.html" %}
     {% else %}
     {% include "setup/_linkedin_card.html" %}
     {% include "setup/_linkedin_accounts.html" %}
     {% endif %}
-
-    <div class="grid-2">
-      <section class="card" aria-labelledby="keywords-title">
-        <div class="card__header">
-          <h2 id="keywords-title">Keywords</h2>
-          <span class="muted">Unfinished keywords first, then least-recently-run</span>
-        </div>
-        <div class="card__body">
-          <form class="inline-form" method="post" action="/setup/keywords"
-                hx-post="/setup/keywords" hx-target="#keyword-list" hx-disabled-elt="find button" data-reset-on-success>
-            <div class="field">
-              <label class="field__label" for="keyword-input">New keyword</label>
-              <input class="input" id="keyword-input" name="text" type="text" minlength="2" maxlength="100" required
-                     placeholder="e.g. corporate AI training" autocomplete="off">
-            </div>
-            <div class="field">
-              <label class="field__label" for="keyword-offering">Offering</label>
-              <select class="select" id="keyword-offering" name="offering_id">
-                <option value="">{{ own_group }}</option>
-                {% for group_name, items in offering_groups %}{% for o in items %}<option value="{{ o.id }}">{{ o.name }}{% if not o.active %} (off){% endif %}</option>{% endfor %}{% endfor %}
-              </select>
-            </div>
-            <button class="btn btn--primary" type="submit">Add keyword</button>
-          </form>
-          <form method="post" action="/setup/keywords/suggested" hx-post="/setup/keywords/suggested" hx-target="#keyword-list" hx-disabled-elt="find button">
-            <button id="add-suggested-keywords" class="btn" type="submit">Add suggested keywords</button>
-            <a class="btn btn--ghost" id="open-keywords-page" href="/keywords">Manage keywords and AI ideas</a>
-            <span class="muted">60 buyer-intent phrases, never changes keywords you already have.</span>
-          </form>
-          {% include "setup/_keyword_list.html" %}
-        </div>
-      </section>
-
-      <section class="card" aria-labelledby="offerings-title">
-        <div class="card__header">
-          <h2 id="offerings-title">Offerings</h2>
-          <span class="muted">What the AI matches each enquiry to</span>
-        </div>
-        <div class="card__body">
-          {% include "setup/_offering_list.html" %}
-          <details>
-            <summary class="btn btn--ghost">Add an offering</summary>
-            <form class="stack stack--tight" method="post" action="/setup/offerings"
-                  hx-post="/setup/offerings" hx-target="#offering-list" hx-disabled-elt="find button" data-reset-on-success>
-              <div class="field">
-                <label class="field__label" for="offering-name">Name</label>
-                <input class="input" id="offering-name" name="name" type="text" maxlength="80" required>
-              </div>
-              <div class="field">
-                <label class="field__label" for="offering-group">Group</label>
-                <input class="input" id="offering-group" name="group_name" type="text" maxlength="60" required
-                       list="offering-groups" placeholder="Pick an existing group or type a new one">
-              </div>
-              <div class="field">
-                <label class="field__label" for="offering-description">Description <span class="muted">(shown to the AI)</span></label>
-                <textarea class="input" id="offering-description" name="description" maxlength="500" rows="3"></textarea>
-              </div>
-              <div><button class="btn btn--primary" type="submit">Add offering</button></div>
-            </form>
-          </details>
-        </div>
-      </section>
-    </div>
 
     <section class="card" aria-labelledby="caps-title">
       <div class="card__header">

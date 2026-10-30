@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -77,11 +78,25 @@ class KeywordStat:
 
 
 @dataclass
+class OfferingStat:
+    """Enquiries the AI (or a person) matched to the offering, and how far they went."""
+
+    matched: int = 0
+    accepted: int = 0
+    contacted: int = 0
+    leads: int = 0
+    won: int = 0
+
+
+@dataclass
 class Group:
     key: str
     label: str
     help: str = ""
     keywords: list[KeywordStat] = field(default_factory=list)
+    # set for an offering card (view "offering"): the offering itself and its enquiry results
+    offering: Any = None
+    offering_stat: OfferingStat | None = None
 
     @property
     def scanned(self) -> int:
@@ -175,6 +190,42 @@ def filtered(stats: list[KeywordStat], *, q: str = "", tier: str = "", status: s
     return sorted(out, key=_sort_key(sort))
 
 
+def offering_stats(db: Session) -> dict[int, OfferingStat]:
+    out: dict[int, OfferingStat] = defaultdict(OfferingStat)
+    rows = db.execute(
+        select(Enquiry.offering_id, Enquiry.review_status, Enquiry.deal_status, Company.stage)
+        .outerjoin(Company, Company.id == Enquiry.company_id).where(Enquiry.offering_id.is_not(None))
+    ).all()
+    for oid, review, deal, stage in rows:
+        s = out[int(oid)]
+        s.matched += 1
+        s.accepted += review == "accepted"
+        s.contacted += bool(deal and deal not in CONTACTED_PAST)
+        s.leads += stage in ("lead", "client")
+        s.won += deal == "won" or stage == "client"
+    return dict(out)
+
+
+def by_offering(stats: list[KeywordStat], offerings: list[Any], ostats: dict[int, OfferingStat], *, include_empty: bool) -> list[Group]:
+    """One card per offering in catalogue order (group, then sort order), each with its keywords and its enquiry results,
+    then "No offering". ``include_empty`` keeps offerings without (matching) keywords, so they can still be managed."""
+    groups: list[Group] = []
+    by_id: dict[int | None, list[KeywordStat]] = defaultdict(list)
+    for s in stats:
+        by_id[s.offering_id].append(s)
+    ordered = sorted(offerings, key=lambda o: (getattr(o.group, "sort_order", 0), getattr(o.group, "name", "").lower(), o.sort_order, o.id))
+    for o in ordered:
+        kws = by_id.pop(o.id, [])
+        if not kws and not include_empty:
+            continue
+        groups.append(Group(str(o.id), o.name, "" if o.active else "offering off - its keywords are skipped in runs", kws,
+                            offering=o, offering_stat=ostats.get(o.id, OfferingStat())))
+    rest = [s for kws in by_id.values() for s in kws]  # no offering, or an offering that no longer exists
+    if rest:
+        groups.append(Group("none", "No offering", "keywords not tied to an offering", rest))
+    return groups
+
+
 def grouped(stats: list[KeywordStat], view: str) -> list[Group]:
     """``tier``: one group per tier (fixed order); ``offering``: per offering, then "No offering"; ``outcome``: keywords
     that led to won / leads / contacted / accepted enquiries, then the ones with nothing downstream; ``table``: one."""
@@ -209,5 +260,5 @@ def tier_counts(stats: list[KeywordStat]) -> dict[str, int]:
     return counts
 
 
-__all__ = ["Group", "KeywordStat", "SORTS", "TIER_LABELS", "TIER_ORDER", "VIEWS", "filtered", "grouped", "keyword_stats",
+__all__ = ["Group", "KeywordStat", "OfferingStat", "by_offering", "offering_stats", "SORTS", "TIER_LABELS", "TIER_ORDER", "VIEWS", "filtered", "grouped", "keyword_stats",
            "tier_counts", "tier_of"]

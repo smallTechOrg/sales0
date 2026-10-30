@@ -37,23 +37,21 @@ def test_add_suggested_seeds_sixty_in_four_groups_and_is_idempotent(client: Test
     assert "Added 0 · 60 already present" in unescape(second.text)
     with session_scope() as db:
         assert len(db.scalars(select(Keyword)).all()) == 60
-    page = unescape(client.get("/setup").text)
-    assert 'id="add-suggested-keywords"' in page and len(re.findall(r'data-keyword-id="\d+"', page)) == 60
+    page = unescape(client.get("/keywords").text)  # the list now lives on Setup > Offerings & keywords
+    assert 'id="add-suggested-keywords"' in page and len(re.findall(r'<tr id="kw-\d+"', page)) == 60
 
 
 def test_groups_show_totals_yield_and_no_yield_hint(client: TestClient) -> None:
     good = make_keyword("buyer phrase", group_name="Training", suggested_key="buyer-phrase", scanned_total=200, relevant_total=3)
     dead = make_keyword("dead phrase", group_name="Training", suggested_key="dead-phrase", scanned_total=120, relevant_total=0)
     young = make_keyword("young phrase", scanned_total=40, relevant_total=0)
-    html = unescape(client.get("/setup").text)
-    heading = re.search(r'data-group="Training".*?</summary>', html, re.S).group(0)  # type: ignore[union-attr]
-    assert "2 keywords · scanned 320 · relevant 3" in re.sub(r"<[^>]+>|\s+", lambda m: " " if m.group(0).strip() == "" else "", heading)
-    assert 'data-group="Your keywords"' in html
-    good_row, dead_row, young_row = _row(html, good), _row(html, dead), _row(html, young)
-    assert "keyword__yield" in good_row and "(1.5%)" in re.sub(r"<[^>]+>", "", good_row)
-    assert "No yield" not in good_row and "No yield" in dead_row and "No yield" not in young_row
-    assert "suggested</span>" in good_row and "suggested</span>" not in young_row
-    assert "Scanned 200 · Relevant 3" in re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", good_row))
+    html = unescape(client.get("/keywords?view=tier").text)
+    tiers = dict(re.findall(r'<tr id="kw-(\d+)" data-tier="([a-z]+)"', html))
+    assert (tiers[str(good)], tiers[str(dead)], tiers[str(young)]) == ("promising", "dead", "underperforming")
+    good_row = html[html.index(f'<tr id="kw-{good}"'):]
+    good_row = good_row[: good_row.index("</tr>")]
+    assert "1.5%" in good_row and "library</span>" in good_row
+    assert "Dead (no yield)" in html
 
 
 def test_edit_keyword_changes_text_and_group_and_validates(client: TestClient) -> None:
@@ -82,9 +80,10 @@ def test_edit_keyword_changes_text_and_group_and_validates(client: TestClient) -
 
 def test_row_has_edit_form_and_non_htmx_edit_redirects(client: TestClient) -> None:
     kid = make_keyword("form phrase")
-    row = unescape(_row(client.get("/setup").text, kid))
-    assert f'hx-post="/setup/keywords/{kid}/edit"' in row and "Save" in row and "Cancel" in row
-    assert 'name="text"' in row and 'name="group_name"' in row
+    page = unescape(client.get("/keywords").text)
+    row = page[page.index(f'<tr id="kw-{kid}"'):]
+    row = row[: row.index("</tr>")]
+    assert f'hx-post="/keywords/{kid}/edit"' in row and "Save" in row and 'name="text"' in row and 'name="offering_id"' in row
     resp = client.post(f"/setup/keywords/{kid}/edit", data={"text": "form phrase 2"}, follow_redirects=False)
     assert resp.status_code == 303 and resp.headers["location"] == "/setup"
     toggled = client.post(f"/setup/keywords/{kid}/toggle", data={"active": "false"}, headers=HX)

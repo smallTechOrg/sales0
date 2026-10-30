@@ -21,27 +21,28 @@ def _settled(page: Page) -> None:
 
 def test_setup_add_and_remove_keyword_via_htmx_with_confirm_dialog(fixture_server: str, page: Page) -> None:
     page.goto(f"{fixture_server}/setup")
-    expect(page.locator("#keyword-list")).to_contain_text("No keywords yet")
-    page.fill("#keyword-input", "  AI   workshop ")
-    page.get_by_role("button", name="Add keyword").click()
-    expect(page.locator("#keyword-list")).to_contain_text("AI workshop")
-    expect(page.locator("#toasts .toast--ok")).to_contain_text("Added keyword 'AI workshop'.")
-    expect(page.locator("#keyword-input")).to_have_value("")
+    page.locator("#setup-tabs").get_by_role("link", name="Offerings & keywords").click()
+    expect(page.locator("#keyword-results")).to_contain_text("No keywords yet - add some above")
+    page.fill("#kw-add-texts", "  AI   workshop ")
+    page.locator("#kw-add-form").get_by_role("button", name="Add").click()
+    expect(page.locator("#toasts .toast--ok")).to_contain_text("Added 1 keyword.")
+    expect(page.locator("#keyword-results")).to_contain_text("AI workshop")
+    page.fill("#kw-add-texts", "ai workshop")
+    page.locator("#kw-add-form").get_by_role("button", name="Add").click()
+    expect(page.locator("#toasts")).to_contain_text("Added 0 keywords · 1 already there.")
 
-    page.fill("#keyword-input", "ai workshop")
-    page.get_by_role("button", name="Add keyword").click()
-    expect(page.locator("#toasts .toast--error")).to_contain_text("is already in your keywords.")
-    expect(page.locator("#keyword-input")).to_have_value("ai workshop")  # kept on error so it can be fixed
+    row = page.locator("tr", has_text="AI workshop")
+    row.get_by_role("button", name="Pause AI workshop").click()
+    expect(page.locator("tr", has_text="AI workshop")).to_have_attribute("data-active", "false")
 
-    page.locator("#keyword-list").get_by_role("switch").click()
-    expect(page.locator("#keyword-list").get_by_role("switch")).to_have_attribute("aria-checked", "false")
-
-    page.locator("#keyword-list").get_by_role("button", name="Remove").click()
+    page.locator("tr", has_text="AI workshop").locator(".kw-pick").check()
+    page.locator("#kw-bulk-form").get_by_role("button", name="Remove").click()
     dialog = page.locator("#confirm-dialog")
     expect(dialog).to_be_visible()
-    expect(dialog).to_contain_text("Remove keyword 'AI workshop'?")
+    expect(dialog).to_contain_text("Remove the ticked keywords?")
     dialog.get_by_role("button", name="Yes, continue").click()
-    expect(page.locator("#keyword-list")).to_contain_text("No keywords yet")
+    expect(page.locator("#toasts")).to_contain_text("Removed 1 keyword.")
+    expect(page.locator("#keyword-results")).not_to_contain_text("AI workshop")
 
 
 def test_inbox_bulk_select_discard_and_priority_change(fixture_server: str, page: Page) -> None:
@@ -82,20 +83,36 @@ def test_inbox_bulk_select_discard_and_priority_change(fixture_server: str, page
 
 
 def test_setup_add_suggested_keywords_then_edit_one_inline(fixture_server: str, page: Page) -> None:
-    page.goto(f"{fixture_server}/setup")
+    page.goto(f"{fixture_server}/keywords")
     page.locator("#add-suggested-keywords").click()
-    expect(page.locator("#toasts .toast--ok")).to_contain_text("Added 60 · 0 already present")
-    expect(page.locator("#keyword-list details.keyword-group")).to_have_count(4)
-    expect(page.locator("#keyword-list [data-keyword-id]")).to_have_count(60)
+    expect(page.locator("#toasts .toast--ok")).to_contain_text("Added 60 starter keywords · 0 already present")
+    expect(page.locator("#keyword-results tr[data-tier]")).to_have_count(60)
     page.locator("#add-suggested-keywords").click()
-    expect(page.locator("#toasts")).to_contain_text("Added 0 · 60 already present")
+    expect(page.locator("#toasts")).to_contain_text("Added 0 starter keywords · 60 already present")
 
-    row = page.locator("#keyword-list [data-keyword-id]").first
+    row = page.locator("#keyword-results tr[data-tier]").first
     row.locator("summary", has_text="Edit").click()
-    row.locator("input[name=text]").fill("my edited buyer phrase")
+    row.get_by_label("Keyword text").fill("my edited buyer phrase")
     row.get_by_role("button", name="Save").click()
-    expect(page.locator("#keyword-list")).to_contain_text("my edited buyer phrase")
-    expect(page.locator("#toasts")).to_contain_text("Saved keyword 'my edited buyer phrase'.")
+    expect(page.locator("#keyword-results")).to_contain_text("my edited buyer phrase")
+    expect(page.locator("#toasts")).to_contain_text("Saved 'my edited buyer phrase'.")
+
+
+def test_offering_card_edit_and_rule_in_place(fixture_server: str, page: Page) -> None:
+    page.goto(f"{fixture_server}/keywords")
+    card = page.locator("section.keyword-tier", has=page.locator(".offering-card")).first
+    name = card.get_attribute("aria-label")
+    card.get_by_text("Criteria for this offering").click()
+    card.get_by_label(f"New rule for {name}").fill("A company wants a hands-on GenAI workshop for its staff.")
+    card.get_by_role("button", name=f"Add rule for {name}").click()
+    expect(page.locator("#toasts")).to_contain_text(f"Added include rule for {name}.")
+    card = page.locator(f'section.keyword-tier[aria-label="{name}"]')
+    expect(card).to_contain_text("Criteria for this offering (1 active)")
+    card.get_by_text("Edit offering").click()
+    card.locator("textarea[name=description]").fill("Two-day hands-on GenAI workshops for teams")
+    card.get_by_role("button", name="Save offering").click()
+    expect(page.locator("#toasts")).to_contain_text(f"Saved offering '{name}'.")
+    expect(page.locator(f'section.keyword-tier[aria-label="{name}"]')).to_contain_text("Two-day hands-on GenAI workshops for teams")
 
 
 def test_skipped_tab_search_rescue_and_override(fixture_server: str, page: Page) -> None:
