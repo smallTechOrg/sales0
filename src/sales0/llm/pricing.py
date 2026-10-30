@@ -17,9 +17,13 @@ CACHE_READ_MULTIPLIER = 0.1
 
 
 def prices_for(model: str | None, settings: Settings) -> tuple[float, float]:
-    """(input, output) USD per 1M tokens: the research model has its own price, every other model the default one."""
-    if model and model == settings.research_model and model != settings.llm_model:
-        return settings.research_price_input_usd_per_mtok, settings.research_price_output_usd_per_mtok
+    """(input, output) USD per 1M tokens: the research and keyword-ideas models have their own price, every other model
+    the default one."""
+    if model and model != settings.llm_model:
+        if model == settings.research_model:
+            return settings.research_price_input_usd_per_mtok, settings.research_price_output_usd_per_mtok
+        if model == settings.keyword_ideas_model:
+            return settings.keyword_ideas_price_input_usd_per_mtok, settings.keyword_ideas_price_output_usd_per_mtok
     return settings.llm_price_input_usd_per_mtok, settings.llm_price_output_usd_per_mtok
 
 

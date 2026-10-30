@@ -1,0 +1,22 @@
+## Offerings
+{% for o in offerings %}- {{ o.name | inert }}{% if o.description %}: {{ o.description | inert }}{% endif %}
+{% else %}- (none defined)
+{% endfor %}
+## Current keywords ({{ keywords | length }})
+keyword | offering | tier | scanned | relevant | accepted | won
+{% for k in keywords %}{{ k.text | inert }} | {{ (k.offering_name or "-") | inert }} | {{ k.tier }} | {{ k.scanned }} | {{ k.relevant }} | {{ k.accepted }} | {{ k.won }}
+{% endfor %}
+## Winning posts (genuine or accepted enquiries; numbered for `evidence`)
+{% for w in winners %}{{ loop.index }}. [found by: {{ (w.keywords | join(", ") or "-") | inert }}{% if w.accepted %}; accepted{% endif %}]
+<post>{{ w.text | inert }}</post>
+{% else %}(none yet)
+{% endfor %}
+## Noise posts (matched a keyword but were not buyer enquiries)
+{% for n in noise %}- [found by: {{ (n.keywords | join(", ") or "-") | inert }}] <post>{{ n.text | inert }}</post>
+{% else %}(none yet)
+{% endfor %}
+{% if focus %}## Focus from the team
+{{ focus | inert }}
+{% endif %}
+## Task
+Propose up to {{ max_new }} new keywords and up to {{ max_retire }} keywords to retire.

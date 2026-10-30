@@ -139,6 +139,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(schedule.router)
     app.include_router(digest.router)
     app.include_router(suggestions.router)
+    from sales0.web.routes import keywords as keywords_routes
+
+    app.include_router(keywords_routes.router)  # Keywords page: tiers, outcomes, bulk edit, AI ideas
     app.include_router(replies.router)
     app.include_router(metrics.router)
     app.include_router(users.router)  # Phase 5: admin Users page

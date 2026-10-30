@@ -460,6 +460,10 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_RESEARCH_MODEL` | str | `claude-sonnet-5-5` | Model for the final research brief only (Sonnet class). Priced with the two `SALES0_RESEARCH_PRICE_*` settings below. |
 | `SALES0_RESEARCH_PRICE_INPUT_USD_PER_MTOK` | float | `3.0` | Input price (USD per 1M tokens) of the research model, used for the spend estimate. Check it against current pricing. |
 | `SALES0_RESEARCH_PRICE_OUTPUT_USD_PER_MTOK` | float | `15.0` | Output price (USD per 1M tokens) of the research model, used for the spend estimate. Check it against current pricing. |
+| `SALES0_KEYWORD_IDEAS_MODEL` | str | `claude-opus-5-5` | Model for the Keywords page's AI suggestions (Opus class): one call over winning posts, noise posts and keyword performance. |
+| `SALES0_KEYWORD_IDEAS_PRICE_INPUT_USD_PER_MTOK` | float | `5.0` | Input price (USD per 1M tokens) of the keyword-ideas model, for the spend estimate. Check it against current pricing. |
+| `SALES0_KEYWORD_IDEAS_PRICE_OUTPUT_USD_PER_MTOK` | float | `25.0` | Output price (USD per 1M tokens) of the keyword-ideas model, for the spend estimate. Check it against current pricing. |
+| `SALES0_KEYWORD_IDEAS_MAX_TOKENS` | int | `4000` | Output cap of the keyword-ideas call. |
 | `SALES0_RESEARCH_SYNTHESIS_MAX_TOKENS` | int | `4000` | Output cap of the final research-brief call. |
 | `SALES0_RESEARCH_BULK_CHUNK` | int | `5` | Companies researched per click of "Research selected" on the Companies page (hosted: also bounded by the action budget). |
 | `SALES0_RESEARCH_WEB_SEARCH` | bool | `True` | Prospect research also runs Anthropic's server-side web search (news / public mentions) in one extra Haiku request. `false` turns it off. |

@@ -718,3 +718,12 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .contact-edit { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
 .contact-edit__row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .contact-edit__row form { display: inline-flex; gap: var(--space-1); align-items: center; margin: 0; }
+
+/* Keywords page: performance tier chips */
+.kw-tier--winner { background: #e3f4e8; color: #1d6b35; border-color: #b6e0c3; }
+.kw-tier--promising { background: #eef5fd; color: #1a4fae; border-color: #c5d8f5; }
+.kw-tier--new { background: #f2f2f2; color: #555; border-color: #ddd; }
+.kw-tier--underperforming { background: #fdf0d2; color: #7a4d00; border-color: #ecd290; }
+.kw-tier--dead { background: #fbe4e1; color: #8a1f12; border-color: #f0b9b2; }
+.kw-table td { vertical-align: top; }
+.kw-edit { min-width: 14rem; }

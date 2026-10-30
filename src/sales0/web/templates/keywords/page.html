@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Keywords{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>Keywords</h1>
+      <p>Every LinkedIn search phrase, what it actually found and where those enquiries went. Edit, pause or move them here, and ask the AI for better ones.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {{ flash_banner(flash) }}
+    <div class="grid-2">
+      <section class="card" aria-labelledby="kw-add-title">
+        <div class="card__header"><h2 id="kw-add-title">Add keywords</h2></div>
+        <div class="card__body">
+          <form class="stack" id="kw-add-form" method="post" action="/keywords/add" hx-post="/keywords/add" hx-swap="none" hx-disabled-elt="find button">
+            <input type="hidden" name="back" value="">
+            <div class="field"><label class="field__label" for="kw-add-texts">Keywords (one per line, or comma separated)</label>
+              <textarea class="input" id="kw-add-texts" name="texts" rows="4" maxlength="5000" placeholder="looking for ai trainer&#10;genai workshop for employees" required></textarea></div>
+            <div class="row">
+              <label class="field__label" for="kw-add-offering">Offering</label>
+              <select class="select" id="kw-add-offering" name="offering_id"><option value="">No offering</option>
+                {% for o in offerings %}<option value="{{ o.id }}">{{ o.name }}{% if not o.active %} (off){% endif %}</option>{% endfor %}</select>
+              <button class="btn btn--primary" type="submit">Add</button>
+            </div>
+            <p class="hint">Duplicates are skipped and reported. New keywords start active.</p>
+          </form>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="kw-ai-title">
+        <div class="card__header"><h2 id="kw-ai-title">AI keyword ideas</h2></div>
+        <div class="card__body">
+          <form class="stack" id="kw-ideas-form" method="post" action="/keywords/ideas" hx-post="/keywords/ideas" hx-target="#kw-ideas" hx-swap="innerHTML"
+                hx-indicator="#kw-ideas-indicator" hx-disabled-elt="#btn-kw-ideas">
+            <div class="field"><label class="field__label" for="kw-focus">Focus (optional)</label>
+              <input class="input" id="kw-focus" name="focus" maxlength="300" placeholder="e.g. more BFSI and manufacturing, Pune and Mumbai"></div>
+            <div class="row">
+              <button class="btn btn--primary" id="btn-kw-ideas" type="submit">Get AI suggestions</button>
+              <span class="htmx-indicator" id="kw-ideas-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Reading your winning and noise posts... up to a minute.</span>
+            </div>
+            <p class="hint">One call to the strongest model over the posts that became real enquiries, the ones that were noise, and every keyword's results. You review the ideas before anything is added.</p>
+          </form>
+        </div>
+      </section>
+    </div>
+    <div id="kw-ideas"></div>
+    {% include "keywords/_results.html" %}
+  </div>
+{% endblock %}

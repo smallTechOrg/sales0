@@ -116,3 +116,39 @@ def test_skipped_tab_search_rescue_and_override(fixture_server: str, page: Page)
     expect(page.locator("#toasts")).to_contain_text("Accepted as Prospect · New (overrode AI)")
     expect(page.locator("#inbox-tabs")).to_contain_text("Accepted (1)")
     expect(page.locator("#skipped-list")).to_contain_text("Nothing skipped yet")
+
+
+def test_keywords_page_bulk_select_inline_edit_and_ai_review_flow(fixture_server: str, page: Page) -> None:
+    from sales0.db.engine import session_scope
+    from sales0.services import keywords as kw
+
+    with session_scope() as db:
+        for text in ("ai workshop", "genai training", "dead phrase"):
+            kw.add_keyword(db, text)
+    page.goto(f"{fixture_server}/keywords")
+    expect(page.locator("#keyword-results")).to_contain_text("ai workshop")
+    # "All shown" ticks every row checkbox (CSP-safe delegated handler), then Pause applies to all of them
+    page.get_by_label("Tick every keyword shown").check()
+    expect(page.locator(".kw-pick:checked")).to_have_count(3)
+    page.locator("#kw-bulk-form").get_by_role("button", name="Pause").click()
+    expect(page.locator("#toasts .toast--ok")).to_contain_text("Paused 3 keywords.")
+    expect(page.locator('tr[data-active="false"]')).to_have_count(3)
+    # one row: inline edit sends only that row's fields
+    row = page.locator("tr", has_text="genai training")
+    row.get_by_text("Edit").click()
+    row.get_by_label("Keyword text").fill("GenAI training for HR")
+    row.get_by_role("button", name="Save").click()
+    expect(page.locator("#toasts")).to_contain_text("Saved 'GenAI training for HR'.")
+    expect(page.locator("#keyword-results")).to_contain_text("GenAI training for HR")
+    expect(page.locator("#keyword-results")).to_contain_text("ai workshop")
+    # bulk add, then remove one with the confirm dialog
+    page.fill("#kw-add-texts", "hire ai trainer\nai workshop")
+    page.locator("#kw-add-form").get_by_role("button", name="Add").click()
+    expect(page.locator("#toasts")).to_contain_text("Added 1 keyword · 1 already there.")
+    page.locator("tr", has_text="dead phrase").locator(".kw-pick").check()
+    page.locator("#kw-bulk-form").get_by_role("button", name="Remove").click()
+    dialog = page.locator("#confirm-dialog")
+    expect(dialog).to_contain_text("Remove the ticked keywords?")
+    dialog.get_by_role("button", name="Yes, continue").click()
+    expect(page.locator("#toasts")).to_contain_text("Removed 1 keyword.")
+    expect(page.locator("#keyword-results")).not_to_contain_text("dead phrase")
