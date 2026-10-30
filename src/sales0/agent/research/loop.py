@@ -451,4 +451,5 @@ def run_research(
         pages_fetched=pages_fetched,
         error=error,
         prompt_version=PROMPT_VERSION,
+        pages=pages,
     )

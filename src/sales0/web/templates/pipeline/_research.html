@@ -23,11 +23,27 @@
           {% if d.size_hints and d.size_hints != "unknown" %}<dt>Size</dt><dd>{{ d.size_hints }}</dd>{% endif %}
           {% if d.suggested_offering and d.suggested_offering != "unknown" %}<dt>Suggested fit</dt><dd>{{ d.suggested_offering }}</dd>{% endif %}
         </dl>
+        {% if d.completeness is not none and d.completeness is defined %}<p class="muted" id="research-completeness" data-score="{{ d.completeness }}">Completeness: {{ d.completeness }}%{% if research.inputs.synthesis and research.inputs.synthesis.model %} · written by {{ research.inputs.synthesis.model }}{% endif %}</p>{% endif %}
+        {% if d.profile %}<p><strong>Company profile</strong></p>
+        <dl class="kv" id="research-profile">
+          <dt>Industry</dt><dd>{{ d.profile.industry }}</dd><dt>Headquarters</dt><dd>{{ d.profile.headquarters }}</dd>
+          <dt>Size</dt><dd>{{ d.profile.size_band }}</dd><dt>Business model</dt><dd>{{ d.profile.business_model }}</dd>
+          {% if d.profile.customer_segments %}<dt>Customers</dt><dd>{{ d.profile.customer_segments|join(", ") }}</dd>{% endif %}
+        </dl>{% endif %}
+        {% if d.enquiry %}<p><strong>Enquiry analysis</strong></p>
+        <dl class="kv" id="research-enquiry-analysis">
+          <dt>Need</dt><dd>{{ d.enquiry.need }}</dd><dt>Audience</dt><dd>{{ d.enquiry.audience }}</dd><dt>Timing</dt><dd>{{ d.enquiry.timing }}</dd>
+          <dt>Budget signal</dt><dd>{{ d.enquiry.budget_signal }}</dd><dt>Urgency</dt><dd>{{ d.enquiry.urgency|capitalize }}</dd><dt>Fit with us</dt><dd>{{ d.enquiry.fit|capitalize }}</dd>
+          {% if d.enquiry.open_questions %}<dt>To clarify</dt><dd>{{ d.enquiry.open_questions|join("; ") }}</dd>{% endif %}
+        </dl>{% endif %}
         {% if d.enquiry_insights %}<p><strong>About the enquiry</strong></p><ul id="research-enquiry">{% for n in d.enquiry_insights %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
         {% if d.people %}<p><strong>People</strong></p>
         <ul id="research-people">{% for person in d.people %}<li><strong>{{ person.name }}</strong>{% if person.title and person.title != "unknown" %}, {{ person.title }}{% endif %}{% if person.summary and person.summary != "unknown" %} - {{ person.summary }}{% endif %}{% if person.approach %}<br><span class="muted">How to approach: {{ person.approach }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
         {% if d.ai_training_needs %}<p><strong>Possible AI-training needs</strong> (hypotheses)</p><ul>{% for n in d.ai_training_needs %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
         {% if d.personalisation_hooks %}<p><strong>Personalisation hooks</strong></p><ul id="research-hooks">{% for h in d.personalisation_hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% endif %}
+        {% if d.facts %}<p><strong>Evidence</strong></p>
+        <ul id="research-facts">{% for f in d.facts %}<li data-confidence="{{ f.confidence }}"><span class="chip">{{ f.section|capitalize }}</span> {{ f.claim }} <span class="muted">({{ f.confidence }} confidence; {% if f.source == "our records" %}our records{% else %}<a href="{{ f.source }}" target="_blank" rel="noopener noreferrer">source</a>{% endif %})</span></li>{% endfor %}</ul>{% endif %}
+        {% if d.gaps %}<p><strong>Not established</strong></p><ul id="research-gaps">{% for g in d.gaps %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
         <p><strong>Sources</strong></p>
         <ul id="research-sources">{% for s in research.sources %}<li><span class="chip">{{ {"website": "Website", "linkedin_page": "LinkedIn", "web_search": "Web", "own_data": "Our data"}.get(s.kind, s.kind) }}</span> {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.label }}</a>{% else %}{{ s.label }}{% endif %}</li>{% else %}<li class="muted">No sources.</li>{% endfor %}</ul>
       </div>

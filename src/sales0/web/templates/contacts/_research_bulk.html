@@ -1,0 +1,12 @@
+{# Needs: result (BulkResult), skipped, remaining_company_ids, summary. Swapped into #research-bulk-result. #}
+<div class="notice" role="status" id="research-bulk-summary">
+  <p><strong>{{ summary }}</strong></p>
+  {% if result.outcomes %}<ul>{% for o in result.outcomes %}<li>{{ o.name }}: {% if o.status == "researched" %}researched (version {{ o.version }}){% else %}failed - {{ o.reason }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% if skipped %}<p class="muted">Skipped: {{ skipped|join("; ") }}.</p>{% endif %}
+  {% if remaining_company_ids %}
+    <form method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result" hx-swap="innerHTML" hx-disabled-elt="find button">
+      {% for cid in remaining_company_ids %}<input type="hidden" name="company_ids" value="{{ cid }}">{% endfor %}
+      <button class="btn btn--primary" type="submit">Continue with {{ remaining_company_ids|length }} more</button>
+    </form>
+  {% endif %}
+</div>

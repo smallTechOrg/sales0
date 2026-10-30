@@ -11,6 +11,7 @@ from sales0.db.models import CompanyBrief, LlmCall, ProspectDoc, TeamMember, Tim
 from sales0.errors import DomainError
 from sales0.services.crm.actor import Actor
 from sales0.services.research import docs, linkedin_page
+
 from sales0.services.research import prospect as research
 from tests.integration.research.conftest import NEWS, SITE, make_prospect, mock_fetcher, responder
 from tests.support.fake_llm import FakeLLMClient
@@ -49,7 +50,7 @@ def test_research_uses_website_own_data_and_web_search_and_stores_a_version(db_u
     assert web_req.tool_choice == "auto" and web_req.cache_system is False
     with session_scope() as db:
         rows = db.scalars(select(LlmCall).order_by(LlmCall.id)).all()
-        assert [r.prompt_version for r in rows] == ["research-web-v2", "research-v3", "research-v3"]
+        assert [r.prompt_version for r in rows] == ["research-web-v2", "research-v3", "research-v3", "research-synth-v1"]
         assert rows[0].web_search_requests == 2 and sum(r.cost_usd_micros for r in rows) == doc.cost_usd_micros
         assert db.scalar(select(func.count(CompanyBrief.id)).where(CompanyBrief.prospect_id == pid)) == 1
         assert db.scalar(select(TimelineEvent.body).where(TimelineEvent.kind == "research")) == "Research version 1 (done)"
@@ -65,14 +66,15 @@ def test_web_search_setting_off_makes_no_search_request(db_url: str) -> None:
     assert all(s.kind != "web_search" for s in doc.sources)
 
 
-def test_no_website_still_researches_from_own_data_in_one_call(db_url: str) -> None:
+def test_no_website_still_researches_from_own_data_in_two_calls(db_url: str) -> None:
     pid = make_prospect(website=None, linkedin=None)
     llm = FakeLLMClient(responder=responder())
     with session_scope() as db:
         doc, note = research.research_prospect(db, llm, None, pid, actor=ANN)
-    assert len(llm.requests) == 1 and doc.status == "done"
+    assert [r.tool_name for r in llm.requests] == ["research_step", "record_research"] and doc.status == "done"
     assert "No LinkedIn company page" in note
     assert isinstance(llm.requests[0].messages[0]["content"], str)  # one-shot: no cache write
+    assert llm.requests[0].model is None and llm.requests[1].model == "claude-sonnet-5-5"  # only the final brief uses Sonnet
 
 
 def test_research_queues_one_company_page_task_and_uses_the_fetched_text_next_time(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,3 +121,47 @@ def test_human_edit_is_a_new_version_and_drafting_reads_it(db_url: str) -> None:
         with pytest.raises(DomainError):
             research.edit_research(db, pid, actor=ANN, what_they_do="x", sources="javascript:alert(1)")
         assert db.scalar(select(func.count(ProspectDoc.id))) == 2
+
+
+def test_synthesis_stores_a_structured_record_and_drops_facts_with_unseen_sources(db_url: str) -> None:
+    pid = make_prospect()
+    llm = FakeLLMClient(responder=responder())
+    with session_scope() as db:
+        doc, _ = research.research_prospect(db, llm, None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+    d = doc.data
+    assert d["profile"]["industry"] == "Logistics" and d["enquiry"]["fit"] == "strong" and d["enquiry"]["urgency"] == "medium"
+    claims = [f["claim"] for f in d["facts"]]
+    assert "Runs cold-chain freight across India" in claims and "Asks for a workshop" in claims and "Invented claim" not in claims
+    assert d["gaps"] == ["no budget stated"] and 0 < d["completeness"] <= 100
+    assert doc.inputs["schema"] == 4 and doc.inputs["synthesis"]["ok"] is True and doc.inputs["synthesis"]["model"]
+
+
+def test_synthesis_failure_keeps_the_loop_brief_and_leaves_it_pending(db_url: str) -> None:
+    from sales0.llm import LLMTransientError
+    from sales0.services.research import auto
+
+    pid = make_prospect()
+    base = responder()
+
+    def answer(req):  # type: ignore[no-untyped-def]
+        if req.tool_name == "record_research":
+            raise LLMTransientError("down")
+        return base(req)
+
+    llm = FakeLLMClient(responder=answer)
+    with session_scope() as db:
+        doc, _ = research.research_prospect(db, llm, None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+        assert doc.status == "done" and "profile" in doc.data and doc.data["profile"] is None
+        assert doc.inputs["schema"] == 3 and doc.inputs["synthesis"]["ok"] is False
+        assert db.scalars(select(LlmCall).where(LlmCall.status == "error")).first() is not None
+
+
+def test_synthesis_can_be_switched_off(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SALES0_RESEARCH_SYNTHESIS", "false")
+    reset_settings()
+    pid = make_prospect()
+    llm = FakeLLMClient(responder=responder())
+    with session_scope() as db:
+        doc, _ = research.research_prospect(db, llm, None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+    assert all(r.tool_name != "record_research" for r in llm.requests) and doc.inputs["schema"] == 3
+    reset_settings()

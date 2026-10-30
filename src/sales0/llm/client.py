@@ -31,6 +31,9 @@ class StructuredRequest(BaseModel):
     # False: send the system prompt uncached. With server tools the API otherwise adds its own cache WRITE after the
     # (large) search results, billed at 1.25x, for a request that is never repeated.
     cache_system: bool = True
+    # None = the configured default model (``SALES0_LLM_MODEL``). Set for the few calls that need a stronger one
+    # (research synthesis runs on ``SALES0_RESEARCH_MODEL``).
+    model: str | None = None
 
 
 class LLMResponse(BaseModel):

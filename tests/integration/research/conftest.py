@@ -70,12 +70,33 @@ def web_answer(req: StructuredRequest) -> LLMResponse:
     })  # fmt: skip
 
 
+V4 = {
+    "profile": {"industry": "Logistics", "headquarters": "Pune", "size_band": "850 employees", "business_model": "B2B cold-chain freight",
+                "customer_segments": ["pharma"]},
+    "enquiry": {"need": "GenAI workshop for 40 managers", "audience": "40 managers", "timing": "unknown", "budget_signal": "unknown",
+                "urgency": "medium", "fit": "strong", "open_questions": ["Preferred dates?"]},
+    "facts": [
+        {"section": "company", "claim": "Runs cold-chain freight across India", "source": SITE, "confidence": "high"},
+        {"section": "company", "claim": "Invented claim", "source": "https://never-seen.example/", "confidence": "high"},
+        {"section": "enquiry", "claim": "Asks for a workshop", "source": "our records", "confidence": "medium"},
+    ],
+    "gaps": ["no budget stated"],
+}
+
+
+def synth_brief(**kw: Any) -> dict[str, Any]:
+    return {**brief(), **V4, **kw}
+
+
 def responder(*, fetch_first: bool = True, summary: dict[str, Any] | None = None) -> Callable[[StructuredRequest], Any]:
     state = {"fetched": False}
 
     def answer(req: StructuredRequest) -> Any:
         if req.tool_name == "record_web_findings":
             return web_answer(req)
+        if req.tool_name == "record_research":
+            assert req.model, "the synthesis call must name the research model"
+            return synth_brief()
         if req.tool_name == "record_account_summary":
             return summary or SUMMARY
         if req.tool_name == "research_step":
@@ -119,7 +140,7 @@ def make_prospect(
     linkedin: str | None = "https://www.linkedin.com/company/acme-logistics/", notes: str | None = None,
 ) -> int:
     with session_scope() as db:
-        v = prospects.create_manual(db, name=name, company=company, email="priya@acme.example", website=website, notes=notes)
+        v = prospects.create_manual(db, name=name, company=company, email=("priya@acme.example" if company == "Acme Logistics" else f"{name.lower()}@{company.split()[0].lower()}.example"), website=website, notes=notes)
         if linkedin:
             prospects.update(db, v.id, company_linkedin_url=linkedin)
         return v.id

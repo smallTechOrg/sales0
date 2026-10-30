@@ -44,6 +44,7 @@ REASON_LABELS = {
     "old_format": "research predates the enquiry / people sections",
     "new_enquiry": "a new enquiry since the last research",
     "new_contact": "a new contact since the last research",
+    "selected": "selected on the Companies page",
 }
 MAX_CONSECUTIVE_FAILURES = 2
 
@@ -122,7 +123,7 @@ def reason_for(db: Session, prospect_id: int) -> str | None:
         return "none"
     if usable.origin == "human":
         return None
-    if int(usable.inputs.get("schema") or 0) < research_service.RESEARCH_SCHEMA:
+    if int(usable.inputs.get("schema") or 0) < research_service.required_schema():
         return "old_format"
     if not set(context.active_enquiry_ids(db, prospect_id)) <= set(usable.inputs.get("enquiry_ids") or []):
         return "new_enquiry"
@@ -180,17 +181,71 @@ def run_pending(
     Stops at ``limit`` researched items or when ``budget_s`` has elapsed (hosted default: the action budget) and counts
     the rest as ``remaining``. ``LLMAuthError`` / ``LLMModelNotFound`` propagate (their error rows are committed);
     the spend cap or two failures in a row stop the run with a message."""
+    wanted = overview(db).pending
+    if prospect_ids is not None:
+        wanted = {pid: why for pid, why in wanted.items() if pid in set(prospect_ids)}
+    return _run_queue(db, llm, list(wanted.items()), limit=limit, budget_s=budget_s, actor=actor, trigger=trigger, now=now)
+
+
+def prospects_for_companies(db: Session, company_ids: list[int]) -> tuple[list[int], list[str]]:
+    """(the prospect to research for each selected company, in order; names of companies skipped and why).
+
+    A company is researched through its primary prospect. Skipped: no prospect yet, or the newest research is a
+    person's edit (use "Re-run research" on the company to replace that on purpose)."""
+    from sales0.services.crm import lifecycle
+
+    out: list[int] = []
+    skipped: list[str] = []
+    for cid in dict.fromkeys(company_ids):
+        company = db.get(Company, cid)
+        if company is None:
+            continue
+        p = lifecycle.primary_prospect(db, cid)
+        if p is None:
+            skipped.append(f"{company.name} (no prospect record yet)")
+            continue
+        usable = docs.latest_usable(db, p.id, "research")
+        if usable is not None and usable.origin == "human":
+            skipped.append(f"{company.name} (research edited by hand)")
+            continue
+        out.append(p.id)
+    return out, skipped
+
+
+def run_selected(
+    db: Session,
+    llm: LLMClient | None,
+    prospect_ids: list[int],
+    *,
+    limit: int | None = None,
+    budget_s: float | None = None,
+    actor: Actor = SYSTEM,
+    now: datetime | None = None,
+) -> BulkResult:
+    """Research exactly these prospects (fresh version each, even when up to date): the Companies-page bulk action.
+    Same engine, limits and stop rules as ``run_pending``; ``remaining`` counts those not reached."""
+    queue = [(pid, "selected") for pid in dict.fromkeys(prospect_ids)]
+    return _run_queue(db, llm, queue, limit=limit, budget_s=budget_s, actor=actor, trigger="bulk", now=now)
+
+
+def _run_queue(
+    db: Session,
+    llm: LLMClient | None,
+    queue: list[tuple[int, str]],
+    *,
+    limit: int | None,
+    budget_s: float | None,
+    actor: Actor,
+    trigger: str,
+    now: datetime | None,
+) -> BulkResult:
     settings = get_settings()
     if budget_s is None and settings.is_hosted:
         budget_s = float(settings.hosted_action_budget_s)
     started = time.monotonic()
     stamp = now_or(now)
-    wanted = overview(db).pending
-    if prospect_ids is not None:
-        wanted = {pid: why for pid, why in wanted.items() if pid in set(prospect_ids)}
     result = BulkResult()
     failures = 0
-    queue = list(wanted.items())
     for index, (pid, why) in enumerate(queue):
         if (limit is not None and result.researched >= limit) or (budget_s is not None and time.monotonic() - started > budget_s):
             result.remaining = len(queue) - index
@@ -283,4 +338,4 @@ def kick_for_enquiries(enquiry_ids: list[int]) -> int:
 
 
 __all__ = ["BulkResult", "Outcome", "Overview", "default_fetcher", "in_scope_prospect_ids", "kick_for_enquiries", "overview",
-           "reason_for", "run_pending"]
+           "prospects_for_companies", "reason_for", "run_pending", "run_selected"]

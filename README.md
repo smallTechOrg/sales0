@@ -456,6 +456,12 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_GOOGLE_USERINFO_ENDPOINT` | str | `https://openidconnect.googleapis.com/v1/userinfo` | Google userinfo endpoint (override for tests/proxies). |
 | `SALES0_GOOGLE_REVOKE_ENDPOINT` | str | `https://oauth2.googleapis.com/revoke` | Google revoke endpoint (override for tests/proxies). |
 | `SALES0_RESEARCH_ALLOW_PRIVATE_HOSTS` | str | empty | Test only: hosts the research fetcher may reach although private. Ignored unless `SALES0_LINKEDIN_MODE=fixture`. |
+| `SALES0_RESEARCH_SYNTHESIS` | bool | `True` | The final research brief (typed company profile, enquiry analysis, evidence-backed facts, gaps, completeness) is written by `SALES0_RESEARCH_MODEL`; the website reading and web search stay on the default model. `false` = the single-model flow of before. |
+| `SALES0_RESEARCH_MODEL` | str | `claude-sonnet-5-5` | Model for the final research brief only (Sonnet class). Priced with the two `SALES0_RESEARCH_PRICE_*` settings below. |
+| `SALES0_RESEARCH_PRICE_INPUT_USD_PER_MTOK` | float | `3.0` | Input price (USD per 1M tokens) of the research model, used for the spend estimate. Check it against current pricing. |
+| `SALES0_RESEARCH_PRICE_OUTPUT_USD_PER_MTOK` | float | `15.0` | Output price (USD per 1M tokens) of the research model, used for the spend estimate. Check it against current pricing. |
+| `SALES0_RESEARCH_SYNTHESIS_MAX_TOKENS` | int | `4000` | Output cap of the final research-brief call. |
+| `SALES0_RESEARCH_BULK_CHUNK` | int | `5` | Companies researched per click of "Research selected" on the Companies page (hosted: also bounded by the action budget). |
 | `SALES0_RESEARCH_WEB_SEARCH` | bool | `True` | Prospect research also runs Anthropic's server-side web search (news / public mentions) in one extra Haiku request. `false` turns it off. |
 | `SALES0_RESEARCH_WEB_SEARCH_MAX_USES` | int | `3` | Most web searches one research run may make (billed per search). |
 | `SALES0_AUTO_RESEARCH` | bool | `True` | Accepting an enquiry in the Inbox starts research on its company, the enquiry and the people behind it in the background (about 2 cents with web search). `false` = research only runs from the buttons. Hosted: the work may pause while the instance has no open request; the Pipeline button finishes whatever is left. |
