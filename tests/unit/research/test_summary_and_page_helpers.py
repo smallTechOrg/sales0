@@ -20,7 +20,7 @@ def test_render_text_has_every_section_and_lists() -> None:
 
 def test_summary_lists_are_cleaned_and_capped() -> None:
     s = AccountSummary(who_they_are="x", characteristics="Partner", open_follow_ups=[" a ", "", *["b"] * 20])
-    assert s.characteristics == ["Partner"] and s.open_follow_ups[0] == "a" and len(s.open_follow_ups) == 8
+    assert s.characteristics == ["Partner"] and s.open_follow_ups[0] == "a" and len(s.open_follow_ups) == 5
 
 
 @pytest.mark.parametrize("slug", ["in/asha", "company/", "company/a/b", "company/a b", "https://evil.test/", "company/../x"])
