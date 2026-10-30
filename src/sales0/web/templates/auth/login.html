@@ -6,6 +6,7 @@
   <meta name="robots" content="noindex">
   <title>Log in · sales0</title>
   <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/show-password.js" defer></script>
 </head>
 <body>
   <main class="login" id="main">
@@ -17,12 +18,13 @@
         <input type="hidden" name="next" value="{{ next_path }}">
         <div class="field">
           <label class="field__label" for="login-email">Email</label>
-          <input class="input" id="login-email" name="email" type="email" value="{{ email }}" autocomplete="username" required{% if not email %} autofocus{% endif %}>
+          <input class="input" id="login-email" name="email" type="email" value="{{ email }}" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required{% if not email %} autofocus{% endif %}>
         </div>
         <div class="field">
           <label class="field__label" for="login-password">Password</label>
-          <input class="input" id="login-password" name="password" type="password" autocomplete="current-password" required{% if email %} autofocus{% endif %}>
+          <input class="input" id="login-password" name="password" type="password" data-pw autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required{% if email %} autofocus{% endif %}>
         </div>
+        <label class="check"><input type="checkbox" id="login-show-password" data-show-password> Show password</label>
         <label class="check"><input type="checkbox" id="login-remember" name="remember" value="1"{% if remember %} checked{% endif %}> Remember me on this device</label>
         <button class="btn btn--primary" id="login-submit" type="submit">Log in</button>
         <p class="muted">Use the email address your admin set up for you. On a fresh install that is the admin email from <code>.env</code> (<code>SALES0_ADMIN_EMAIL</code>, set before the first start).</p>

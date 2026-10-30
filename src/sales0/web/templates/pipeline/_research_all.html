@@ -1,0 +1,18 @@
+{# Enquiries tab: research for every active enquiry. Needs: research_overview (auto.Overview), next. #}
+{% set ro = research_overview %}
+{% if ro.in_scope %}
+<section class="card" id="research-all-card" aria-labelledby="research-all-title">
+  <div class="card__header">
+    <h2 id="research-all-title">Research active enquiries</h2>
+    <span class="count-pill" id="research-pending-count" title="Companies whose research is missing or out of date">{{ ro.pending_count }} pending</span>
+  </div>
+  <form class="card__body row" id="research-all-form" method="post" action="/pipeline/research/pending" hx-post="/pipeline/research/pending"
+        hx-disabled-elt="find button" hx-indicator="find .htmx-indicator" hx-swap="none">
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn btn--primary" type="submit"{% if not ro.pending_count %} disabled aria-disabled="true"{% endif %}>Research active enquiries{% if ro.pending_count %} ({{ ro.pending_count }}){% endif %}</button>
+    <span class="htmx-indicator row" role="status"><span class="spinner" aria-hidden="true"></span> Researching... this can take a few minutes</span>
+    <span class="hint">{{ ro.in_scope }} compan{{ "y" if ro.in_scope == 1 else "ies" }} with an active enquiry · {{ ro.up_to_date }} up to date{% if ro.human_edited %} · {{ ro.human_edited }} hand-edited (left alone){% endif %}.
+      Each run covers the company, its enquiries and the people behind them (about 2 cents with web search). Accepting a new enquiry starts this automatically.</span>
+  </form>
+</section>
+{% endif %}

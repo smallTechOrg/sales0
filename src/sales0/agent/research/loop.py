@@ -41,7 +41,7 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent.research")
 
-PROMPT_VERSION = "research-v2"  # bump on any prompt or schema edit (v2: own records + LinkedIn page + web findings)
+PROMPT_VERSION = "research-v3"  # bump on any prompt or schema edit (v3: enquiry insights + people)
 TOOL_NAME = "research_step"
 TOOL_DESCRIPTION = (
     "Choose the next research action: fetch_url (one page on the company's own site) or finish "
@@ -162,6 +162,8 @@ def _finalise_brief(
             "sources": sources,
             "matched_offering_name": matched,
             "personalisation_hooks": brief.personalisation_hooks[:3],
+            "enquiry_insights": brief.enquiry_insights[:4],
+            "people": brief.people[:3],
             "limited_information": brief.limited_information or not (fetched or citable),
         }
     )

@@ -30,7 +30,7 @@ class ResearchLimits:
     fetch_timeout_s: float = 10.0
     page_chars_to_model: int = 8_000
     max_links_to_model: int = 25
-    max_tokens: int = 1_500
+    max_tokens: int = 2_200
 
     @classmethod
     def from_env(cls) -> ResearchLimits:
@@ -48,6 +48,20 @@ class ResearchLimits:
         )
 
 
+class PersonBrief(BaseModel):
+    """One person (contact) the brief covers: role and background as far as our records / sources support, plus how to talk to them."""
+
+    name: str = Field(min_length=1, max_length=200)
+    title: str = Field(default="unknown", max_length=200)
+    summary: str = Field(default="unknown", max_length=500)
+    approach: str = Field(default="", max_length=400)
+
+    @field_validator("title", "summary", "approach", mode="before")
+    @classmethod
+    def _text(cls, v: Any) -> Any:
+        return "" if v is None else " ".join(str(v).split())
+
+
 class CompanyBrief(BaseModel):
     company_name: str = Field(min_length=1, max_length=200)
     what_they_do: str = Field(min_length=1, max_length=1200)
@@ -56,11 +70,15 @@ class CompanyBrief(BaseModel):
     suggested_offering: str = Field(default="unknown", max_length=600)
     matched_offering_name: str | None = Field(default=None, max_length=200)
     personalisation_hooks: list[str] = Field(default_factory=list, max_length=4)
+    # v3: the enquiry (what is actually being asked, timing / budget / audience signals, fit, open questions) and the
+    # person(s) behind it. Optional so older briefs (and a model that omits them) still validate.
+    enquiry_insights: list[str] = Field(default_factory=list, max_length=4)
+    people: list[PersonBrief] = Field(default_factory=list, max_length=3)
     sources: list[str] = Field(default_factory=list)
     limited_information: bool = False
 
     @field_validator(
-        "ai_training_needs", "personalisation_hooks", "sources", mode="before"
+        "ai_training_needs", "personalisation_hooks", "enquiry_insights", "sources", mode="before"
     )
     @classmethod
     def _clean_list(cls, v: Any) -> Any:
@@ -83,9 +101,24 @@ def brief_tool_schema() -> dict[str, Any]:
             "suggested_offering": {"type": "string", "description": "which smallTech offering fits and why"},
             "matched_offering_name": {"type": ["string", "null"], "description": "exact name from the offerings list, or null"},
             "personalisation_hooks": {"type": "array", "items": {"type": "string"}, "description": "2-3 specific, page-backed details to personalise outreach"},
+            "enquiry_insights": {"type": "array", "items": {"type": "string"}, "description": "up to 4 short points about the enquiry itself: what is really being asked, audience size, timing, budget or urgency signals, fit with our offerings, what to clarify. Only what the enquiry text and records support"},
+            "people": {
+                "type": "array",
+                "description": "up to 3 people from <our_records> (the enquiry's author and other contacts); only facts from the records or sources",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "title": {"type": "string", "description": "job title, or 'unknown'"},
+                        "summary": {"type": "string", "description": "role, seniority, remit and professional background, or 'unknown'"},
+                        "approach": {"type": "string", "description": "one sentence: how to speak to this person given their role"},
+                    },
+                    "required": ["name", "title", "summary"],
+                },
+            },
             "sources": {"type": "array", "items": {"type": "string"}, "description": "URLs of fetched pages that back the claims"},
         },
-        "required": ["company_name", "what_they_do", "size_hints", "ai_training_needs", "suggested_offering", "personalisation_hooks", "sources"],
+        "required": ["company_name", "what_they_do", "size_hints", "ai_training_needs", "suggested_offering", "personalisation_hooks", "enquiry_insights", "people", "sources"],
     }  # fmt: skip
 
 
@@ -129,7 +162,7 @@ class ResearchResult:
     llm_calls: int = 0
     pages_fetched: int = 0
     error: str | None = None
-    prompt_version: str = "research-v2"
+    prompt_version: str = "research-v3"
 
     @property
     def brief_dict(self) -> dict[str, Any]:

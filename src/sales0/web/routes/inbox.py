@@ -19,6 +19,7 @@ from sales0.services import inbox as inbox_service
 from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
+from sales0.services.research import auto as research_auto
 from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import prospects as prospects_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
@@ -269,6 +270,10 @@ def decide(
             db, reason, enquiry_id=ids[0], actor_member_id=member.id if member else None
         )
         rule_note = " · saved as a triage rule" if rule is not None else " · that rule already exists"
+    researching = 0
+    if decision == "accept":
+        db.commit()  # the background research reads the accepted enquiries: they must be committed first
+        researching = research_auto.kick_for_enquiries(ids)
     current_tab, query, page_no, cat = _tab(tab), _q(q), _page_number(page), _category(category)
     if not is_htmx(request):
         return redirect("/inbox", tab=current_tab, q=query, category=cat, page=page_no if page_no > 1 else None)
@@ -278,7 +283,7 @@ def decide(
     body = (
         render_html(request, "inbox/_list.html", ctx)
         + render_html(request, "inbox/_tabs.html", {**ctx, "oob": True})
-        + toast_html(f"{verb} {len(decided) or len(ids)}{rule_note}")
+        + toast_html(f"{verb} {len(decided) or len(ids)}{rule_note}" + (" · researching in the background" if researching else ""))
     )
     return HTMLResponse(body)
 

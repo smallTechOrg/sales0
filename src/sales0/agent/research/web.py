@@ -23,7 +23,7 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent.research.web")
 
-PROMPT_VERSION = "research-web-v1"
+PROMPT_VERSION = "research-web-v2"
 TOOL_NAME = "record_web_findings"
 MAX_FINDINGS = 6
 
@@ -33,6 +33,7 @@ class WebFinding:
     fact: str
     url: str
     title: str = ""
+    about: str = "company"  # "company" or a person's name
 
 
 @dataclass
@@ -63,6 +64,7 @@ def tool_schema() -> dict[str, Any]:
                         "fact": {"type": "string", "description": "one concrete, dated fact if possible (news, expansion, hiring, AI initiative)"},
                         "url": {"type": "string", "description": "the search result URL that states it"},
                         "title": {"type": "string"},
+                        "about": {"type": "string", "description": "'company' or the exact name of the person the fact is about"},
                     },
                     "required": ["fact", "url"],
                 },
@@ -103,6 +105,7 @@ def search_web(
     context_text: str = "",
     max_uses: int = 3,
     enquiry_id: int | None = None,
+    people: list[str] | None = None,
 ) -> WebFindings:
     """One request; one ``llm_calls`` row (feature research, ``web_search_requests`` set). Flushes, never commits.
 
@@ -111,7 +114,7 @@ def search_web(
     client = llm or get_llm_client()
     user = _env().get_template("research_web_user.md.j2").render(
         company_name=company_name, website_url=website_url or "(none)", context_text=context_text[:1500],
-        max_uses=max_uses, max_findings=MAX_FINDINGS,
+        max_uses=max_uses, max_findings=MAX_FINDINGS, people=(people or [])[:2],
     )  # fmt: skip
     req = StructuredRequest(
         feature="research",
@@ -151,7 +154,8 @@ def search_web(
         url, fact = str(item.get("url") or "").strip(), " ".join(str(item.get("fact") or "").split())
         # Anti-hallucination: a finding must cite a URL the search really returned.
         if fact and url in known:
-            findings.append(WebFinding(fact=fact[:400], url=url[:1000], title=str(item.get("title") or "")[:300]))
+            about = " ".join(str(item.get("about") or "company").split())[:120] or "company"
+            findings.append(WebFinding(fact=fact[:400], url=url[:1000], title=str(item.get("title") or "")[:300], about=about))
         if len(findings) >= MAX_FINDINGS:
             break
     summary = " ".join(str(data.get("summary") or resp.text or "").split())[:800]

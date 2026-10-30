@@ -10,7 +10,7 @@
       <button class="btn btn--primary" id="btn-research" type="submit">{{ "Re-run research" if research else "Research" }}</button>
       <span class="htmx-indicator" id="research-run-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching{% if has_website %} the website{% endif %}{% if web_search_on %}, the web{% endif %} and our records... up to a minute.</span>
     </form>
-    <p class="hint">Uses {% if has_website %}the company website, {% endif %}our own records (enquiries, contacts, sheet, notes){% if web_search_on %}, a short web search{% endif %} and the LinkedIn company page once the laptop worker has fetched it. Nothing runs automatically.</p>
+    <p class="hint">Covers the company, its enquiries and the people behind them, using {% if has_website %}the company website, {% endif %}our own records (enquiries, contacts, sheet, notes){% if web_search_on %}, a short web search{% endif %} and the LinkedIn company page once the laptop worker has fetched it. Runs automatically when an enquiry is accepted; this button re-runs it.</p>
     <p class="muted" id="linkedin-page-status" data-state="{{ li_status.state }}">LinkedIn page: {% if li_status.state == "fetched" %}fetched {{ li_status.fetched_at|localdt("%d %b %Y %H:%M") }}{% if li_status.url %} (<a href="{{ li_status.url }}" target="_blank" rel="noopener noreferrer">page</a>){% endif %}{% else %}{{ li_status.detail }}{% endif %}</p>
 
     {% if research %}
@@ -23,6 +23,9 @@
           {% if d.size_hints and d.size_hints != "unknown" %}<dt>Size</dt><dd>{{ d.size_hints }}</dd>{% endif %}
           {% if d.suggested_offering and d.suggested_offering != "unknown" %}<dt>Suggested fit</dt><dd>{{ d.suggested_offering }}</dd>{% endif %}
         </dl>
+        {% if d.enquiry_insights %}<p><strong>About the enquiry</strong></p><ul id="research-enquiry">{% for n in d.enquiry_insights %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+        {% if d.people %}<p><strong>People</strong></p>
+        <ul id="research-people">{% for person in d.people %}<li><strong>{{ person.name }}</strong>{% if person.title and person.title != "unknown" %}, {{ person.title }}{% endif %}{% if person.summary and person.summary != "unknown" %} - {{ person.summary }}{% endif %}{% if person.approach %}<br><span class="muted">How to approach: {{ person.approach }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
         {% if d.ai_training_needs %}<p><strong>Possible AI-training needs</strong> (hypotheses)</p><ul>{% for n in d.ai_training_needs %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
         {% if d.personalisation_hooks %}<p><strong>Personalisation hooks</strong></p><ul id="research-hooks">{% for h in d.personalisation_hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% endif %}
         <p><strong>Sources</strong></p>
@@ -36,6 +39,7 @@
             <div class="field"><label class="field__label" for="re-size">Size</label><input class="input" id="re-size" name="size_hints" maxlength="600" value="{{ d.size_hints or '' }}"></div>
             <div class="field"><label class="field__label" for="re-fit">Suggested fit</label><input class="input" id="re-fit" name="suggested_offering" maxlength="600" value="{{ d.suggested_offering or '' }}"></div>
           </div>
+          <div class="field"><label class="field__label" for="re-enq">About the enquiry (one per line)</label><textarea class="input" id="re-enq" name="enquiry_insights" rows="3" maxlength="1500">{{ (d.enquiry_insights or [])|join("\n") }}</textarea></div>
           <div class="field"><label class="field__label" for="re-needs">AI-training needs (one per line)</label><textarea class="input" id="re-needs" name="ai_training_needs" rows="3" maxlength="2000">{{ (d.ai_training_needs or [])|join("\n") }}</textarea></div>
           <div class="field"><label class="field__label" for="re-hooks">Personalisation hooks (one per line; drafting uses these)</label><textarea class="input" id="re-hooks" name="personalisation_hooks" rows="3" maxlength="1500">{{ (d.personalisation_hooks or [])|join("\n") }}</textarea></div>
           <div class="field"><label class="field__label" for="re-sources">Source links (one per line)</label><textarea class="input" id="re-sources" name="sources" rows="3" maxlength="8000">{{ research.sources|selectattr("url")|map(attribute="url")|join("\n") }}</textarea></div>

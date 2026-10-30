@@ -1,6 +1,9 @@
 ## Company
 Name: {{ company_name | inert }}
 Website: {{ website_url | inert }}
+{% if people %}People to look up (professional information only):
+{% for n in people %}- {{ n | inert }}
+{% endfor %}{% endif %}
 {% if context_text %}
 ## What we already know (from our own records; use it only to recognise the right company)
 <our_records>
