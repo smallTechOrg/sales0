@@ -154,6 +154,12 @@ class Settings(BaseSettings):
     research_model: str = "claude-sonnet-5-5"
     research_price_input_usd_per_mtok: float = Field(3.0, ge=0)
     research_price_output_usd_per_mtok: float = Field(15.0, ge=0)
+    # Keywords page > "Get AI suggestions": one call on a strong model over winning / noise posts and keyword
+    # performance. Its own price (USD per 1M tokens) feeds the cost view.
+    keyword_ideas_model: str = "claude-opus-5-5"
+    keyword_ideas_price_input_usd_per_mtok: float = Field(5.0, ge=0)
+    keyword_ideas_price_output_usd_per_mtok: float = Field(25.0, ge=0)
+    keyword_ideas_max_tokens: int = Field(4000, ge=500, le=16000)
     research_synthesis_max_tokens: int = Field(4000, ge=500, le=16000)
     # Bulk research from the Companies page works in chunks of this many companies per click (hosted: also bounded
     # by the action budget).

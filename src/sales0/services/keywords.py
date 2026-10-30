@@ -153,6 +153,87 @@ def update_keyword(
     return _view(row)
 
 
+@dataclass
+class BulkAddResult:
+    added: list[str]
+    duplicates: list[str]
+    invalid: list[str]
+
+    def summary(self) -> str:
+        parts = [f"Added {len(self.added)} keyword{'' if len(self.added) == 1 else 's'}"]
+        if self.duplicates:
+            parts.append(f"{len(self.duplicates)} already there")
+        if self.invalid:
+            parts.append(f"{len(self.invalid)} skipped (2-100 characters)")
+        return " · ".join(parts) + "."
+
+
+def bulk_add(db: Session, texts: list[str], *, offering_id: int | None = None, actor_user_id: int | None = None,
+             active: bool = True) -> BulkAddResult:
+    """Add many keywords at once (one per entry); duplicates of existing ones (or of each other) and invalid ones are
+    reported, never an error. Each is tied to ``offering_id`` when given."""
+    offering = db.get(Offering, offering_id) if offering_id is not None else None
+    if offering_id is not None and offering is None:
+        raise not_found()
+    have = {k.lower() for k in db.scalars(select(Keyword.text_key))}
+    out = BulkAddResult([], [], [])
+    for raw in texts:
+        clean = normalize_keyword(raw)
+        if not clean:
+            continue
+        if not (MIN_LEN <= len(clean) <= MAX_LEN):
+            out.invalid.append(clean[:60])
+            continue
+        if clean.lower() in have:
+            out.duplicates.append(clean)
+            continue
+        row = Keyword(text=clean, active=active, actor_user_id=actor_user_id)
+        if offering is not None:
+            row.group_name, row.offering_id = clip(offering.name, 40), offering.id
+        db.add(row)
+        have.add(clean.lower())
+        out.added.append(clean)
+    db.flush()
+    return out
+
+
+BULK_ACTIONS = ("pause", "activate", "move", "delete")
+
+
+def bulk_update(db: Session, keyword_ids: list[int], action: str, *, offering_id: int | None = None,
+                actor_user_id: int | None = None) -> int:
+    """Apply one action to many keywords: pause / activate / move (to ``offering_id``; None = no offering) / delete.
+    Returns how many keywords it touched (unknown ids are ignored)."""
+    if action not in BULK_ACTIONS:
+        raise DomainError("bulk_invalid", "Choose pause, activate, move or delete.", 400)
+    ids = list(dict.fromkeys(int(i) for i in keyword_ids))
+    rows = list(db.scalars(select(Keyword).where(Keyword.id.in_(ids)))) if ids else []
+    if not rows:
+        raise DomainError("nothing_selected", "Tick at least one keyword.", 400)
+    if action == "delete":
+        db.execute(delete(Keyword).where(Keyword.id.in_([r.id for r in rows])))
+        db.flush()
+        db.expire_all()
+        return len(rows)
+    offering = None
+    if action == "move" and offering_id is not None:
+        offering = db.get(Offering, offering_id)
+        if offering is None:
+            raise not_found()
+    for row in rows:
+        if action == "pause":
+            row.active = False
+        elif action == "activate":
+            row.active = True
+        else:
+            row.offering_id = offering.id if offering else None
+            row.group_name = clip(offering.name, 40) if offering else None
+        if actor_user_id is not None:
+            row.actor_user_id = actor_user_id
+    db.flush()
+    return len(rows)
+
+
 def record_yield(db: Session, keyword_id: int | None, scanned: int, relevant: int) -> None:
     """Add a finished scan to the keyword's yield stats (Core UPDATE; a deleted keyword updates 0 rows)."""
     if keyword_id is None:
@@ -214,7 +295,11 @@ def seed_suggested_once(db: Session) -> SeedResult | None:
 
 
 __all__ = [
+    "BULK_ACTIONS",
+    "BulkAddResult",
     "UNSET",
+    "bulk_add",
+    "bulk_update",
     "SeedResult",
     "add_keyword",
     "list_keywords",

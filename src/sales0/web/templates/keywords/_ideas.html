@@ -1,0 +1,44 @@
+{# Needs: result (IdeasResult), offerings, focus. Swapped into #kw-ideas. #}
+<section class="card" id="kw-ideas-card" aria-labelledby="kw-ideas-title">
+  <div class="card__header"><h2 id="kw-ideas-title">Review AI ideas</h2>
+    <span class="muted">from {{ result.winners }} winning and {{ result.noise }} noise posts{% if result.model %} · {{ result.model }}{% endif %}{% if result.cost_usd_micros %} · cost {{ result.cost_usd_micros|usd }}{% endif %}</span></div>
+  <div class="card__body stack">
+    {% if not result.ideas and not result.retire %}
+      <p class="muted" id="kw-ideas-empty">The AI had no new ideas this time{% if result.dropped %} ({{ result.dropped }} proposals were duplicates or invalid){% endif %}.</p>
+    {% else %}
+    <form class="stack" id="kw-apply-form" method="post" action="/keywords/ideas/apply" hx-post="/keywords/ideas/apply" hx-swap="none" hx-disabled-elt="find button">
+      <input type="hidden" name="back" value="">
+      {% if result.ideas %}
+      <div class="row"><label class="enquiry__select"><input type="checkbox" data-select-all=".idea-pick" checked aria-label="Tick every idea"> All ideas</label></div>
+      <div class="table-wrap"><table class="table" id="kw-ideas-table">
+        <thead><tr><th scope="col"><span class="visually-hidden">Add</span></th><th scope="col">Keyword (editable)</th><th scope="col">Offering</th><th scope="col">Why</th></tr></thead>
+        <tbody>
+        {% for idea in result.ideas %}
+          <tr data-kind="{{ idea.kind }}">
+            <td><input type="checkbox" class="idea-pick" name="pick" value="{{ loop.index0 }}" checked aria-label="Add {{ idea.phrase }}"></td>
+            <td><input class="input" name="phrase" value="{{ idea.phrase }}" maxlength="100" aria-label="Keyword text">
+              <div class="muted">{{ idea.kind|capitalize }}{% if idea.based_on %} of "{{ idea.based_on }}"{% endif %}</div></td>
+            <td><select class="select" name="idea_offering" aria-label="Offering"><option value="">No offering</option>
+              {% for o in offerings %}<option value="{{ o.id }}"{% if idea.offering_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select></td>
+            <td>{{ idea.reason }}{% if idea.evidence %}<details><summary class="muted">Evidence ({{ idea.evidence|length }})</summary><ul>{% for e in idea.evidence %}<li class="muted">"{{ e }}"</li>{% endfor %}</ul></details>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% endif %}
+      {% if result.retire %}
+      <h3>Keywords to retire</h3>
+      <ul class="item-list" id="kw-retire">
+        {% for r in result.retire %}
+          <li><label class="enquiry__select"><input type="checkbox" name="pause_ids" value="{{ r.keyword_id }}"> Pause <strong>{{ r.keyword }}</strong></label>
+            <span class="muted">{{ r.tier }} · {{ r.reason }}{% if r.better_phrase %} · try instead: "{{ r.better_phrase }}"{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if result.avoid %}<p class="hint" id="kw-avoid">Wording that attracts noise: {{ result.avoid|join("; ") }}</p>{% endif %}
+      <div class="row"><button class="btn btn--primary" id="btn-kw-apply" type="submit">Add ticked ideas{% if result.retire %} and pause ticked keywords{% endif %}</button>
+        {% if result.dropped %}<span class="hint">{{ result.dropped }} proposal{{ "s" if result.dropped != 1 }} dropped (duplicates or invalid).</span>{% endif %}</div>
+    </form>
+    {% endif %}
+  </div>
+</section>

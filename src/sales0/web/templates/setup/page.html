@@ -42,6 +42,7 @@
           </form>
           <form method="post" action="/setup/keywords/suggested" hx-post="/setup/keywords/suggested" hx-target="#keyword-list" hx-disabled-elt="find button">
             <button id="add-suggested-keywords" class="btn" type="submit">Add suggested keywords</button>
+            <a class="btn btn--ghost" id="open-keywords-page" href="/keywords">Manage keywords and AI ideas</a>
             <span class="muted">60 buyer-intent phrases, never changes keywords you already have.</span>
           </form>
           {% include "setup/_keyword_list.html" %}
