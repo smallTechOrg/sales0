@@ -72,3 +72,14 @@ def test_hand_edited_and_nothing_selected_are_handled(bulk: TestClient) -> None:
     assert bulk.post("/companies/research", headers={**HX, "Accept": "application/json"}, data={}).status_code == 400
     js = bulk.post("/companies/research", headers={"Accept": "application/json"}, data={"company_ids": [_company_of(pid)]}).json()
     assert js["ok"] is True and js["data"]["skipped"]
+
+
+def test_select_all_checkbox_is_csp_safe_and_research_all_covers_every_page(bulk: TestClient) -> None:
+    pids = [make_prospect(name=n, company=c, website=None, linkedin=None) for n, c in (("Ann", "Aaa Foods"), ("Bob", "Bbb Foods"), ("Cy", "Ccc Labs"))]
+    html = bulk.get("/companies").text
+    assert 'data-select-all=".research-pick"' in html and "onclick" not in html
+    assert 'id="btn-research-all"' in html and "Research all 3" in html and 'hx-confirm="Research all 3 companies?' in html
+    resp = bulk.post("/companies/research", headers=HX, data={"all_matching": "1"})
+    assert "Researched 3 companies" in resp.text and [_versions(p) for p in pids] == [1, 1, 1]
+    filtered = bulk.post("/companies/research", headers=HX, data={"all_matching": "1", "q": "foods"})
+    assert "Researched 2 companies" in filtered.text and [_versions(p) for p in pids] == [2, 2, 1]

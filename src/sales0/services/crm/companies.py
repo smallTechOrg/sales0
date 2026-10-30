@@ -249,10 +249,7 @@ def get_company(db: Session, company_id: int) -> CompanyDetail:
     )
 
 
-def list_companies(
-    db: Session, *, q: str | None = None, characteristic_id: int | None = None, page: int = 1, page_size: int | None = None,
-) -> CompanyPage:
-    page, size = page_params(page, page_size)
+def _filtered_companies(q: str | None, characteristic_id: int | None):  # type: ignore[no-untyped-def]
     stmt = select(Company)
     if q and q.strip():
         like = f"%{_keys.like_escape(_keys.name_key(q))}%"
@@ -264,6 +261,21 @@ def list_companies(
             Company.id.in_(select(Prospect.company_id).where(characteristics.prospect_filter(characteristic_id))),
             Company.id.in_(select(Client.company_id).where(characteristics.client_filter(characteristic_id))),
         ))
+    return stmt
+
+
+def company_ids(db: Session, *, q: str | None = None, characteristic_id: int | None = None, limit: int = 500) -> tuple[list[int], int]:
+    """(ids of the companies the Companies page filters match, in list order, capped at ``limit``; the full match count)."""
+    stmt = _filtered_companies(q, characteristic_id)
+    total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    return list(db.scalars(stmt.order_by(Company.name_key, Company.id).with_only_columns(Company.id).limit(limit))), total
+
+
+def list_companies(
+    db: Session, *, q: str | None = None, characteristic_id: int | None = None, page: int = 1, page_size: int | None = None,
+) -> CompanyPage:
+    page, size = page_params(page, page_size)
+    stmt = _filtered_companies(q, characteristic_id)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = list(db.scalars(stmt.order_by(Company.name_key, Company.id).limit(size).offset((page - 1) * size)))
     ids = [r.id for r in rows]

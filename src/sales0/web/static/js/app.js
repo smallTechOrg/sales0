@@ -164,6 +164,13 @@
     if (name && opt.dataset.name) name.value = opt.dataset.name;
   });
 
+  // A header checkbox <input data-select-all="css selector"> ticks / unticks every checkbox matching the selector.
+  document.addEventListener("change", function (evt) {
+    var box = evt.target instanceof HTMLInputElement && evt.target.hasAttribute("data-select-all") ? evt.target : null;
+    if (!box) return;
+    document.querySelectorAll(box.getAttribute("data-select-all")).forEach(function (c) { c.checked = box.checked; });
+  });
+
   document.addEventListener("click", function (evt) {
     var t = evt.target instanceof Element ? evt.target.closest("[data-select-on-click]") : null;
     if (t && typeof t.select === "function") t.select();

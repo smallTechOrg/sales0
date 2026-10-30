@@ -145,13 +145,21 @@ def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
 def research_companies(
     request: Request,
     company_ids: list[int] = Form(default_factory=list),
+    all_matching: str = Form(""),
+    q: str = Form(""),
+    characteristic: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
     llm: LLMClient = Depends(get_llm),
 ) -> Response:
-    """Bulk research from the Companies page: the ticked companies, one chunk per click (``SALES0_RESEARCH_BULK_CHUNK``,
+    """Bulk research from the Companies page: the ticked companies (or, with ``all_matching``, every company the page's
+    search / characteristic filter matches, up to 500), one chunk per click (``SALES0_RESEARCH_BULK_CHUNK``,
     hosted: also the action budget). The answer lists what happened and carries a "Continue" form for the rest."""
-    ids = [i for i in dict.fromkeys(company_ids) if 0 < i < 2**31][:500]
+    if all_matching:
+        trait = int(characteristic) if characteristic.isdigit() and 0 < int(characteristic) < 2**31 else None
+        ids, _total = companies_service.company_ids(db, q=q.strip()[:200] or None, characteristic_id=trait, limit=500)
+    else:
+        ids = [i for i in dict.fromkeys(company_ids) if 0 < i < 2**31][:500]
     if not ids:
         raise DomainError("nothing_selected", "Tick at least one company to research.", 400)
     pids, skipped = research_auto.prospects_for_companies(db, ids)
