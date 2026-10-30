@@ -2,6 +2,7 @@
 <section class="card" id="summary-card" aria-labelledby="summary-title"{% if oob %} hx-swap-oob="outerHTML:#summary-card"{% endif %}>
   <div class="card__header">
     <h2 id="summary-title">Account summary</h2>
+    <details class="info-tip" id="summary-info"><summary aria-label="About this card">i</summary><p class="info-tip__body">One AI call over everything we have: enquiries, contacts, research, our notes, emails and replies, follow-ups, timeline and the sheet. Drafting uses the newest version. Rewritten automatically with each research run (unless you edited it).</p></details>
     {% if summary %}<span class="badge {{ 'badge--info' if summary.origin == 'ai' else 'badge--genuine' }}" id="summary-origin">{{ "AI-generated" if summary.origin == "ai" else "Human-edited" }} · v{{ summary.version }}</span>{% endif %}
   </div>
   <div class="card__body stack">
@@ -10,7 +11,6 @@
       <button class="btn" id="btn-summary" type="submit">Refresh summary</button>
       <span class="htmx-indicator" id="summary-run-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Writing the summary... a few seconds.</span>
     </form>
-    <p class="hint">One AI call over everything we have: enquiries, contacts, research, our notes, emails and replies, follow-ups, timeline and the sheet. Drafting uses the newest version.</p>
     {% if summary %}
       <p class="muted">Version {{ summary.version }} · {{ summary.origin_label }} · {{ summary.created_at|localdt("%d %b %Y %H:%M") }}{% if summary.origin == "ai" and summary.cost_usd_micros %} · cost {{ summary.cost_usd_micros|usd }}{% endif %}</p>
       {% if summary.status == "failed" %}<p class="notice" role="status" id="summary-failed">{{ summary.error or "The summary failed." }}</p>{% endif %}

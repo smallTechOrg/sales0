@@ -9,4 +9,4 @@ Rules:
 6. `characteristics`: tags such as Training provider, Partner, Outreach client — only those in the records.
 7. `open_follow_ups`: open reminders and promises, each with its date.
 8. `next_best_step`: ONE concrete next action (who to contact, how, about what). If the records say not to follow up, say so.
-9. Be concise: the whole summary should be readable in 30 seconds. Plain text, no markdown.
+9. Be brief and to the point: every single-value field is ONE short line of at most about 20 words (no paragraphs, no filler, no repeating the company name); lists have at most 5 short items. The whole summary must be readable in 10 seconds. Plain text, no markdown.

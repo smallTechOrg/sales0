@@ -26,7 +26,7 @@ from sales0.agent.research import synth
 from sales0.config import get_settings
 from sales0.db.models import CompanyBrief, Prospect, TeamMember
 from sales0.errors import DomainError
-from sales0.llm import LLMClient, get_llm_client
+from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound, get_llm_client
 from sales0.logging import get_logger
 from sales0.services._common import clip, now_or
 from sales0.services.costs_report import ensure_within_spend_cap
@@ -38,6 +38,7 @@ from sales0.services.triage import active_offering_refs
 
 log = get_logger("sales0.research.prospect")
 
+FATAL_SUMMARY_ERRORS = (LLMAuthError, LLMModelNotFound)
 RESEARCH_SCHEMA = 4  # v4 = structured record written by the research model; v3 = enquiry insights + people only
 LEGACY_SCHEMA = 3
 
@@ -189,9 +190,29 @@ def research_prospect(
         body=f"Research version {version.version} ({status})", data={"doc_id": version.id, "cost_usd_micros": cost},
         actor=actor, occurred_at=stamp,
     )  # fmt: skip
+    refresh_summary_after(db, llm, prospect_id, actor=actor, now=stamp)
     log.info("prospect_researched", prospect_id=prospect_id, version=version.version, status=status, cost=cost,
              searches=searches, member_id=member.id if member else None)
     return version, li_note
+
+
+def refresh_summary_after(db: Session, llm: LLMClient | None, prospect_id: int, *, actor: Actor, now: datetime) -> bool:
+    """The account summary is rewritten with every research run (it reads the new research). A summary a person edited
+    is never replaced, and a failure here never fails the research. True when a new summary version was written."""
+    from sales0.services.research import summary as summary_service
+
+    current = docs.latest(db, prospect_id, "summary")
+    if current is not None and current.origin == "human":
+        return False
+    try:
+        with db.begin_nested():
+            summary_service.refresh_summary(db, llm, None, prospect_id, actor=actor, now=now)
+        return True
+    except Exception as exc:  # noqa: BLE001 - the research itself is done; the summary has its own Refresh button
+        if isinstance(exc, FATAL_SUMMARY_ERRORS):
+            raise
+        log.warning("summary_after_research_failed", prospect_id=prospect_id, error=type(exc).__name__)
+        return False
 
 
 def _lines(value: str | None, limit: int, max_items: int) -> list[str]:

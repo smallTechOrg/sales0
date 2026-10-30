@@ -50,8 +50,8 @@ def test_research_uses_website_own_data_and_web_search_and_stores_a_version(db_u
     assert web_req.tool_choice == "auto" and web_req.cache_system is False
     with session_scope() as db:
         rows = db.scalars(select(LlmCall).order_by(LlmCall.id)).all()
-        assert [r.prompt_version for r in rows] == ["research-web-v2", "research-v3", "research-v3", "research-synth-v1"]
-        assert rows[0].web_search_requests == 2 and sum(r.cost_usd_micros for r in rows) == doc.cost_usd_micros
+        assert [r.prompt_version for r in rows] == ["research-web-v2", "research-v3", "research-v3", "research-synth-v1", "summary-v2"]
+        assert rows[0].web_search_requests == 2 and sum(r.cost_usd_micros for r in rows[:-1]) == doc.cost_usd_micros
         assert db.scalar(select(func.count(CompanyBrief.id)).where(CompanyBrief.prospect_id == pid)) == 1
         assert db.scalar(select(TimelineEvent.body).where(TimelineEvent.kind == "research")) == "Research version 1 (done)"
 
@@ -71,7 +71,7 @@ def test_no_website_still_researches_from_own_data_in_two_calls(db_url: str) -> 
     llm = FakeLLMClient(responder=responder())
     with session_scope() as db:
         doc, note = research.research_prospect(db, llm, None, pid, actor=ANN)
-    assert [r.tool_name for r in llm.requests] == ["research_step", "record_research"] and doc.status == "done"
+    assert [r.tool_name for r in llm.requests] == ["research_step", "record_research", "record_account_summary"] and doc.status == "done"
     assert "No LinkedIn company page" in note
     assert isinstance(llm.requests[0].messages[0]["content"], str)  # one-shot: no cache write
     assert llm.requests[0].model is None and llm.requests[1].model == "claude-sonnet-5-5"  # only the final brief uses Sonnet
@@ -120,7 +120,40 @@ def test_human_edit_is_a_new_version_and_drafting_reads_it(db_url: str) -> None:
             research.edit_research(db, pid, actor=ANN, what_they_do=" ")
         with pytest.raises(DomainError):
             research.edit_research(db, pid, actor=ANN, what_they_do="x", sources="javascript:alert(1)")
-        assert db.scalar(select(func.count(ProspectDoc.id))) == 2
+        assert db.scalar(select(func.count(ProspectDoc.id))) == 3  # two research versions + the summary written with the first
+
+
+def test_research_refreshes_the_summary_but_never_replaces_a_human_edited_one(db_url: str) -> None:
+    pid = make_prospect()
+    llm = FakeLLMClient(responder=responder())
+    with session_scope() as db:
+        research.research_prospect(db, llm, None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+        first = docs.latest(db, pid, "summary")
+        assert first.origin == "ai" and first.inputs["research_version"] == 1
+        research.research_prospect(db, llm, None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+        assert docs.latest(db, pid, "summary").version == 2
+        from sales0.services.research import summary as summary_service
+
+        summary_service.edit_summary(db, pid, "Hand-written summary", actor=ANN)
+        research.research_prospect(db, llm, None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+        latest = docs.latest(db, pid, "summary")
+        assert latest.origin == "human" and latest.body == "Hand-written summary" and latest.version == 3
+
+
+def test_a_failing_summary_does_not_fail_the_research(db_url: str) -> None:
+    from sales0.llm import LLMTransientError
+
+    pid = make_prospect()
+    base = responder()
+
+    def answer(req):  # type: ignore[no-untyped-def]
+        if req.tool_name == "record_account_summary":
+            raise LLMTransientError("down")
+        return base(req)
+
+    with session_scope() as db:
+        doc, _ = research.research_prospect(db, FakeLLMClient(responder=answer), None, pid, actor=ANN, queue_linkedin=False, fetcher=mock_fetcher())
+        assert doc.status == "done" and docs.latest(db, pid, "summary").status == "failed"  # the card says what happened
 
 
 def test_synthesis_stores_a_structured_record_and_drops_facts_with_unseen_sources(db_url: str) -> None:

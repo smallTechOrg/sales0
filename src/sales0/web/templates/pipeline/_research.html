@@ -2,15 +2,15 @@
 <section class="card" id="research-card" aria-labelledby="research-title"{% if oob %} hx-swap-oob="outerHTML:#research-card"{% endif %}>
   <div class="card__header">
     <h2 id="research-title">Research</h2>
+    <details class="info-tip" id="research-info"><summary aria-label="About this card">i</summary><p class="info-tip__body">Covers the company, its enquiries and the people behind them, using {% if has_website %}the company website, {% endif %}our own records (enquiries, contacts, sheet, notes){% if web_search_on %}, a short web search{% endif %} and the LinkedIn company page once the laptop worker has fetched it. Runs automatically when an enquiry is accepted; this button re-runs it. The account summary is rewritten with each run.</p></details>
     {% if research %}<span class="badge {{ 'badge--info' if research.origin == 'ai' else 'badge--genuine' }}" id="research-origin">{{ "AI-generated" if research.origin == "ai" else "Human-edited" }} · v{{ research.version }}</span>{% endif %}
   </div>
   <div class="card__body stack">
     <form method="post" action="/pipeline/prospects/{{ pid }}/research" hx-post="/pipeline/prospects/{{ pid }}/research" hx-swap="none"
           hx-indicator="#research-run-indicator" hx-disabled-elt="#btn-research" class="row">
       <button class="btn btn--primary" id="btn-research" type="submit">{{ "Re-run research" if research else "Research" }}</button>
-      <span class="htmx-indicator" id="research-run-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching{% if has_website %} the website{% endif %}{% if web_search_on %}, the web{% endif %} and our records... up to a minute.</span>
+      <span class="htmx-indicator" id="research-run-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching... up to a minute.</span>
     </form>
-    <p class="hint">Covers the company, its enquiries and the people behind them, using {% if has_website %}the company website, {% endif %}our own records (enquiries, contacts, sheet, notes){% if web_search_on %}, a short web search{% endif %} and the LinkedIn company page once the laptop worker has fetched it. Runs automatically when an enquiry is accepted; this button re-runs it.</p>
     <p class="muted" id="linkedin-page-status" data-state="{{ li_status.state }}">LinkedIn page: {% if li_status.state == "fetched" %}fetched {{ li_status.fetched_at|localdt("%d %b %Y %H:%M") }}{% if li_status.url %} (<a href="{{ li_status.url }}" target="_blank" rel="noopener noreferrer">page</a>){% endif %}{% else %}{{ li_status.detail }}{% endif %}</p>
 
     {% if research %}
