@@ -217,8 +217,8 @@ def test_status_move_to_contacted_schedules_three_followups_and_updates_the_comp
     page = web.get(f"/companies/{cid}").text
     assert len(re.findall(r'id="fu-\d+"', page)) == 3 and "Follow-up 1" in page and "Final follow-up" in page
     assert re.search(r'<option value="follow_up_1" selected>', page)
-    # the enquiry's own status is separate: the company cadence does not rewrite it
-    assert 'data-deal-status="open"' in page
+    # the prospect's moves (Contacted, then Follow-up 1) carry its open enquiry along
+    assert 'data-deal-status="follow_up_1"' in page
 
 
 def test_invalid_stage_is_an_error_toast_or_flash(web: TestClient) -> None:
