@@ -209,3 +209,28 @@ def test_enquiries_tab_groups_by_status_with_a_collapsed_lane_and_one_status_con
     assert 'id="enquiry-closed-lane"' in html and f'id="enquiry-{other}"' in html.split('id="enquiry-closed-lane"', 1)[1]
     with session_scope() as db:
         assert db.scalar(select(Enquiry.deal_status).where(Enquiry.id == other)) == "on_hold"
+
+
+def test_company_cards_show_the_people_main_contact_first(web: TestClient) -> None:
+    from sales0.db.models import Contact
+
+    with session_scope() as db:
+        v = prospects.create_manual(db, name="Priya Menon", company="Peoplecard Co", email="priya@peoplecard.example")
+        p = db.get(Prospect, v.id)
+        cid = p.company_id
+        for name in ("Aaron Early", "Zoe Last", "Mia Third"):
+            db.add(Contact(full_name=name, company_id=cid))
+        db.flush()
+        dup = Contact(full_name="Merged Duplicate", company_id=cid)
+        db.add(dup)
+        db.flush()
+        dup.merged_into_id = p.contact_id
+    board = web.get("/pipeline?tab=prospects").text
+    card = board[board.index(f'id="company-{cid}"'):]
+    card = card[: card.index("</article>")]
+    people = re.search(r'<div class="pcard__people"[^>]*>(.*?)</div>', card, re.S).group(1)  # type: ignore[union-attr]
+    assert people.startswith("Priya Menon, Aaron Early, Zoe Last") and "+1 more" in people  # main contact first, then 2 more
+    assert "Merged Duplicate" not in card
+    listing = web.get("/pipeline?tab=prospects&layout=list").text
+    row = listing[listing.index(f'<tr id="company-{cid}"'):]
+    assert "Priya Menon, Aaron Early, Zoe Last" in row[: row.index("</tr>")]

@@ -727,3 +727,6 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .kw-tier--dead { background: #fbe4e1; color: #8a1f12; border-color: #f0b9b2; }
 .kw-table td { vertical-align: top; }
 .kw-edit { min-width: 14rem; }
+
+/* Pipeline company cards: the people at the company, under its name */
+.pcard__people { font-size: var(--font-size-sm); overflow-wrap: anywhere; }
