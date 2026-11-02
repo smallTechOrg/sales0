@@ -38,6 +38,8 @@ class CompanyCard(BaseModel):
     off_ramp_label: str | None = None
     priority: str | None = None
     priority_source: str = "derived"
+    contacts: list[str] = Field(default_factory=list)  # up to CARD_CONTACTS names, the prospect's main contact first
+    contacts_more: int = 0  # how many more people the company has
     characteristics: list[CharacteristicView] = Field(default_factory=list)
     owner: str | None = None
     next_follow_up_on: date | None = None
@@ -131,8 +133,30 @@ def case_rank():  # type: ignore[no-untyped-def]
 
 
 # ---------------------------------------------------------------------------- cards
+CARD_CONTACTS = 3
+
+
+def _contact_names(db: Session, ids: list[int]) -> dict[int, list[str]]:
+    """Per company: its people's names (merged duplicates left out), each prospect's main contact first."""
+    if not ids:
+        return {}
+    main = {int(c) for c in db.scalars(select(Prospect.contact_id).where(Prospect.company_id.in_(ids), Prospect.contact_id.is_not(None)))}
+    rows = db.execute(
+        select(Contact.company_id, Contact.id, Contact.full_name)
+        .where(Contact.company_id.in_(ids), Contact.merged_into_id.is_(None), Contact.full_name.is_not(None))
+        .order_by(Contact.id)
+    ).all()
+    out: dict[int, list[tuple[bool, int, str]]] = {}
+    for cid, contact_id, name in rows:
+        text = " ".join((name or "").split())
+        if text:
+            out.setdefault(int(cid), []).append((contact_id not in main, int(contact_id), text))
+    return {cid: list(dict.fromkeys(n for _m, _i, n in sorted(items))) for cid, items in out.items()}
+
+
 def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
     ids = [r.id for r in rows]
+    people = _contact_names(db, ids)
     traits = companies._characteristics_by_company(db, ids)  # noqa: SLF001
     nxt: dict[int, date] = {}
     best: dict[int, tuple[str, str]] = {}
@@ -169,6 +193,7 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
             priority_source=prio[1] if prio else "derived", characteristics=traits.get(r.id, []), owner=owners.get(r.owner_member_id),
             next_follow_up_on=nxt.get(r.id), suggested_lead=lifecycle.active_suggestion(r) is not None,
             enquiries=int(counts.get(r.id, 0)), categories=sorted(cats.get(r.id, set())),
+            contacts=people.get(r.id, [])[:CARD_CONTACTS], contacts_more=max(len(people.get(r.id, [])) - CARD_CONTACTS, 0),
         ))
     return out
 
