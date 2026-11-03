@@ -4,7 +4,7 @@
 {% set labels = {"prospects": "Prospects", "leads": "Leads"} %}
 {% if not any_cards %}
   <div class="empty-state" id="pipeline-empty">
-    {% if params.q or params.flag or params.characteristic or params.priority or params.category %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}">Clear filters</a>
+    {% if params.q or params.flag or params.characteristic or params.priority or params.category or params.offering %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}">Clear filters</a>
     {% elif params.tab == "prospects" %}<p>No prospects yet - accept an enquiry in the Inbox, or add a company.</p><div class="row"><a class="btn btn--primary" href="/inbox">Open the Inbox</a><a class="btn" href="#new-company">New company</a></div>
     {% else %}<p>No leads yet - a person marks a prospect as a lead from the company page.</p><a class="btn" href="/pipeline?tab=prospects">See the Prospects</a>{% endif %}
   </div>

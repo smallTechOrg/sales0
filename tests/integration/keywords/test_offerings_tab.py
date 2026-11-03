@@ -63,7 +63,7 @@ def test_offering_cards_show_results_keywords_and_rules_and_edit_in_place(web: T
     make_enquiry("P1", keyword="ai workshop", review_status="accepted", ai_verdict="genuine", offering_id=oid, deal_status="won")
 
     html = unescape(web.get("/keywords").text)
-    assert 'id="setup-tabs"' in html and "Offerings & keywords" in html and 'aria-current="page">Offerings & keywords' in html
+    assert 'id="setup-tabs"' in html and 'aria-current="page">Keywords by offering' in html
     card = html[html.index(f'id="offering-card-{oid}"'):]
     assert "Enquiries matched 1 · accepted 1 · contacted 1 · leads 0 · won 1" in card.replace('<span class="mono">', "").replace("</span>", "")
     assert "Criteria for this offering (1 active)" in card and "on-site GenAI workshop" in card

@@ -47,6 +47,7 @@ class FollowUpView(_View):
 class DuePanel(_View):
     due_today: list[FollowUpView] = Field(default_factory=list)
     overdue: list[FollowUpView] = Field(default_factory=list)
+    reminders: list[Any] = Field(default_factory=list)  # q23: due ``reminders`` rows (services.reminders.ReminderView)
 
 
 class TimelineItemView(_View):
@@ -153,6 +154,7 @@ class CompanyRow(CompanyView):
     open_follow_ups: int = 0
     characteristics: list[CharacteristicView] = Field(default_factory=list)
     priority: str | None = None  # q16: the highest priority among its open prospects
+    offerings: list[str] = Field(default_factory=list)  # q23: the offerings it is a fit for
 
 
 class SheetSourceView(_View):

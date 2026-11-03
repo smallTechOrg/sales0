@@ -10,3 +10,5 @@ Rules:
 7. `open_follow_ups`: open reminders and promises, each with its date.
 8. `next_best_step`: ONE concrete next action (who to contact, how, about what). If the records say not to follow up, say so.
 9. Be brief and to the point: every single-value field is ONE short line of at most about 20 words (no paragraphs, no filler, no repeating the company name); lists have at most 5 short items. The whole summary must be readable in 10 seconds. Plain text, no markdown.
+10. `relationship`: `partner` when the company is a training company, staffing / recruitment firm, edtech or agency that would bring us work for its own clients (resell or subcontract); `direct_client` when it is the end company buying training or services for its own people; `unknown` if the records do not make it clear.
+11. `fit_offerings`: the offerings (exact names from the list) this company could buy, based on what it asked for and what it does; most likely first; empty if none clearly fits.

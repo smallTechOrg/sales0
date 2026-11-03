@@ -281,6 +281,9 @@ class Settings(BaseSettings):
     password_min_length: int = Field(10, ge=8, le=128)
     # --- LinkedIn accounts (Phase 5) ---
     linkedin_session_backend: Literal["folder", "db"] = "folder"  # backend for NEW accounts (default account is folder)
+    # The three automatic follow-ups (1, 2, final) on first contact. Off: follow-ups are a free-text log and the
+    # reminders the team asks for ("call again Tuesday"), nothing is pre-scheduled.
+    followup_auto_schedule: bool = False
     followup_days_1: int = Field(3, ge=1)
     followup_days_2: int = Field(7, ge=1)
     followup_days_final: int = Field(14, ge=1)

@@ -40,6 +40,7 @@ class CompanyCard(BaseModel):
     priority_source: str = "derived"
     contacts: list[str] = Field(default_factory=list)  # up to CARD_CONTACTS names, the prospect's main contact first
     contacts_more: int = 0  # how many more people the company has
+    offerings: list[str] = Field(default_factory=list)  # q23: the offerings it is a fit for
     characteristics: list[CharacteristicView] = Field(default_factory=list)
     owner: str | None = None
     next_follow_up_on: date | None = None
@@ -94,7 +95,11 @@ class EnquiryBoard(BaseModel):
 
 
 # ---------------------------------------------------------------------------- filters
-def _filtered(stmt, *, q, characteristic_id, priority_filter, category, flag):  # type: ignore[no-untyped-def]
+def _filtered(stmt, *, q, characteristic_id, priority_filter, category, flag, offering_id=None):  # type: ignore[no-untyped-def]
+    if offering_id:
+        from sales0.services.crm import company_offerings
+
+        stmt = stmt.where(Company.id.in_(company_offerings.companies_with(offering_id)))
     if q and q.strip():
         like = f"%{_keys.like_escape(_keys.name_key(q))}%"
         stmt = stmt.where(or_(Company.name_key.like(like, escape="\\"),
@@ -157,6 +162,9 @@ def _contact_names(db: Session, ids: list[int]) -> dict[int, list[str]]:
 def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
     ids = [r.id for r in rows]
     people = _contact_names(db, ids)
+    from sales0.services.crm import company_offerings
+
+    offer_names = company_offerings.names_by_company(db, ids)
     traits = companies._characteristics_by_company(db, ids)  # noqa: SLF001
     nxt: dict[int, date] = {}
     best: dict[int, tuple[str, str]] = {}
@@ -193,7 +201,7 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
             priority_source=prio[1] if prio else "derived", characteristics=traits.get(r.id, []), owner=owners.get(r.owner_member_id),
             next_follow_up_on=nxt.get(r.id), suggested_lead=lifecycle.active_suggestion(r) is not None,
             enquiries=int(counts.get(r.id, 0)), categories=sorted(cats.get(r.id, set())),
-            contacts=people.get(r.id, [])[:CARD_CONTACTS], contacts_more=max(len(people.get(r.id, [])) - CARD_CONTACTS, 0),
+            offerings=offer_names.get(r.id, []), contacts=people.get(r.id, [])[:CARD_CONTACTS], contacts_more=max(len(people.get(r.id, [])) - CARD_CONTACTS, 0),
         ))
     return out
 
@@ -220,11 +228,12 @@ def _stage_columns(stage: str, subs: tuple[str, ...]):  # type: ignore[no-untype
 
 def tab_board(db: Session, tab: str, *, now: datetime | None = None, q: str | None = None, characteristic_id: int | None = None,
               priority_filter: str | None = None, category: str | None = None, flag: str | None = None, sort: str | None = None,
-              per_column: int = 50) -> CompanyBoard:
+              per_column: int = 50, offering_id: int | None = None) -> CompanyBoard:
     """The board of the Prospects or Leads tab. Prospects: New .. Final follow-up, ``became_lead`` (stage lead, a lead
     row created in the last 30 days), ``closed``. Leads: Meeting scheduled, Proposal sent, ``won`` (stage client, a
     client row created in the last 30 days), ``closed``."""
-    f = dict(q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag)
+    f = dict(q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag,
+             offering_id=offering_id)
     cutoff = (now or datetime.now(UTC)) - timedelta(days=RECENT_DAYS)
     cols = [_column(db, k, label, st, f, sort, per_column)
             for k, label, st in _stage_columns("prospect" if tab == "prospects" else "lead",
@@ -245,7 +254,7 @@ def tab_board(db: Session, tab: str, *, now: datetime | None = None, q: str | No
 def company_list(db: Session, *, stage: str | None = None, sub_status: str | None = None, closed: bool | None = False,
                  q: str | None = None, characteristic_id: int | None = None, priority_filter: str | None = None,
                  category: str | None = None, flag: str | None = None, sort: str | None = None, page: int = 1,
-                 page_size: int | None = None) -> CompanyListPage:
+                 page_size: int | None = None, offering_id: int | None = None) -> CompanyListPage:
     page, size = page_params(page, page_size)
     stmt = select(Company).where(Company.stage.is_not(None))
     if stage in COMPANY_STAGES:
@@ -256,7 +265,8 @@ def company_list(db: Session, *, stage: str | None = None, sub_status: str | Non
         stmt = stmt.where(Company.off_ramp.is_not(None))
     elif closed is False:
         stmt = stmt.where(Company.off_ramp.is_(None))
-    stmt = _filtered(stmt, q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag)
+    stmt = _filtered(stmt, q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag,
+                     offering_id=offering_id)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = list(db.scalars(stmt.order_by(*_order(sort)).limit(size).offset((page - 1) * size)))
     return CompanyListPage(items=cards_for(db, rows), total=total, page=page, page_size=size)
@@ -273,7 +283,7 @@ def counts(db: Session) -> dict[str, int]:
 
 
 def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int | None = None, priority_filter: str | None = None,
-                  category: str | None = None, per_column: int = 50) -> EnquiryBoard:
+                  category: str | None = None, per_column: int = 50, offering_id: int | None = None) -> EnquiryBoard:
     cols: list[EnquiryColumn] = []
     for status in (*ENQUIRY_ACTIVE_STATUSES, *ENQUIRY_CLOSED_STATUSES):
         stmt = select(Enquiry, Company.name, Contact.full_name, Contact.title).outerjoin(Company, Company.id == Enquiry.company_id).outerjoin(
@@ -289,6 +299,10 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
             stmt = stmt.where(Enquiry.category == category)
         if characteristic_id:
             stmt = stmt.where(Enquiry.company_id.in_(companies_with_trait(characteristic_id)))
+        if offering_id:  # the enquiry is for that offering, or its company is tagged with it
+            from sales0.services.crm import company_offerings
+
+            stmt = stmt.where((Enquiry.offering_id == offering_id) | Enquiry.company_id.in_(company_offerings.companies_with(offering_id)))
         total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
         rows = db.execute(stmt.order_by(priority.rank_order(Enquiry.priority), Enquiry.date_added.desc(), Enquiry.id.desc()).limit(per_column)).all()
         company_ids = {e.company_id for e, *_ in rows if e.company_id}

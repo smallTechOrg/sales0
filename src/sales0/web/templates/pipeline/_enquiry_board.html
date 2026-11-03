@@ -18,7 +18,7 @@
           <div class="pcard__badges">
             {% if c and c.stage and c.sub_label %}<span class="badge stage-badge stage-badge--{{ c.stage }}">{{ c.stage_label }}{% if c.stage != "client" %}: {{ c.sub_label }}{% endif %}</span>{% endif %}
             {% if c and c.off_ramp %}<span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}
-            {{ category_chips([e.category] if e.category != "relevant_prospect" else []) }}{% if c %}{{ trait_chips(c.characteristics) }}{% endif %}
+            {% if c %}{{ trait_chips(c.characteristics) }}{% endif %}
           </div>
           <div class="pcard__meta">{{ e.summary or "(no summary)" }}</div>
           <div class="pcard__meta">

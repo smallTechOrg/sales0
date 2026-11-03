@@ -730,3 +730,7 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 
 /* Pipeline company cards: the people at the company, under its name */
 .pcard__people { font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+
+/* Follow-up log (q23) */
+.fu-log__entry { border-left: 3px solid var(--color-border); padding-left: var(--space-2); }
+.fu-log__entry details { font-size: var(--font-size-sm); }

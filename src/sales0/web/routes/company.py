@@ -19,7 +19,7 @@ from sales0.db.models import Client, Lead, Prospect, TeamMember
 from sales0.db.models.enums_crm import PERSON_ROLE_LABELS
 from sales0.errors import DomainError
 from sales0.services._common import not_found
-from sales0.services.crm import companies as companies_service
+from sales0.services.crm import company_offerings, companies as companies_service
 from sales0.services.crm import contacts as contacts_service
 from sales0.services.crm import deals
 from sales0.services.crm import followups as followups_service
@@ -117,11 +117,13 @@ def company_context(request: Request, db: Session, company_id: int, member: Team
         "team_members": [m for m in _members(db)],
         "company_timeline": co.timeline,
         "lead_follow_ups": followups_service.for_lead(db, life.open_lead_id) if life.open_lead_id else [],
+        "offering_options": pl._offering_options(db),  # noqa: SLF001
+        "company_offering_ids": company_offerings.ids_for(db, company_id),
     }
     if p is not None:
         no_fu = any(f.kind == "no_follow_up" for f in p.flags)
         fu = pl._followups_ctx(p, f"/pipeline/prospects/{p.id}", no_fu, db, member)  # noqa: SLF001
-        ctx.update({k: fu[k] for k in ("channels", "fu_plan", "needs_contact", "draft_info", "prospect_id", "draft_due_ready")})
+        ctx.update({k: fu[k] for k in ("channels", "fu_plan", "needs_contact", "draft_info", "prospect_id", "draft_due_ready", "fu_notes", "reminders")})
         ctx.update(research_ctx(db, p.id, member))
     return ctx
 
@@ -155,6 +157,19 @@ def _act(request: Request, db: Session, company_id: int, message: str | None, ac
         return crm_done(request, back, text)
 
     return crm_guard(request, back, run, db)
+
+
+@router.post("/companies/{company_id}/offerings", response_model=None)
+def set_offerings(
+    request: Request, company_id: PathId, offering_ids: list[int] = Form(default_factory=list), db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """The offerings this company is a fit for (several allowed); a person's choice replaces any AI tags."""
+    def act() -> str:
+        ids = company_offerings.set_for(db, company_id, offering_ids, source="manual")
+        return f"Offerings saved ({len(ids)})." if ids else "Offerings cleared."
+
+    return _act(request, db, company_id, None, act)
 
 
 @router.post("/companies/{company_id}/add-to-pipeline", response_model=None)

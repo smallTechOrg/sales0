@@ -190,10 +190,42 @@ def research_prospect(
         body=f"Research version {version.version} ({status})", data={"doc_id": version.id, "cost_usd_micros": cost},
         actor=actor, occurred_at=stamp,
     )  # fmt: skip
+    saved = save_key_people(db, prospect_id, b.company_id, data.get("key_people") or [], now=stamp)
+    if saved:
+        log.info("research_people_saved", prospect_id=prospect_id, people=saved)
     refresh_summary_after(db, llm, prospect_id, actor=actor, now=stamp)
     log.info("prospect_researched", prospect_id=prospect_id, version=version.version, status=status, cost=cost,
              searches=searches, member_id=member.id if member else None)
     return version, li_note
+
+
+def save_key_people(db: Session, prospect_id: int, company_id: int | None, people: list[dict[str, Any]], *,
+                    now: datetime | None = None) -> int:
+    """The research's top people become the company's contacts (found-or-created by email / LinkedIn / name; empty fields
+    filled, nothing overwritten) and are linked to the prospect. Returns how many were new or enriched."""
+    from sales0.services.crm import contacts
+    from sales0.services.crm.actor import Actor as _Actor
+
+    if company_id is None:
+        return 0
+    who = _Actor("AI research")
+    n = 0
+    for person in people[:8]:
+        try:
+            row, created = contacts.upsert_row(
+                db, full_name=person.get("name") or None, email=person.get("email") or None, phone=person.get("phone") or None,
+                linkedin_url=person.get("linkedin_url") or None,
+                title=" - ".join(x for x in (person.get("title"), person.get("department")) if x and x != "unknown") or None,
+                company_id=company_id, origin="import", actor=who, now=now,
+            )
+        except DomainError:
+            continue
+        if row.company_id is None:
+            row.company_id = company_id
+        contacts.link(db, row.id, "prospect", prospect_id)
+        n += 1 if created else 0
+    db.flush()
+    return n
 
 
 def refresh_summary_after(db: Session, llm: LLMClient | None, prospect_id: int, *, actor: Actor, now: datetime) -> bool:

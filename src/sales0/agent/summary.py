@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from sales0.db.models import LlmCall
 from sales0.llm import LLMBadResponse, LLMClient, LLMError, get_llm_client
 from sales0.llm.client import StructuredRequest
 
-PROMPT_VERSION = "summary-v2"  # v2: short one-line fields
+PROMPT_VERSION = "summary-v3"  # v3: + relationship (partner / direct client) and the offerings it fits
 TOOL_NAME = "record_account_summary"
 MAX_INPUT_CHARS = 24_000
 
@@ -42,6 +42,20 @@ class AccountSummary(BaseModel):
     characteristics: list[str] = Field(default_factory=list, max_length=6)
     open_follow_ups: list[str] = Field(default_factory=list, max_length=5)
     next_best_step: str = Field(default="unknown", max_length=200)
+    # v3: tags the app applies to the company (characteristic Partner / Direct client; its offerings when it has none)
+    relationship: Literal["partner", "direct_client", "unknown"] = "unknown"
+    fit_offerings: list[str] = Field(default_factory=list, max_length=6)
+
+    @field_validator("relationship", mode="before")
+    @classmethod
+    def _rel(cls, v: Any) -> Any:
+        text = str(v or "").strip().lower().replace(" ", "_")
+        return text if text in ("partner", "direct_client") else "unknown"
+
+    @field_validator("fit_offerings", mode="before")
+    @classmethod
+    def _offers(cls, v: Any) -> Any:
+        return [" ".join(str(x).split())[:120] for x in v if str(x).strip()][:6] if isinstance(v, list) else []
 
     @field_validator("characteristics", "open_follow_ups", mode="before")
     @classmethod
@@ -65,8 +79,13 @@ def tool_schema() -> dict[str, Any]:
             "characteristics": {"type": "array", "items": {"type": "string"}, "description": "e.g. Training provider, Partner, Outreach client (only from the records)"},
             "open_follow_ups": {"type": "array", "items": {"type": "string"}, "description": "open reminders / promises, each a few words with its date; at most 5"},
             "next_best_step": {"type": "string", "description": "ONE concrete action, max ~15 words"},
+            "relationship": {"type": "string", "enum": ["partner", "direct_client", "unknown"],
+                             "description": "partner = a training / staffing / edtech company or agency that resells or subcontracts to us; direct_client = the end company that buys training or services for its own people; unknown if unclear"},
+            "fit_offerings": {"type": "array", "items": {"type": "string"},
+                              "description": "exact names from the offerings list this company could buy (most likely first); empty if none fits"},
         },
-        "required": ["who_they_are", "what_they_want", "where_we_stand", "characteristics", "open_follow_ups", "next_best_step"],
+        "required": ["who_they_are", "what_they_want", "where_we_stand", "characteristics", "open_follow_ups", "next_best_step",
+                     "relationship", "fit_offerings"],
     }  # fmt: skip
 
 
@@ -110,12 +129,14 @@ def _error_row(exc: Exception, now: datetime) -> LlmCall:
     )  # fmt: skip
 
 
-def summarise_account(db: Session, llm: LLMClient | None, *, name: str, records: str) -> SummaryResult:
+def summarise_account(
+    db: Session, llm: LLMClient | None, *, name: str, records: str, offerings: list[str] | None = None,
+) -> SummaryResult:
     """ONE request (no repair call: an unusable answer is a failed result the user can retry). Flushes.
 
     ``LLMAuthError`` / ``LLMModelNotFound`` propagate after adding an error row."""
     client = llm or get_llm_client()
-    user = _env().get_template("summary_user.md.j2").render(name=name, records=records[:MAX_INPUT_CHARS])
+    user = _env().get_template("summary_user.md.j2").render(name=name, records=records[:MAX_INPUT_CHARS], offerings=list(offerings or []))
     req = StructuredRequest(
         feature="summary",
         system=(PROMPTS_DIR / "summary_system.md").read_text(encoding="utf-8").strip() + "\n",

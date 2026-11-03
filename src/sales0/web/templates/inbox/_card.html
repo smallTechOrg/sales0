@@ -21,9 +21,6 @@
         <span class="enquiry__reason">{{ card.ai_reason }}</span>
       {% endif %}
       {% if card.is_override and card.review_status != "pending_review" %}<span class="badge badge--warn">Overrode AI</span>{% endif %}
-      {% if card.category != "relevant_prospect" or card.ai_category and card.ai_category != "relevant_prospect" %}
-        <span class="chip-category" data-category="{{ card.category }}" title="Category{% if card.ai_category and card.ai_category != card.category %} (AI suggested {{ card.ai_category|replace('_', ' ') }}){% endif %}">{{ {"relevant_prospect": "Relevant prospect", "channel_partner": "Channel partner", "competitor": "Competitor"}.get(card.category, card.category) }}{% if card.ai_category == card.category and card.category != "relevant_prospect" %} · AI suggestion{% endif %}</span>
-      {% endif %}
       {% if card.competitor_name %}<a class="badge badge--info" href="/competitors/competitor/{{ card.competitor_id }}">Filed in Competitors: {{ card.competitor_name }}</a>{% endif %}
       {% if card.review_status == "accepted" %}<span class="badge badge--info">Prospect · New</span>{% endif %}
       {% if card.discard_source == "auto" and card.review_status == "discarded" %}<span class="badge badge--warn" data-auto-discard>Auto-skipped: repeat</span>{% endif %}
@@ -48,13 +45,6 @@
             {% endif %}
             {% for offering in offerings %}<option value="{{ offering.id }}"{% if card.offering_id == offering.id %} selected{% endif %}>{{ offering.name }}</option>{% endfor %}
             <option value="none"{% if not card.offering_id %} selected{% endif %}>No match</option>
-          </select>
-        </form>
-        <form hx-post="/inbox/{{ card.id }}/fields" hx-trigger="change" hx-target="#enquiry-{{ card.id }}">
-          <input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="category" value="{{ category|default('') }}">
-          <label class="visually-hidden" for="enquiry-{{ card.id }}-category">Category</label>
-          <select class="select" id="enquiry-{{ card.id }}-category" name="set_category">
-            {% for value, label in categories %}<option value="{{ value }}"{% if card.category == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </form>
       </div>
@@ -88,7 +78,7 @@
     {% if details %}
       <dl class="enquiry__details">
         {% for label, value in details %}
-          <div><dt>{{ label }}</dt><dd>{% if label == "Email" %}<a href="mailto:{{ value }}">{{ value }}</a>{% elif label == "Mode" %}{{ value | capitalize }}{% else %}{{ value }}{% endif %}</dd></div>
+          <div><dt>{{ label }}</dt><dd>{% if label == "Email" %}<a href="mailto:{{ value }}">{{ value }}</a>{% elif label == "Company" and card.company_id %}<a href="/companies/{{ card.company_id }}" class="enquiry__company-link">{{ value }}</a>{% elif label == "Mode" %}{{ value | capitalize }}{% else %}{{ value }}{% endif %}</dd></div>
         {% endfor %}
       </dl>
     {% endif %}

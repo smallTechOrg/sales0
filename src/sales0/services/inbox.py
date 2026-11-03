@@ -124,6 +124,7 @@ def _cards(db: Session, enquiries: list[Enquiry]) -> list[EnquiryCardView]:
                 offering_id=e.offering_id,
                 offering_name=names.get(e.offering_id) if e.offering_id is not None else None,
                 company=e.company,
+                company_id=e.company_id,
                 contact_person=e.contact_person,
                 email=e.email,
                 phone=e.phone,

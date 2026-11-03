@@ -45,6 +45,7 @@ REASON_LABELS = {
     "new_enquiry": "a new enquiry since the last research",
     "new_contact": "a new contact since the last research",
     "selected": "selected on the Companies page",
+    "refresh": "refresh on the Companies page",
 }
 MAX_CONSECUTIVE_FAILURES = 2
 
@@ -66,7 +67,8 @@ class BulkResult:
 
     @property
     def researched(self) -> int:
-        return sum(1 for o in self.outcomes if o.status == "researched")
+        """Items done (researched, or refreshed for a refresh run): what ``limit`` counts."""
+        return sum(1 for o in self.outcomes if o.status in ("researched", "refreshed"))
 
     @property
     def failed(self) -> int:
@@ -77,7 +79,10 @@ class BulkResult:
         if not self.outcomes and not self.stopped:
             return "Nothing to research - every active enquiry already has up-to-date research."
         n = self.researched
-        parts = [f"Researched {n} compan{'y' if n == 1 else 'ies'} (company, enquiry and people)"]
+        if any(o.status == "refreshed" for o in self.outcomes):
+            parts = [f"Refreshed {n} compan{'y' if n == 1 else 'ies'} (summary, Partner / Direct client and offerings)"]
+        else:
+            parts = [f"Researched {n} compan{'y' if n == 1 else 'ies'} (company, enquiry and people)"]
         if self.failed:
             parts.append(f"{self.failed} failed")
         text = ", ".join(parts) + "."
@@ -187,7 +192,7 @@ def run_pending(
     return _run_queue(db, llm, list(wanted.items()), limit=limit, budget_s=budget_s, actor=actor, trigger=trigger, now=now)
 
 
-def prospects_for_companies(db: Session, company_ids: list[int]) -> tuple[list[int], list[str]]:
+def prospects_for_companies(db: Session, company_ids: list[int], *, skip_human: bool = True) -> tuple[list[int], list[str]]:
     """(the prospect to research for each selected company, in order; names of companies skipped and why).
 
     A company is researched through its primary prospect. Skipped: no prospect yet, or the newest research is a
@@ -204,7 +209,7 @@ def prospects_for_companies(db: Session, company_ids: list[int]) -> tuple[list[i
         if p is None:
             skipped.append(f"{company.name} (no prospect record yet)")
             continue
-        usable = docs.latest_usable(db, p.id, "research")
+        usable = docs.latest_usable(db, p.id, "research") if skip_human else None
         if usable is not None and usable.origin == "human":
             skipped.append(f"{company.name} (research edited by hand)")
             continue
@@ -228,6 +233,31 @@ def run_selected(
     return _run_queue(db, llm, queue, limit=limit, budget_s=budget_s, actor=actor, trigger="bulk", now=now)
 
 
+def _refresh_one(db: Session, llm: LLMClient | None, prospect_id: int, trigger: str, actor: Actor, now: datetime | None) -> int:
+    """Refresh: the account summary from what we already have (no new web research) + its tags (Partner / Direct
+    client, offerings when untagged). A summary a person edited is kept; it is still tagged."""
+    from sales0.services.research import summary as summary_service
+
+    doc = summary_service.refresh_summary(db, llm, None, prospect_id, actor=actor, now=now, keep_human=True)
+    return doc.version
+
+
+def refresh_selected(
+    db: Session,
+    llm: LLMClient | None,
+    prospect_ids: list[int],
+    *,
+    limit: int | None = None,
+    budget_s: float | None = None,
+    actor: Actor = SYSTEM,
+    now: datetime | None = None,
+) -> BulkResult:
+    """The Companies page "Refresh": summary + characteristic + offerings for these prospects, same chunking as research."""
+    queue = [(pid, "refresh") for pid in dict.fromkeys(prospect_ids)]
+    return _run_queue(db, llm, queue, limit=limit, budget_s=budget_s, actor=actor, trigger="refresh", now=now, work=_refresh_one,
+                      verb="refreshed")
+
+
 def _run_queue(
     db: Session,
     llm: LLMClient | None,
@@ -238,6 +268,8 @@ def _run_queue(
     actor: Actor,
     trigger: str,
     now: datetime | None,
+    work: Callable[..., int] | None = None,
+    verb: str = "researched",
 ) -> BulkResult:
     settings = get_settings()
     if budget_s is None and settings.is_hosted:
@@ -253,9 +285,9 @@ def _run_queue(
         p = db.get(Prospect, pid)
         name = p.name if p is not None else f"prospect {pid}"
         try:
-            version = _research_one(db, llm, pid, trigger, actor, stamp)
+            version = (work or _research_one)(db, llm, pid, trigger, actor, stamp)
             db.commit()
-            result.outcomes.append(Outcome(pid, name, "researched", REASON_LABELS.get(why, why), version))
+            result.outcomes.append(Outcome(pid, name, verb, REASON_LABELS.get(why, why), version))
             failures = 0
         except SpendCapReached as exc:
             db.rollback()
@@ -338,4 +370,4 @@ def kick_for_enquiries(enquiry_ids: list[int]) -> int:
 
 
 __all__ = ["BulkResult", "Outcome", "Overview", "default_fetcher", "in_scope_prospect_ids", "kick_for_enquiries", "overview",
-           "prospects_for_companies", "reason_for", "run_pending", "run_selected"]
+           "prospects_for_companies", "reason_for", "refresh_selected", "run_pending", "run_selected"]

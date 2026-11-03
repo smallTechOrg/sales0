@@ -81,6 +81,8 @@ TEST_ENV = {
     "SALES0_LINKEDIN_BROWSER_CHANNEL": "chromium",
     # Phase 1.4: tests seed their own keywords; concurrency pinned to the documented default.
     "SALES0_SEED_SUGGESTED_KEYWORDS": "false",
+    # q23: the legacy auto follow-ups stay covered by the existing suites; the follow-up log tests switch it off
+    "SALES0_FOLLOWUP_AUTO_SCHEDULE": "true",
     "SALES0_TRIAGE_CONCURRENCY": "4",
     # Phase 5: no background reply poller in tests; they call poll_all()/run_cycle() explicitly.
     "SALES0_REPLY_POLL_MINUTES": "0",

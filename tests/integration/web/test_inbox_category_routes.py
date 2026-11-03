@@ -20,23 +20,13 @@ def _enq(post: str, **extra) -> int:  # noqa: ANN003
     return make_enquiry(post, **fields)
 
 
-def test_card_shows_chip_select_and_filter(client: TestClient) -> None:
-    plain = _enq("P1", company="Plain Co")
+def test_enquiry_cards_no_longer_show_or_filter_a_category(client: TestClient) -> None:
+    """q23: the category lives on the company (characteristic Partner / Direct client), not on the enquiry."""
+    _enq("P1", company="Plain Co")
     partner = _enq("P2", company="Partner Co", category="channel_partner", ai_category="channel_partner")
     page = client.get("/inbox").text
-    assert f'id="enquiry-{partner}-category"' in page and 'name="set_category"' in page
-    assert 'data-category="channel_partner"' in page and "AI suggestion" in page
-    assert 'id="inbox-category"' in page
-    only = client.get("/inbox?category=channel_partner").text
-    assert f'id="enquiry-{partner}"' in only and f'id="enquiry-{plain}"' not in only
-    # change the category from the card
-    r = client.post(f"/inbox/{plain}/fields", data={"set_category": "channel_partner", "tab": "review"}, headers=HX)
-    assert r.status_code == 200 and "Category updated." in r.text
-    with session_scope() as db:
-        assert db.get(Enquiry, plain).category == "channel_partner"
-    assert client.post(f"/inbox/{plain}/fields", data={"set_category": "vendor"}, headers=HX).status_code == 200  # toast error
-    with session_scope() as db:
-        assert db.get(Enquiry, plain).category == "channel_partner"
+    assert f'id="enquiry-{partner}-category"' not in page and 'name="set_category"' not in page
+    assert 'data-category="channel_partner"' not in page and 'id="inbox-category"' not in page
 
 
 def test_accepting_a_partner_ticks_partner_and_a_competitor_is_offered_the_registry(client: TestClient) -> None:
@@ -75,23 +65,15 @@ def test_accept_anyway_resets_the_category(client: TestClient) -> None:
         assert e.review_status == "accepted" and e.category == "relevant_prospect" and e.prospect_id is not None
 
 
-def test_prospect_page_changes_the_category(client: TestClient) -> None:
+def test_company_page_and_pipeline_have_no_enquiry_category_controls(client: TestClient) -> None:
     eid = _enq("P10", company="Pagey Co", review_status="accepted")
     with session_scope() as db:
         from sales0.services.crm import prospects
 
         pid = prospects.ensure_for_enquiry(db, eid).id
     page = client.get(f"/pipeline/prospects/{pid}").text
-    assert f'id="enquiry-category-{eid}"' in page
-    r = client.post(f"/pipeline/prospects/{pid}/enquiries/{eid}/category", data={"category": "channel_partner"}, headers=HX)
-    assert r.status_code == 200 and "Category set to Channel partner" in r.text
-    after = client.get(f"/pipeline/prospects/{pid}").text
-    assert 'data-category="channel_partner"' in after
-    assert "Partner" in after  # the characteristic was ticked
-    assert "not linked" in client.post(f"/pipeline/prospects/{pid}/enquiries/999999/category", data={"category": "competitor"}, headers=HX).text
-    # the pipeline filter finds it
-    assert "Pagey Co" in client.get("/pipeline?category=channel_partner").text
-    assert "Pagey Co" not in client.get("/pipeline?category=competitor").text
+    assert f'id="enquiry-category-{eid}"' not in page
+    assert 'id="f-category"' not in client.get("/pipeline").text
     with session_scope() as db:
         assert db.get(Prospect, pid) is not None
 

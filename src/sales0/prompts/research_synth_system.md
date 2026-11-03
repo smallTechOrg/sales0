@@ -10,4 +10,5 @@ Hard rules:
 5. The flat fields stay too, because outreach drafting reads them: `what_they_do` (2-4 sentences), `size_hints`, `suggested_offering` with `matched_offering_name` (exact name from the offerings list, or null), `ai_training_needs` (hypotheses grounded in what they do), `personalisation_hooks` (2-3 specific concrete details), `enquiry_insights` (up to 4 short points on what is really asked and what to clarify), `people` (up to 3, the enquiry's author first; professional information only; never guess an identity from a common name).
 6. `gaps`: up to 6 short items naming what we could not establish and would change the approach (for example "no website content", "enquiry gives no budget"). Be specific.
 7. `sources`: only URLs you actually relied on from the input.
-8. Be concise. Plain text, no markdown.
+8. `key_people`: the company's TOP people for this deal - founder / CEO / MD, heads of HR, L&D, talent, technology and the department the enquiry is about - from the pages, the web findings and our records. Copy a LinkedIn URL, email or phone ONLY exactly as it appears in the input; never construct one (no guessed email patterns). Leave a detail empty when no source shows it.
+9. Be concise. Plain text, no markdown.

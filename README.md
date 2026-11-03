@@ -529,6 +529,7 @@ drifts; to refresh it run `uv run python -m sales0.cli env-docs --write README.m
 | `SALES0_PASSWORD_RESET_TTL_H` | int | `24` | Hours an admin-issued set-password link stays valid. |
 | `SALES0_PASSWORD_MIN_LENGTH` | int | `10` | Minimum length of a user password. |
 | `SALES0_LINKEDIN_SESSION_BACKEND` | folder \| db | `folder` | Where NEW LinkedIn accounts keep their session: `folder` (Chrome profile under the data dir) or `db` (encrypted storage state). |
+| `SALES0_FOLLOWUP_AUTO_SCHEDULE` | bool | `False` | Schedule Follow-up 1, 2 and Final automatically on first contact. `false` (default) = nothing is pre-scheduled: the team logs follow-ups as free text and the reminders it asks for are created from it. |
 | `SALES0_FOLLOWUP_DAYS_1` | int | `3` | Days after the first email before follow-up 1 is due. |
 | `SALES0_FOLLOWUP_DAYS_2` | int | `7` | Days before follow-up 2. |
 | `SALES0_FOLLOWUP_DAYS_FINAL` | int | `14` | Days before the final follow-up. |

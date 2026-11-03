@@ -50,7 +50,7 @@ def test_research_uses_website_own_data_and_web_search_and_stores_a_version(db_u
     assert web_req.tool_choice == "auto" and web_req.cache_system is False
     with session_scope() as db:
         rows = db.scalars(select(LlmCall).order_by(LlmCall.id)).all()
-        assert [r.prompt_version for r in rows] == ["research-web-v2", "research-v3", "research-v3", "research-synth-v1", "summary-v2"]
+        assert [r.prompt_version for r in rows] == ["research-web-v3", "research-v3", "research-v3", "research-synth-v2", "summary-v3"]
         assert rows[0].web_search_requests == 2 and sum(r.cost_usd_micros for r in rows[:-1]) == doc.cost_usd_micros
         assert db.scalar(select(func.count(CompanyBrief.id)).where(CompanyBrief.prospect_id == pid)) == 1
         assert db.scalar(select(TimelineEvent.body).where(TimelineEvent.kind == "research")) == "Research version 1 (done)"

@@ -21,7 +21,7 @@ def _settled(page: Page) -> None:
 
 def test_setup_add_and_remove_keyword_via_htmx_with_confirm_dialog(fixture_server: str, page: Page) -> None:
     page.goto(f"{fixture_server}/setup")
-    page.locator("#setup-tabs").get_by_role("link", name="Offerings & keywords").click()
+    page.locator("#setup-tabs").get_by_role("link", name="Keywords by offering").click()
     expect(page.locator("#keyword-results")).to_contain_text("No keywords yet - add some above")
     page.fill("#kw-add-texts", "  AI   workshop ")
     page.locator("#kw-add-form").get_by_role("button", name="Add").click()

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Offerings{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Setup</h1>
+    <p>What smallTech sells, grouped into categories (e.g. Training: corporate workshops + technical training). The AI matches every enquiry to one offering by its description, and tags each company with the offerings it could buy.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "setup/_tabs.html" %}
+    <section class="card" aria-labelledby="offerings-title">
+      <div class="card__header"><h2 id="offerings-title">Offerings by group</h2>
+        <span class="muted">Put two or more offerings in one group by giving them the same group name</span></div>
+      <div class="card__body stack">
+        {% include "setup/_offering_list.html" %}
+        <details>
+          <summary class="btn">Add an offering</summary>
+          <form class="stack stack--tight" method="post" action="/setup/offerings"
+                hx-post="/setup/offerings" hx-target="#offering-list" hx-disabled-elt="find button" data-reset-on-success>
+            <div class="field"><label class="field__label" for="offering-name">Name</label>
+              <input class="input" id="offering-name" name="name" type="text" maxlength="80" required></div>
+            <div class="field"><label class="field__label" for="offering-group">Group</label>
+              <input class="input" id="offering-group" name="group_name" type="text" maxlength="60" required list="offering-groups" placeholder="Pick an existing group or type a new one"></div>
+            <div class="field"><label class="field__label" for="offering-description">Description <span class="muted">(shown to the AI)</span></label>
+              <textarea class="input" id="offering-description" name="description" maxlength="500" rows="3"></textarea></div>
+            <div><button class="btn btn--primary" type="submit">Add offering</button></div>
+          </form>
+        </details>
+      </div>
+    </section>
+  </div>
+{% endblock %}

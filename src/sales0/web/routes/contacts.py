@@ -127,15 +127,19 @@ def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
     params = {
         "q": (raw.get("q") or "").strip()[:200],
         "characteristic": trait_raw if trait_raw.isdigit() and 0 < int(trait_raw) < 2**31 else "",
+        "offering": str(raw.get("offering") or "") if str(raw.get("offering") or "").isdigit() else "",
         "page": page_number(raw.get("page")),
     }
     page = companies_service.list_companies(
         db, q=params["q"] or None, characteristic_id=int(params["characteristic"]) if params["characteristic"] else None,
-        page=params["page"],
+        page=params["page"], offering_id=int(params["offering"]) if params["offering"] else None,
     )
     if wants_json(request):
         return envelope_ok(_dump(page))
-    ctx = {"page": page, "params": params, "characteristic_options": characteristics_service.list_characteristics(db)}
+    from sales0.services import offerings as offerings_service
+
+    ctx = {"page": page, "params": params, "characteristic_options": characteristics_service.list_characteristics(db),
+           "offering_options": offerings_service.list_offerings(db, include_inactive=True)}
     if is_htmx(request) and request.headers.get("HX-Target") == "company-results":
         return HTMLResponse(render_html(request, "contacts/_companies.html", ctx))
     return _page(request, db, "contacts/companies.html", ctx)
@@ -148,6 +152,8 @@ def research_companies(
     all_matching: str = Form(""),
     q: str = Form(""),
     characteristic: str = Form(""),
+    offering: str = Form(""),
+    mode: str = Form("research"),
     db: Session = Depends(get_db),
     member: TeamMember = Depends(get_acting_member),
     llm: LLMClient = Depends(get_llm),
@@ -157,14 +163,19 @@ def research_companies(
     hosted: also the action budget). The answer lists what happened and carries a "Continue" form for the rest."""
     if all_matching:
         trait = int(characteristic) if characteristic.isdigit() and 0 < int(characteristic) < 2**31 else None
-        ids, _total = companies_service.company_ids(db, q=q.strip()[:200] or None, characteristic_id=trait, limit=500)
+        ids, _total = companies_service.company_ids(db, q=q.strip()[:200] or None, characteristic_id=trait, limit=500,
+                                                    offering_id=int(offering) if offering.isdigit() else None)
     else:
         ids = [i for i in dict.fromkeys(company_ids) if 0 < i < 2**31][:500]
     if not ids:
         raise DomainError("nothing_selected", "Tick at least one company to research.", 400)
-    pids, skipped = research_auto.prospects_for_companies(db, ids)
+    refresh = mode == "refresh"
+    pids, skipped = research_auto.prospects_for_companies(db, ids, skip_human=not refresh)
     try:
-        result = research_auto.run_selected(db, llm, pids, limit=get_settings().research_bulk_chunk, actor=actor_of(member))
+        if refresh:  # summary + Partner / Direct client + offerings from what we have (no new web research): cheap, bigger chunks
+            result = research_auto.refresh_selected(db, llm, pids, limit=get_settings().research_bulk_chunk * 4, actor=actor_of(member))
+        else:
+            result = research_auto.run_selected(db, llm, pids, limit=get_settings().research_bulk_chunk, actor=actor_of(member))
     except (LLMAuthError, LLMModelNotFound) as exc:
         db.commit()  # keep the error llm_calls row
         raise DomainError("llm_unavailable", f"The AI service refused the request ({type(exc).__name__}) - check the API key and model in .env.", 502) from exc
@@ -177,7 +188,8 @@ def research_companies(
             "outcomes": [{"prospect_id": o.prospect_id, "name": o.name, "status": o.status, "reason": o.reason, "version": o.version}
                          for o in result.outcomes],
         })
-    ctx = {"result": result, "skipped": skipped, "remaining_company_ids": remaining_company_ids, "summary": result.summary()}
+    ctx = {"result": result, "skipped": skipped, "remaining_company_ids": remaining_company_ids, "summary": result.summary(),
+           "mode": "refresh" if refresh else "research"}
     return HTMLResponse(render_html(request, "contacts/_research_bulk.html", ctx))
 
 

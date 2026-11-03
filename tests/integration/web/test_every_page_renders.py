@@ -59,7 +59,7 @@ CRM_PAGES = {
 INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
-COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/keywords", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
+COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/setup/offerings", "/outreach/instructions", "/keywords", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}
@@ -332,6 +332,8 @@ def test_every_page_renders_200_with_its_key_text(seeded: tuple[TestClient, Stat
     setup = page("/setup", state.setup_key, ['id="browser-note"', "Cool-down after rate limit / captcha", *state.extra_setup])
     assert "Browser window during runs" not in setup, where("/setup")
     _assert_contains(setup, ['id="setup-tabs"'], where("/setup"))
+    _assert_contains(_get(client, "/setup/offerings"), ['id="offering-list"', "Offerings by group", "Rename group"], where("/setup/offerings"))
+    _assert_contains(_get(client, "/outreach/instructions"), ['id="drafting-instructions-form"'], where("/outreach/instructions"))
     _assert_contains(_get(client, "/keywords"), ['id="keyword-results"', 'id="kw-ideas-form"', 'id="kw-add-form"',
                                                  'id="add-suggested-keywords"', "offering-card-"], where("/keywords"))
     page("/runs", state.runs_key, ['id="run-panel"', 'id="run-history"', *state.extra_runs])

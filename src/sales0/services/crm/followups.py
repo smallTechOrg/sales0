@@ -147,6 +147,8 @@ def schedule_for_contact(
     p = db.get(Prospect, prospect_id)
     if p is None:
         raise not_found()
+    if not s.followup_auto_schedule:
+        return []  # q23: nothing pre-scheduled; reminders come from the follow-up log
     if db.scalar(select(Flag.id).where(Flag.entity_type == "prospect", Flag.entity_id == p.id, Flag.kind == "no_follow_up", Flag.cleared_at.is_(None))):
         return []
     if db.scalar(select(FollowUp.id).where(FollowUp.prospect_id == p.id, FollowUp.auto.is_(True), *_OPEN).limit(1)):
@@ -196,12 +198,18 @@ def list_due(db: Session, *, today: date | None = None, member_id: int | None = 
     if member_id is not None:
         stmt = stmt.where(Prospect.actor_member_id == member_id)
     views = views_for(db, list(db.scalars(stmt)), today)
-    return DuePanel(due_today=[v for v in views if v.due_on == today], overdue=[v for v in views if v.due_on < today])
+    from sales0.services import reminders
+
+    return DuePanel(due_today=[v for v in views if v.due_on == today], overdue=[v for v in views if v.due_on < today],
+                    reminders=reminders.due(db, today=today, member_id=member_id))
 
 
 def due_count(db: Session, *, today: date | None = None) -> int:
+    """Due follow-ups + due reminders (the Pipeline nav badge)."""
+    from sales0.services import reminders
+
     today = today or _today()
-    return int(db.scalar(select(func.count()).select_from(_due_query(today).subquery())) or 0)
+    return int(db.scalar(select(func.count()).select_from(_due_query(today).subquery())) or 0) + reminders.due_count(db, today=today)
 
 
 def complete(
