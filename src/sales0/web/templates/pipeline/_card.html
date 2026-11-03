@@ -12,5 +12,5 @@
     {% if c.city %}{{ c.city }} · {% endif %}{{ c.enquiries }} enquir{{ "y" if c.enquiries == 1 else "ies" }}{% if c.owner %} · {{ c.owner }}{% endif %}
     {% if c.next_follow_up_on %}<br>Next follow-up <span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b") }}{% if c.next_follow_up_on < today %} (overdue){% endif %}</span>{% endif %}
   </div>
-  <div class="pcard__badges">{{ category_chips(c.categories) }}{{ trait_chips(c.characteristics) }}</div>
+  <div class="pcard__badges">{{ trait_chips(c.characteristics) }}{% for name in c.offerings %}<span class="chip chip--offering">{{ name }}</span>{% endfor %}</div>
 </article>

@@ -105,7 +105,7 @@ def test_create_offering_in_new_group_then_edit_it(client: TestClient) -> None:
     )
     created = unescape(resp.text)
     assert resp.status_code == 200 and resp.text.lstrip().startswith('<div id="offering-list"')
-    assert '<h3 class="group-heading">Services+</h3>' in created and "<strong>AI audits" in created
+    assert '<h3 class="group-heading">Services+ <span class="muted">(1 offering)</span></h3>' in created and "<strong>AI audits" in created
     assert '<option value="Services+">' in created  # datalist refreshed with the new group
     assert "Added offering 'AI audits' to Services+." in created
 

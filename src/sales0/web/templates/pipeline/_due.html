@@ -1,14 +1,31 @@
 {# Needs: due (DuePanel). The Due-today panel; swapped out-of-band after Done / Snooze. #}
 <section class="card due-panel" id="due-today" aria-labelledby="due-title" aria-live="polite"{% if oob %} hx-swap-oob="outerHTML:#due-today"{% endif %}>
   <div class="card__header"><h2 id="due-title">Due today</h2>
-    <span class="muted">{{ due.due_today|length }} due · {{ due.overdue|length }} overdue</span></div>
+    <span class="muted">{{ due.due_today|length }} due · {{ due.overdue|length }} overdue{% if due.reminders %} · {{ due.reminders|length }} reminder{{ "" if due.reminders|length == 1 else "s" }}{% endif %}</span></div>
   <div class="card__body">
     {% set email_due = (due.overdue + due.due_today)|rejectattr("kind", "equalto", "custom")|selectattr("planned_channel", "equalto", "email")|selectattr("prospect_id")|list %}
     {% if email_due %}
       {% from "outreach/_followup_drafts.html" import draft_due_form %}
       {{ draft_due_form(email_due|length, "/pipeline", id="draft-due-panel-form") }}
     {% endif %}
-    {% if not due.due_today and not due.overdue %}
+    {% if due.reminders %}
+      <div class="due-group" id="due-group-reminders"><h3>Reminders ({{ due.reminders|length }})</h3>
+        {% for r in due.reminders %}
+          <div class="due-row{% if r.overdue %} due-row--overdue{% endif %}" id="due-reminder-{{ r.id }}">
+            <div class="due-row__main"><strong><a href="{{ r.href }}">{{ r.who }}</a></strong> <span class="due-date">{{ r.due_on.strftime("%d %b") }}{% if r.overdue %} (overdue){% endif %}</span>
+              {% if r.note %}<div class="muted">{{ r.note }}</div>{% endif %}</div>
+            <div class="due-row__actions">
+              <form method="post" action="/reminders/{{ r.id }}/done" hx-post="/reminders/{{ r.id }}/done" hx-swap="none"><input type="hidden" name="next" value="/pipeline"><button class="btn btn--sm btn--primary" type="submit">Done</button></form>
+              <form method="post" action="/reminders/{{ r.id }}/snooze" hx-post="/reminders/{{ r.id }}/snooze" hx-swap="none"><input type="hidden" name="next" value="/pipeline">
+                <label class="visually-hidden" for="due-rem-{{ r.id }}">Move {{ r.who }} reminder to</label>
+                <input class="input input--date" id="due-rem-{{ r.id }}" type="date" name="due_on" required min="{{ today.isoformat() }}" value="{{ (today + one_day).isoformat() }}">
+                <button class="btn btn--sm" type="submit">Snooze</button></form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if not due.due_today and not due.overdue and not due.reminders %}
       <p class="muted" id="due-empty">Nothing due today.</p>
     {% endif %}
     {% for title, rows, over in (("Overdue", due.overdue, true), ("Due today", due.due_today, false)) %}

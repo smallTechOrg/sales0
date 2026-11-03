@@ -12,6 +12,7 @@ from sales0.db.models.crm import Characteristic, Client, Company, EntityCharacte
 from sales0.db.models._types import UTCDateTime
 from sales0.db.models.criteria import TriageCriteriaSet, TriageCriterion
 from sales0.db.models.decisions import TriageDecision
+from sales0.db.models.engage import CompanyOffering, FollowUpNote, Reminder, TextSetting
 from sales0.db.models.enquiries import Enquiry, EnquiryKeywordHit, EnquirySource
 from sales0.db.models.history import StatusHistory
 from sales0.db.models.keywords import Keyword
@@ -35,6 +36,10 @@ from sales0.db.models.timeline import TimelineEvent
 from sales0.db.models.workers import Worker
 
 __all__ = [
+    "CompanyOffering",
+    "FollowUpNote",
+    "Reminder",
+    "TextSetting",
     "ProspectDoc",
     "ProspectNote",
     "WorkerTask",

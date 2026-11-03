@@ -6,21 +6,29 @@
       {% if page.items %}
         <form id="research-all-form" class="row" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
               hx-swap="innerHTML" hx-disabled-elt="find button"
-              hx-confirm="Research all {{ page.total }} {{ 'matching ' if params.q or params.characteristic }}companies? Each takes about a minute and uses the Sonnet research model; the run goes a few at a time and you press Continue between chunks.">
-          <input type="hidden" name="all_matching" value="1"><input type="hidden" name="q" value="{{ params.q }}"><input type="hidden" name="characteristic" value="{{ params.characteristic }}">
-          <button class="btn" id="btn-research-all" type="submit">Research all {{ page.total }}{{ " matching" if params.q or params.characteristic }}</button>
-          <span class="hint">Every company{{ " the search / filter matches" if params.q or params.characteristic }}, not just this page (up to 500).</span>
+              hx-confirm="Research all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or params.offering }}companies? Each takes about a minute and uses the Sonnet research model; the run goes a few at a time and you press Continue between chunks.">
+          <input type="hidden" name="all_matching" value="1"><input type="hidden" name="q" value="{{ params.q }}"><input type="hidden" name="characteristic" value="{{ params.characteristic }}"><input type="hidden" name="offering" value="{{ params.offering }}">
+          <button class="btn" id="btn-research-all" type="submit">Research all {{ page.total }}{{ " matching" if params.q or params.characteristic or params.offering }}</button>
+          <span class="hint">Every company{{ " the search / filter matches" if params.q or params.characteristic or params.offering }}, not just this page (up to 500).</span>
+        </form>
+        <form id="refresh-all-form" class="row" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
+              hx-swap="innerHTML" hx-disabled-elt="find button"
+              hx-confirm="Refresh all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or params.offering }}companies? This rewrites each summary from what we already know and sets Partner / Direct client and offerings where missing - no new web research.">
+          <input type="hidden" name="mode" value="refresh"><input type="hidden" name="all_matching" value="1"><input type="hidden" name="q" value="{{ params.q }}"><input type="hidden" name="characteristic" value="{{ params.characteristic }}"><input type="hidden" name="offering" value="{{ params.offering }}">
+          <button class="btn" id="btn-refresh-all" type="submit">Refresh all {{ page.total }}{{ " matching" if params.q or params.characteristic or params.offering }}</button>
+          <span class="hint">Summary + Partner / Direct client + offerings from current info (a few seconds each).</span>
         </form>
         <form id="research-bulk-form" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
-              hx-swap="innerHTML" hx-indicator="#research-bulk-indicator" hx-disabled-elt="#btn-research-selected">
+              hx-swap="innerHTML" hx-indicator="#research-bulk-indicator" hx-disabled-elt="#btn-research-selected, #btn-refresh-selected">
           <div class="row">
-            <button class="btn btn--primary" id="btn-research-selected" type="submit">Research selected</button>
+            <button class="btn btn--primary" id="btn-research-selected" type="submit" name="mode" value="research">Research selected</button>
+            <button class="btn" id="btn-refresh-selected" type="submit" name="mode" value="refresh">Refresh selected</button>
             <span class="htmx-indicator" id="research-bulk-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Researching... a few companies at a time, about a minute each.</span>
           </div>
           <p class="hint">Tick companies (the box in the header ticks the whole page), then press the button. Each gets a fresh research version (company, enquiry and people). Companies whose research you edited by hand are skipped.</p>
           <div id="research-bulk-result" aria-live="polite"></div>
         <table class="table" id="company-list">
-          <thead><tr><th scope="col"><input type="checkbox" id="research-select-all" aria-label="Select all companies on this page" data-select-all=".research-pick"></th><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Characteristics</th><th scope="col" class="num">People</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
+          <thead><tr><th scope="col"><input type="checkbox" id="research-select-all" aria-label="Select all companies on this page" data-select-all=".research-pick"></th><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Characteristics</th><th scope="col">Offerings</th><th scope="col" class="num">People</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
           <tbody>
           {% for co in page.items %}
             <tr id="company-{{ co.id }}">
@@ -29,6 +37,7 @@
               <td>{% if co.priority %}<span class="chip-priority" data-priority="{{ co.priority }}">{{ co.priority|capitalize }}</span>{% endif %}</td>
               <td>{% if co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% if co.off_ramp %} <span class="badge badge--warn">{{ co.off_ramp|replace("_", " ")|capitalize }}</span>{% endif %}{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
               <td>{{ trait_chips(co.characteristics) }}</td>
+              <td>{% for name in co.offerings %}<span class="chip">{{ name }}</span> {% else %}<span class="muted">-</span>{% endfor %}</td>
               <td class="num">{{ co.contacts }}</td>
               <td class="num">{{ co.enquiries }}</td>
               <td class="num">{{ co.open_follow_ups }}</td>
@@ -37,7 +46,7 @@
           </tbody>
         </table>
         </form>
-      {% elif params.q or params.characteristic %}
+      {% elif params.q or params.characteristic or params.offering %}
         <div class="empty-state empty-state--compact" id="companies-empty"><p>No companies match these filters.</p><a class="btn" href="/companies">Clear filters</a></div>
       {% else %}
         <div class="empty-state" id="companies-empty"><p>No companies yet. They are created when you accept an enquiry, add a company in the Pipeline, or add a person with one.</p></div>

@@ -1,7 +1,18 @@
 {# Needs: offering_groups (list[(group_name, list[OfferingView])]), group_names (list[str]). #}
 <div id="offering-list" class="stack stack--tight">
   {% for group_name, items in offering_groups %}
-    <h3 class="group-heading">{{ group_name }}</h3>
+    {% set gid = items[0].group_id %}
+    <div class="row group-row" id="offering-group-{{ gid }}">
+      <h3 class="group-heading">{{ group_name }} <span class="muted">({{ items|length }} offering{{ "" if items|length == 1 else "s" }})</span></h3>
+      <button class="btn btn--sm btn--ghost" type="button" hx-post="/setup/offering-groups/{{ gid }}/move" hx-vals='{"direction": "up"}' hx-target="#offering-list" aria-label="Move group {{ group_name }} up"{% if loop.first %} disabled{% endif %}>↑</button>
+      <button class="btn btn--sm btn--ghost" type="button" hx-post="/setup/offering-groups/{{ gid }}/move" hx-vals='{"direction": "down"}' hx-target="#offering-list" aria-label="Move group {{ group_name }} down"{% if loop.last %} disabled{% endif %}>↓</button>
+      <details class="inline-edit"><summary class="btn btn--sm">Rename group</summary>
+        <form class="inline-form" method="post" action="/setup/offering-groups/{{ gid }}" hx-post="/setup/offering-groups/{{ gid }}" hx-target="#offering-list">
+          <label class="visually-hidden" for="group-name-{{ gid }}">New name for {{ group_name }}</label>
+          <input class="input" id="group-name-{{ gid }}" name="name" maxlength="60" required value="{{ group_name }}">
+          <button class="btn btn--sm btn--primary" type="submit">Save</button>
+        </form></details>
+    </div>
     <ul class="item-list">
       {% for offering in items %}{% include "setup/_offering_row.html" %}{% endfor %}
     </ul>

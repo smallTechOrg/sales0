@@ -24,16 +24,33 @@ MAX_SUMMARY_CHARS = 6000
 
 
 def refresh_summary(
-    db: Session, llm: LLMClient | None, member: TeamMember | None, prospect_id: int, *, actor: Actor, now: datetime | None = None
+    db: Session, llm: LLMClient | None, member: TeamMember | None, prospect_id: int, *, actor: Actor, now: datetime | None = None,
+    keep_human: bool = False,
 ) -> DocView:
-    """One AI call; a new version (also when it failed, so the page says what happened). Flushed, caller commits."""
+    """One AI call; a new version (also when it failed, so the page says what happened). Flushed, caller commits.
+
+    The answer also tags the company (``crm.auto_tags``: Partner / Direct client, its offerings when it has none).
+    ``keep_human``: when the newest summary is a person's edit, tag only and keep that version (bulk refresh)."""
     stamp = now_or(now)
     ensure_within_spend_cap(db, stamp)
     b = context.basics(db, prospect_id)
     page = linkedin_page.latest_text(db, prospect_id)
     records = context.build(db, prospect_id, detail="summary", linkedin_text=page.result_text if page is not None else None)
+    from sqlalchemy import select
+
+    from sales0.db.models import Offering
+    from sales0.services.crm import auto_tags
+
+    offering_names = list(db.scalars(select(Offering.name).where(Offering.active.is_(True)).order_by(Offering.sort_order, Offering.id)))
     result = summarise_account(db, llm, name=b.name + (f" ({b.company_name})" if b.company_name and b.company_name != b.name else ""),
-                               records=records)
+                               records=records, offerings=offering_names)
+    if result.summary is not None:
+        tags = auto_tags.apply(db, prospect_id, result.summary, now=stamp)
+        if tags["characteristic"] or tags["offerings"]:
+            log.info("company_auto_tagged", prospect_id=prospect_id, **tags)
+    current = docs.latest(db, prospect_id, "summary")
+    if keep_human and current is not None and current.origin == "human":
+        return current
     research = docs.latest_usable(db, prospect_id, "research")
     sources = [SourceRef(kind="own_data", label="Our records (enquiries, contacts, notes, emails, replies, follow-ups, sheet)")]
     if research is not None:

@@ -249,8 +249,12 @@ def get_company(db: Session, company_id: int) -> CompanyDetail:
     )
 
 
-def _filtered_companies(q: str | None, characteristic_id: int | None):  # type: ignore[no-untyped-def]
+def _filtered_companies(q: str | None, characteristic_id: int | None, offering_id: int | None = None):  # type: ignore[no-untyped-def]
     stmt = select(Company)
+    if offering_id:
+        from sales0.services.crm import company_offerings
+
+        stmt = stmt.where(Company.id.in_(company_offerings.companies_with(offering_id)))
     if q and q.strip():
         like = f"%{_keys.like_escape(_keys.name_key(q))}%"
         stmt = stmt.where(or_(Company.name_key.like(like, escape="\\"), func.lower(func.coalesce(Company.website, "")).like(like, escape="\\")))
@@ -264,23 +268,28 @@ def _filtered_companies(q: str | None, characteristic_id: int | None):  # type: 
     return stmt
 
 
-def company_ids(db: Session, *, q: str | None = None, characteristic_id: int | None = None, limit: int = 500) -> tuple[list[int], int]:
+def company_ids(db: Session, *, q: str | None = None, characteristic_id: int | None = None, limit: int = 500,
+                offering_id: int | None = None) -> tuple[list[int], int]:
     """(ids of the companies the Companies page filters match, in list order, capped at ``limit``; the full match count)."""
-    stmt = _filtered_companies(q, characteristic_id)
+    stmt = _filtered_companies(q, characteristic_id, offering_id)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     return list(db.scalars(stmt.order_by(Company.name_key, Company.id).with_only_columns(Company.id).limit(limit))), total
 
 
 def list_companies(
     db: Session, *, q: str | None = None, characteristic_id: int | None = None, page: int = 1, page_size: int | None = None,
+    offering_id: int | None = None,
 ) -> CompanyPage:
     page, size = page_params(page, page_size)
-    stmt = _filtered_companies(q, characteristic_id)
+    stmt = _filtered_companies(q, characteristic_id, offering_id)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = list(db.scalars(stmt.order_by(Company.name_key, Company.id).limit(size).offset((page - 1) * size)))
     ids = [r.id for r in rows]
     np_, ncl, nct, nen = (_counts(db, m, ids) for m in (Prospect, Client, Contact, Enquiry))
     fus, traits = _open_follow_ups(db, ids), _characteristics_by_company(db, ids)
+    from sales0.services.crm import company_offerings
+
+    offer_names = company_offerings.names_by_company(db, ids)
     best: dict[int, str] = {}  # q16: the highest priority among the company's open prospects
     if ids:
         from sales0.services.crm.priority import RANK
@@ -293,7 +302,7 @@ def list_companies(
     items = [
         CompanyRow(**_view(r).model_dump(), prospects=np_.get(r.id, 0), clients=ncl.get(r.id, 0), contacts=nct.get(r.id, 0),
                    enquiries=nen.get(r.id, 0), open_follow_ups=fus.get(r.id, 0), characteristics=traits.get(r.id, []),
-                   priority=best.get(r.id))
+                   priority=best.get(r.id), offerings=offer_names.get(r.id, []))
         for r in rows
     ]
     return CompanyPage(items=items, total=total, page=page, page_size=size)

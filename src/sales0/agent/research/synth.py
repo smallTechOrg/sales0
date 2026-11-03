@@ -25,7 +25,7 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent.research.synth")
 
-PROMPT_VERSION = "research-synth-v1"
+PROMPT_VERSION = "research-synth-v2"  # v2: + key_people (top people with verified contact details)
 TOOL_NAME = "record_research"
 TOOL_DESCRIPTION = "Record the final structured research record for the prospect (company, enquiry, people, evidence)."
 SECTION_WEIGHTS = {"profile": 25, "enquiry": 25, "people": 15, "fit": 15, "facts": 20}
@@ -76,7 +76,23 @@ def synth_tool_schema() -> dict[str, Any]:
         },
     }
     props["gaps"] = {"type": "array", "items": {"type": "string"}}
-    schema["required"] = [*schema["required"], "profile", "enquiry", "facts", "gaps"]
+    props["key_people"] = {
+        "type": "array",
+        "description": "up to 8 TOP people at the company: founder / CEO / MD and the heads of HR, L&D, talent, technology and the department the enquiry is about, plus the people in our records. Contact details ONLY when a source in the input shows them",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}, "title": {"type": "string"}, "department": {"type": "string"},
+                "linkedin_url": {"type": "string", "description": "their LinkedIn profile URL exactly as it appears in the input, or ''"},
+                "email": {"type": "string", "description": "a work email exactly as it appears in the input, or ''"},
+                "phone": {"type": "string", "description": "a phone number exactly as it appears in the input, or ''"},
+                "why": {"type": "string", "description": "one line: why they matter for this deal"},
+                "source": {"type": "string", "description": "URL from the input, or 'our records'"},
+            },
+            "required": ["name", "title", "source"],
+        },
+    }
+    schema["required"] = [*schema["required"], "profile", "enquiry", "facts", "gaps", "key_people"]
     return schema
 
 
@@ -100,7 +116,30 @@ def completeness(brief: CompanyBrief) -> int:
     return min(100, score)
 
 
-def _clean(brief: CompanyBrief, allowed: set[str], offerings: list[str]) -> CompanyBrief:
+def _digits(text: str) -> str:
+    return "".join(ch for ch in text if ch.isdigit())
+
+
+def _people(brief: CompanyBrief, allowed: set[str], haystack: str) -> list[Any]:
+    """Keep a person only with a known source; keep each contact detail only if it appears in the input text (the
+    model may not invent an email pattern or a phone number)."""
+    low, digits = haystack.lower(), _digits(haystack)
+    out, seen = [], set()
+    for kp in brief.key_people:
+        key = kp.name.lower()
+        src = kp.source.strip()
+        if not kp.name or key in seen or not (src.lower() == OWN_RECORDS or src in allowed or (src and src.lower() in low)):
+            continue
+        seen.add(key)
+        email = kp.email if kp.email and "@" in kp.email and kp.email.lower() in low else ""
+        phone = kp.phone if kp.phone and len(_digits(kp.phone)) >= 7 and _digits(kp.phone) in digits else ""
+        li = kp.linkedin_url if "linkedin.com/in/" in kp.linkedin_url.lower() and kp.linkedin_url.lower().rstrip("/") in low else ""
+        out.append(kp.model_copy(update={"email": email, "phone": phone, "linkedin_url": li,
+                                         "source": OWN_RECORDS if src.lower() == OWN_RECORDS else src}))
+    return out[:8]
+
+
+def _clean(brief: CompanyBrief, allowed: set[str], offerings: list[str], haystack: str = "") -> CompanyBrief:
     """Keep only facts whose source was really in the input; normalise the matched offering; compute completeness."""
     facts = []
     for f in brief.facts:
@@ -115,7 +154,7 @@ def _clean(brief: CompanyBrief, allowed: set[str], offerings: list[str]) -> Comp
     out = brief.model_copy(update={
         "facts": facts[:16], "matched_offering_name": matched, "sources": sources, "gaps": brief.gaps[:6],
         "personalisation_hooks": brief.personalisation_hooks[:3], "enquiry_insights": brief.enquiry_insights[:4],
-        "people": brief.people[:3],
+        "people": brief.people[:3], "key_people": _people(brief, allowed, haystack),
     })
     return out.model_copy(update={"completeness": completeness(out)})
 
@@ -175,4 +214,5 @@ def synthesize(
         log.warning("research_synth_invalid", error=str(exc).splitlines()[0][:160])
         return SynthResult(brief=None, cost_usd_micros=resp.cost_usd_micros, model=resp.model)
     allowed = {p["url"] for p in pages} | {e.url for e in extras if e.url} | {u for e in extras for u in e.citable}
-    return SynthResult(brief=_clean(brief, allowed, offerings), cost_usd_micros=resp.cost_usd_micros, model=resp.model)
+    haystack = "\n".join([context_text, *(p.get("text", "") + " " + p.get("url", "") for p in pages), *(e.text + " " + (e.url or "") for e in extras)])
+    return SynthResult(brief=_clean(brief, allowed, offerings, haystack), cost_usd_micros=resp.cost_usd_micros, model=resp.model)

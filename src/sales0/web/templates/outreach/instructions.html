@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Drafting instructions{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Drafting instructions</h1>
+  <p>Common instructions the AI follows for EVERY email it drafts (first emails and follow-ups): tone, length, what to always or never say, sign-off, links to include. Templates and the research brief still shape each draft.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% include "outreach/_subnav.html" %}
+    <section class="card" aria-labelledby="instr-title">
+      <div class="card__header"><h2 id="instr-title">Instructions for every draft</h2></div>
+      <form class="card__body stack" id="drafting-instructions-form" method="post" action="/outreach/instructions">
+        <div class="field"><label class="field__label" for="drafting-instructions">Instructions</label>
+          <textarea class="input" id="drafting-instructions" name="text" rows="12" maxlength="{{ max_chars }}" placeholder="e.g. Keep emails under 120 words. Always mention we are based in Pune. Never offer a discount in the first email. Sign off as 'Team smallTech'.">{{ text }}</textarea></div>
+        <p class="hint">Saved instructions are added to the AI's rules for drafting. The fixed safety rules (no invented facts, plain text, no prices unless given) still win if the two disagree. Leave empty to use only the built-in rules.</p>
+        <div><button class="btn btn--primary" type="submit">Save instructions</button></div>
+      </form>
+    </section>
+  </div>
+{% endblock %}

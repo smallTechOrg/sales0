@@ -169,6 +169,17 @@ def _error_row(exc: Exception, enquiry_id: int | None, now: datetime, version: s
     )  # fmt: skip
 
 
+def system_prompt(db: Session, follow_up: bool) -> str:
+    """The fixed drafting rules, then the team's own instructions for every draft (Outreach > Instructions)."""
+    from sales0.services import text_settings
+
+    base = (PROMPTS_DIR / ("draft_followup_system.md" if follow_up else "draft_system.md")).read_text(encoding="utf-8").strip()
+    extra = text_settings.get(db, text_settings.DRAFTING_INSTRUCTIONS).strip()
+    if not extra:
+        return base + "\n"
+    return (base + "\n\n## Team instructions for every email (follow them unless they break a rule above)\n" + extra + "\n")
+
+
 def generate_draft(
     db: Session,
     llm: LLMClient | None,
@@ -235,7 +246,7 @@ def generate_draft(
         )  # fmt: skip
         req = StructuredRequest(
             feature="drafting",
-            system=(PROMPTS_DIR / ("draft_followup_system.md" if follow_up is not None else "draft_system.md")).read_text(encoding="utf-8").strip() + "\n",
+            system=system_prompt(db, follow_up is not None),
             messages=[{"role": "user", "content": user.strip() + "\n"}],
             tool_name=TOOL_NAME,
             tool_description="Submit the finished outreach email (subject and plain-text body).",

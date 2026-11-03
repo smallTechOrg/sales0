@@ -90,6 +90,41 @@ def _group_for(db: Session, group_name: str) -> OfferingGroup:
     return group
 
 
+def rename_group(db: Session, group_id: int, name: str) -> str:
+    """Rename an offering group (every offering in it moves with it). Merges into a group that already has that name."""
+    group = db.get(OfferingGroup, group_id)
+    if group is None:
+        raise not_found()
+    clean = " ".join((name or "").split())
+    if not 1 <= len(clean) <= 60:
+        raise DomainError("offering_invalid", "A group name is 1-60 characters.", 400)
+    other = db.scalar(select(OfferingGroup).where(OfferingGroup.name_key == name_key(clean), OfferingGroup.id != group_id))
+    if other is not None:  # same name as another group: move the offerings there
+        for o in db.scalars(select(Offering).where(Offering.group_id == group_id)):
+            o.group_id, o.sort_order = other.id, _next_sort_order(db, other.id)
+        db.flush()
+        db.delete(group)
+        db.flush()
+        return other.name
+    group.name = clean
+    db.flush()
+    return clean
+
+
+def move_group(db: Session, group_id: int, direction: str) -> None:
+    """Move a group up or down in the catalogue order (renumbers 1, 2, ...)."""
+    groups = list(db.scalars(select(OfferingGroup).order_by(OfferingGroup.sort_order, OfferingGroup.id)))
+    idx = next((i for i, g in enumerate(groups) if g.id == group_id), None)
+    if idx is None:
+        raise not_found()
+    j = idx - 1 if direction == "up" else idx + 1
+    if 0 <= j < len(groups):
+        groups[idx], groups[j] = groups[j], groups[idx]
+    for n, g in enumerate(groups, start=1):
+        g.sort_order = n
+    db.flush()
+
+
 def _next_sort_order(db: Session, group_id: int) -> int:
     return (db.scalar(select(func.max(Offering.sort_order)).where(Offering.group_id == group_id)) or 0) + 1
 

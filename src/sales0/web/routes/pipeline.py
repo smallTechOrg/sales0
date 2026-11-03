@@ -190,6 +190,7 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
         "characteristic": str(raw.get("characteristic") or "") if str(raw.get("characteristic") or "").isdigit() else "",
         "priority": raw.get("priority") if raw.get("priority") in ("high", "medium", "low", "none") else "",
         "category": raw.get("category") if raw.get("category") in ("relevant_prospect", "channel_partner", "competitor") else "",
+        "offering": str(raw.get("offering") or "") if str(raw.get("offering") or "").isdigit() else "",
         "sort": "priority" if raw.get("sort") == "priority" else "",
         "page": page_number(raw.get("page")),
     }
@@ -198,6 +199,12 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
 def _trait_id(params: dict[str, Any]) -> int | None:
     value = params.get("characteristic") or ""
     return int(value) if value.isdigit() and 0 < int(value) < 2**31 else None
+
+
+def _offering_options(db: Session) -> list[Any]:
+    from sales0.services import offerings as offerings_service
+
+    return offerings_service.list_offerings(db, include_inactive=True)
 
 
 def _trait_options(db: Session) -> list[Any]:
@@ -209,11 +216,12 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     trait = _trait_id(params)
     tab = params["tab"]
     ctx: dict[str, Any] = {"params": params, "characteristic_options": _trait_options(db), "priority_choices": priority_service.FILTER_CHOICES,
-                           "category_choices": CATEGORY_CHOICES, "tab_help": TAB_HELP[tab]}
+                           "category_choices": CATEGORY_CHOICES, "tab_help": TAB_HELP[tab],
+                           "offering_options": _offering_options(db)}
     if tab == "enquiries":
         ctx.update(layout="board", enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
-            category=params["category"] or None),
+            category=params["category"] or None, offering_id=int(params["offering"]) if params["offering"] else None),
             deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE],
             research_overview=research_auto.overview(db))
     else:
@@ -223,7 +231,8 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
             layout = "list"
         ctx["layout"] = layout
         common = dict(q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
-                      category=params["category"] or None, flag=params["flag"] or None, sort=params["sort"] or None)
+                      category=params["category"] or None, flag=params["flag"] or None, sort=params["sort"] or None,
+                      offering_id=int(params["offering"]) if params["offering"] else None)
         if layout == "board":
             ctx["company_board"] = company_pipeline_service.tab_board(db, tab, **common)
         else:
@@ -299,11 +308,18 @@ def _followups_ctx(p: Any, base: str, no_fu: bool, db: Session | None = None, me
     needs_contact = can_act and p.stage == "new" and (p.contacted_at is None or p.contacted_estimated)
     info = _draft_info(db, p, member) if db is not None and can_act else {}
     today = _today()
+    from sales0.config import get_settings as _settings
+    from sales0.services import reminders as reminders_service
+    from sales0.services.crm import followup_log
+
+    auto = _settings().followup_auto_schedule
     return {
         "follow_ups": p.follow_ups, "base": base, "can_act": can_act, "no_follow_up": no_fu,
         "channels": list(followups_service.CHANNEL_LABELS.items()),
-        "fu_plan": followups_service.plan(_today()) if needs_contact else [],
-        "needs_contact": needs_contact,
+        "fu_plan": followups_service.plan(_today()) if needs_contact and auto else [],
+        "needs_contact": needs_contact and auto,
+        "fu_notes": followup_log.notes_for(db, p.id) if db is not None else [],
+        "reminders": reminders_service.open_for(db, prospect_id=p.id) if db is not None else [],
         "draft_info": info, "prospect_id": p.id,
         "draft_due_ready": sum(1 for v in p.follow_ups if not v.done and v.due_on <= today and info.get(v.id) is not None and info[v.id].ok),
     }  # fmt: skip
@@ -690,6 +706,93 @@ def prospect_log_contact(
         return f"Contact via {how} logged - {view.stage_label}; the three follow-ups are scheduled."
 
     return _prospect_action(request, db, prospect_id, act)
+
+
+# ---------------------------------------------------------------------- follow-up log + reminders (q23)
+@router.post("/pipeline/prospects/{prospect_id}/followup-notes", response_model=None)
+def add_followup_note(
+    request: Request, prospect_id: PathId, text: str = Form(""), db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional), llm: LLMClient = Depends(get_llm),
+) -> Response:
+    """Free text -> one AI call structures it (How / Date / Contact / Notes, + a reminder if it asks for one)."""
+    from sales0.services.crm import followup_log
+
+    def act() -> str:
+        try:
+            row = followup_log.add_note(db, llm, prospect_id, text, actor=actor_of(member))
+        except (LLMAuthError, LLMModelNotFound) as exc:
+            raise _llm_fatal(db, exc) from exc
+        msg = f"Follow-up logged ({followup_log.HOW_LABELS.get(row.how, 'Other')}, {row.happened_on.strftime('%d %b')})"
+        if row.reminder_id:
+            from sales0.db.models import Reminder
+
+            msg += f"; reminder set for {db.get(Reminder, row.reminder_id).due_on.strftime('%d %b')}"
+        if row.structured_by == "fallback":
+            msg += " - saved as typed (the AI was unavailable)"
+        return msg + "."
+
+    return _prospect_action(request, db, prospect_id, act, member=member)
+
+
+@router.post("/pipeline/prospects/{prospect_id}/reminders", response_model=None)
+def add_reminder(
+    request: Request, prospect_id: PathId, due_on: str = Form(""), note: str = Form(""), db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    from sales0.db.models import Prospect
+    from sales0.services import reminders as reminders_service
+
+    def act() -> str:
+        p = db.get(Prospect, prospect_id)
+        if p is None:
+            raise DomainError("not_found", "That prospect no longer exists.", 404)
+        day = parse_date(due_on, label="reminder date")
+        actor = actor_of(member)
+        r = reminders_service.add(db, subject_type="prospect", subject_id=p.id, due_on=day, note=note, company_id=p.company_id,  # type: ignore[arg-type]
+                                  prospect_id=p.id, created_by=actor.label, owner_member_id=actor.member_id)
+        return f"Reminder set for {r.due_on.strftime('%d %b %Y')}."
+
+    return _prospect_action(request, db, prospect_id, act, member=member)
+
+
+def _reminder_response(request: Request, db: Session, row: Any, message: str, next_url: str | None) -> Response:
+    if wants_json(request):
+        return _json({"id": row.id, "due_on": row.due_on.isoformat(), "done": row.done_at is not None})
+    back = next_url or (f"/companies/{row.company_id}" if row.company_id else "/pipeline")
+    if not is_htmx(request):
+        return flash_redirect(back, message)
+    parts: list[tuple[str, dict[str, Any]]] = [("pipeline/_due.html", {"due": followups_service.list_due(db)})]
+    if row.prospect_id:
+        parts += _prospect_parts(db, row.prospect_id, get_acting_member_optional(request, db))[1]
+    return _fragments(request, parts, message)
+
+
+@router.post("/reminders/{reminder_id}/done", response_model=None)
+def reminder_done(
+    request: Request, reminder_id: PathId, next: str = Form(""), db: Session = Depends(get_db),  # noqa: A002
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    from sales0.services import reminders as reminders_service
+
+    def run() -> Response:
+        row = reminders_service.complete(db, reminder_id, actor=actor_of(member).label)
+        return _reminder_response(request, db, row, "Reminder done.", _safe_back(next, "") or None)
+
+    return crm_guard(request, "/pipeline", run, db)
+
+
+@router.post("/reminders/{reminder_id}/snooze", response_model=None)
+def reminder_snooze(
+    request: Request, reminder_id: PathId, due_on: str = Form(""), next: str = Form(""), db: Session = Depends(get_db),  # noqa: A002
+    member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    from sales0.services import reminders as reminders_service
+
+    def run() -> Response:
+        row = reminders_service.snooze(db, reminder_id, parse_date(due_on, label="new date"))  # type: ignore[arg-type]
+        return _reminder_response(request, db, row, f"Reminder moved to {row.due_on.strftime('%d %b')}.", _safe_back(next, "") or None)
+
+    return crm_guard(request, "/pipeline", run, db)
 
 
 # ---------------------------------------------------------------------- follow-up done / snooze

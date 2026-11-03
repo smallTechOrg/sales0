@@ -23,9 +23,9 @@ from sales0.logging import get_logger
 
 log = get_logger("sales0.agent.research.web")
 
-PROMPT_VERSION = "research-web-v2"
+PROMPT_VERSION = "research-web-v3"  # v3: + the company's top people and their public contact details
 TOOL_NAME = "record_web_findings"
-MAX_FINDINGS = 6
+MAX_FINDINGS = 12
 
 
 @dataclass
@@ -68,7 +68,7 @@ def tool_schema() -> dict[str, Any]:
                     },
                     "required": ["fact", "url"],
                 },
-                "description": f"at most {MAX_FINDINGS}, only about THIS company",
+                "description": f"at most {MAX_FINDINGS}, only about THIS company and its people",
             },
         },
         "required": ["summary", "findings"],
@@ -114,7 +114,7 @@ def search_web(
     client = llm or get_llm_client()
     user = _env().get_template("research_web_user.md.j2").render(
         company_name=company_name, website_url=website_url or "(none)", context_text=context_text[:1500],
-        max_uses=max_uses, max_findings=MAX_FINDINGS, people=(people or [])[:2],
+        max_uses=max_uses, max_findings=MAX_FINDINGS, people=(people or [])[:4],
     )  # fmt: skip
     req = StructuredRequest(
         feature="research",

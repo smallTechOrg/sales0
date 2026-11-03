@@ -39,6 +39,10 @@
         {% if d.enquiry_insights %}<p><strong>About the enquiry</strong></p><ul id="research-enquiry">{% for n in d.enquiry_insights %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
         {% if d.people %}<p><strong>People</strong></p>
         <ul id="research-people">{% for person in d.people %}<li><strong>{{ person.name }}</strong>{% if person.title and person.title != "unknown" %}, {{ person.title }}{% endif %}{% if person.summary and person.summary != "unknown" %} - {{ person.summary }}{% endif %}{% if person.approach %}<br><span class="muted">How to approach: {{ person.approach }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+        {% if d.key_people %}<p><strong>Key people</strong> <span class="muted">(saved to People)</span></p>
+        <ul id="research-key-people">{% for kp in d.key_people %}<li><strong>{{ kp.name }}</strong>{% if kp.title and kp.title != "unknown" %}, {{ kp.title }}{% endif %}{% if kp.department %} ({{ kp.department }}){% endif %}
+          {% if kp.linkedin_url %} · <a href="{{ kp.linkedin_url }}" target="_blank" rel="noopener noreferrer">LinkedIn</a>{% endif %}{% if kp.email %} · <a href="mailto:{{ kp.email }}">{{ kp.email }}</a>{% endif %}{% if kp.phone %} · {{ kp.phone }}{% endif %}
+          {% if kp.why %}<br><span class="muted">{{ kp.why }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
         {% if d.ai_training_needs %}<p><strong>Possible AI-training needs</strong> (hypotheses)</p><ul>{% for n in d.ai_training_needs %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
         {% if d.personalisation_hooks %}<p><strong>Personalisation hooks</strong></p><ul id="research-hooks">{% for h in d.personalisation_hooks %}<li>{{ h }}</li>{% endfor %}</ul>{% endif %}
         {% if d.facts %}<p><strong>Evidence</strong></p>

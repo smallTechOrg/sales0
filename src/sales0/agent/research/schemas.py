@@ -114,6 +114,25 @@ class Fact(BaseModel):
 OWN_RECORDS = "our records"
 
 
+class KeyPerson(BaseModel):
+    """A decision maker at the company (v5): from the website, web search or our records; contact details only when a
+    source showed them (checked in code against the input text)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    title: str = Field(default="unknown", max_length=200)
+    department: str = Field(default="", max_length=100)
+    linkedin_url: str = Field(default="", max_length=300)
+    email: str = Field(default="", max_length=254)
+    phone: str = Field(default="", max_length=50)
+    why: str = Field(default="", max_length=300)
+    source: str = Field(default="", max_length=500)
+
+    @field_validator("name", "title", "department", "linkedin_url", "email", "phone", "why", "source", mode="before")
+    @classmethod
+    def _text(cls, v: Any) -> Any:
+        return "" if v is None else " ".join(str(v).split())
+
+
 class CompanyBrief(BaseModel):
     company_name: str = Field(min_length=1, max_length=200)
     what_they_do: str = Field(min_length=1, max_length=1200)
@@ -134,6 +153,7 @@ class CompanyBrief(BaseModel):
     facts: list[Fact] = Field(default_factory=list, max_length=24)
     gaps: list[str] = Field(default_factory=list, max_length=8)
     completeness: int | None = Field(default=None, ge=0, le=100)
+    key_people: list[KeyPerson] = Field(default_factory=list, max_length=12)  # v5: the company's top people
 
     @field_validator(
         "ai_training_needs", "personalisation_hooks", "enquiry_insights", "sources", "gaps", mode="before"

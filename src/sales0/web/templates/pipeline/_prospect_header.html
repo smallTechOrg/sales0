@@ -12,7 +12,7 @@
       <span class="badge stage-badge stage-badge--{{ life.stage or 'none' }}" id="stage-badge">{{ life.stage_label }}</span>
       {% if life.sub_label %}<span class="badge" id="sub-status-badge">{{ life.sub_label }}</span>{% endif %}
       {% if life.off_ramp %}<span class="badge badge--warn" id="off-ramp-badge">{{ life.off_ramp_label }}{% if life.off_ramp_reason %} · {{ life.off_ramp_reason }}{% endif %}</span>{% endif %}
-      {% if p %}<span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>{{ category_chips(p.categories) }}{{ flag_badges(p.flags) }}{% endif %}
+      {% if p %}<span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>{{ flag_badges(p.flags) }}{% endif %}
     </div>
     <p class="hint" id="company-help">A company is the one record for who we deal with. It is a Prospect, then a Lead (a person decides), then a Client; its people, enquiries (each one specific requirement), outreach and follow-ups all live here.</p>
 

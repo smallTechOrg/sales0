@@ -6,4 +6,8 @@
 {{ records | inert }}
 </records>
 
+## smallTech offerings (choose `fit_offerings` from these exact names)
+{% for o in offerings %}- {{ o | inert }}
+{% else %}- (none defined: leave fit_offerings empty)
+{% endfor %}
 Write the account summary now by calling `record_account_summary`.

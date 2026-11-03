@@ -28,7 +28,7 @@ def _prospect(db: Session, **kw: object) -> int:
 # ---------------------------------------------------------------------------- B1 characteristics
 def test_registry_seeded_create_rename_disable(db: Session) -> None:
     names = [c.name for c in characteristics.list_characteristics(db)]
-    assert names == ["Training provider", "Partner", "Outreach client"]
+    assert names == ["Training provider", "Partner", "Outreach client", "Direct client"]  # q23 adds Direct client
     new = characteristics.create(db, name="  Reseller  ")
     assert new.name == "Reseller" and new.active
     with pytest.raises(DomainError):

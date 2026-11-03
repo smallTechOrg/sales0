@@ -171,6 +171,29 @@ def setup_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     )
 
 
+# ---------------------------------------------------------------------- offerings section
+@router.get("/setup/offerings", response_class=HTMLResponse)
+def offerings_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Setup > Offerings: the catalogue by group (rename / reorder groups, add / edit / switch off offerings)."""
+    return render_page(request, db, "setup/offerings.html", _offerings_ctx(db))
+
+
+@router.post("/setup/offering-groups/{group_id}", response_model=None, dependencies=[Depends(require_admin)])
+def rename_offering_group(request: Request, group_id: PathId, name: str = Form(""), db: Session = Depends(get_db)) -> Response:
+    new = offerings_service.rename_group(db, group_id, name)
+    if not is_htmx(request):
+        return redirect("/setup/offerings")
+    return _html(_offering_list_html(request, db), toast_html(f"Group renamed to '{new}'."))
+
+
+@router.post("/setup/offering-groups/{group_id}/move", response_model=None, dependencies=[Depends(require_admin)])
+def move_offering_group(request: Request, group_id: PathId, direction: str = Form("up"), db: Session = Depends(get_db)) -> Response:
+    offerings_service.move_group(db, group_id, "down" if direction == "down" else "up")
+    if not is_htmx(request):
+        return redirect("/setup/offerings")
+    return _html(_offering_list_html(request, db))
+
+
 # ---------------------------------------------------------------------- keywords
 @router.post("/setup/keywords", response_model=None, dependencies=[Depends(require_admin)])
 def add_keyword(

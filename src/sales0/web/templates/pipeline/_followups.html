@@ -6,6 +6,57 @@
 <section class="card" id="follow-ups" aria-labelledby="fu-title"{% if oob %} hx-swap-oob="outerHTML:#follow-ups"{% endif %}>
   <div class="card__header"><h2 id="fu-title">Follow-ups</h2></div>
   <div class="card__body">
+    {% set _pid = prospect_id if prospect_id is defined else None %}
+    {% if _pid %}
+      <form class="stack stack--tight" id="fu-note-form" method="post" action="/pipeline/prospects/{{ _pid }}/followup-notes"
+            hx-post="/pipeline/prospects/{{ _pid }}/followup-notes" hx-swap="none" hx-disabled-elt="find button" hx-indicator="#fu-note-indicator" data-reset-on-success>
+        <label class="field__label" for="fu-note-text">Log a follow-up</label>
+        <textarea class="input" id="fu-note-text" name="text" rows="3" maxlength="2000" required
+                  placeholder="e.g. Called Priya today, she liked the proposal but needs approval from her CFO. Call again next Tuesday."></textarea>
+        <div class="row"><button class="btn btn--primary btn--sm" id="btn-fu-note" type="submit">Add to log</button>
+          <span class="htmx-indicator" id="fu-note-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Structuring...</span>
+          <span class="hint">Write it the way you would say it: the AI picks out how, when, who and the notes, and sets a reminder if you mention a next date.</span></div>
+      </form>
+      {% set _rems = reminders if reminders is defined else [] %}
+      {% if _rems %}
+        <div class="stack stack--tight" id="fu-reminders"><h3>Reminders</h3>
+        {% for r in _rems %}
+          <div class="due-row{% if r.overdue %} due-row--overdue{% endif %}" id="reminder-{{ r.id }}">
+            <div class="due-row__main"><strong>{{ r.due_on.strftime("%d %b %Y") }}</strong>{% if r.overdue %} <span class="badge badge--warn">overdue</span>{% endif %} {{ r.note }}</div>
+            <div class="due-row__actions">
+              <form class="inline-form" method="post" action="/reminders/{{ r.id }}/done" hx-post="/reminders/{{ r.id }}/done" hx-swap="none"><button class="btn btn--sm btn--primary" type="submit">Done</button></form>
+              <form class="inline-form" method="post" action="/reminders/{{ r.id }}/snooze" hx-post="/reminders/{{ r.id }}/snooze" hx-swap="none">
+                <label class="visually-hidden" for="rem-date-{{ r.id }}">New date for this reminder</label>
+                <input class="input input--date" id="rem-date-{{ r.id }}" type="date" name="due_on" required value="{{ r.due_on.isoformat() }}">
+                <button class="btn btn--sm" type="submit">Change date</button></form>
+            </div>
+          </div>
+        {% endfor %}
+        </div>
+      {% endif %}
+      <details class="inline-edit" id="fu-add-reminder"><summary>Add a reminder</summary>
+        <form class="inline-form" method="post" action="/pipeline/prospects/{{ _pid }}/reminders" hx-post="/pipeline/prospects/{{ _pid }}/reminders" hx-swap="none">
+          <label class="visually-hidden" for="rem-new-date">Reminder date</label>
+          <input class="input input--date" id="rem-new-date" type="date" name="due_on" required>
+          <label class="visually-hidden" for="rem-new-note">What to do</label>
+          <input class="input" id="rem-new-note" name="note" maxlength="300" placeholder="What to do">
+          <button class="btn btn--sm" type="submit">Set reminder</button>
+        </form></details>
+      {% set _notes = fu_notes if fu_notes is defined else [] %}
+      <div class="stack stack--tight" id="fu-log"><h3>Follow-up log ({{ _notes|length }})</h3>
+        {% for n in _notes %}
+          <div class="fu-log__entry" id="fu-note-{{ n.id }}" data-how="{{ n.how }}">
+            <div><strong>{{ n.happened_on.strftime("%d %b %Y") }}</strong> · <span class="chip chip--channel">{{ n.how_label }}</span>{% if n.contact_name %} · {{ n.contact_name }}{% endif %}
+              {% if n.reminder_on %} · <span class="muted">reminder {{ n.reminder_on.strftime("%d %b") }}</span>{% endif %}</div>
+            <div>{{ n.notes }}</div>
+            <details class="muted"><summary>As typed{% if n.structured_by == "fallback" %} (not structured){% endif %} · {{ n.actor }}</summary><p>{{ n.raw_text }}</p></details>
+          </div>
+        {% else %}
+          <p class="muted" id="fu-log-empty">No follow-ups logged yet.</p>
+        {% endfor %}
+      </div>
+      {% if open_fus %}<h3>Scheduled follow-ups</h3>{% endif %}
+    {% endif %}
     {% if can_act and prospect_id is defined and prospect_id and (draft_info or {}) %}
       {% from "outreach/_followup_drafts.html" import draft_due_form %}
       {{ draft_due_form(draft_due_ready|default(0), base, prospect_id, id="draft-due-prospect-form") }}

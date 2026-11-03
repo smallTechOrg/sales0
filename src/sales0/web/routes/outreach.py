@@ -684,6 +684,30 @@ def _template_ctx(db: Session, edit_id: int | None) -> dict[str, Any]:
     }  # fmt: skip
 
 
+@router.get("/outreach/instructions", response_class=HTMLResponse)
+def instructions_page(request: Request, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)) -> HTMLResponse:
+    from sales0.services import text_settings
+
+    return _page(request, db, "outreach/instructions.html", {
+        "section": "instructions", "text": text_settings.get(db, text_settings.DRAFTING_INSTRUCTIONS),
+        "max_chars": text_settings.MAX_CHARS,
+    })
+
+
+@router.post("/outreach/instructions", response_model=None, dependencies=[Depends(require_admin)])
+def save_instructions(
+    request: Request, text: str = Form(""), db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member),
+) -> Response:
+    from sales0.services import text_settings
+
+    def act() -> str:
+        saved = text_settings.put(db, text_settings.DRAFTING_INSTRUCTIONS, text, actor=member.name)
+        db.commit()
+        return "Drafting instructions saved - every new AI draft follows them." if saved else "Drafting instructions cleared."
+
+    return _guard(request, "/outreach/instructions", act)
+
+
 @router.get("/outreach/templates", response_class=HTMLResponse)
 def templates_page(
     request: Request, edit: str | None = None, db: Session = Depends(get_db), member: TeamMember = Depends(get_acting_member)

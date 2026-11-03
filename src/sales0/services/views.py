@@ -213,6 +213,7 @@ class EnquiryCardView(_View):
     # q14 (inbox feedback A1): the existing pipeline entity this enquiry matched ("Already in pipeline: <name>")
     pipeline_name: str | None = None
     pipeline_href: str | None = None
+    company_id: int | None = None  # the company page the company name links to
     pipeline_match: str | None = None
     # q14: 'auto' = discarded by a system rule (repeat), not by the team
     discard_source: str | None = None
