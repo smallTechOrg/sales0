@@ -249,8 +249,13 @@ def get_company(db: Session, company_id: int) -> CompanyDetail:
     )
 
 
-def _filtered_companies(q: str | None, characteristic_id: int | None, offering_id: int | None = None):  # type: ignore[no-untyped-def]
+def _filtered_companies(q: str | None, characteristic_id: int | None, offering_id: int | None = None,  # type: ignore[no-untyped-def]
+                        view: str | None = None):
     stmt = select(Company)
+    if view == "archived":  # q24: closed companies (on no board) - reopen returns them to Prospects as New
+        stmt = stmt.where(Company.off_ramp.is_not(None))
+    elif view == "active":
+        stmt = stmt.where(Company.off_ramp.is_(None))
     if offering_id:
         from sales0.services.crm import company_offerings
 
@@ -278,10 +283,10 @@ def company_ids(db: Session, *, q: str | None = None, characteristic_id: int | N
 
 def list_companies(
     db: Session, *, q: str | None = None, characteristic_id: int | None = None, page: int = 1, page_size: int | None = None,
-    offering_id: int | None = None,
+    offering_id: int | None = None, view: str | None = None,
 ) -> CompanyPage:
     page, size = page_params(page, page_size)
-    stmt = _filtered_companies(q, characteristic_id, offering_id)
+    stmt = _filtered_companies(q, characteristic_id, offering_id, view)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = list(db.scalars(stmt.order_by(Company.name_key, Company.id).limit(size).offset((page - 1) * size)))
     ids = [r.id for r in rows]

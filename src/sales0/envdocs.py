@@ -143,6 +143,8 @@ HELP: dict[str, str] = {
     "password_reset_ttl_h": "Hours an admin-issued set-password link stays valid.",
     "password_min_length": "Minimum length of a user password.",
     "linkedin_session_backend": "Where NEW LinkedIn accounts keep their session: `folder` (Chrome profile under the data dir) or `db` (encrypted storage state).",
+    "worker_reply_check_minutes": "Hosted replies: Cloud Run has no background timer, so the laptop worker asks the hosted app to check every member's Gmail for replies this often (minutes; the hosted app throttles to the same interval). `0` = off (use Replies -> Check now).",
+    "auto_status": "Automatic company status: after every saved action on a company, contact or enquiry (email sent, follow-up logged, note, enquiry change, board move) one function recalculates the status from the outreach and writes a timeline entry naming the trigger. A manual override (the ... menu, a board drag) holds until the next real outreach. `false` = statuses only move by hand.",
     "followup_auto_schedule": "Schedule Follow-up 1, 2 and Final automatically on first contact. `false` (default) = nothing is pre-scheduled: the team logs follow-ups as free text and the reminders it asks for are created from it.",
     "followup_days_1": "Days after the first email before follow-up 1 is due.",
     "followup_days_2": "Days before follow-up 2.",

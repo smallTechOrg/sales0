@@ -88,6 +88,16 @@ class ClaimedTask(_Strict):
     slug: str = Field(min_length=9, max_length=200)
 
 
+class ReplyCheckResponse(_Strict):
+    """q24: the answer to the laptop worker's periodic "check replies now" call."""
+
+    ran: bool = False
+    members: int = 0
+    new_replies: int = 0
+    errors: int = 0
+    message: str = ""
+
+
 class ClaimResponse(_Strict):
     run: ClaimedRun | None = None
     reason: str | None = None  # why nothing was handed out (cool-down, cap, nothing queued)

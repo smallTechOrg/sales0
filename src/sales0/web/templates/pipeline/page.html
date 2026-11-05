@@ -45,7 +45,6 @@
             {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == params.offering %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
           </select></div>{% endif %}
         {% if params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="sort" value="priority"{% if params.sort == "priority" %} checked{% endif %}> Highest priority first</label>{% endif %}
-        {% if layout == "list" and params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="closed" value="1"{% if params.closed %} checked{% endif %}> Show closed</label>{% endif %}
         {% if characteristic_options %}
           <div class="field"><label class="field__label" for="f-characteristic">Characteristic</label>
             <select class="input" id="f-characteristic" name="characteristic"><option value="">Any</option>
@@ -68,6 +67,7 @@
     {% if params.tab == "enquiries" and research_overview is defined %}{% include "pipeline/_research_all.html" %}{% endif %}
 
     {% include "pipeline/_body.html" %}
+    {% include "pipeline/_move_dialog.html" %}
 
     {% if params.tab == "prospects" %}
       <section class="card" id="new-company" aria-labelledby="new-company-title">

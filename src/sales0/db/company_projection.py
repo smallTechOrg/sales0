@@ -26,7 +26,8 @@ from sales0.db.models import Client, Company, Enquiry, Lead, Prospect, TimelineE
 from sales0.db.models.enums_crm import COMPANY_ONLY_OFF_RAMPS, PROSPECT_STAGES
 
 _PROSPECT_RANK = {s: i for i, s in enumerate(PROSPECT_STAGES)}
-_LEAD_RANK = {"meeting_scheduled": 0, "proposal_sent": 1}
+# the open lead furthest along wins; On hold ranks lowest (any active lead beats a parked one)
+_LEAD_RANK = {"on_hold": -1, "meeting_scheduled": 0, "assessment": 1, "proposal_sent": 2, "interviews": 3}
 STAGE_NAMES = {"prospect": "Prospect", "lead": "Lead", "client": "Client"}
 # the closed_reason values that mean "they said no"; anything else (no response, sheet "Hold"...) means dormant
 NOT_INTERESTED_REASONS = frozenset({"not_interested", "lost", "enquiry_discarded"})

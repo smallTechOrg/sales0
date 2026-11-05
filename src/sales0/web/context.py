@@ -67,6 +67,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Suggestions", "/suggestions", None),
     ("Costs", "/costs", None),
     ("Schedule", "/schedule", None),
+    ("Health", "/health", None),
     ("Users", "/users", None),
     ("WhatsApp", "/whatsapp", 5),
 )

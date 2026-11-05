@@ -37,8 +37,8 @@ from sales0.services.crm.stages import stage_rank
 STAGE_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Client"}
 SUB_LABELS = {
     "new": "New", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
-    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "proposal_sent": "Proposal sent",
-    "active": "Active",
+    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "assessment": "Assessment",
+    "proposal_sent": "Proposal sent", "interviews": "Interviews", "on_hold": "On hold", "active": "Active",
 }
 OFF_RAMP_LABELS = {
     "not_interested": "Not interested", "dormant": "Dormant (no response)", "do_not_contact": "Do not contact",
@@ -264,7 +264,10 @@ def go_off_ramp(db: Session, company_id: int, off_ramp: str, *, reason: str | No
 
 
 def reopen(db: Session, company_id: int, *, actor: Actor = TEAM, is_admin: bool = False, now: datetime | None = None) -> Company:
-    """Restore a closed company to the stage it was in. Do not contact needs an admin."""
+    """Reopen a closed company: it goes back to the Prospects board as New (q24; a lost client is won back as a client).
+    Do not contact needs an admin. The reopen is a manual status, so earlier outreach does not push it forward again."""
+    from sales0.services.crm import auto_status
+
     co = company_row(db, company_id)
     stamp = now_or(now)
     off = co.off_ramp
@@ -279,20 +282,104 @@ def reopen(db: Session, company_id: int, *, actor: Actor = TEAM, is_admin: bool 
                            body=f"Reopened (was {OFF_RAMP_LABELS[off]})", data={"reopened": off}, actor=actor, occurred_at=stamp)
         company_projection.recompute(db.connection(), {company_id}, actor=actor.label, actor_member_id=actor.member_id)
         db.refresh(co)
-        return co
-    resume = co.resume_stage or "prospect"
-    if resume == "lead":
-        lost = db.scalar(select(Lead).where(Lead.closed_at.is_not(None), Lead.stage.in_(("lost", "no_response")),
-                                            (Lead.company_id == company_id) | Lead.prospect_id.in_(select(Prospect.id).where(Prospect.company_id == company_id)))
-                         .order_by(Lead.closed_at.desc(), Lead.id.desc()).limit(1))
-        sub = co.resume_sub_status if co.resume_sub_status in COMPANY_SUB_STATUSES["lead"] else "meeting_scheduled"
-        if lost is not None:
-            leads.move_stage(db, lost.id, sub, actor=actor, now=stamp)
-    else:
-        closed = [p for p in ledger_prospects(db, company_id) if p.status == "closed"]
-        for p in sorted(closed, key=lambda r: r.closed_at or r.updated_at, reverse=True)[:1]:
-            prospects.reopen(db, p.id, actor=actor, now=stamp)
+        if off == "lost_client" or co.stage == "client":
+            return co
+    _restart_as_new(db, co, actor=actor, now=stamp)
     _refresh(db, co)
+    if off not in COMPANY_ONLY_OFF_RAMPS:
+        timeline.add_event(db, subject_type="company", subject_id=company_id, kind="stage_change", company_id=company_id,
+                           body=f"Reopened (was {OFF_RAMP_LABELS.get(off, off)}): back to Prospects as New",
+                           data={"reopened": off}, actor=actor, occurred_at=stamp)
+    auto_status.set_override(db, company_id, actor=actor, now=stamp)
+    return co
+
+
+def _restart_as_new(db: Session, co: Company, *, actor: Actor, now: datetime) -> None:
+    """Make the company an open prospect at New: reopen its latest closed prospect row (back to New), or start a fresh
+    prospect row when the earlier one became a lead (that lead stays closed in the history)."""
+    rows = ledger_prospects(db, co.id)
+    live = [p for p in rows if p.status == "open"]
+    if not live and db.scalar(select(Lead.id).where(Lead.closed_at.is_(None), (Lead.company_id == co.id) | Lead.prospect_id.in_(
+            select(Prospect.id).where(Prospect.company_id == co.id))).limit(1)) is not None:
+        return  # an open lead (should not happen for a closed company): leave it on the Leads board
+    if live:
+        target = max(live, key=lambda p: p.id)
+    else:
+        closed = [p for p in rows if p.status == "closed"]
+        if closed:
+            target = max(closed, key=lambda r: (r.closed_at or r.updated_at, r.id))
+            prospects.reopen(db, target.id, actor=actor, now=now)
+        else:
+            prev = rows[-1] if rows else None
+            target = Prospect(
+                kind=prev.kind if prev else "company_enquiry", name=(prev.name if prev else co.name)[:200], company_id=co.id,
+                contact_id=prev.contact_id if prev else None, stage="new", stage_source="app", status="open", source="manual",
+                priority=prev.priority if prev else None, actor=actor.label[:80], actor_member_id=actor.member_id,
+                created_at=now, updated_at=now,
+            )
+            db.add(target)
+            db.flush()
+            timeline.add_event(db, subject_type="prospect", subject_id=target.id, kind="created", company_id=co.id,
+                               body="Reopened: a new prospect cycle starts at New.", data={"source": "reopen"}, actor=actor,
+                               occurred_at=now, prospect_id=target.id)
+    if target.stage != "new":
+        prospects.move_stage(db, target.id, "new", actor=actor, note="Reopened", now=now)
+
+
+# ---------------------------------------------------------------------------- one manual move (drag / "..." menu)
+MOVE_TARGETS: tuple[str, ...] = (
+    *(f"prospect:{s}" for s in PROSPECT_STAGES), *(f"lead:{s}" for s in COMPANY_SUB_STATUSES["lead"]), "client",
+    *(f"closed:{o}" for o in OFF_RAMPS),
+)
+
+
+def move_label(target: str) -> str:
+    kind, _, sub = target.partition(":")
+    if kind == "closed":
+        return f"Closed: {OFF_RAMP_LABELS.get(sub, sub)}"
+    if kind == "client":
+        return "Client"
+    return f"{stage_label(kind)}: {sub_label(sub)}"
+
+
+def move_to(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, why: str | None = None,
+            meeting_at: datetime | None = None, is_admin: bool = False, now: datetime | None = None) -> Company:
+    """A PERSON sets the company's status (a board drag or the "..." menu): any board column, Client, or a close reason.
+    It is a manual override: the automatic status holds until the next real outreach event."""
+    from sales0.services.crm import auto_status
+
+    if target not in MOVE_TARGETS:
+        raise invalid("stage_invalid", "Choose a valid status.")
+    co = company_row(db, company_id)
+    stamp = now_or(now)
+    note = (why or "").strip()[:300] or None
+    kind, _, sub = target.partition(":")
+    if kind == "closed":
+        return go_off_ramp(db, company_id, sub, reason=note, actor=actor, now=stamp)
+    if co.off_ramp:
+        if kind == "prospect" or co.off_ramp in COMPANY_ONLY_OFF_RAMPS:
+            reopen(db, company_id, actor=actor, is_admin=is_admin, now=stamp)
+            _refresh(db, co)
+    if kind == "client":
+        mark_client(db, company_id, actor=actor, note=note, now=stamp)
+    elif kind == "lead":
+        if co.stage == "lead" and not co.off_ramp:
+            set_lead_status(db, company_id, sub, actor=actor, meeting_at=meeting_at, outcome_note=None, now=stamp)
+            if note:
+                timeline.add_event(db, subject_type="company", subject_id=company_id, kind="note", company_id=company_id,
+                                   body=f"Moved to {sub_label(sub)}: {note}", actor=actor, occurred_at=stamp)
+        else:
+            mark_lead(db, company_id, stage=sub, meeting_at=meeting_at, actor=actor, note=note, now=stamp)
+    else:
+        if co.stage in ("lead", "client") and not co.off_ramp:
+            raise DomainError("stage_invalid", f"This company is a {stage_label(co.stage).lower()} - it cannot go back to the "
+                              "Prospects board. Close it instead (it can be reopened as a new prospect).", 409)
+        if co.stage is None:
+            ensure_ledger(db, company_id, actor=actor, now=stamp)
+            _refresh(db, co)
+        set_prospect_status(db, company_id, sub, actor=actor, note=note, now=stamp)
+    _refresh(db, co)
+    auto_status.set_override(db, company_id, actor=actor, now=stamp)
     return co
 
 
@@ -362,6 +449,13 @@ class LifeView(BaseModel):
     client_since: date | None = None
     primary_prospect_id: int | None = None
     ledger_count: int = 0
+    # q24 automatic status
+    auto_enabled: bool = True
+    override_active: bool = False
+    override_at: datetime | None = None
+    override_by: str | None = None
+    status_help: str | None = None  # what moves the current status
+    move_groups: list[tuple[str, list[tuple[str, str, str]]]] = Field(default_factory=list)  # (group, [(target, label, help)])
 
 
 def life_view(db: Session, company_id: int) -> LifeView:
@@ -380,9 +474,12 @@ def life_view(db: Session, company_id: int) -> LifeView:
         select(Prospect.id).where(Prospect.company_id == company_id))).order_by(Client.id).limit(1))
     p = primary_prospect(db, company_id)
     owner = db.get(TeamMember, co.owner_member_id) if co.owner_member_id else None
+    from sales0.services.crm import auto_status
+
     resume = None
-    if co.off_ramp in ("not_interested", "dormant") and co.resume_stage:
-        resume = f"{stage_label(co.resume_stage)} / {sub_label(co.resume_sub_status)}"
+    if co.off_ramp and co.off_ramp != "lost_client":
+        resume = "Prospects / New"
+    over = auto_status.override_active(db, co) if co.stage and not co.off_ramp else False
     return LifeView(
         company_id=co.id, name=co.name, website=co.website, linkedin_url=co.linkedin_url, city=co.city, stage=stage,
         stage_label=stage_label(stage), sub_status=co.sub_status, sub_label=sub_label(co.sub_status) if co.sub_status else None,
@@ -395,7 +492,34 @@ def life_view(db: Session, company_id: int) -> LifeView:
         lead_value_estimate=ld.value_estimate if ld else None, lead_outcome_note=ld.outcome_note if ld else None,
         client_since=client.started_on if client else None, primary_prospect_id=p.id if p else None,
         ledger_count=len(ledger_prospects(db, company_id)),
+        auto_enabled=auto_status.enabled(), override_active=over, override_at=co.status_override_at if over else None,
+        override_by=co.status_override_by if over else None,
+        status_help=auto_status.RULES_HELP.get(co.sub_status or "") if co.stage and not co.off_ramp else None,
+        move_groups=move_groups(co),
     )
+
+
+CLOSE_HELP = {
+    "not_interested": "Closed: they said no (a lead becomes Lost). It leaves every board; reopen it later from Companies -> Archived.",
+    "dormant": "Closed: no response after the follow-ups (a lead becomes No response). Reopen it later as a new prospect.",
+    "do_not_contact": "Closed: never contact again - nothing can be drafted or sent. Only an admin can reopen it.",
+    "lost_client": "Closed: a client that left us. Winning them back makes them a client again.",
+}
+
+
+def move_groups(co: Company) -> list[tuple[str, list[tuple[str, str, str]]]]:
+    """The statuses a person may pick by hand for this company (the "..." menu and the board drag), with what each means."""
+    from sales0.services.crm import auto_status
+
+    out: list[tuple[str, list[tuple[str, str, str]]]] = []
+    if co.stage in (None, "prospect") or co.off_ramp:
+        out.append(("Prospects", [(f"prospect:{s}", SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in PROSPECT_STAGES]))
+    if co.stage != "client" or co.off_ramp:
+        out.append(("Leads", [(f"lead:{s}", SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]))
+    out.append(("Client", [("client", "Client", auto_status.RULES_HELP["active"])]))
+    if not co.off_ramp and co.stage:
+        out.append(("Close", [(f"closed:{k}", OFF_RAMP_LABELS[k], CLOSE_HELP[k]) for k in OFF_RAMPS_BY_STAGE.get(co.stage, ("do_not_contact",))]))
+    return out
 
 
 # ---------------------------------------------------------------------------- people of the company
@@ -465,5 +589,5 @@ def set_owner(db: Session, company_id: int, member_id: int | None) -> Company:
 __all__ = [
     "COMPANY_STAGES", "OFF_RAMP_LABELS", "SUB_LABELS", "SYSTEM", "accept_suggestion", "active_suggestion", "add_to_pipeline",
     "dismiss_suggestion", "ensure_contactable", "ensure_ledger", "go_off_ramp", "mark_client", "mark_lead", "primary_prospect",
-    "reopen", "set_lead_status", "set_prospect_status", "suggest_lead",
+    "MOVE_TARGETS", "move_label", "move_to", "reopen", "set_lead_status", "set_prospect_status", "suggest_lead",
 ]

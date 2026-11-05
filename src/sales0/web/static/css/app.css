@@ -734,3 +734,37 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 /* Follow-up log (q23) */
 .fu-log__entry { border-left: 3px solid var(--color-border); padding-left: var(--space-2); }
 .fu-log__entry details { font-size: var(--font-size-sm); }
+
+/* ------------------------------------------------------------------ q24: boards drag & drop, move strip, status menu */
+.move-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.move-strip__label { color: var(--color-muted); font-size: 0.875rem; }
+.move-strip__zone { border: 1px dashed var(--color-border-strong); border-radius: var(--radius); padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem; color: var(--color-muted); background: var(--color-surface); min-width: 9rem; text-align: center; }
+.move-strip__zone--close { border-color: var(--color-danger); color: var(--color-danger); }
+.is-dragging .move-strip__zone, .is-dragging .board__col { outline: 2px dashed transparent; }
+.is-dragging .move-strip__zone { background: var(--color-primary-soft); color: var(--color-text); }
+.is-drop-over { outline: 2px dashed var(--color-primary) !important; outline-offset: 2px; background: var(--color-primary-soft) !important; }
+.pcard[draggable="true"] { cursor: grab; }
+.pcard--dragging { opacity: 0.5; }
+.pcard__move { margin-left: auto; }
+.has-tip { cursor: help; text-decoration: underline dotted var(--color-border-strong); text-underline-offset: 3px; }
+.move-dialog { max-width: 32rem; }
+.move-help, .status-rules { background: var(--color-primary-soft); border-radius: var(--radius); padding: var(--space-2) var(--space-3); color: var(--color-text); }
+.move-help:empty { display: none; }
+.menu { position: relative; display: inline-block; margin-left: auto; }
+.menu > summary { list-style: none; cursor: pointer; font-weight: 700; letter-spacing: 0.1em; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu__panel { position: absolute; right: 0; top: calc(100% + var(--space-2)); z-index: 20; width: min(26rem, 90vw); padding: var(--space-4);
+  box-shadow: 0 12px 40px rgba(16, 24, 40, 0.18); display: flex; flex-direction: column; gap: var(--space-3); }
+.menu__title { font-size: 1rem; margin: 0; }
+.archived-row td { color: var(--color-muted); }
+.health-badge--ok { background: var(--color-ok-soft); color: var(--color-ok); }
+.health-badge--warn { background: var(--color-warn-soft); color: var(--color-warn); }
+.health-badge--error { background: var(--color-danger-soft); color: var(--color-danger); }
+.health-badge--off { color: var(--color-muted); }
+.health-details { margin: var(--space-2) 0 0; padding-left: 1.25rem; color: var(--color-muted); font-size: 0.875rem; }
+.funnel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.funnel__label { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
+.funnel__bar { height: 0.75rem; background: var(--color-bg); border-radius: 999px; overflow: hidden; }
+.funnel__bar span { display: block; height: 100%; background: var(--color-primary); }
+.field[hidden], [data-move-meeting][hidden] { display: none !important; }

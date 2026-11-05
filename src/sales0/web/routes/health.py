@@ -1,12 +1,14 @@
-"""GET /api/health — liveness + DB revision + configuration presence (never secret values)."""
+"""GET /api/health — liveness + DB revision + configuration presence (never secret values); GET /health — the Health
+page (every moving part and what to do when one is not working; behind the login)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy.orm import Session
 
 from sales0.config import get_settings
-from sales0.db.engine import get_engine
+from sales0.db.engine import get_db, get_engine
 from sales0.db.migrate_check import current_revision
 from sales0.logging import get_logger
 from sales0.web.envelope import err, ok
@@ -35,3 +37,11 @@ def health(request: Request) -> JSONResponse:
             "api_key_present": settings.api_key_present,
         }
     )
+
+
+@router.get("/health", response_class=HTMLResponse)
+def health_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    from sales0.services import health_report
+    from sales0.web.context import render_page
+
+    return render_page(request, db, "health/page.html", {"checks": health_report.report(db)})

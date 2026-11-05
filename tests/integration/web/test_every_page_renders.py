@@ -51,6 +51,8 @@ CRM_PAGES = {
     "/criteria": 'id="exclude-list"',  # inbox feedback A3
     "/import": 'id="csv-form"',
     "/metrics": 'id="weekly-table"',
+    "/metrics/analytics": 'id="an-funnel"',
+    "/health": 'id="health-table"',
     "/metrics?weeks=4&mode=sheet": 'id="secondary-table"',
     "/users": 'id="users-table"',  # Phase 5 accounts (open mode in this fixture: the acting admin may open it)
     "/account": "My account",
@@ -62,7 +64,8 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/setup/offerings", "/outreach/instructions", "/keywords", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker",
+                    "/health", "/metrics/analytics"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 

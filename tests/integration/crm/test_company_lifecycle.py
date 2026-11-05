@@ -104,7 +104,7 @@ def test_mark_client_directly_for_a_company_without_enquiry(db) -> None:
     assert co.stage == "client"
 
 
-def test_off_ramps_and_reopen_restore_the_stage(db) -> None:
+def test_off_ramps_and_reopen_return_to_prospects_as_new(db) -> None:
     _, v, co = _accepted(db)
     prospects.move_stage(db, v.id, "follow_up_2")
     lifecycle.go_off_ramp(db, co.id, "dormant", actor=Actor("Ana", None))
@@ -112,14 +112,15 @@ def test_off_ramps_and_reopen_restore_the_stage(db) -> None:
     assert (co.off_ramp, co.stage, co.sub_status, co.resume_sub_status) == ("dormant", "prospect", "follow_up_2", "follow_up_2")
     lifecycle.reopen(db, co.id)
     db.refresh(co)
-    assert (co.off_ramp, co.stage, co.sub_status) == (None, "prospect", "follow_up_2")
+    assert (co.off_ramp, co.stage, co.sub_status) == (None, "prospect", "new")  # q24: reopen = Prospects / New
+    assert co.status_override_at is not None  # earlier outreach does not push it forward again
     lifecycle.mark_lead(db, co.id)
     lifecycle.go_off_ramp(db, co.id, "not_interested", reason="budget")
     db.refresh(co)
     assert (co.off_ramp, co.stage) == ("not_interested", "lead")
     lifecycle.reopen(db, co.id)
     db.refresh(co)
-    assert (co.off_ramp, co.stage) == (None, "lead")
+    assert (co.off_ramp, co.stage, co.sub_status) == (None, "prospect", "new")  # a lost lead restarts as a new prospect
 
 
 def test_do_not_contact_blocks_outreach_and_needs_an_admin_to_reopen(db) -> None:

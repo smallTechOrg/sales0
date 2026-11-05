@@ -83,6 +83,8 @@ TEST_ENV = {
     "SALES0_SEED_SUGGESTED_KEYWORDS": "false",
     # q23: the legacy auto follow-ups stay covered by the existing suites; the follow-up log tests switch it off
     "SALES0_FOLLOWUP_AUTO_SCHEDULE": "true",
+    # q24: the legacy stage tests move stages by hand; the automatic-status tests switch it on
+    "SALES0_AUTO_STATUS": "false",
     "SALES0_TRIAGE_CONCURRENCY": "4",
     # Phase 5: no background reply poller in tests; they call poll_all()/run_cycle() explicitly.
     "SALES0_REPLY_POLL_MINUTES": "0",

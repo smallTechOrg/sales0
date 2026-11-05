@@ -42,7 +42,9 @@ def _pending(post: str = "P1", poster_type: str = "buyer_company", **extra: obje
 def _prospect(post: str = "P1", **extra: object) -> int:
     eid = _pending(post, review_status="accepted", **extra)
     with session_scope() as db:
-        return prospects.ensure_for_enquiry(db, eid).id
+        pid = prospects.ensure_for_enquiry(db, eid).id
+        prospects.move_stage(db, pid, "contacted")  # q24: a New inbound company sits on the Enquiries board
+        return pid
 
 
 # ---------------------------------------------------------------------------- B1

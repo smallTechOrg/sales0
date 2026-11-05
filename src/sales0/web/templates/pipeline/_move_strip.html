@@ -1,0 +1,12 @@
+{# Needs: params, move_help. Drop zones for moves to ANOTHER board (and closing): drag a card here. #}
+{% set zones = {
+  "enquiries": [("prospect:contacted", "Contacted → Prospects"), ("lead:meeting_scheduled", "Meeting scheduled → Leads"), ("client", "Won → Client"), ("closed:not_interested", "Close…")],
+  "prospects": [("lead:meeting_scheduled", "Meeting scheduled → Leads"), ("client", "Won → Client"), ("closed:not_interested", "Close…")],
+  "leads": [("client", "Won → Client"), ("closed:not_interested", "Lost / no response → Close…")],
+}[params.tab] %}
+<div class="move-strip" id="move-strip" aria-label="Move to another board">
+  <span class="move-strip__label">Drag a card here to move it:</span>
+  {% for target, label in zones %}
+    <div class="move-strip__zone{% if target.startswith('closed') %} move-strip__zone--close{% endif %}" data-drop-target="{{ target }}" title="{{ move_help.get(target, '') }}">{{ label }}</div>
+  {% endfor %}
+</div>

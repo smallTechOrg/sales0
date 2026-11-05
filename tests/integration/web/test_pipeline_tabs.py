@@ -1,19 +1,18 @@
-"""The Pipeline page tabs: Enquiries (default) | Prospects | Leads | Clients, their counts, columns and lanes, the old
-URLs (``?view=companies``, ``?stage=``, ``/leads`` ...) and the one enquiry status control on the Enquiries board."""
+"""The Pipeline page tabs: Enquiries (default) | Prospects | Leads | Clients, their counts and columns (q24: a company is
+only ever on ONE board, closed companies on none), the old URLs (``?view=companies``, ``?stage=``, ``/leads`` ...) and
+the one enquiry status control on the Enquiries board."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import select
 
-from sales0.clock import utcnow
 from sales0.db.engine import session_scope
-from sales0.db.models import Client, Enquiry, Lead, Prospect
+from sales0.db.models import Enquiry, Prospect
 from sales0.llm import set_llm_client
 from sales0.services.crm import deals as deals_service
 from sales0.services.crm import prospects
@@ -68,8 +67,9 @@ def test_default_tab_is_enquiries_with_four_tabs_and_counts(web: TestClient) -> 
     assert re.search(r'id="tab-enquiries"[^>]*aria-current="page"', main)
     labels = re.findall(r'id="tab-(\w+)"', main)
     assert labels == ["enquiries", "prospects", "leads", "clients"]
-    assert (_count(main, "enquiries"), _count(main, "prospects"), _count(main, "leads"), _count(main, "clients")) == (3, 2, 1, 0)
-    assert 'id="pipeline-help"' in main and "accepted enquiry" in main
+    # q24: the lead's enquiry is not on the Enquiries board any more (one board per company)
+    assert (_count(main, "enquiries"), _count(main, "prospects"), _count(main, "leads"), _count(main, "clients")) == (2, 0, 1, 0)
+    assert 'id="pipeline-help"' in main and "nobody has reached out" in main
     assert "Inbox" in main  # to-review items are not here, the help says where they stay
 
 
@@ -109,32 +109,22 @@ def test_prospects_tab_columns_hold_only_prospects(web: TestClient) -> None:
     web.post(f"/pipeline/prospects/{pid_closed}/close", data={"reason": "not_interested"}, headers=HX)
     html = web.get("/pipeline?tab=prospects").text
     keys = re.findall(r'<section class="board__col[^"]*"[^>]*data-stage="(\w+)"', html)
-    assert keys == ["new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "became_lead"]
-    assert 'data-stage="client"' not in html.replace(_col(html, "became_lead"), "")
-    assert f'id="company-{cid_a}"' in _col(html, "new") and f'id="company-{cid_b}"' in _col(html, "follow_up_1")
-    for key in ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up"):
-        assert f'id="company-{cid_lead}"' not in _col(html, key) and f'id="company-{cid_client}"' not in _col(html, key)
-    assert f'id="company-{cid_client}"' not in html  # a client is nowhere on the Prospects tab
-    # the Became-lead lane (recent) holds the lead and links to the Leads tab
-    lane = _col(html, "became_lead")
-    assert f'id="company-{cid_lead}"' in lane and 'href="/pipeline?tab=leads&amp;q=Globex+Insurance"' in lane.replace("&q=", "&amp;q=")
-    # off-ramp prospects stay in the collapsed Closed lane
-    closed = html.split('id="closed-lane"', 1)[1]
-    assert f'id="company-{cid_closed}"' in closed and f'id="company-{cid_closed}"' not in html.split('id="closed-lane"', 1)[0]
+    assert keys == ["new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up"]  # no Became lead / Closed lanes
+    assert f'id="company-{cid_b}"' in _col(html, "follow_up_1")
+    for cid in (cid_a, cid_lead, cid_client, cid_closed):  # New inbound -> Enquiries; lead, client, closed elsewhere
+        assert f'id="company-{cid}"' not in html
+    assert 'id="closed-lane"' not in html and "Companies → Archived" in html
+    assert 'id="enquiry-' in web.get("/pipeline?tab=enquiries").text
 
 
-def test_became_lead_lane_is_recent_only(web: TestClient) -> None:
+def test_a_lead_is_never_on_the_prospects_board(web: TestClient) -> None:
     _, _, cid = _company("Globex Insurance", "P1")
     web.post(f"/companies/{cid}/mark-lead")
-    assert f'id="company-{cid}"' in _col(web.get("/pipeline?tab=prospects").text, "became_lead")
-    with session_scope() as db:
-        db.execute(update(Lead).values(created_at=utcnow() - timedelta(days=45)))
-    html = web.get("/pipeline?tab=prospects").text
-    assert f'id="company-{cid}"' not in html  # older than 30 days: not on the Prospects tab at all
-    assert f'id="company-{cid}"' in web.get("/pipeline?tab=leads").text  # still a lead
+    assert f'id="company-{cid}"' not in web.get("/pipeline?tab=prospects").text
+    assert f'id="company-{cid}"' in web.get("/pipeline?tab=leads").text
 
 
-def test_leads_tab_columns_won_lane_and_clients_list(web: TestClient) -> None:
+def test_leads_tab_columns_and_clients_list(web: TestClient) -> None:
     _, _, cid_m = _company("Meet Co", "P1")
     _, _, cid_p = _company("Proposal Co", "P2")
     eid_w, _, cid_w = _company("Won Co", "P3")
@@ -146,16 +136,10 @@ def test_leads_tab_columns_won_lane_and_clients_list(web: TestClient) -> None:
     assert web.post(f"/pipeline/enquiries/{eid_w}/status", data={"status": "won"}, follow_redirects=False).status_code == 303
     html = web.get("/pipeline?tab=leads").text
     keys = re.findall(r'<section class="board__col[^"]*"[^>]*data-stage="(\w+)"', html)
-    assert keys == ["meeting_scheduled", "proposal_sent", "won"]
+    assert keys == ["meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold"]
     assert f'id="company-{cid_m}"' in _col(html, "meeting_scheduled") and f'id="company-{cid_p}"' in _col(html, "proposal_sent")
-    won = _col(html, "won")
-    assert f'id="company-{cid_w}"' in won and "tab=clients" in won
-    assert f'id="company-{cid_prospect}"' not in html
-    assert _count(html, "leads") == 2 and _count(html, "clients") == 1 and _count(html, "prospects") == 1
-    # recent only
-    with session_scope() as db:
-        db.execute(update(Client).values(created_at=utcnow() - timedelta(days=60)))
-    assert f'id="company-{cid_w}"' not in web.get("/pipeline?tab=leads").text
+    assert f'id="company-{cid_w}"' not in html and f'id="company-{cid_prospect}"' not in html  # won -> Clients only
+    assert _count(html, "leads") == 2 and _count(html, "clients") == 1 and _count(html, "enquiries") == 1
     clients = web.get("/pipeline?tab=clients").text
     assert 'id="pipeline-list"' in clients and f'id="company-{cid_w}"' in clients and "Next follow-up" in clients
     assert f'id="company-{cid_m}"' not in clients
@@ -164,6 +148,7 @@ def test_leads_tab_columns_won_lane_and_clients_list(web: TestClient) -> None:
 def test_filters_work_on_every_tab(web: TestClient) -> None:
     _, _, cid_a = _company("Acme Logistics", "P1")
     _, _, cid_b = _company("Beta Skills", "P2")
+    _company("Acme Two", "P3")
     web.post(f"/companies/{cid_a}/mark-lead")
     web.post(f"/companies/{cid_b}/mark-lead")
     leads = web.get("/pipeline?tab=leads&q=beta", headers=HX).text
@@ -171,31 +156,31 @@ def test_filters_work_on_every_tab(web: TestClient) -> None:
     clients = web.get("/pipeline?tab=clients&priority=high")
     assert clients.status_code == 200
     enq = web.get("/pipeline?tab=enquiries&q=acme").text
-    assert "Acme Logistics" in enq and "Beta Skills" not in enq
+    assert "Acme Two" in enq and "Beta Skills" not in enq
 
 
-def test_enquiries_tab_groups_by_status_with_a_collapsed_lane_and_one_status_control(web: TestClient) -> None:
+def test_enquiries_board_holds_uncontacted_inbound_with_one_status_control(web: TestClient) -> None:
     eid, _, cid = _company("Acme Logistics", "P1")
     other = make_enquiry("P8", **{**triaged("genuine", "Buyer", summary="Second need"), "review_status": "accepted", "company": "Acme Logistics"})
     with session_scope() as db:
         prospects.ensure_for_enquiry(db, other)
     html = web.get("/pipeline").text
     keys = re.findall(r'<section class="board__col"[^>]*data-status="(\w+)"', html)
-    assert keys[:8] == ["open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "proposal_sent", "won"]
-    assert "enquiry-closed-lane" not in html and 'id="enquiry-' + str(eid) + '"' in _col(html, "open")
-    # every enquiry card offers the same statuses, plain labels, nothing disabled or "(auto)"
+    assert keys == ["open"]  # only the statuses that hold cards (all inbound here is still Open)
+    assert 'id="enquiry-' + str(eid) + '"' in _col(html, "open") and 'id="move-strip"' in html
     card = re.search(rf'<article class="pcard" id="enquiry-{eid}".*?</article>', html, re.S).group(0)  # type: ignore[union-attr]
     other_card = re.search(rf'<article class="pcard" id="enquiry-{other}".*?</article>', html, re.S).group(0)  # type: ignore[union-attr]
     opts = [re.findall(r'<option value="(\w*)"', c) for c in (card, other_card)]
     assert opts[0] == opts[1] == list(deals_service.SETTABLE)
-    assert "(auto)" not in card and "disabled" not in card and ">Open<" in card
+    assert "(auto)" not in card and "disabled" not in card and ">Open<" in card and 'draggable="true"' in card
+    # an enquiry status of Follow-up 1 moves the company forward: it leaves the Enquiries board for Prospects
     r = web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "follow_up_1", "next": "/pipeline?tab=enquiries"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/pipeline?tab=enquiries"
     with session_scope() as db:
         assert db.scalar(select(Prospect.stage)) == "follow_up_1"
-    prospects_html = web.get("/pipeline?tab=prospects").text
-    assert f'id="company-{cid}"' in _col(prospects_html, "follow_up_1")
-    # the second enquiry of the same new prospect moves it forward too, never back
+    assert f'id="company-{cid}"' in _col(web.get("/pipeline?tab=prospects").text, "follow_up_1")
+    assert f'id="enquiry-{eid}"' not in web.get("/pipeline").text and f'id="enquiry-{other}"' not in web.get("/pipeline").text
+    # the second enquiry of the same prospect moves it forward too, never back
     ok = web.post(f"/pipeline/enquiries/{other}/status", data={"status": "final_follow_up", "next": "/pipeline"}, follow_redirects=True)
     assert "flash--error" not in ok.text
     with session_scope() as db:
@@ -203,12 +188,6 @@ def test_enquiries_tab_groups_by_status_with_a_collapsed_lane_and_one_status_con
     web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "contacted", "next": "/pipeline"})
     with session_scope() as db:
         assert db.scalar(select(Prospect.stage)) == "final_follow_up" and db.scalar(select(Enquiry.deal_status).where(Enquiry.id == eid)) == "contacted"
-    # parked statuses live in a collapsed lane
-    assert web.post(f"/pipeline/enquiries/{other}/status", data={"status": "on_hold", "next": "/pipeline"}).status_code in (200, 303)
-    html = web.get("/pipeline").text
-    assert 'id="enquiry-closed-lane"' in html and f'id="enquiry-{other}"' in html.split('id="enquiry-closed-lane"', 1)[1]
-    with session_scope() as db:
-        assert db.scalar(select(Enquiry.deal_status).where(Enquiry.id == other)) == "on_hold"
 
 
 def test_company_cards_show_the_people_main_contact_first(web: TestClient) -> None:

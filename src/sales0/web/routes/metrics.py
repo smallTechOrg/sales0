@@ -138,3 +138,36 @@ def metrics_target(
             raise
         return _back(request, back, exc.message, "error")
     return _back(request, back, "Target updated." if value.strip() else "Target override removed; the sheet value applies again.")
+
+
+# ---------------------------------------------------------------------- q24 analytics
+@router.get("/metrics/analytics", response_class=HTMLResponse)
+def analytics_page(request: Request, db: Session = Depends(get_db), period: str = "90", offering: str = "") -> HTMLResponse:
+    from sales0.services import analytics
+    from sales0.services import offerings as offerings_service
+
+    oid = int(offering) if offering.isdigit() and 0 < int(offering) < 2**31 else None
+    rep = analytics.report(db, period=period, offering_id=oid)
+    insights, at, by = analytics.stored_insights(db)
+    flash = pop_flash(request)
+    response = render_page(request, db, "metrics/analytics.html", {
+        "r": rep, "periods": analytics.PERIODS, "off_labels": analytics.OFF_LABELS, "insights": insights, "insights_at": at,
+        "insights_by": by, "offering_options": offerings_service.list_offerings(db, include_inactive=True), "flash": flash,
+        "offering": str(oid or ""),
+    })
+    if flash:
+        clear_flash(response)
+    return response
+
+
+@router.post("/metrics/analytics/insights")
+def analytics_insights(request: Request, db: Session = Depends(get_db), member=Depends(get_acting_member_optional)) -> Response:  # noqa: ANN001
+    """Ask the AI what worked and what did not (reads follow-ups, drafts, emails, replies and notes); stored for the page."""
+    from sales0.services import analytics
+
+    try:
+        analytics.generate_insights(db, actor=_actor(member))
+    except DomainError as exc:
+        db.rollback()
+        return _back(request, "/metrics/analytics", exc.message, "error")
+    return _back(request, "/metrics/analytics", "The AI read is updated.")

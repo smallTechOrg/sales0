@@ -81,7 +81,7 @@ CLOSE_REASONS: tuple[tuple[str, str], ...] = (
     ("not_interested", "Not interested"),
 )
 CLIENT_STATUSES: tuple[tuple[str, str], ...] = (("active", "Active"), ("legacy", "Legacy"))
-OPEN_LEAD_STAGES = ("meeting_scheduled", "proposal_sent")
+OPEN_LEAD_STAGES = ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold")
 CATEGORY_CHOICES: tuple[tuple[str, str], ...] = (
     ("relevant_prospect", "Relevant prospect"), ("channel_partner", "Channel partner"), ("competitor", "Competitor"),
 )
@@ -147,18 +147,33 @@ TABS = ("enquiries", "prospects", "leads", "clients")
 DEFAULT_TAB = "enquiries"
 TAB_LABELS = {"enquiries": "Enquiries", "prospects": "Prospects", "leads": "Leads", "clients": "Clients"}
 TAB_HELP = {
-    "enquiries": "What is this? Every accepted enquiry (one specific requirement) by status, with the company name on each card. "
-                 "An enquiry's status is its own; the one link: setting Contacted or a Follow-up on an enquiry of a new prospect "
-                 "company moves that prospect forward to the same stage (never backwards). Enquiries still to review stay in the Inbox.",
-    "prospects": "What is this? Companies we are working towards a first conversation with: New, Contacted, Follow-up 1, "
-                 "Follow-up 2, Final follow-up. When a person confirms a meeting or proposal the company becomes a lead "
-                 "(see Became lead, last 30 days) and moves to the Leads tab.",
-    "leads": "What is this? Companies that are in conversation: a meeting is scheduled or a proposal has been sent. "
-             "Winning one makes it a client (see Won, last 30 days) and moves it to the Clients tab.",
+    "enquiries": "What is this? Inbound enquiries nobody has reached out on yet. The first email or logged follow-up moves "
+                 "the company to Prospects / Contacted. A company is only ever on one board. Enquiries still to review stay in the Inbox.",
+    "prospects": "What is this? Companies in the outreach cadence: New (cold-list companies), Contacted, Follow-up 1, "
+                 "Follow-up 2, Final follow-up. The status follows the outreach automatically; a logged meeting (or a drag "
+                 "onto Meeting scheduled) makes the company a lead and moves it to the Leads board.",
+    "leads": "What is this? Companies in conversation: Meeting scheduled, Assessment, Proposal sent, Interviews, On hold. "
+             "Won moves the company to Clients; Lost or No response closes it (Companies → Archived).",
     "clients": "What is this? Companies that have bought from us, with their characteristics, priority and next follow-up. "
                "A new enquiry from a client is an upsell, not a new prospect.",
 }
 TAB_OF_STAGE = {"prospect": "prospects", "lead": "leads", "client": "clients", "closed": "prospects"}
+
+
+def _move_ctx() -> dict[str, Any]:
+    """The move popup's statuses (all of them, grouped) and what each one means (column / badge tooltips)."""
+    from sales0.services.crm import auto_status
+
+    groups: list[tuple[str, list[tuple[str, str, str]]]] = [
+        ("Prospects", [(f"prospect:{s}", lifecycle_service.SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in COMPANY_SUB_STATUSES["prospect"]]),
+        ("Leads", [(f"lead:{s}", lifecycle_service.SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]),
+        ("Client", [("client", "Client (won)", auto_status.RULES_HELP["active"])]),
+        ("Close", [(f"closed:{k}", label, lifecycle_service.CLOSE_HELP[k]) for k, label in (
+            ("not_interested", "Not interested / Lost"), ("dormant", "No response (dormant)"), ("do_not_contact", "Do not contact"))]),
+    ]
+    help_map = {t: h for _g, items in groups for t, _l, h in items}
+    help_map["client"] = auto_status.RULES_HELP["active"]
+    return {"move_targets": groups, "move_help": help_map}
 STAGE_OF_TAB = {"prospects": "prospect", "leads": "lead", "clients": "client"}
 
 
@@ -217,7 +232,7 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     tab = params["tab"]
     ctx: dict[str, Any] = {"params": params, "characteristic_options": _trait_options(db), "priority_choices": priority_service.FILTER_CHOICES,
                            "category_choices": CATEGORY_CHOICES, "tab_help": TAB_HELP[tab],
-                           "offering_options": _offering_options(db)}
+                           "offering_options": _offering_options(db), **_move_ctx()}
     if tab == "enquiries":
         ctx.update(layout="board", enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
@@ -274,6 +289,31 @@ def _board_refresh(request: Request, db: Session, next_url: str, message: str) -
     ctx = _pipeline_ctx(db, raw)
     parts = [("pipeline/_body.html", ctx), ("pipeline/_due.html", {"due": followups_service.list_due(db)})]
     return _fragments(request, parts, message)
+
+
+@router.post("/pipeline/move", response_model=None)
+def board_move(
+    request: Request, company_id: str = Form(""), target: str = Form(""), why: str = Form(""), meeting_at: str = Form(""),
+    next: str = Form(""), db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """A board drag (or the card's Move… button): the company goes to ``target`` with the move popup's answers. A manual
+    status: the automatic status holds until the next real outreach. The board is re-rendered in place."""
+    back = _safe_next(next) or "/pipeline"
+    cid = int(company_id) if company_id.isdigit() and 0 < int(company_id) < 2**31 else None
+
+    def run() -> Response:
+        if cid is None:
+            raise DomainError("bad_request", "Pick a company to move.", 400)
+        lifecycle_service.move_to(db, cid, target, actor=actor_of(member), why=opt_str(why), meeting_at=parse_local_datetime(meeting_at),
+                                  is_admin=bool(member is not None and member.role == "admin"))
+        text = f"{lifecycle_service.company_row(db, cid).name}: {lifecycle_service.move_label(target)}."
+        if wants_json(request):
+            return envelope_ok({"message": text})
+        if is_htmx(request):
+            return _board_refresh(request, db, back, text)
+        return flash_redirect(back, text)
+
+    return crm_guard(request, back, run, db)
 
 
 # ---------------------------------------------------------------------- prospect detail
