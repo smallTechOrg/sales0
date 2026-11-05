@@ -767,3 +767,4 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .funnel__label { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
 .funnel__bar { height: 0.75rem; background: var(--color-bg); border-radius: 999px; overflow: hidden; }
 .funnel__bar span { display: block; height: 100%; background: var(--color-primary); }
+.field[hidden], [data-move-meeting][hidden] { display: none !important; }
