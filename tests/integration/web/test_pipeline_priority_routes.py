@@ -31,7 +31,9 @@ def _prospect(post: str, company: str, prio: str) -> int:
                   author_profile_url=f"https://www.linkedin.com/in/person-{post.lower()}/")
     eid = make_enquiry(post, **fields)
     with session_scope() as db:
-        return prospects.ensure_for_enquiry(db, eid).id
+        pid = prospects.ensure_for_enquiry(db, eid).id
+        prospects.move_stage(db, pid, "contacted")  # q24: a New inbound company sits on the Enquiries board
+        return pid
 
 
 def test_priority_chips_filters_and_inline_edit(web: TestClient) -> None:
@@ -42,8 +44,8 @@ def test_priority_chips_filters_and_inline_edit(web: TestClient) -> None:
     assert 'id="f-priority"' in page
     only_high = web.get("/pipeline?tab=prospects&priority=high").text
     assert "Hi Co" in only_high and "Lo Co" not in only_high
-    assert "Lo Co" in web.get("/pipeline?tab=prospects&priority=low&layout=list&sub=new").text
-    assert "Hi Co" not in web.get("/pipeline?tab=prospects&priority=low&layout=list&sub=new").text
+    assert "Lo Co" in web.get("/pipeline?tab=prospects&priority=low&layout=list&sub=contacted").text
+    assert "Hi Co" not in web.get("/pipeline?tab=prospects&priority=low&layout=list&sub=contacted").text
     order = web.get("/pipeline?tab=prospects&layout=list&sort=priority").text
     assert order.index("Hi Co") < order.index("Lo Co")
     # prospect page: chip + editable select

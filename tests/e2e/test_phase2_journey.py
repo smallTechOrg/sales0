@@ -162,9 +162,9 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     page.locator(f"#enquiry-{first}").get_by_role("button", name="Accept", exact=True).click()
     expect(page.locator(f"#enquiry-{first}")).to_have_count(0)
     settled(page)
-    page.goto(f"{env.base}/pipeline?tab=prospects")
+    page.goto(f"{env.base}/pipeline?tab=enquiries")  # q24: nobody has reached out yet -> the Enquiries board
     expect(page.locator("#pipeline-tabs .tabs__tab--active .count-pill")).to_have_text("1")
-    expect(page.locator('.pcard[data-stage="prospect"]')).to_have_count(1)
+    expect(page.locator("#enquiry-board .pcard")).to_have_count(1)
 
     # ---- Accept #2 (same author): still ONE prospect, both enquiries linked (idempotent)
     page.goto(f"{env.base}/inbox")
@@ -183,8 +183,8 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
         prospect_name = prospects[0].name
         company_pk = prospects[0].company_id
         company_name = db.scalar(select(Company.name).where(Company.id == company_pk))
-    page.goto(f"{env.base}/pipeline?tab=prospects")
-    expect(page.locator(".pcard")).to_have_count(1)
+    page.goto(f"{env.base}/pipeline?tab=enquiries")
+    expect(page.locator("#enquiry-board .pcard")).to_have_count(2)
     page.locator(f'a[href="/companies/{company_pk}"]').first.click()
     expect(page.locator("#company-title")).to_have_text(company_name)
     expect(page.locator("#stage-badge")).to_have_text("Prospect")
@@ -285,10 +285,15 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
     assert "lead_created" in set(timeline_kinds(page))
 
     # ---- Proposal sent (date recorded on the origin enquiry) -> an enquiry marked Won -> Client
-    page.select_option("#lead-stage", label="Proposal sent")
-    page.fill("#lead-value", "250000")
-    page.get_by_role("button", name="Update lead").click()
+    page.locator("#status-menu summary").click()
+    page.select_option("#override-target", "lead:proposal_sent")
+    page.locator("#btn-set-status").click()
+    page.locator('#confirm-dialog [value="confirm"]').click()
     expect(page.locator("#sub-status-badge")).to_have_text("Proposal sent")
+    page.locator("#lead-details summary").click()
+    page.fill("#lead-value", "250000")
+    page.get_by_role("button", name="Save lead details").click()
+    expect(page.locator("#lead-value")).to_have_value("250000")
     with get_sessionmaker()() as db:
         assert db.get(Lead, lead_id).proposal_sent_on == today
         assert db.execute(select(Enquiry.date_proposal_sent).where(Enquiry.prospect_id == pid, Enquiry.date_proposal_sent.is_not(None))).first()

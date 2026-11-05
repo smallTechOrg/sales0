@@ -31,11 +31,13 @@
           <thead><tr><th scope="col"><input type="checkbox" id="research-select-all" aria-label="Select all companies on this page" data-select-all=".research-pick"></th><th scope="col">Company</th><th scope="col">Priority</th><th scope="col">Stage</th><th scope="col">Characteristics</th><th scope="col">Offerings</th><th scope="col" class="num">People</th><th scope="col" class="num">Enquiries</th><th scope="col" class="num">Open follow-ups</th></tr></thead>
           <tbody>
           {% for co in page.items %}
-            <tr id="company-{{ co.id }}">
+            <tr id="company-{{ co.id }}"{% if co.off_ramp %} class="archived-row"{% endif %}>
               <td><input type="checkbox" class="research-pick" name="company_ids" value="{{ co.id }}" aria-label="Select {{ co.name }}"></td>
               <td><a href="/companies/{{ co.id }}">{{ co.name }}</a>{% if co.website %}<div class="muted">{{ co.website }}</div>{% endif %}</td>
               <td>{% if co.priority %}<span class="chip-priority" data-priority="{{ co.priority }}">{{ co.priority|capitalize }}</span>{% endif %}</td>
-              <td>{% if co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% if co.off_ramp %} <span class="badge badge--warn">{{ co.off_ramp|replace("_", " ")|capitalize }}</span>{% endif %}{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
+              <td>{% if co.off_ramp %}<span class="badge badge--warn closed-tag has-tip" tabindex="0" title="Closed ({{ co.off_ramp|replace('_', ' ') }}): on no board. Reopen returns it to Prospects as New.">Closed</span> <span class="muted">{{ co.off_ramp|replace("_", " ")|capitalize }}</span>
+                    {% if co.off_ramp != "do_not_contact" or is_admin %}<button class="btn btn--sm" type="button" id="reopen-{{ co.id }}" hx-post="/companies/{{ co.id }}/reopen" hx-swap="none" hx-confirm="Reopen {{ co.name }}? It goes back to {{ 'Clients' if co.off_ramp == 'lost_client' else 'Prospects as New' }}.">Reopen</button>{% endif %}
+                  {% elif co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
               <td>{{ trait_chips(co.characteristics) }}</td>
               <td>{% for name in co.offerings %}<span class="chip">{{ name }}</span> {% else %}<span class="muted">-</span>{% endfor %}</td>
               <td class="num">{{ co.contacts }}</td>
@@ -46,6 +48,8 @@
           </tbody>
         </table>
         </form>
+      {% elif params.view == "archived" %}
+        <div class="empty-state empty-state--compact" id="companies-empty"><p>No closed companies{% if params.q or params.characteristic or params.offering %} match these filters{% endif %}.</p></div>
       {% elif params.q or params.characteristic or params.offering %}
         <div class="empty-state empty-state--compact" id="companies-empty"><p>No companies match these filters.</p><a class="btn" href="/companies">Clear filters</a></div>
       {% else %}

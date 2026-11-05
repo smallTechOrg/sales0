@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Client, Company, Enquiry, Lead, OutreachMessage, Prospect, TimelineEvent
-from sales0.db.models.enums_crm import LEAD_STAGES
+from sales0.db.models.enums_crm import LEAD_OPEN_STAGES, LEAD_STAGES
 from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
 from sales0.services.crm import _keys, characteristics, clients, contacts, flags, followups, priority, timeline
@@ -18,7 +18,7 @@ from sales0.services.crm.actor import TEAM, Actor
 from sales0.services.crm.stages import TERMINAL_LEAD_STAGES, stage_label
 from sales0.services.crm.views import ClientView, LeadDetail, LeadPage, LeadView
 
-OPEN_START_STAGES = ("meeting_scheduled", "proposal_sent")
+OPEN_START_STAGES = LEAD_OPEN_STAGES  # q24: a lead can start at any open stage (a board drag)
 
 
 def views_for(db: Session, rows: Iterable[Lead], *, now: datetime | None = None) -> list[LeadView]:

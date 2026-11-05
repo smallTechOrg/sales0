@@ -67,6 +67,16 @@ def claim(body: p.ClaimRequest, db: Session = Depends(get_db)) -> JSONResponse:
     return _reply(answer)
 
 
+@router.post("/replies/check", dependencies=[Depends(require_worker)])
+def check_replies() -> JSONResponse:
+    """q24: the laptop worker's periodic "check replies now" (Cloud Run has no timer). Throttled server-side to one
+    check per SALES0_WORKER_REPLY_CHECK_MINUTES, bounded by the hosted request budget."""
+    from sales0.services import replies
+
+    answer = replies.check_from_worker()
+    return _reply(p.ReplyCheckResponse(**answer))
+
+
 @router.post("/tasks/{task_id}/result", dependencies=[Depends(require_worker)])
 def task_result(task_id: int, body: p.TaskResultRequest, db: Session = Depends(get_db)) -> JSONResponse:
     from sales0.services.research import linkedin_page

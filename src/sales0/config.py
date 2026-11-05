@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     # --- Laptop worker (`sales0 worker`) ---
     worker_server_url: str | None = None  # https://<cloud-run-url>; the worker polls <url>/api/worker/*
     worker_poll_s: float = Field(15.0, gt=0)  # idle poll interval
+    # q24: hosted replies. Cloud Run has no background timer (reply_poll_minutes is forced to 0), so the laptop worker
+    # asks the hosted app to check every member's Gmail for replies every this many minutes (0 = off). Same value on
+    # both sides: the worker's cadence and the hosted app's throttle.
+    worker_reply_check_minutes: int = Field(10, ge=0, le=1440)
     worker_heartbeat_s: float = Field(30.0, gt=0)
     worker_upload_batch: int = Field(25, ge=1, le=200)  # raw posts per upload request
     worker_name: str | None = None  # label shown in the hosted UI (default: this machine's host name)
@@ -284,6 +288,9 @@ class Settings(BaseSettings):
     # The three automatic follow-ups (1, 2, final) on first contact. Off: follow-ups are a free-text log and the
     # reminders the team asks for ("call again Tuesday"), nothing is pre-scheduled.
     followup_auto_schedule: bool = False
+    # q24: the company status follows the outreach (services.crm.auto_status): recalculated after every saved action on a
+    # company, contact or enquiry; a manual override holds until the next real outreach event.
+    auto_status: bool = True
     followup_days_1: int = Field(3, ge=1)
     followup_days_2: int = Field(7, ge=1)
     followup_days_final: int = Field(14, ge=1)

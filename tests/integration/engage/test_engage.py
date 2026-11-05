@@ -122,7 +122,7 @@ def test_company_offerings_editor_and_filters(web: TestClient) -> None:
     assert "Skillmart" in only and "Beta Foods" not in only and 'id="company-offering"' in only
     board = unescape(web.get(f"/pipeline?tab=prospects&offering={prod}").text)
     assert 'id="f-offering"' in board and f'id="company-{cid}"' in board and f'id="company-{other}"' not in board
-    assert '<span class="chip chip--offering">Products</span>' in board
+    assert '>Products</span>' in board and 'chip--offering' in board
 
 
 def test_setup_offerings_section_groups_rename_merge_and_reorder(web: TestClient) -> None:

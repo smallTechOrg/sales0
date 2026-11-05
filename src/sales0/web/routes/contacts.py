@@ -128,18 +128,24 @@ def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
         "q": (raw.get("q") or "").strip()[:200],
         "characteristic": trait_raw if trait_raw.isdigit() and 0 < int(trait_raw) < 2**31 else "",
         "offering": str(raw.get("offering") or "") if str(raw.get("offering") or "").isdigit() else "",
+        "view": raw.get("view") if raw.get("view") in ("active", "archived") else "",
         "page": page_number(raw.get("page")),
     }
     page = companies_service.list_companies(
         db, q=params["q"] or None, characteristic_id=int(params["characteristic"]) if params["characteristic"] else None,
-        page=params["page"], offering_id=int(params["offering"]) if params["offering"] else None,
+        page=params["page"], offering_id=int(params["offering"]) if params["offering"] else None, view=params["view"] or None,
     )
     if wants_json(request):
         return envelope_ok(_dump(page))
     from sales0.services import offerings as offerings_service
 
+    try:
+        require_admin(request, db)
+        is_admin = True
+    except DomainError:
+        is_admin = False
     ctx = {"page": page, "params": params, "characteristic_options": characteristics_service.list_characteristics(db),
-           "offering_options": offerings_service.list_offerings(db, include_inactive=True)}
+           "offering_options": offerings_service.list_offerings(db, include_inactive=True), "is_admin": is_admin}
     if is_htmx(request) and request.headers.get("HX-Target") == "company-results":
         return HTMLResponse(render_html(request, "contacts/_companies.html", ctx))
     return _page(request, db, "contacts/companies.html", ctx)

@@ -8,7 +8,12 @@ from __future__ import annotations
 
 PROSPECT_KINDS: tuple[str, ...] = ("company_enquiry", "outreach_person")
 PROSPECT_STAGES: tuple[str, ...] = ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
-LEAD_STAGES: tuple[str, ...] = ("meeting_scheduled", "proposal_sent", "won", "lost", "no_response")
+# q24: Assessment / Interviews / On hold added. Open stages in board order (Meeting scheduled, Assessment, Proposal sent,
+# Interviews, On hold), then the terminal ones (won -> client, lost / no_response -> closed).
+LEAD_STAGES: tuple[str, ...] = (
+    "meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold", "won", "lost", "no_response",
+)
+LEAD_OPEN_STAGES: tuple[str, ...] = ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold")
 STAGE_SOURCES: tuple[str, ...] = ("app", "sheet")
 PROSPECT_STATUSES: tuple[str, ...] = ("open", "converted", "closed")
 PROSPECT_SOURCES: tuple[str, ...] = ("enquiry", "sheet", "manual", "import")
@@ -65,7 +70,7 @@ PROSPECT_PRIORITY_SOURCES: tuple[str, ...] = ("derived", "manual")
 COMPANY_STAGES: tuple[str, ...] = ("prospect", "lead", "client")
 COMPANY_SUB_STATUSES: dict[str, tuple[str, ...]] = {
     "prospect": ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up"),
-    "lead": ("meeting_scheduled", "proposal_sent"),
+    "lead": ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold"),
     "client": ("active",),
 }
 # Off-ramps: company end states a person can reopen (do_not_contact needs an admin). ``lost_client`` = churned client.
@@ -75,8 +80,8 @@ OFF_RAMPS: tuple[str, ...] = ("not_interested", "dormant", "do_not_contact", "lo
 COMPANY_ONLY_OFF_RAMPS: tuple[str, ...] = ("do_not_contact", "lost_client")
 # Enquiry deal status (after the inbox review accepted it): the Active Enquiries sheet vocabulary.
 ENQUIRY_DEAL_STATUSES: tuple[str, ...] = (
-    "open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "proposal_sent",
-    "won", "lost", "no_response", "on_hold",
+    "open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "assessment", "proposal_sent",
+    "interviews", "won", "lost", "no_response", "on_hold",
 )
 PERSON_ROLES: tuple[str, ...] = ("decision_maker", "hr_ld", "influencer", "other")
 PERSON_ROLE_LABELS: dict[str, str] = {

@@ -3,13 +3,19 @@
 {% block title %}Companies{% endblock %}
 {% block page_header %}
   <div class="page__header"><div><h1>Companies</h1>
-    <p>A company is the main record: its stage (Prospect, Lead or Client), the people, every enquiry, the outreach and the replies, all on one page. Companies are matched by name, website domain and LinkedIn company page.</p></div></div>
+    <p>A company is the main record: its stage (Prospect, Lead or Client; closed companies are Archived, on no board, and reopen as Prospects / New), the people, every enquiry, the outreach and the replies, all on one page. Companies are matched by name, website domain and LinkedIn company page.</p></div></div>
 {% endblock %}
 {% block content %}
   <div class="stack">
     {{ flash_banner(flash) }}
     <form class="filters" id="company-filters" method="get" action="/companies" role="search"
           hx-get="/companies" hx-target="#company-results" hx-push-url="true" hx-trigger="change, input changed delay:300ms from:#company-search, submit">
+      <div class="field"><label class="field__label" for="company-view">Show</label>
+        <select class="input" id="company-view" name="view">
+          <option value=""{% if not params.view %} selected{% endif %}>All companies</option>
+          <option value="active"{% if params.view == "active" %} selected{% endif %}>Active (on a board)</option>
+          <option value="archived"{% if params.view == "archived" %} selected{% endif %}>Archived (closed)</option>
+        </select></div>
       <div class="field field--grow"><label class="field__label" for="company-search">Search</label>
         <input class="input" id="company-search" type="search" name="q" value="{{ params.q }}" placeholder="Company name or website…" autocomplete="off"></div>
       {% if characteristic_options %}

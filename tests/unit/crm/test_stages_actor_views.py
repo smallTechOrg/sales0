@@ -16,7 +16,8 @@ from sales0.services.crm.timeline import KIND_LABELS
 
 def test_stage_tuples_and_labels_follow_the_lifecycle() -> None:
     assert stages.PROSPECT_STAGES == ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
-    assert stages.LEAD_STAGES == ("meeting_scheduled", "proposal_sent", "won", "lost", "no_response")
+    assert stages.LEAD_STAGES == ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold", "won", "lost",
+                                  "no_response")
     assert stages.STAGE_LABELS["follow_up_1"] == "Follow-up 1" and stages.STAGE_LABELS["meeting_scheduled"] == "Meeting scheduled"
     assert set(stages.STAGE_LABELS) == set(stages.PROSPECT_STAGES) | set(stages.LEAD_STAGES)
     assert stages.stage_label("final_follow_up") == "Final follow-up" and stages.stage_label("odd_thing") == "Odd thing"
@@ -24,7 +25,7 @@ def test_stage_tuples_and_labels_follow_the_lifecycle() -> None:
 
 def test_ranks_are_ordered_and_distinct() -> None:
     ranks = [stages.stage_rank(s) for s in (*stages.PROSPECT_STAGES, *stages.LEAD_STAGES)]
-    assert ranks == sorted(ranks) and len(set(ranks)) == 10
+    assert ranks == sorted(ranks) and len(set(ranks)) == 13
     assert stages.stage_rank("contacted") > stages.stage_rank("new")
     with pytest.raises(ValueError):
         stages.stage_rank("nope")

@@ -25,6 +25,11 @@ and scraping happens on a laptop running `sales0 worker`.
   work **inside the request** (the page waits, the button shows "Working..."):
   sheet sync (`/sync`), reply check (`/replies`), digest build (`/digest`), suggestions (`/suggestions`), purge and
   the others on `/schedule` ("Run now").
+* **Replies are the one exception (q24):** the laptop worker (`sales0 worker`) asks the hosted app to check every
+  member's Gmail every `SALES0_WORKER_REPLY_CHECK_MINUTES` (default 10) via `POST /api/worker/replies/check` (worker
+  token; throttled server-side; bounded to 90 s). No new credentials: it uses the existing worker token and each
+  member's Gmail connection. While the worker is off, the header says "Replies: waiting for the worker" and
+  `/health` says what to do; "Check now" on `/replies` still works.
 * A manual action that could outlive a request is chunked: the reply check stops starting new work after
   `SALES0_HOSTED_ACTION_BUDGET_S` (default 240 s) and shows "More conversations remain - click Check now again".
   Discovery is not a request at all: it is a queued row the worker drives with many short requests.

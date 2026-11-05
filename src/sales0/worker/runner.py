@@ -144,6 +144,8 @@ class Worker:
         self.factory = searcher_factory
         self.page_reader = page_reader
         self._send_capabilities = True  # dropped (once) when an older hosted app rejects the field
+        self._reply_check_at = 0.0  # monotonic time of the last reply check (q24)
+        self._reply_check_on = settings.worker_reply_check_minutes > 0
         self.sleep = sleep
         self.rng = rng or random.Random()
         self.stop = stop or threading.Event()
@@ -173,7 +175,35 @@ class Worker:
                 self._wait(wait)
                 continue
             if not worked:
+                self.maybe_check_replies()
                 self._wait(self.settings.worker_poll_s)
+
+    def maybe_check_replies(self, now: float | None = None) -> bool:
+        """q24: every SALES0_WORKER_REPLY_CHECK_MINUTES, while idle, ask the hosted app to check Gmail for replies
+        (Cloud Run has no timer of its own). Never raises: a failure is logged and retried next interval; an older
+        hosted app without the endpoint (404) switches the check off for this session."""
+        if not self._reply_check_on:
+            return False
+        stamp = time.monotonic() if now is None else now
+        if self._reply_check_at and stamp - self._reply_check_at < self.settings.worker_reply_check_minutes * 60:
+            return False
+        self._reply_check_at = stamp
+        try:
+            answer = self.client.check_replies()
+        except WorkerAuthError:
+            raise
+        except WorkerApiError as exc:
+            if exc.status == 404:
+                self._reply_check_on = False
+                log.info("worker_reply_check_unsupported")
+            else:
+                log.warning("worker_reply_check_failed", status=exc.status, message=exc.message[:120])
+            return False
+        except ServerUnavailable as exc:
+            log.warning("worker_reply_check_failed", error=str(exc)[:120])
+            return False
+        log.info("worker_reply_check", ran=answer.ran, members=answer.members, new_replies=answer.new_replies, errors=answer.errors)
+        return answer.ran
 
     def _wait(self, seconds: float) -> None:
         self.stop.wait(seconds)
