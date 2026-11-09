@@ -73,6 +73,13 @@ class Company(Base):
     stage_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     # {"kind": "reply"|"enquiry"|"date", "detail": "...", "at": iso, "dismissed_at": iso|null}: "suggested: Lead" hint
     lead_suggestion: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
+    # q24 automatic status (services.crm.auto_status): a person set the status by hand (the "..." menu or a board drag).
+    # ``status_override_at`` = when; the automatic status holds off until the next real outreach event after it, and from
+    # then on counts outreach from ``status_override_stage`` / ``status_override_sub`` (the status the person chose).
+    status_override_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    status_override_by: Mapped[str | None] = mapped_column(String(80))
+    status_override_stage: Mapped[str | None] = mapped_column(String(10))
+    status_override_sub: Mapped[str | None] = mapped_column(String(20))
     # plain id (no FK, see migration q17): the team member who owns the account
     owner_member_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)

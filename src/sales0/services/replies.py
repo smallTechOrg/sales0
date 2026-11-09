@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -425,10 +425,48 @@ class PollerHealth:
     detail: str
 
 
+WORKER_CHECK_BUDGET_S = 90.0
+
+
+def via_worker(settings: Settings | None = None) -> bool:
+    """Hosted: replies are checked when the laptop worker asks (no timer on Cloud Run)."""
+    settings = settings or get_settings()
+    return settings.reply_poll_minutes <= 0 and settings.worker_reply_check_minutes > 0 and bool(settings.worker_token_value)
+
+
+def check_from_worker(*, settings: Settings | None = None, now: datetime | None = None, llm: LLMClient | None = None) -> dict:
+    """The laptop worker's periodic call: poll every member unless the last check is recent (throttle)."""
+    settings = settings or get_settings()
+    minutes = settings.worker_reply_check_minutes
+    if minutes <= 0:
+        return {"ran": False, "message": "Reply checks from the worker are off (SALES0_WORKER_REPLY_CHECK_MINUTES=0)."}
+    stamp = now or datetime.now(UTC)
+    with session_scope() as db:
+        last = db.scalar(select(func.max(ReplyPollState.last_polled_at)))
+    if last is not None and stamp - ensure_utc(last) < timedelta(seconds=minutes * 60 * 0.8):
+        return {"ran": False, "message": "Checked recently."}
+    budget = min(float(settings.hosted_action_budget_s), WORKER_CHECK_BUDGET_S) if settings.is_hosted else WORKER_CHECK_BUDGET_S
+    results = poll_all(llm=llm, settings=settings, now=now, budget_s=budget)
+    return {"ran": True, "members": len(results), "new_replies": sum(r.new_replies for r in results),
+            "errors": sum(1 for r in results if r.status == "error"), "message": "Checked."}
+
+
 def poller_health(db: Session, settings: Settings | None = None, now: datetime | None = None) -> PollerHealth:
     settings = settings or get_settings()
-    if settings.reply_poll_minutes <= 0:
-        return PollerHealth(False, "off", "Replies: off", "Reply polling is off (SALES0_REPLY_POLL_MINUTES=0).")
+    every = settings.reply_poll_minutes
+    how = ""
+    if every <= 0 and via_worker(settings):
+        every, how = settings.worker_reply_check_minutes, " by the laptop worker"
+        last = db.scalar(select(func.max(ReplyPollState.last_polled_at)))
+        stamp = now or datetime.now(UTC)
+        if last is None or stamp - ensure_utc(last) > timedelta(minutes=every * 3):
+            return PollerHealth(True, "warn", "Replies: waiting for the worker",
+                                f"Replies are checked{how} every {every} min (Cloud Run has no timer of its own) and the last check "
+                                f"was {'never' if last is None else 'over ' + str(every * 3) + ' min ago'}. Start the laptop worker, "
+                                "or press Check now on the Replies page.")
+    if every <= 0:
+        return PollerHealth(False, "off", "Replies: off", "Reply polling is off (SALES0_REPLY_POLL_MINUTES=0"
+                            + (", and no SALES0_WORKER_TOKEN for the laptop worker to check them)." if settings.is_hosted else ")."))
     states = list(db.execute(select(ReplyPollState)).scalars())
     names = {m.id: m.name for m in db.execute(select(TeamMember)).scalars()}
     bad = [s for s in states if s.consecutive_failures > 0 or (s.last_error and s.last_ok_at is None)]
@@ -441,13 +479,13 @@ def poller_health(db: Session, settings: Settings | None = None, now: datetime |
         who = ", ".join(sorted(names.get(s.member_id, "?") for s in unready))
         return PollerHealth(True, "warn", f"Replies: needs attention ({who})", "; ".join(f"{names.get(s.member_id, '?')}: {s.last_error}" for s in unready)[:300])
     if not oks:
-        return PollerHealth(True, "idle", "Replies: waiting for first check", f"Checks every {settings.reply_poll_minutes} min.")
+        return PollerHealth(True, "idle", "Replies: waiting for first check", f"Checks every {every} min{how}.")
     from sales0.web.templating import ago
 
-    return PollerHealth(True, "ok", f"Replies: checked {ago(max(oks))}", f"Checks every {settings.reply_poll_minutes} min.")
+    return PollerHealth(True, "ok", f"Replies: checked {ago(max(oks))}", f"Checks every {every} min{how}.")
 
 
 __all__ = [
-    "PollResult", "PollerHealth", "ReplyView", "ensure_default_subscribers", "ingest_thread", "list_replies",
+    "PollResult", "PollerHealth", "ReplyView", "check_from_worker", "ensure_default_subscribers", "ingest_thread", "list_replies",
     "on_reply_received", "poll_all", "poll_member", "poller_health", "set_handled",
 ]  # fmt: skip

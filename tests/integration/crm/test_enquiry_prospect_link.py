@@ -35,7 +35,7 @@ def _events(db, co, subject_type: str) -> int:
 
 def test_every_enquiry_gets_the_same_statuses(db) -> None:
     assert deals.SETTABLE == ("open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled",
-                              "proposal_sent", "won", "lost", "no_response", "on_hold")
+                              "assessment", "proposal_sent", "interviews", "won", "lost", "no_response", "on_hold")
     assert [deals.deal_label(k) for k in deals.SETTABLE][:5] == ["Open", "Contacted", "Follow-up 1", "Follow-up 2", "Final follow-up"]
 
 

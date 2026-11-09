@@ -19,7 +19,7 @@ def _p(db, company, *, stage=None):
 def test_empty_summary_has_every_stage_at_zero(db) -> None:
     s = pipeline.summary(db, today=date(2026, 10, 1))
     assert s.prospects_by_stage == {"new": 0, "contacted": 0, "follow_up_1": 0, "follow_up_2": 0, "final_follow_up": 0}
-    assert s.leads_by_stage == {"meeting_scheduled": 0, "proposal_sent": 0}
+    assert s.leads_by_stage == {"meeting_scheduled": 0, "assessment": 0, "proposal_sent": 0, "interviews": 0, "on_hold": 0}
     assert s.closed_recent == {"won": 0, "lost": 0, "no_response": 0}
     assert (s.clients_active, s.clients_legacy, s.due_today, s.overdue) == (0, 0, 0, 0)
 
@@ -43,7 +43,7 @@ def test_summary_counts_everything(db) -> None:
     clients.create_legacy(db, name="Legacy B")
     s = pipeline.summary(db, today=date(2026, 10, 4), now=h.T0)
     assert s.prospects_by_stage["new"] == 1 and s.prospects_by_stage["follow_up_1"] == 1 and s.prospects_by_stage["contacted"] == 0
-    assert s.leads_by_stage == {"meeting_scheduled": 1, "proposal_sent": 1}
+    assert s.leads_by_stage == {"meeting_scheduled": 1, "assessment": 0, "proposal_sent": 1, "interviews": 0, "on_hold": 0}
     assert s.closed_recent["won"] == 1 and s.clients_active == 1 and s.clients_legacy == 2
     # B (follow_up_1 was reached by hand, which created reminders from T0): fu2 (+7d) / final (+14d) are not due on day 3; fu1 was completed
     assert s.due_today == 0 and ld.id and ld2.id
@@ -87,7 +87,7 @@ def test_board_filters_by_query_and_flag_and_ignores_closed(db) -> None:
     assert a.id
 
 
-def test_lead_board_has_five_columns_with_recent_closed_outcomes_only(db) -> None:
+def test_lead_board_has_a_column_per_stage_with_recent_closed_outcomes_only(db) -> None:
     a = _p(db, "A", stage="contacted")
     prospects.record_response(db, a.id, now=h.T0)
     ld = leads.convert(db, a.id, now=h.T0)
@@ -96,10 +96,12 @@ def test_lead_board_has_five_columns_with_recent_closed_outcomes_only(db) -> Non
     ld2 = leads.convert(db, b_.id, now=h.T0)
     leads.move_stage(db, ld2.id, "won", now=h.T0)
     board = pipeline.board(db, kind="leads", now=h.T0 + timedelta(days=1))
-    assert [c.stage for c in board.columns] == ["meeting_scheduled", "proposal_sent", "won", "lost", "no_response"]
-    assert board.columns[0].total == 1 and board.columns[0].cards[0].id == ld.id and board.columns[2].total == 1
+    assert [c.stage for c in board.columns] == ["meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold", "won", "lost",
+                                                "no_response"]
+    won = [c.stage for c in board.columns].index("won")
+    assert board.columns[0].total == 1 and board.columns[0].cards[0].id == ld.id and board.columns[won].total == 1
     old = pipeline.board(db, kind="leads", now=h.T0 + timedelta(days=200))
-    assert old.columns[2].total == 0 and old.columns[0].total == 1
+    assert old.columns[won].total == 0 and old.columns[0].total == 1
 
 
 def test_board_rejects_an_unknown_kind(db) -> None:

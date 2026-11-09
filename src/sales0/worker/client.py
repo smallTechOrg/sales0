@@ -123,6 +123,10 @@ class WorkerClient:
         exclude = None if request.capabilities else {"capabilities"}
         return self._call("POST", "/api/worker/claim", request, p.ClaimResponse, budget_s=5.0, exclude=exclude)
 
+    def check_replies(self) -> p.ReplyCheckResponse:
+        """q24: ask the hosted app to check Gmail for replies now (it throttles; one quick retry only)."""
+        return self._call("POST", "/api/worker/replies/check", None, p.ReplyCheckResponse, budget_s=10.0)
+
     def task_result(self, task_id: int, request: p.TaskResultRequest) -> p.TaskResultResponse:
         return self._call("POST", f"/api/worker/tasks/{task_id}/result", request, p.TaskResultResponse)
 

@@ -9,12 +9,19 @@
   <div class="card__body record-head">
     <div class="record-head__title">
       <h1 id="company-title">{{ life.name }}</h1>
-      <span class="badge stage-badge stage-badge--{{ life.stage or 'none' }}" id="stage-badge">{{ life.stage_label }}</span>
-      {% if life.sub_label %}<span class="badge" id="sub-status-badge">{{ life.sub_label }}</span>{% endif %}
-      {% if life.off_ramp %}<span class="badge badge--warn" id="off-ramp-badge">{{ life.off_ramp_label }}{% if life.off_ramp_reason %} · {{ life.off_ramp_reason }}{% endif %}</span>{% endif %}
+      <span class="badge stage-badge stage-badge--{{ life.stage or 'none' }} has-tip" id="stage-badge" tabindex="0"
+            title="{{ {'prospect': 'Prospect: we are working towards a first conversation (Prospects board).', 'lead': 'Lead: in conversation (Leads board).', 'client': 'Client: they bought from us (Clients).'}.get(life.stage, 'Not in the pipeline yet.') }}">{{ life.stage_label }}</span>
+      {% if life.sub_label %}<span class="badge has-tip" id="sub-status-badge" tabindex="0" title="{{ life.status_help or '' }}">{{ life.sub_label }}</span>{% endif %}
+      {% if life.off_ramp %}<span class="badge badge--warn has-tip" id="off-ramp-badge" tabindex="0" title="Closed: on no board. Reopening puts it back on Prospects as New.">Closed: {{ life.off_ramp_label }}{% if life.off_ramp_reason %} · {{ life.off_ramp_reason }}{% endif %}</span>{% endif %}
+      {% if life.stage and not life.off_ramp and life.auto_enabled %}
+        {% if life.override_active %}<span class="badge badge--info has-tip" id="status-mode" tabindex="0" title="A person set this status{% if life.override_by %} ({{ life.override_by }}){% endif %}{% if life.override_at %} on {{ life.override_at|localdt('%d %b %Y') }}{% endif %}. The automatic status holds until the next real outreach (an email, a logged follow-up).">Manual status</span>
+        {% else %}<span class="badge has-tip" id="status-mode" tabindex="0" title="The status follows the outreach automatically: it is recalculated after every saved email, follow-up, note or enquiry change, and each change is written to the timeline with what triggered it.">Automatic status</span>{% endif %}
+      {% endif %}
       {% if p %}<span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>{{ flag_badges(p.flags) }}{% endif %}
+      {% if life.stage or life.off_ramp %}{% include "pipeline/_status_menu.html" %}{% endif %}
     </div>
-    <p class="hint" id="company-help">A company is the one record for who we deal with. It is a Prospect, then a Lead (a person decides), then a Client; its people, enquiries (each one specific requirement), outreach and follow-ups all live here.</p>
+    {% if life.status_help %}<p class="hint status-rules" id="status-rules"><strong>What moves it:</strong> {{ life.status_help }}</p>{% endif %}
+    <p class="hint" id="company-help">A company is the one record for who we deal with: Enquiries → Prospects → Leads → Clients, one board at a time. Its people, enquiries, outreach and follow-ups all live here.</p>
 
     {% if life.suggestion %}
       <div class="notice" id="lead-suggestion" role="status">
@@ -71,62 +78,14 @@
         {% if life.off_ramp == "do_not_contact" and not is_admin %}
           <span class="hint" id="reopen-admin-only">Do not contact: nothing can be drafted or sent. Only an admin can reopen this company.</span>
         {% else %}
-          <form method="post" action="{{ base }}/reopen">
+          <form method="post" action="{{ base }}/reopen" hx-post="{{ base }}/reopen" hx-swap="none" hx-confirm="Reopen {{ life.name }}? It goes back to {{ life.resume_label or 'Clients' }}.">
             <button class="btn btn--primary" id="btn-reopen" type="submit">Reopen{% if life.resume_label %} (back to {{ life.resume_label }}){% endif %}</button>
           </form>
         {% endif %}
-      {% elif life.stage == "prospect" %}
-        {% if is_open %}
-        <form method="post" action="{{ base }}/status">
-          <label class="field__label" for="stage-select">Outreach status</label>
-          <select class="select" id="stage-select" name="sub_status">
-            {% for key, label in life.sub_options %}<option value="{{ key }}"{% if key == life.sub_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
-          </select>
-          <button class="btn" type="submit">Move</button>
-        </form>
+      {% elif life.stage == "prospect" and is_open %}
         {% if not p.responded_at %}
-          <form method="post" action="{{ pbase }}/response" hx-post="{{ pbase }}/response" hx-swap="none"><button class="btn" id="btn-response" type="submit">Response received</button></form>
-        {% else %}<span class="badge badge--genuine" id="responded-badge">Response recorded</span>{% endif %}
-        {% endif %}
-        <form method="post" action="{{ base }}/mark-lead" class="row">
-          <label class="visually-hidden" for="lead-meeting">Meeting time (optional)</label>
-          <input class="input input--date" id="lead-meeting" type="datetime-local" name="meeting_at" title="Meeting time (optional)">
-          <button class="btn btn--primary" id="btn-mark-lead" type="submit">Mark as lead</button>
-        </form>
-      {% elif life.stage == "lead" %}
-        <form method="post" action="{{ base }}/status" class="stack" id="lead-stage-form">
-          <div class="grid-2">
-            <div class="field"><label class="field__label" for="lead-stage">Lead status</label>
-              <select class="input" id="lead-stage" name="sub_status">
-                {% for key, label in life.sub_options %}<option value="{{ key }}"{% if key == life.sub_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
-              </select></div>
-            <div class="field"><label class="field__label" for="lead-meeting">Meeting time</label>
-              <input class="input" id="lead-meeting" type="datetime-local" name="meeting_at" value="{{ life.lead_meeting_at.strftime('%Y-%m-%dT%H:%M') if life.lead_meeting_at else '' }}"></div>
-            <div class="field"><label class="field__label" for="lead-proposal">Proposal sent on</label>
-              <input class="input" id="lead-proposal" type="date" name="proposal_sent_on" value="{{ life.lead_proposal_sent_on.isoformat() if life.lead_proposal_sent_on else '' }}"></div>
-            <div class="field"><label class="field__label" for="lead-value">Estimated value (INR)</label>
-              <input class="input" id="lead-value" type="number" min="0" step="1" name="value_estimate" value="{{ life.lead_value_estimate if life.lead_value_estimate is not none else '' }}"></div>
-          </div>
-          <div class="field"><label class="field__label" for="lead-outcome">Note</label>
-            <textarea class="input" id="lead-outcome" name="outcome_note" rows="2" maxlength="500">{{ life.lead_outcome_note or "" }}</textarea></div>
-          <div><button class="btn" type="submit">Update lead</button></div>
-        </form>
-      {% endif %}
-
-      {% if life.stage in ("prospect", "lead") and not life.off_ramp %}
-        <form method="post" action="{{ base }}/mark-client" hx-confirm="Mark {{ life.name }} as a client?">
-          <button class="btn btn--primary" id="btn-mark-client" type="submit">Mark client</button>
-        </form>
-      {% endif %}
-      {% if life.stage and not life.off_ramp %}
-        <form method="post" action="{{ base }}/off-ramp" hx-confirm="Close this company? You can reopen it later.">
-          <label class="visually-hidden" for="off-ramp-select">Close this company</label>
-          <select class="select" id="off-ramp-select" name="off_ramp">
-            {% for key, label in life.off_ramp_options %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-          </select>
-          <input class="input" name="reason" maxlength="200" placeholder="Why (optional)" aria-label="Reason">
-          <button class="btn btn--danger" id="btn-close" type="submit">Close company</button>
-        </form>
+          <form method="post" action="{{ pbase }}/response" hx-post="{{ pbase }}/response" hx-swap="none"><button class="btn" id="btn-response" type="submit" title="They answered (any channel): suggests a lead; a person decides">Response received</button></form>
+        {% else %}<span class="badge badge--genuine" id="responded-badge" title="A reply or response is recorded">Response recorded</span>{% endif %}
       {% endif %}
 
       {% if p %}
@@ -148,6 +107,25 @@
       {% endif %}
     </div>
 
+    {% if life.stage == "lead" and not life.off_ramp %}
+    <details class="inline-edit" id="lead-details">
+      <summary>Lead details (meeting, proposal, value)</summary>
+      <form method="post" action="{{ base }}/status" class="stack" id="lead-stage-form">
+        <input type="hidden" name="sub_status" value="{{ life.sub_status }}">
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="lead-meeting">Meeting time</label>
+            <input class="input" id="lead-meeting" type="datetime-local" name="meeting_at" value="{{ life.lead_meeting_at|localdt('%Y-%m-%dT%H:%M') if life.lead_meeting_at else '' }}"></div>
+          <div class="field"><label class="field__label" for="lead-proposal">Proposal sent on</label>
+            <input class="input" id="lead-proposal" type="date" name="proposal_sent_on" value="{{ life.lead_proposal_sent_on.isoformat() if life.lead_proposal_sent_on else '' }}"></div>
+          <div class="field"><label class="field__label" for="lead-value">Estimated value (INR)</label>
+            <input class="input" id="lead-value" type="number" min="0" step="1" name="value_estimate" value="{{ life.lead_value_estimate if life.lead_value_estimate is not none else '' }}"></div>
+        </div>
+        <div class="field"><label class="field__label" for="lead-outcome">Note</label>
+          <textarea class="input" id="lead-outcome" name="outcome_note" rows="2" maxlength="500">{{ life.lead_outcome_note or "" }}</textarea></div>
+        <div><button class="btn" type="submit">Save lead details</button> <span class="hint">The status itself is set from the … menu.</span></div>
+      </form>
+    </details>
+    {% endif %}
     <details class="inline-edit">
       <summary>Edit company</summary>
       <form class="stack" method="post" action="/companies/{{ life.company_id }}">

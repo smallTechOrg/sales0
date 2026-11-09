@@ -75,4 +75,4 @@ def test_a_sheet_only_stage_is_marked_sheet_so_the_app_keeps_precedence() -> Non
 
 
 def test_one_enquiry_status_list() -> None:
-    assert len(set(ENQUIRY_DEAL_STATUSES)) == 11 and ENQUIRY_DEAL_STATUSES[0] == "open"
+    assert len(set(ENQUIRY_DEAL_STATUSES)) == 13 and ENQUIRY_DEAL_STATUSES[0] == "open"

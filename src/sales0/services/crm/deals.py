@@ -33,7 +33,8 @@ from sales0.services.crm.actor import TEAM, Actor
 
 DEAL_LABELS = {
     "open": "Open", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
-    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "proposal_sent": "Proposal sent",
+    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "assessment": "Assessment",
+    "proposal_sent": "Proposal sent", "interviews": "Interviews",
     "won": "Won", "lost": "Lost", "no_response": "No response", "on_hold": "On hold",
 }
 SETTABLE = ENQUIRY_DEAL_STATUSES  # the same list for every enquiry
@@ -106,7 +107,7 @@ def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM
         data={"from": prev, "to": status, "source": src, "prospect_moved": moved},
     )
     if e.company_id is not None:
-        if status in ("meeting_scheduled", "proposal_sent"):
+        if status in ("meeting_scheduled", "assessment", "proposal_sent", "interviews"):
             lifecycle.suggest_lead(db, e.company_id, "enquiry", f"enquiry {e.id} {status}", now=stamp)
         elif status == "won":
             lifecycle.mark_client(db, e.company_id, actor=actor, note="An enquiry was marked Won", now=stamp)

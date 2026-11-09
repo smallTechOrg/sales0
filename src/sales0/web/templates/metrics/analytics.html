@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
+{% block title %}Analytics{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1 id="analytics-title">Analytics</h1>
+      <p>How companies move through the pipeline, how long each stage takes, why they close, how much outreach the team does, and an AI read of what worked. <a href="/metrics">← Weekly metrics</a></p>
+    </div>
+    <form method="get" action="/metrics/analytics" class="inline-form" id="analytics-controls">
+      <label class="field__label" for="an-period">Companies added</label>
+      <select class="select" id="an-period" name="period" data-autosubmit>
+        {% for key, days in periods.items() %}<option value="{{ key }}"{% if key == r.period %} selected{% endif %}>{{ "All time" if days is none else "Last %d days" % days }}</option>{% endfor %}
+      </select>
+      {% if offering_options %}<label class="field__label" for="an-offering">Offering</label>
+      <select class="select" id="an-offering" name="offering" data-autosubmit><option value="">All</option>
+        {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == offering %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+      </select>{% endif %}
+      <noscript><button class="btn" type="submit">Show</button></noscript>
+    </form>
+  </div>
+{% endblock %}
+{% block content %}
+<div class="stack" id="analytics">
+  {{ flash_banner(flash) }}
+  <div class="grid-2">
+    <section class="card" id="an-funnel" aria-labelledby="an-funnel-title">
+      <div class="card__header"><h2 id="an-funnel-title">Pipeline funnel</h2></div>
+      <div class="card__body">
+        {% set top = (r.funnel|first).count if r.funnel else 0 %}
+        <ol class="funnel">
+        {% for s in r.funnel %}
+          <li class="funnel__step" title="{{ s.help }}">
+            <div class="funnel__label"><strong>{{ s.label }}</strong> <span class="count-pill">{{ s.count }}</span>
+              {% if s.pct_of_previous is not none %}<span class="muted">{{ s.pct_of_previous }}% of the step before</span>{% endif %}</div>
+            <div class="funnel__bar" aria-hidden="true"><span style="width: {{ (100 * s.count / top) | round(1) if top else 0 }}%"></span></div>
+          </li>
+        {% endfor %}
+        </ol>
+        <p class="hint">Companies added in the period{% if offering %} that are a fit for the chosen offering{% endif %}. Each step counts companies that ever reached it.</p>
+      </div>
+    </section>
+    <section class="card" id="an-times" aria-labelledby="an-times-title">
+      <div class="card__header"><h2 id="an-times-title">Time in stage</h2></div>
+      <div class="card__body table-wrap">
+        <table class="table"><thead><tr><th scope="col">Step</th><th scope="col" class="num">Median days</th><th scope="col" class="num">Average</th><th scope="col" class="num">Companies</th></tr></thead>
+          <tbody>{% for t in r.times %}<tr title="{{ t.help }}"><th scope="row">{{ t.label }}</th><td class="num">{{ t.median_days if t.median_days is not none else "-" }}</td><td class="num">{{ t.mean_days if t.mean_days is not none else "-" }}</td><td class="num">{{ t.n }}</td></tr>
+          {% else %}<tr><td colspan="4" class="muted">No companies in this period.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" id="an-close" aria-labelledby="an-close-title">
+    <div class="card__header"><h2 id="an-close-title">Why companies closed</h2></div>
+    <div class="card__body grid-2">
+      <div class="table-wrap"><h3>By month</h3>
+        <table class="table"><thead><tr><th scope="col">Month</th>{% for k in r.off_keys %}<th scope="col" class="num">{{ off_labels[k] }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for month, counts in r.close_by_month %}<tr><th scope="row">{{ month }}</th>{% for k in r.off_keys %}<td class="num">{{ counts.get(k, 0) or "" }}</td>{% endfor %}</tr>
+          {% else %}<tr><td colspan="5" class="muted">No closed companies in this period.</td></tr>{% endfor %}</tbody></table>
+      </div>
+      <div class="table-wrap"><h3>By offering</h3>
+        <table class="table"><thead><tr><th scope="col">Offering</th>{% for k in r.off_keys %}<th scope="col" class="num">{{ off_labels[k] }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for name, counts in r.close_by_offering %}<tr><th scope="row">{{ name }}</th>{% for k in r.off_keys %}<td class="num">{{ counts.get(k, 0) or "" }}</td>{% endfor %}</tr>
+          {% else %}<tr><td colspan="5" class="muted">-</td></tr>{% endfor %}</tbody></table>
+        {% if r.close_reasons %}<h3>Reasons given</h3><ul>{% for text, n in r.close_reasons %}<li>{{ text }} <span class="count-pill">{{ n }}</span></li>{% endfor %}</ul>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="an-activity" aria-labelledby="an-activity-title">
+    <div class="card__header"><h2 id="an-activity-title">Outreach activity (last 12 weeks)</h2></div>
+    <div class="card__body grid-2">
+      <div class="table-wrap"><h3>Per week</h3>
+        <table class="table"><thead><tr><th scope="col">Week of</th><th scope="col" class="num" title="Emails sent from sales0">Emails</th><th scope="col" class="num" title="Logged follow-ups, calls and follow-ups marked done">Follow-ups</th><th scope="col" class="num" title="Human replies received">Replies</th><th scope="col" class="num" title="Meetings logged or booked">Meetings</th></tr></thead>
+          <tbody>{% for w in r.weeks|reverse %}<tr><th scope="row">{{ w.week_start.strftime("%d %b") }}</th><td class="num">{{ w.emails }}</td><td class="num">{{ w.follow_ups }}</td><td class="num">{{ w.replies }}</td><td class="num">{{ w.meetings }}</td></tr>{% endfor %}</tbody></table>
+      </div>
+      <div class="table-wrap"><h3>Per member</h3>
+        <table class="table"><thead><tr><th scope="col">Member</th><th scope="col" class="num">Emails</th><th scope="col" class="num" title="Drafts not sent yet">Drafts</th><th scope="col" class="num">Follow-ups</th><th scope="col" class="num">Replies</th><th scope="col" class="num">Meetings</th></tr></thead>
+          <tbody>{% for m in r.members %}<tr><th scope="row">{{ m.name }}</th><td class="num">{{ m.emails }}</td><td class="num">{{ m.drafts }}</td><td class="num">{{ m.follow_ups }}</td><td class="num">{{ m.replies }}</td><td class="num">{{ m.meetings }}</td></tr>
+          {% else %}<tr><td colspan="6" class="muted">No outreach in the last 12 weeks.</td></tr>{% endfor %}</tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="an-insights" aria-labelledby="an-insights-title">
+    <div class="card__header"><h2 id="an-insights-title">What worked, what did not (AI)</h2>
+      <form method="post" action="/metrics/analytics/insights" data-busy-submit data-busy-text="Reading the history…">
+        <button class="btn btn--primary" type="submit" id="btn-insights">{{ "Refresh the AI read" if insights else "Ask the AI" }}</button>
+      </form>
+    </div>
+    <div class="card__body">
+      <p class="hint">Reads the follow-up log, email drafts and sent emails, replies and notes of the companies that became leads or clients, the ones that closed and the ones stalling in late follow-ups (about a minute, one Sonnet call).</p>
+      {% if insights %}
+        <p class="muted" id="insights-meta">Last read {{ insights_at|ago }}{% if insights_by %} by {{ insights_by }}{% endif %}.</p>
+        <div class="grid-2">
+          <div><h3>Worked</h3><ul id="insights-worked">{% for i in insights.worked %}<li><strong>{{ i.point }}</strong>{% if i.evidence %}<br><span class="muted">{{ i.evidence }}</span>{% endif %}</li>{% endfor %}</ul></div>
+          <div><h3>Did not work</h3><ul id="insights-not">{% for i in insights.did_not_work %}<li><strong>{{ i.point }}</strong>{% if i.evidence %}<br><span class="muted">{{ i.evidence }}</span>{% endif %}</li>{% endfor %}</ul></div>
+        </div>
+        {% if insights.patterns %}<h3>Patterns</h3><ul>{% for p in insights.patterns %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+        {% if insights.next_steps %}<h3>Next steps</h3><ul>{% for p in insights.next_steps %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+      {% else %}<p id="insights-empty">No AI read yet - press Ask the AI.</p>{% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

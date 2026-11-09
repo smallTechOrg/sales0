@@ -1,26 +1,28 @@
-"""Pipeline read models for the company model, one per Pipeline tab: Enquiries (accepted enquiries grouped by deal
-status), Prospects (companies in stage prospect: New .. Final follow-up, a recent "Became lead" lane, a collapsed Closed
-lane), Leads (Meeting scheduled | Proposal sent, a recent "Won" lane) and Clients (a list). A company is in exactly one
-tab: Leads and Clients never appear in the Prospects columns."""
+"""Pipeline read models for the company model, one per Pipeline board. A company is only ever on ONE board (q24):
+
+* Enquiries: inbound work nobody has reached out on yet - accepted enquiries whose company is a New prospect (or has
+  no company / is not in the pipeline yet);
+* Prospects: companies in the outreach cadence - New (cold-list companies with no accepted enquiry), Contacted,
+  Follow-up 1, Follow-up 2, Final follow-up;
+* Leads: Meeting scheduled, Assessment, Proposal sent, Interviews, On hold (Won -> Clients; Lost / No response -> closed);
+* Clients: a list.
+Closed companies (an off-ramp) are on no board: they stay under Companies with a Closed tag (the Archived view)."""
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Client, Company, Contact, Enquiry, Flag, Lead, Prospect, TeamMember
+from sales0.db.models import Company, Contact, Enquiry, Flag, Prospect, TeamMember
 from sales0.db.models.enums_crm import COMPANY_STAGES, COMPANY_SUB_STATUSES, ENQUIRY_DEAL_STATUSES, PROSPECT_STAGES
 from sales0.services.crm import _keys, characteristics, companies, deals, lifecycle, priority
 from sales0.services.crm._common import page_params
 from sales0.services.crm.views import CharacteristicView
 
 COLUMN_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Client", "closed": "Closed"}
-RECENT_DAYS = 30  # the "Became lead" / "Won" lanes only show what happened in the last 30 days
-BECAME_LEAD = "became_lead"
-WON = "won"
 # deal statuses that live in the collapsed lane of the Enquiries tab
 ENQUIRY_CLOSED_STATUSES = ("lost", "no_response", "on_hold")
 ENQUIRY_ACTIVE_STATUSES = tuple(x for x in ENQUIRY_DEAL_STATUSES if x not in ENQUIRY_CLOSED_STATUSES)
@@ -92,6 +94,25 @@ class EnquiryColumn(BaseModel):
 
 class EnquiryBoard(BaseModel):
     columns: list[EnquiryColumn]
+
+
+# ---------------------------------------------------------------------------- which board
+def _has_accepted_enquiry():  # type: ignore[no-untyped-def]
+    return exists().where(Enquiry.company_id == Company.id, Enquiry.review_status == "accepted")
+
+
+def on_enquiries_board():  # type: ignore[no-untyped-def]
+    """A company whose inbound enquiry nobody has acted on yet: it is on the Enquiries board, not Prospects."""
+    return and_(Company.stage == "prospect", Company.off_ramp.is_(None), Company.sub_status == "new", _has_accepted_enquiry())
+
+
+def board_of(stage: str | None, sub_status: str | None, off_ramp: str | None, has_enquiry: bool) -> str | None:
+    """The one board a company is on (None = closed / not in the pipeline)."""
+    if off_ramp or stage is None:
+        return None
+    if stage == "prospect":
+        return "enquiries" if sub_status == "new" and has_enquiry else "prospects"
+    return {"lead": "leads", "client": "clients"}.get(stage)
 
 
 # ---------------------------------------------------------------------------- filters
@@ -207,13 +228,6 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
 
 
 # ---------------------------------------------------------------------------- reads
-def _recent_ids(model, cutoff: datetime):  # type: ignore[no-untyped-def]
-    """Company ids that have a ``model`` (Lead / Client) ledger row created since ``cutoff``."""
-    return select(model.company_id).where(model.company_id.is_not(None), model.created_at >= cutoff).union(
-        select(Prospect.company_id).join(model, model.prospect_id == Prospect.id).where(
-            Prospect.company_id.is_not(None), model.created_at >= cutoff))
-
-
 def _column(db: Session, key: str, label: str, stmt, f: dict, sort: str | None, per_column: int) -> CompanyColumn:  # type: ignore[no-untyped-def]
     stmt = _filtered(stmt, **f)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
@@ -221,34 +235,22 @@ def _column(db: Session, key: str, label: str, stmt, f: dict, sort: str | None, 
     return CompanyColumn(key=key, label=label, total=total, cards=cards_for(db, rows))
 
 
-def _stage_columns(stage: str, subs: tuple[str, ...]):  # type: ignore[no-untyped-def]
-    for sub in subs:
-        yield sub, lifecycle.sub_label(sub), select(Company).where(Company.stage == stage, Company.off_ramp.is_(None), Company.sub_status == sub)
+def _stage_stmt(stage: str, sub: str):  # type: ignore[no-untyped-def]
+    stmt = select(Company).where(Company.stage == stage, Company.off_ramp.is_(None), Company.sub_status == sub)
+    if stage == "prospect" and sub == "new":
+        stmt = stmt.where(~_has_accepted_enquiry())  # those are on the Enquiries board
+    return stmt
 
 
 def tab_board(db: Session, tab: str, *, now: datetime | None = None, q: str | None = None, characteristic_id: int | None = None,
               priority_filter: str | None = None, category: str | None = None, flag: str | None = None, sort: str | None = None,
               per_column: int = 50, offering_id: int | None = None) -> CompanyBoard:
-    """The board of the Prospects or Leads tab. Prospects: New .. Final follow-up, ``became_lead`` (stage lead, a lead
-    row created in the last 30 days), ``closed``. Leads: Meeting scheduled, Proposal sent, ``won`` (stage client, a
-    client row created in the last 30 days), ``closed``."""
+    """The board of the Prospects or Leads tab: one column per status, nothing from another board (no Became lead /
+    Won / Closed lanes - a company is only ever on one board)."""
     f = dict(q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag,
              offering_id=offering_id)
-    cutoff = (now or datetime.now(UTC)) - timedelta(days=RECENT_DAYS)
-    cols = [_column(db, k, label, st, f, sort, per_column)
-            for k, label, st in _stage_columns("prospect" if tab == "prospects" else "lead",
-                                               PROSPECT_STAGES if tab == "prospects" else COMPANY_SUB_STATUSES["lead"])]
-    if tab == "prospects":
-        cols.append(_column(db, BECAME_LEAD, "Became lead", select(Company).where(
-            Company.stage == "lead", Company.off_ramp.is_(None), Company.id.in_(_recent_ids(Lead, cutoff))), f, sort, per_column))
-        closed_stage = "prospect"
-    else:
-        cols.append(_column(db, WON, "Won (last 30 days)", select(Company).where(
-            Company.stage == "client", Company.off_ramp.is_(None), Company.id.in_(_recent_ids(Client, cutoff))), f, sort, per_column))
-        closed_stage = "lead"
-    cols.append(_column(db, "closed", "Closed", select(Company).where(Company.stage == closed_stage, Company.off_ramp.is_not(None)),
-                        f, sort, per_column))
-    return CompanyBoard(columns=cols)
+    stage, subs = ("prospect", PROSPECT_STAGES) if tab == "prospects" else ("lead", COMPANY_SUB_STATUSES["lead"])
+    return CompanyBoard(columns=[_column(db, sub, lifecycle.sub_label(sub), _stage_stmt(stage, sub), f, sort, per_column) for sub in subs])
 
 
 def company_list(db: Session, *, stage: str | None = None, sub_status: str | None = None, closed: bool | None = False,
@@ -265,6 +267,8 @@ def company_list(db: Session, *, stage: str | None = None, sub_status: str | Non
         stmt = stmt.where(Company.off_ramp.is_not(None))
     elif closed is False:
         stmt = stmt.where(Company.off_ramp.is_(None))
+        if stage == "prospect":
+            stmt = stmt.where(~on_enquiries_board())
     stmt = _filtered(stmt, q=q, characteristic_id=characteristic_id, priority_filter=priority_filter, category=category, flag=flag,
                      offering_id=offering_id)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
@@ -275,11 +279,18 @@ def company_list(db: Session, *, stage: str | None = None, sub_status: str | Non
 def counts(db: Session) -> dict[str, int]:
     """Active companies per stage (the filter pills) and the closed total."""
     out = {s: 0 for s in COMPANY_STAGES}
-    for stage, n in db.execute(select(Company.stage, func.count()).where(Company.stage.is_not(None), Company.off_ramp.is_(None)).group_by(Company.stage)).all():
+    for stage, n in db.execute(select(Company.stage, func.count()).where(Company.stage.is_not(None), Company.off_ramp.is_(None),
+                                                                         ~on_enquiries_board()).group_by(Company.stage)).all():
         out[stage] = int(n)
-    out["enquiries"] = int(db.scalar(select(func.count()).select_from(Enquiry).where(Enquiry.review_status == "accepted")) or 0)
+    out["enquiries"] = int(db.scalar(select(func.count()).select_from(Enquiry).where(Enquiry.review_status == "accepted", _enquiry_on_board())) or 0)
     out["closed"] = int(db.scalar(select(func.count()).select_from(Company).where(Company.off_ramp.is_not(None), Company.stage.is_not(None))) or 0)
     return out
+
+
+def _enquiry_on_board():  # type: ignore[no-untyped-def]
+    """An accepted enquiry is on the Enquiries board while its company is not on another board."""
+    return or_(Enquiry.company_id.is_(None), Enquiry.company_id.in_(
+        select(Company.id).where(or_(Company.stage.is_(None), on_enquiries_board()))))
 
 
 def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int | None = None, priority_filter: str | None = None,
@@ -287,7 +298,7 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
     cols: list[EnquiryColumn] = []
     for status in (*ENQUIRY_ACTIVE_STATUSES, *ENQUIRY_CLOSED_STATUSES):
         stmt = select(Enquiry, Company.name, Contact.full_name, Contact.title).outerjoin(Company, Company.id == Enquiry.company_id).outerjoin(
-            Contact, Contact.id == Enquiry.contact_id).where(Enquiry.review_status == "accepted", Enquiry.deal_status == status)
+            Contact, Contact.id == Enquiry.contact_id).where(Enquiry.review_status == "accepted", Enquiry.deal_status == status, _enquiry_on_board())
         if q and q.strip():
             like = f"%{_keys.like_escape(_keys.name_key(q))}%"
             stmt = stmt.where(or_(func.lower(func.coalesce(Company.name, "")).like(like, escape="\\"),

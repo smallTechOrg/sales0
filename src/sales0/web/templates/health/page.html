@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Health{% endblock %}
+{% block page_header %}
+  <div class="page__header"><div><h1>Health</h1>
+    <p>Is every moving part working? One row each: replies, the laptop worker, LinkedIn, AI, runs, the sheet sync, the automatic status and the database - with what to do when one is not.</p></div></div>
+{% endblock %}
+{% block content %}
+  <div class="stack" id="health">
+    {% set bad = checks|selectattr("state", "in", ("warn", "error"))|list %}
+    <p class="notice" id="health-summary" role="status">{% if bad %}{{ bad|length }} thing{{ "s" if bad|length != 1 }} need{{ "" if bad|length != 1 else "s" }} attention: {{ bad|map(attribute="title")|join(", ") }}.{% else %}Everything that is switched on is working.{% endif %}</p>
+    <section class="card"><div class="card__body table-wrap">
+      <table class="table" id="health-table">
+        <thead><tr><th scope="col">Part</th><th scope="col">State</th><th scope="col">What we see</th><th scope="col">What to do</th></tr></thead>
+        <tbody>
+        {% for c in checks %}
+          <tr id="health-{{ c.key }}" data-state="{{ c.state }}">
+            <th scope="row">{{ c.title }}</th>
+            <td><span class="badge health-badge health-badge--{{ c.state }}" title="{{ {'ok': 'Working', 'warn': 'Needs attention', 'error': 'Broken', 'off': 'Switched off / not used'}[c.state] }}">{{ {'ok': 'OK', 'warn': 'Check', 'error': 'Broken', 'off': 'Off'}[c.state] }}</span></td>
+            <td>{{ c.summary }}{% if c.details %}<ul class="health-details">{% for d in c.details %}<li>{{ d }}</li>{% endfor %}</ul>{% endif %}</td>
+            <td>{{ c.fix or "-" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div></section>
+    {% if checks|selectattr("key", "equalto", "replies")|list %}
+      <form class="row" method="post" action="/replies/check"><button class="btn" type="submit" id="health-check-replies">Check replies now</button><span class="hint">Runs the same check the worker asks for, right now.</span></form>
+    {% endif %}
+  </div>
+{% endblock %}

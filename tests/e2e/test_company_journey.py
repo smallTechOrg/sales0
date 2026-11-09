@@ -19,7 +19,7 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page = ui
     page.on("dialog", lambda d: d.accept())
     log_in(page, env, target="/pipeline")
-    expect(page.locator("#pipeline-help")).to_contain_text("accepted enquiry")
+    expect(page.locator("#pipeline-help")).to_contain_text("nobody has reached out")
 
     with get_sessionmaker()() as db:
         seeded = seed_pending_enquiries(db, count=2)
@@ -34,31 +34,43 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     expect(page.locator(f"#enquiry-{second}")).to_have_count(0)
     settled(page)
 
-    # one company, two enquiries: the default tab is Enquiries; the Prospects tab has the cadence columns + Became lead
+    # one company, two enquiries, nobody has reached out: on the Enquiries board only (one board per company)
     page.goto(f"{env.base}/pipeline")
     expect(page.locator("#tab-enquiries")).to_have_attribute("aria-current", "page")
     expect(page.locator("#tab-enquiries .count-pill")).to_have_text("2")
     expect(page.locator("#enquiry-board .pcard")).to_have_count(2)
     expect(page.locator('#enquiry-board [data-status="open"]').first).to_be_visible()
+    # drag a card onto "Contacted": the move popup asks why, then the company moves to the Prospects board
+    page.locator("#enquiry-board .pcard").first.drag_to(page.locator('#move-strip [data-drop-target="prospect:contacted"]'))
+    expect(page.locator("#move-dialog")).to_be_visible()
+    expect(page.locator("#move-help")).to_contain_text("Contacted")
+    page.fill("#move-why", "called them")
+    page.locator("#move-submit").click()
+    expect(page.locator("#move-dialog")).to_be_hidden()
+    expect(page.locator("#enquiry-board .pcard")).to_have_count(0)
     page.locator("#pipeline-tabs").get_by_role("link", name="Prospects").click()
     expect(page.locator('.pcard[data-stage="prospect"]')).to_have_count(1)
-    expect(page.locator(".board__col")).to_have_count(6)
-    expect(page.locator("#lane-became_lead")).to_be_visible()
+    expect(page.locator(".board__col")).to_have_count(5)
+    expect(page.locator("#lane-became_lead")).to_have_count(0)
     page.locator(".pcard h3 a").click()
     expect(page).to_have_url(re.compile(r"/companies/\d+$"))
     company_url = page.url
     expect(page.locator("#stage-badge")).to_have_text("Prospect")
     expect(page.locator("#company-help")).to_be_visible()
 
-    # a person decides: Mark as lead (no contact / response preconditions)
-    page.locator("#btn-mark-lead").click()
+    # a person decides: the "..." menu, Meeting scheduled, behind a confirmation (a manual override)
+    page.locator("#status-menu summary").click()
+    page.select_option("#override-target", "lead:meeting_scheduled")
+    expect(page.locator("#status-override-form [data-move-help]")).to_contain_text("meeting")
+    page.locator("#btn-set-status").click()
+    page.locator('#confirm-dialog [value="confirm"]').click()
     expect(page.locator("#stage-badge")).to_have_text("Lead")
     expect(page.locator("#sub-status-badge")).to_have_text("Meeting scheduled")
     page.goto(f"{env.base}/leads")  # the old page is the Leads tab now
     expect(page).to_have_url(re.compile(r"/pipeline\?tab=leads$"))
     expect(page.locator('section[data-stage="meeting_scheduled"] .pcard[data-stage="lead"]')).to_have_count(1)
-    page.goto(f"{env.base}/pipeline?tab=prospects")  # the new lead shows in the recent Became lead lane only
-    expect(page.locator("#lane-became_lead .pcard")).to_have_count(1)
+    page.goto(f"{env.base}/pipeline?tab=prospects")  # a lead is never on the Prospects board
+    expect(page.locator(".pcard")).to_have_count(0)
 
     # an enquiry marked Won makes the company a client
     page.goto(company_url)
@@ -73,15 +85,18 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page.goto(f"{env.base}/pipeline/prospects/{pid}")  # a bookmarked prospect URL lands on the company page
     expect(page).to_have_url(re.compile(r"/companies/\d+$"))
 
-    # churned client: close, see it in the Closed lane, reopen
-    page.select_option("#off-ramp-select", "lost_client")
-    page.locator("#btn-close").click()
+    # churned client: close (the "..." menu), it leaves Clients for Companies -> Archived, reopen
+    page.locator("#status-menu summary").click()
+    page.select_option("#override-target", "closed:lost_client")
+    page.locator("#btn-set-status").click()
+    page.locator('#confirm-dialog [value="confirm"]').click()
     expect(page.locator("#off-ramp-badge")).to_contain_text("Lost client")
     page.goto(f"{env.base}/pipeline?tab=clients")
     expect(page.locator("#pipeline-list tbody tr")).to_have_count(0)
-    page.goto(f"{env.base}/pipeline?tab=clients&closed=1")
-    expect(page.locator("#pipeline-list tbody tr")).to_have_count(1)
+    page.goto(f"{env.base}/companies?view=archived")
+    expect(page.locator("#company-list tbody tr")).to_have_count(1)
     page.goto(company_url)
     page.locator("#btn-reopen").click()
+    page.locator('#confirm-dialog [value="confirm"]').click()
     expect(page.locator("#stage-badge")).to_have_text("Client")
     expect(page.locator("#off-ramp-badge")).to_have_count(0)

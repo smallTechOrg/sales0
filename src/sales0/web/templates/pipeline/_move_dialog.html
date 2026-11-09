@@ -1,0 +1,31 @@
+{# Needs: move_targets ([(group, [(target, label, help)])]). The ONE move popup of the boards: what the company page asks
+   (the reason for a close, why, the meeting time for Meeting scheduled) and what the status means while it is chosen. #}
+<dialog class="confirm-dialog move-dialog" id="move-dialog" aria-labelledby="move-title">
+  <form method="post" action="/pipeline/move" hx-post="/pipeline/move" hx-swap="none" id="move-form">
+    <h2 id="move-title">Move <span id="move-company">company</span></h2>
+    <input type="hidden" name="company_id" id="move-company-id" value="">
+    <input type="hidden" name="next" id="move-next" value="">
+    <div class="field">
+      <label class="field__label" for="move-target">New status</label>
+      <select class="select" id="move-target" name="target" data-move-select>
+        {% for group, items in move_targets %}<optgroup label="{{ group }}">
+          {% for target, label, help in items %}<option value="{{ target }}" data-help="{{ help }}">{{ label }}</option>{% endfor %}
+        </optgroup>{% endfor %}
+      </select>
+    </div>
+    <p class="hint move-help" id="move-help" data-move-help aria-live="polite"></p>
+    <div class="field" data-move-meeting hidden>
+      <label class="field__label" for="move-meeting">Meeting time</label>
+      <input class="input" id="move-meeting" type="datetime-local" name="meeting_at">
+    </div>
+    <div class="field">
+      <label class="field__label" for="move-why" data-move-why-label>Why (optional)</label>
+      <input class="input" id="move-why" name="why" maxlength="200" placeholder="e.g. budget frozen until April">
+    </div>
+    <p class="hint">A move by hand is a manual status: the automatic status holds until the next real outreach (an email, a logged follow-up).</p>
+    <div class="row">
+      <button class="btn btn--primary" type="submit" id="move-submit">Move</button>
+      <button class="btn" type="button" data-dialog-close>Cancel</button>
+    </div>
+  </form>
+</dialog>

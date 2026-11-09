@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sales0.clock import local_today, utcnow
 from sales0.config import get_settings
 from sales0.db.engine import session_scope
-from sales0.db.models import Enquiry, Prospect, SheetSource, TeamMember
+from sales0.db.models import Company, Enquiry, Prospect, SheetSource, TeamMember
 from sales0.llm import set_llm_client
 from sales0.services import inbox as inbox_service
 from sales0.services.crm import followups, prospects
@@ -105,14 +105,18 @@ def test_accepting_enquiries_of_one_company_puts_one_company_on_the_board(web: T
     second = make_enquiry("P8", **triaged("genuine", "Buyer", summary="AI assistant"), company="Acme Logistics")
     resp = web.post("/inbox/decide", data={"enquiry_ids": [str(first), str(second)], "decision": "accept"}, follow_redirects=False)
     assert resp.status_code == 303
-    html = web.get("/pipeline?tab=prospects").text
-    cards = re.findall(r'<article class="pcard" id="company-(\d+)" data-stage="prospect"', html)
-    assert len(cards) == 1  # one company, two enquiries
-    assert 'id="pipeline-board"' in html and 'data-stage="new"' in html and 'data-stage="lead"' not in html and 'data-stage="client"' not in html
-    assert "2 enquiries" in html and 'class="count-pill"' in html
-    # the Enquiries tab (the default) shows both, labelled with the company, grouped by status
+    # q24: nobody has reached out yet, so the company is on the Enquiries board only (one board per company)
+    assert 'id="company-' not in web.get("/pipeline?tab=prospects").text.split('id="pipeline-body"', 1)[1]
     boards = web.get("/pipeline").text
     assert 'id="enquiry-board"' in boards and boards.count('data-status="open"') >= 2 and "Acme Logistics" in boards
+    with session_scope() as db:
+        cids = set(db.scalars(select(Enquiry.company_id)))
+    assert len(cids) == 1  # one company, two enquiries
+    cid = cids.pop()
+    _post(web, "/pipeline/move", {"company_id": str(cid), "target": "prospect:contacted", "next": "/pipeline"}, hx=True)
+    html = web.get("/pipeline?tab=prospects").text
+    cards = re.findall(r'<article class="pcard" id="company-(\d+)" data-stage="prospect"', html)
+    assert cards == [str(cid)] and "2 enquiries" in html and 'class="count-pill"' in html
 
 
 def test_inbox_decide_passes_the_acting_member(web: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,7 +144,7 @@ def test_company_page_has_actions_sections_and_mark_as_lead(web: TestClient) -> 
     html = web.get(f"/companies/{cid}").text
     main = _main(html)
     for hook in ('id="company-header"', 'id="timeline"', 'id="note-form"', 'id="follow-ups"', 'id="btn-draft"', 'id="btn-response"',
-                 'id="btn-mark-lead"', 'id="btn-mark-client"', 'id="company-people"', 'id="company-enquiries"', 'id="company-help"'):
+                 'id="status-menu"', 'id="override-target"', 'id="company-people"', 'id="company-enquiries"', 'id="company-help"'):
         assert hook in main, hook
     assert f'href="/outreach/compose?prospect_id={pid}"' in main
     assert "Prospect" in main and "New" in main
@@ -279,8 +283,7 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     page = web.get(f"/companies/{cid}").text
     assert "Marked as a lead." in page and "Lead" in page and 'id="lead-stage-form"' in page
     assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
-    assert "data-stage=\"lead\"" not in web.get("/pipeline?tab=prospects").text.split('id="lane-became_lead"')[0]  # not in a prospect column
-    assert 'id="lane-became_lead"' in web.get("/pipeline?tab=prospects").text
+    assert f'id="company-{cid}"' not in web.get("/pipeline?tab=prospects").text  # only ever on one board
     # lead status, then Won on the enquiry makes the company a client
     _post(web, f"/companies/{cid}/status", {"sub_status": "proposal_sent", "proposal_sent_on": _today().isoformat()})
     with session_scope() as db:
@@ -291,7 +294,7 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     assert "flash--error" not in page, page[page.index("crm-flash"):][:300]
     assert 'stage-badge--client' in page and "client since" in page and 'data-deal-status="won"' in page
     assert re.search(r'id="company-\d+" data-stage="client"', web.get("/pipeline?tab=clients").text)
-    assert 'id="lane-won"' in web.get("/pipeline?tab=leads").text
+    assert f'id="company-{cid}"' not in web.get("/pipeline?tab=leads").text
     # a churned client goes to Closed and comes back
     _post(web, f"/companies/{cid}/off-ramp", {"off_ramp": "lost_client", "reason": "churned"})
     closed = web.get("/pipeline?tab=clients&closed=1").text
@@ -308,13 +311,14 @@ def test_lost_lead_goes_to_the_closed_lane_and_tracking_stops(web: TestClient) -
     assert off.status_code == 303
     with session_scope() as db:
         assert prospects.get_prospect(db, pid).tracked is False
-    board = web.get("/pipeline?tab=leads").text
-    assert 'id="closed-lane"' in board and f'id="company-{cid}"' in board and "Not interested" in board
+    assert f'id="company-{cid}"' not in web.get("/pipeline?tab=leads").text  # closed: on no board
+    assert f'id="company-{cid}"' in web.get("/companies?view=archived").text
     page = web.get(f"/companies/{cid}").text
-    assert "Not interested" in page and 'id="btn-reopen"' in page and "back to Lead / Meeting scheduled" in page
-    assert "flash--error" in web.get(f"/companies/{cid}").text or True
+    assert "Not interested" in page and 'id="btn-reopen"' in page and "back to Prospects / New" in page
     _post(web, f"/companies/{cid}/reopen")
-    assert 'data-stage="lead"' in web.get("/pipeline?tab=leads").text
+    with session_scope() as db:
+        co = db.get(Company, cid)
+        assert (co.stage, co.sub_status, co.off_ramp) == ("prospect", "new", None)
 
 
 def test_suggestion_is_a_hint_a_person_accepts_or_dismisses(web: TestClient) -> None:
@@ -324,8 +328,8 @@ def test_suggestion_is_a_hint_a_person_accepts_or_dismisses(web: TestClient) -> 
         eid = db.scalar(select(Enquiry.id).where(Enquiry.company_id == cid))
     assert _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "meeting_scheduled"}).status_code == 303
     page = web.get(f"/companies/{cid}").text
-    assert 'id="lead-suggestion"' in page and "Suggested: Lead" in page and 'data-stage="prospect"' in web.get("/pipeline?tab=prospects").text
-    assert "Suggested: Lead" in web.get("/pipeline?tab=prospects").text
+    assert 'id="lead-suggestion"' in page and "Suggested: Lead" in page
+    assert f'id="enquiry-{eid}"' in web.get("/pipeline?tab=enquiries").text  # still New: on the Enquiries board
     _post(web, f"/companies/{cid}/suggestion", {"decision": "dismiss"})
     assert 'id="lead-suggestion"' not in web.get(f"/companies/{cid}").text
     _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "proposal_sent"})
@@ -402,8 +406,8 @@ def test_flag_tracked_and_close_reopen(web: TestClient) -> None:
 
     closed = _post(web, f"/pipeline/prospects/{pid}/close", {"reason": "not_interested"}, hx=True)
     assert "Prospect closed." in closed.text and 'id="off-ramp-badge"' in closed.text and 'id="btn-reopen"' in closed.text
-    assert f'id="company-{cid}"' in web.get("/pipeline?tab=prospects").text  # the closed lane
-    assert 'id="closed-lane"' in web.get("/pipeline?tab=prospects").text
+    assert f'id="company-{cid}"' not in web.get("/pipeline?tab=prospects").text  # closed: on no board
+    assert f'id="company-{cid}"' in web.get("/companies?view=archived").text
     listing = web.get("/pipeline?stage=closed").text  # old bookmark: the Prospects tab, closed
     assert f'id="company-{cid}"' in listing and 'id="pipeline-list"' in listing
     assert "Prospect reopened." in _post(web, f"/pipeline/prospects/{pid}/reopen", hx=True).text
@@ -462,6 +466,8 @@ def test_search_and_filters_return_a_fragment_for_htmx_and_a_page_otherwise(web:
     a = _company_of(_prospect("P1", company="Acme Logistics"))
     b = _company_of(_prospect("P8", company="Globex Insurance", email="x@globex.example", contact_person="Gina Globex"))
     assert a != b
+    for cid in (a, b):  # q24: New inbound companies are on the Enquiries board; move them into the cadence
+        _post(web, "/pipeline/move", {"company_id": str(cid), "target": "prospect:contacted", "next": "/pipeline"}, hx=True)
     frag = web.get("/pipeline?tab=prospects&q=Globex", headers=HX)
     assert frag.status_code == 200 and "<html" not in frag.text and 'id="pipeline-body"' in frag.text
     assert f'id="company-{b}"' in frag.text and f'id="company-{a}"' not in frag.text

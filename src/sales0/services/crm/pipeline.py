@@ -8,7 +8,7 @@ from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Client, Company, Flag, Lead, Prospect
-from sales0.db.models.enums_crm import LEAD_STAGES, PROSPECT_STAGES
+from sales0.db.models.enums_crm import LEAD_OPEN_STAGES, LEAD_STAGES, PROSPECT_STAGES
 from sales0.services._common import now_or
 from sales0.services.crm import _keys, followups
 from sales0.services.crm._common import invalid, today_local
@@ -30,7 +30,7 @@ def summary(db: Session, *, today: date | None = None, now: datetime | None = No
     panel = followups.list_due(db, today=today)
     return PipelineSummary(
         prospects_by_stage={s: int(by_stage.get(s, 0)) for s in PROSPECT_STAGES},
-        leads_by_stage={s: int(lead_stage.get(s, 0)) for s in LEAD_STAGES if s in ("meeting_scheduled", "proposal_sent")},
+        leads_by_stage={s: int(lead_stage.get(s, 0)) for s in LEAD_STAGES if s in LEAD_OPEN_STAGES},
         closed_recent={s: int(recent.get(s, 0)) for s in ("won", "lost", "no_response")},
         clients_active=int(client_counts.get("active", 0)),
         clients_legacy=int(client_counts.get("legacy", 0)),

@@ -5,6 +5,7 @@
  * 3. Bulk select in the inbox: "Select all on page" + "N selected" in .bulk-bar.
  * 4. hx-confirm uses an accessible <dialog> instead of window.confirm.
  * 5. Forms marked data-reset-on-success are cleared after a successful (non-error) swap.
+ * 6. Pipeline boards: drag a card to another column / the move strip -> the move popup (#move-dialog).
  */
 (function () {
   "use strict";
@@ -197,6 +198,104 @@
     }
   }, true);
 
+
+  // ------------------------------------------------------------------ status help that stays visible while choosing
+  // <select data-move-select> in a form: the chosen option's data-help is shown in the form's [data-move-help] while
+  // the person is choosing (not a hover tooltip), and the meeting time field shows for "Meeting scheduled".
+  function syncMoveHelp(sel) {
+    var form = sel.form || sel.closest("form");
+    if (!form) return;
+    var opt = sel.options[sel.selectedIndex];
+    var help = form.querySelector("[data-move-help]");
+    if (help) help.textContent = opt ? (opt.getAttribute("data-help") || "") : "";
+    var meeting = form.querySelector("[data-move-meeting]");
+    if (meeting) meeting.hidden = !(sel.value === "lead:meeting_scheduled");
+    var whyLabel = form.querySelector("[data-move-why-label]");
+    if (whyLabel) whyLabel.textContent = sel.value.indexOf("closed:") === 0 ? "Why (optional - shown on the company)" : "Why (optional)";
+  }
+  document.addEventListener("change", function (evt) {
+    var sel = evt.target instanceof HTMLSelectElement && evt.target.hasAttribute("data-move-select") ? evt.target : null;
+    if (sel) syncMoveHelp(sel);
+  });
+  function armMoveSelects() {
+    document.querySelectorAll("select[data-move-select]").forEach(syncMoveHelp);
+  }
+
+  // ------------------------------------------------------------------ pipeline boards: drag a card to move it
+  // Cards [data-company-id][draggable] drop on [data-drop-target] (a column or the move strip); the drop opens the
+  // #move-dialog popup (same questions as the company page). The card's "Move…" button opens it without dragging.
+  function openMove(card, target) {
+    var dialog = document.getElementById("move-dialog");
+    if (!dialog || typeof dialog.showModal !== "function" || !card) return;
+    var form = dialog.querySelector("form");
+    if (form) form.reset();
+    dialog.querySelector("#move-company-id").value = card.getAttribute("data-company-id");
+    dialog.querySelector("#move-company").textContent = card.getAttribute("data-company-name") || "company";
+    dialog.querySelector("#move-next").value = window.location.pathname + window.location.search;
+    var sel = dialog.querySelector("select[data-move-select]");
+    if (sel) {
+      sel.value = target || card.getAttribute("data-current") || sel.value;
+      if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+      syncMoveHelp(sel);
+    }
+    dialog.showModal();
+    var focus = target && target.indexOf("lead:meeting_scheduled") === 0 ? dialog.querySelector("#move-meeting") : dialog.querySelector("#move-why");
+    if (focus) focus.focus();
+  }
+  var dragged = null;
+  document.addEventListener("dragstart", function (evt) {
+    var card = evt.target instanceof Element ? evt.target.closest("[data-company-id][draggable]") : null;
+    if (!card) return;
+    dragged = card;
+    card.classList.add("pcard--dragging");
+    if (evt.dataTransfer) {
+      evt.dataTransfer.effectAllowed = "move";
+      evt.dataTransfer.setData("text/plain", card.getAttribute("data-company-id"));
+    }
+    document.body.classList.add("is-dragging");
+  });
+  document.addEventListener("dragend", function () {
+    if (dragged) dragged.classList.remove("pcard--dragging");
+    dragged = null;
+    document.body.classList.remove("is-dragging");
+    document.querySelectorAll(".is-drop-over").forEach(function (z) { z.classList.remove("is-drop-over"); });
+  });
+  document.addEventListener("dragover", function (evt) {
+    var zone = evt.target instanceof Element ? evt.target.closest("[data-drop-target]") : null;
+    if (!zone || !dragged) return;
+    evt.preventDefault();
+    if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+    zone.classList.add("is-drop-over");
+  });
+  document.addEventListener("dragleave", function (evt) {
+    var zone = evt.target instanceof Element ? evt.target.closest("[data-drop-target]") : null;
+    if (zone && !(evt.relatedTarget instanceof Node && zone.contains(evt.relatedTarget))) zone.classList.remove("is-drop-over");
+  });
+  document.addEventListener("drop", function (evt) {
+    var zone = evt.target instanceof Element ? evt.target.closest("[data-drop-target]") : null;
+    if (!zone || !dragged) return;
+    evt.preventDefault();
+    zone.classList.remove("is-drop-over");
+    var target = zone.getAttribute("data-drop-target");
+    var card = dragged;
+    if (target === card.getAttribute("data-current")) return; // dropped back where it was
+    openMove(card, target);
+  });
+  document.addEventListener("click", function (evt) {
+    var t = evt.target instanceof Element ? evt.target : null;
+    if (!t) return;
+    var open = t.closest("[data-move-open]");
+    if (open) { openMove(open.closest("[data-company-id]"), null); return; }
+    var close = t.closest("[data-dialog-close]");
+    if (close) { var d = close.closest("dialog"); if (d) d.close(); }
+  });
+  document.addEventListener("htmx:afterRequest", function (evt) {
+    var elt = evt.detail.elt;
+    if (!(elt instanceof HTMLFormElement) || elt.id !== "move-form" || !evt.detail.successful) return;
+    var d = elt.closest("dialog");
+    if (d && d.open) d.close();
+  });
+
   // Digest page: "Copy to clipboard" (was an inline <script>).
   document.addEventListener("click", function (evt) {
     var btn = evt.target instanceof Element ? evt.target.closest("#copy-digest") : null;
@@ -213,11 +312,13 @@
     if (btn && navigator.clipboard) btn.hidden = false;
   }
   document.addEventListener("htmx:afterSettle", function () {
+    armMoveSelects();
     armCopyDigest();
     armAllToasts();
     refreshBulkBar();
   });
   document.addEventListener("DOMContentLoaded", function () {
+    armMoveSelects();
     armCopyDigest();
     armAllToasts();
     refreshBulkBar();
