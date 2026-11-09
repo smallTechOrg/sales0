@@ -49,7 +49,7 @@ def _assert_landing(html: str) -> None:
     assert "site-nav" not in html and "status-light" not in html and "htmx" not in html
 
 
-@pytest.mark.parametrize("path", ["/", "/sales-agent", "/robots.txt", "/sitemap.xml", "/static/css/public.css", "/static/img/logo-smalltech.svg"])
+@pytest.mark.parametrize("path", ["/", "/robots.txt", "/sitemap.xml", "/static/css/public.css", "/static/img/logo-smalltech.svg"])
 def test_public_pages_open_without_login(make_client: Callable[..., TestClient], path: str) -> None:
     c = make_client(locked=True)
     r = c.get(path)
@@ -76,16 +76,24 @@ def test_internal_routes_still_require_login_when_accounts_are_configured(make_c
     assert c.post("/runs", data={}).status_code == 303  # unsafe methods on internal paths are gated too
 
 
-def test_signed_in_member_on_root_still_goes_to_the_inbox(make_client: Callable[..., TestClient]) -> None:
+def test_signed_in_member_on_root_sees_the_landing_and_app_goes_to_the_inbox(make_client: Callable[..., TestClient]) -> None:
     c = make_client(locked=True)
     assert c.post("/login", data={"email": ADMIN_EMAIL, "password": PASSWORD, "next": ""}).status_code == 303
-    r = c.get("/")
+    _assert_landing(c.get("/").text)
+    r = c.get("/app")
     assert r.status_code == 303 and r.headers["location"] == "/inbox"
-    assert c.get("/sales-agent").status_code == 200  # the landing stays reachable for previews
 
 
-def test_open_mode_root_still_redirects_to_inbox_and_landing_is_previewable(make_client: Callable[..., TestClient]) -> None:
+def test_app_requires_login_when_accounts_are_configured(make_client: Callable[..., TestClient]) -> None:
+    c = make_client(locked=True)
+    r = c.get("/app")
+    assert r.status_code == 303 and r.headers["location"].startswith("/login")
+
+
+def test_open_mode_root_is_the_landing_and_app_goes_to_the_inbox(make_client: Callable[..., TestClient]) -> None:
     c = make_client(locked=False)
-    r = c.get("/")
+    _assert_landing(c.get("/").text)
+    r = c.get("/app")
     assert r.status_code == 303 and r.headers["location"] == "/inbox"
-    _assert_landing(c.get("/sales-agent").text)
+    r = c.get("/sales-agent")
+    assert r.status_code == 308 and r.headers["location"] == "/"

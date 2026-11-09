@@ -24,11 +24,12 @@ def _main(html: str) -> str:
     return html.split('<main id="main"', 1)[1].split("</main>", 1)[0]
 
 
-def test_root_redirects_to_the_review_inbox(client: TestClient) -> None:
-    resp = client.get("/", follow_redirects=False)
+def test_app_redirects_to_the_review_inbox_and_root_is_the_landing(client: TestClient) -> None:
+    resp = client.get("/app", follow_redirects=False)
     assert resp.status_code == 303
     assert resp.headers["location"] == "/inbox"
-    assert "Review inbox" in client.get("/").text
+    assert "Review inbox" in client.get("/app").text
+    assert "AI-native CRM" in client.get("/").text
 
 
 def test_header_shows_not_connected_light_zero_cost_and_nav_in_order(client: TestClient) -> None:

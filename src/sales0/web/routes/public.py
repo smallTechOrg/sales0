@@ -4,10 +4,8 @@ Server-rendered marketing pages for sales0 itself. They are the only pages a
 visitor can open without logging in (``auth.PUBLIC_PATHS``), they take no input, read nothing from the database
 and render no internal context.
 
-``/`` keeps its old job for the team: open mode, or a signed-in member, is sent on to the Review inbox exactly as
-before. Only an anonymous visitor on a login-enabled server (the public deployment) sees the landing page there,
-where it used to be bounced to ``/login``. ``/sales-agent`` always renders the landing page, so it can be previewed
-locally in open mode."""
+``/`` is the landing page for everyone. The CRM itself starts at ``/app`` (which forwards to the Review inbox),
+behind the same login gate as every other internal path; the internal pages keep their own URLs."""
 
 from __future__ import annotations
 
@@ -65,18 +63,22 @@ def landing(request: Request) -> HTMLResponse:
 
 
 @router.get("/", response_class=HTMLResponse)
-def root(request: Request) -> Response:
-    """Team (open mode or signed in) -> the Review inbox, as before; anonymous visitor with logins on -> landing."""
-    auth_enabled = getattr(request.state, "auth_enabled", False)
-    if auth_enabled and getattr(request.state, "login_member_id", None) is None:
-        return landing(request)
+def root(request: Request) -> HTMLResponse:
+    """sales0.smalltech.in/ is always the public landing page, for everyone."""
+    return landing(request)
+
+
+@router.get("/app", include_in_schema=False)
+def app_home() -> RedirectResponse:
+    """The team's way into the CRM. Not public: with logins on, the gate sends an anonymous visitor to /login
+    (next=/app) and a signed-in member lands on the Review inbox."""
     return RedirectResponse("/inbox", status_code=303)
 
 
-@router.get("/sales-agent", response_class=HTMLResponse)
-def sales_agent(request: Request) -> HTMLResponse:
-    """The landing page for everyone (canonical URL is ``/``)."""
-    return landing(request)
+@router.get("/sales-agent", include_in_schema=False)
+def sales_agent_moved() -> RedirectResponse:
+    """Old preview path for the landing page."""
+    return RedirectResponse("/", status_code=308)
 
 
 @router.get("/robots.txt", response_class=PlainTextResponse)
