@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <meta name="description" content="{{ page_description }}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{{ canonical }}">
+  <meta name="theme-color" content="#F5F1EE">
+  <link rel="icon" href="data:,">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Zer0 Sales Agent">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ page_description }}">
+  <meta property="og:url" content="{{ canonical }}">
+  <meta property="og:image" content="{{ site_url }}/static/img/og-sales0.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Zer0 Sales Agent — an AI sales agent for your website, by smallTech">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ page_title }}">
+  <meta name="twitter:description" content="{{ page_description }}">
+  <meta name="twitter:image" content="{{ site_url }}/static/img/og-sales0.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/css/public.css">
+  {% block head %}{% endblock %}
+</head>
+<body class="pub">
+  <a class="pub-skip" href="#main">Skip to content</a>
+  <header class="pub-header">
+    <div class="pub-wrap pub-header__inner">
+      <a class="pub-brand" href="/" aria-label="Zer0 Sales Agent home">
+        <span class="pub-brand__name">Zer0</span>
+        <span class="pub-brand__product">Sales Agent</span>
+      </a>
+      <nav class="pub-nav" aria-label="Main">
+        <a href="/#how" class="pub-nav__link">How it works</a>
+        <a href="/pricing" class="pub-nav__link"{% if page_path == "/pricing" %} aria-current="page"{% endif %}>Pricing</a>
+        <a href="/#zer0" class="pub-nav__link">Zer0</a>
+      </nav>
+      <a class="pub-btn pub-btn--primary pub-header__cta" href="{{ signup_url }}">Sign up free</a>
+      <details class="pub-menu">
+        <summary class="pub-menu__toggle" aria-label="Menu">Menu</summary>
+        <div class="pub-menu__panel">
+          <a href="/#how">How it works</a>
+          <a href="/pricing">Pricing</a>
+          <a href="/#zer0">Zer0</a>
+          <a href="mailto:{{ contact_email }}">Contact</a>
+          <a class="pub-btn pub-btn--primary" href="{{ signup_url }}">Sign up free</a>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="pub-footer">
+    <div class="pub-wrap">
+      <div class="pub-footer__top">
+        <div class="pub-footer__brand">
+          <p class="pub-footer__product">Zer0 Sales Agent</p>
+          <p class="pub-footer__by">by</p>
+          <a href="https://smalltech.in" class="pub-footer__logo" aria-label="smallTech">
+            <img src="/static/img/logo-smalltech.svg" alt="smallTech" width="416" height="92">
+          </a>
+        </div>
+        <nav class="pub-footer__nav" aria-label="Footer">
+          <div>
+            <p class="pub-label">Sales Agent</p>
+            <a href="/">Overview</a>
+            <a href="/pricing">Pricing</a>
+            <a href="{{ signup_url }}">Sign up free</a>
+          </div>
+          <div>
+            <p class="pub-label">smallTech</p>
+            <a href="https://zer0.smalltech.in">Zer0</a>
+            <a href="https://smalltech.in">smalltech.in</a>
+            <a href="https://smalltech.in/#training">AI training</a>
+          </div>
+          <div>
+            <p class="pub-label">Contact</p>
+            <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+            <a href="/login" rel="nofollow">Team login</a>
+          </div>
+        </nav>
+      </div>
+      <p class="pub-footer__legal">&copy; 2026 madhyamakist pvt ltd</p>
+    </div>
+  </footer>
+</body>
+</html>

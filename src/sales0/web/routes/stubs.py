@@ -1,12 +1,12 @@
-"""Shell routes (slice E): ``/`` → ``/inbox``, header fragments, and the labelled
-stub page for the one feature that was deferred by decision (WhatsApp ingest)."""
+"""Shell routes (slice E): header fragments and the labelled stub page for the one feature that was deferred by
+decision (WhatsApp ingest). ``/`` (-> ``/inbox`` for the team) lives in ``routes/public.py`` since SMA-8."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from sales0.db.engine import get_db
@@ -29,11 +29,6 @@ STUBS: dict[str, StubPage] = {
         "Ingesting requirement messages from the team's WhatsApp groups into the review inbox. Not built: WhatsApp automation was deferred by decision.",
     ),
 }
-
-
-@router.get("/")
-def root() -> RedirectResponse:
-    return RedirectResponse("/inbox", status_code=303)
 
 
 def _make_stub_route(path: str, stub: StubPage):  # noqa: ANN202 — FastAPI endpoint factory

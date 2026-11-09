@@ -62,7 +62,9 @@ INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=disc
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/setup/offerings", "/outreach/instructions", "/keywords", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker"}
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker",
+                    # SMA-8 public front page: covered by test_public_pages.py
+                    "/sales-agent", "/pricing", "/robots.txt", "/sitemap.xml"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 

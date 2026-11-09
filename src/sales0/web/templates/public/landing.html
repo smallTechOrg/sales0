@@ -1,0 +1,185 @@
+{% extends "public/base.html" %}
+{% block head %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Zer0 Sales Agent",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web Browser",
+    "url": "{{ site_url }}/",
+    "description": "An embeddable AI sales agent for small business websites: answers visitors, qualifies them and captures leads, 24/7, no code required.",
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free plan with 200 conversations a month"},
+    "author": {
+      "@type": "Organization",
+      "name": "smallTech",
+      "url": "https://smalltech.in",
+      "contactPoint": {"@type": "ContactPoint", "email": "{{ contact_email }}", "contactType": "customer support"}
+    }
+  }
+  </script>
+{% endblock %}
+{% block content %}
+<section class="pub-hero">
+  <div class="pub-wrap pub-hero__grid">
+    <div class="pub-hero__copy">
+      <p class="pub-label">Zer0 Sales Agent</p>
+      <h1 class="pub-title">A sales agent on your website, built for the <span class="pub-accent">agentic age.</span></h1>
+      <p class="pub-lead">Contact forms lose customers. The Zer0 Sales Agent sits on your site, answers visitors' questions, qualifies them and captures their details, then hands you the warm conversation. You make the calls.</p>
+      <div class="pub-actions">
+        <a class="pub-btn pub-btn--primary" href="{{ signup_url }}">Sign up for free</a>
+        <a class="pub-btn pub-btn--secondary" href="/pricing">See pricing</a>
+      </div>
+      <ul class="pub-pills" aria-label="Highlights">
+        <li>Free plan: 200 conversations a month</li>
+        <li>Live in under 5 minutes</li>
+        <li>No code</li>
+      </ul>
+    </div>
+
+    <div class="pub-mock" aria-hidden="true">
+      <div class="pub-mock__bar">
+        <span class="pub-mock__dots"><i></i><i></i><i></i></span>
+        <span class="pub-mock__url">yourbusiness.com</span>
+      </div>
+      <div class="pub-mock__body">
+        <p class="pub-bubble pub-bubble--visitor">In how many days can I expect the shipment for my order?</p>
+        <p class="pub-bubble pub-bubble--agent">You should receive your order within 5–7 business days. Can I take your email so we can send you the tracking link?</p>
+        <p class="pub-bubble pub-bubble--visitor">Sure, it's priya@example.com. And what is your return policy?</p>
+        <p class="pub-mock__lead"><span class="pub-dot"></span>New lead captured · sent to your dashboard</p>
+      </div>
+      <div class="pub-mock__input">Type a message…</div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section" id="how">
+  <div class="pub-wrap">
+    <div class="pub-section__head">
+      <p class="pub-label">How it works</p>
+      <h2 class="pub-heading">From a static page to a conversation that sells, in minutes.</h2>
+      <p class="pub-body">The agent works the top of your funnel around the clock, so the conversations that reach you are the ones worth having.</p>
+    </div>
+    <div class="pub-cards pub-cards--3">
+      <article class="pub-card">
+        <p class="pub-card__num">01</p>
+        <h3 class="pub-subheading">Answers questions</h3>
+        <p class="pub-body">Responds instantly to your customers' questions about your products, services and FAQs, in plain, human language.</p>
+      </article>
+      <article class="pub-card">
+        <p class="pub-card__num">02</p>
+        <h3 class="pub-subheading">Qualifies and captures leads</h3>
+        <p class="pub-body">Asks the right questions and captures contact details straight into your lead dashboard, while you sleep.</p>
+      </article>
+      <article class="pub-card">
+        <p class="pub-card__num">03</p>
+        <h3 class="pub-subheading">Hands you the warm conversation</h3>
+        <p class="pub-body">A front desk that works 24/7, every day. When a visitor is ready to buy, you pick it up with the context in hand.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section pub-section--tight">
+  <div class="pub-wrap">
+    <div class="pub-panel">
+      <div class="pub-panel__grid">
+        <div>
+          <p class="pub-label pub-label--gold">Getting started</p>
+          <h2 class="pub-heading pub-heading--on-ink">Automation that actually works.</h2>
+          <ol class="pub-steps">
+            <li><span>1</span><div><strong>Sign up free.</strong> Tell the agent about your business.</div></li>
+            <li><span>2</span><div><strong>Paste one line of code.</strong> It goes live on any website.</div></li>
+            <li><span>3</span><div><strong>Watch the leads arrive.</strong> Every one lands in the built-in dashboard.</div></li>
+          </ol>
+          <a class="pub-btn pub-btn--primary" href="{{ signup_url }}">Get started free</a>
+        </div>
+        <div class="pub-feed" aria-label="Example lead dashboard">
+          <p class="pub-feed__title">Example: your lead dashboard</p>
+          <ul>
+            <li><span class="pub-feed__name">Alex Rivera</span><span class="pub-feed__mail">alex@rivera.example</span><span class="pub-feed__tag">New</span></li>
+            <li><span class="pub-feed__name">Sarah Chen</span><span class="pub-feed__mail">s.chen@dev.example</span><span class="pub-feed__tag">New</span></li>
+            <li><span class="pub-feed__name">Marcus Wright</span><span class="pub-feed__mail">m.wright@xyz.example</span><span class="pub-feed__tag">New</span></li>
+            <li><span class="pub-feed__name">Elena Rossi</span><span class="pub-feed__mail">elena@rossi.example</span><span class="pub-feed__tag">New</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section">
+  <div class="pub-wrap pub-split">
+    <div>
+      <p class="pub-label">Why small businesses use it</p>
+      <h2 class="pub-heading">The smartest AI agent for your small business website.</h2>
+      <p class="pub-body">The Zer0 Sales Agent is an embeddable AI agent built specifically for small businesses. Unlike enterprise chatbots that take months of setup and six-figure budgets, it goes live on your website in minutes, with no coding required.</p>
+      <p class="pub-body">It understands your products, services and FAQs out of the box. It qualifies leads, answers customer queries and helps book meetings, 24 hours a day, 7 days a week, even when your team is offline.</p>
+      <p class="pub-body">Built for e-commerce, real estate, healthcare, education and more, it helps you compete with larger companies by delivering a premium customer experience at a small-business price. Start free with 200 conversations a month, or upgrade to Pro for unlimited conversations and backend integrations.</p>
+    </div>
+    <div class="pub-stats">
+      <div class="pub-stat"><p class="pub-stat__value">&lt; 5 min</p><p class="pub-label">Setup time</p><p class="pub-caption">Paste one line of code and you're live on any website.</p></div>
+      <div class="pub-stat"><p class="pub-stat__value">Any</p><p class="pub-label">Industry</p><p class="pub-caption">From retail to healthcare, it learns your business.</p></div>
+      <div class="pub-stat"><p class="pub-stat__value">200</p><p class="pub-label">Free conversations</p><p class="pub-caption">Every month, on the free plan. No credit card required.</p></div>
+      <div class="pub-stat"><p class="pub-stat__value">24/7</p><p class="pub-label">Always on</p><p class="pub-caption">Nights, weekends and holidays.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section" id="pricing">
+  <div class="pub-wrap">
+    <div class="pub-section__head">
+      <p class="pub-label">Pricing</p>
+      <h2 class="pub-heading">Flexible plans for every scale.</h2>
+      <p class="pub-body">Start free and upgrade when the conversations grow. <a class="pub-link" href="/pricing">See full pricing</a>.</p>
+    </div>
+    {% include "public/_plans.html" %}
+  </div>
+</section>
+
+<section class="pub-section" id="zer0">
+  <div class="pub-wrap">
+    <div class="pub-section__head">
+      <p class="pub-label">Part of Zer0, by smallTech</p>
+      <h2 class="pub-heading">Operationalising agentic AI for small businesses.</h2>
+      <p class="pub-body">Classical business workflows were designed for people passing work between inboxes and spreadsheets. In the agentic age, agents do the repetitive steps and people make the calls. Zer0 redesigns a small business's workflows around that split, with a human approval gate wherever it matters. smallTech's mission is to give small businesses the same AI capabilities enterprises use, simply and affordably.</p>
+    </div>
+    <div class="pub-cards pub-cards--4">
+      <article class="pub-card pub-card--current">
+        <p class="pub-label">You are here</p>
+        <h3 class="pub-subheading">Zer0 Sales Agent</h3>
+        <p class="pub-body">Works your top of funnel: answers, qualifies and captures leads, then hands you the warm conversation.</p>
+      </article>
+      <a class="pub-card pub-card--link" href="https://github.com/smallTechOrg/zero-inbox-agent">
+        <h3 class="pub-subheading">Zer0 Inbox Agent</h3>
+        <p class="pub-body">Inbox triage you can audit. Collapses hundreds of threads into about 30 decisions, and never deletes anything.</p>
+        <span class="pub-link">Learn more</span>
+      </a>
+      <a class="pub-card pub-card--link" href="https://data-analysis-agent-870371939888.us-central1.run.app/app/">
+        <h3 class="pub-subheading">Zer0 Data Analyst</h3>
+        <p class="pub-body">Your data, asked in English. Upload a spreadsheet, get explainable answers with charts.</p>
+        <span class="pub-link">Try it</span>
+      </a>
+      <a class="pub-card pub-card--link" href="https://github.com/smallTechOrg/ai-security-agency">
+        <h3 class="pub-subheading">Vanguard by Zer0</h3>
+        <p class="pub-body">AI-first security audits with approval gates, evidence capture and immutable audit logs.</p>
+        <span class="pub-link">Learn more</span>
+      </a>
+    </div>
+    <p class="pub-body pub-aside">Looking for AI training for your team? smallTech still runs it. <a class="pub-link" href="https://smalltech.in/#training">See AI training</a>.</p>
+  </div>
+</section>
+
+<section class="pub-section pub-section--tight">
+  <div class="pub-wrap">
+    <div class="pub-panel pub-cta">
+      <h2 class="pub-heading pub-heading--on-ink">Use the Zer0 Sales Agent today.</h2>
+      <p class="pub-body pub-body--on-ink">Free to start. Live on your site in minutes.</p>
+      <div class="pub-actions pub-actions--center">
+        <a class="pub-btn pub-btn--primary" href="{{ signup_url }}">Sign up for free</a>
+        <a class="pub-btn pub-btn--secondary-on-ink" href="mailto:{{ contact_email }}?subject=Zer0%20Sales%20Agent">Email {{ contact_email }}</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
