@@ -26,7 +26,7 @@ from sales0.services import inbox as inbox_service
 from sales0.web.app import create_app
 from tests.integration.web.conftest import make_enquiry, make_keyword, make_run, make_seen_post, set_session, triaged
 
-# (path, key text) — full pages. "/" follows its redirect to the inbox.
+# (path, key text) — full pages. "/app" follows its redirect to the inbox ("/" is the public landing).
 STUB_PAGES = {
     "/whatsapp": 5,
 }
@@ -58,14 +58,16 @@ CRM_PAGES = {
     "/account": "My account",
     "/sync": "Google Sheet sync",  # S2 builds the page; the nav entry must never 500
 }
-INBOX_PAGES = ("/", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
+INBOX_PAGES = ("/app", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=discarded", "/inbox?tab=discarded&q=zzz",
                "/inbox?tab=skipped", "/inbox?tab=skipped&state=failed", "/inbox?tab=skipped&q=zzz")
 # Parameter-free GET routes that return HTML and are covered below (pages + fragments).
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/setup/offerings", "/outreach/instructions", "/keywords", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker",
-                    "/health", "/metrics/analytics"}
+                    "/health", "/metrics/analytics",
+                    # SMA-8 public front page: covered by test_public_pages.py
+                    "/sales-agent", "/app", "/robots.txt", "/sitemap.xml"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 

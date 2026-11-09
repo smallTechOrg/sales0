@@ -32,6 +32,9 @@ log = get_logger("sales0.auth")
 COOKIE = "sales0_session"
 SESSION_PURPOSE = "session"
 OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/", "/set-password/", "/api/worker/")  # plus "/__fixtures/" in fixture mode
+# SMA-8 public front page (routes/public.py). Matched EXACTLY, never as prefixes ("/" would otherwise open everything).
+# "/" itself only renders the landing for an anonymous visitor; the team is still sent on to the gated /inbox.
+PUBLIC_PATHS = frozenset({"/", "/sales-agent", "/robots.txt", "/sitemap.xml"})
 FIXTURE_PREFIX = "/__fixtures/"
 DEFAULT_NEXT = "/inbox"
 THROTTLE_WINDOW_S = 60
@@ -197,6 +200,8 @@ def _is_ip(value: str) -> bool:
 
 # ---------------------------------------------------------------------- middleware
 def is_open_path(path: str, settings: Settings) -> bool:
+    if path in PUBLIC_PATHS:
+        return True
     prefixes = OPEN_PATHS + ((FIXTURE_PREFIX,) if settings.linkedin_mode == "fixture" else ())
     for p in prefixes:
         if p.endswith("/"):

@@ -1,0 +1,217 @@
+{% extends "public/base.html" %}
+{% block head %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "sales0",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web Browser",
+    "url": "{{ site_url }}/",
+    "description": "sales0 is an AI-native CRM for small sales teams: it finds buyer enquiries on LinkedIn, keeps the pipeline, drafts outreach for approval and sends it from your own Gmail.",
+    "author": {
+      "@type": "Organization",
+      "name": "smallTech",
+      "url": "https://smalltech.in",
+      "contactPoint": {"@type": "ContactPoint", "email": "{{ contact_email }}", "contactType": "sales"}
+    }
+  }
+  </script>
+{% endblock %}
+{% block content %}
+<section class="pub-hero">
+  <div class="pub-wrap pub-hero__grid">
+    <div class="pub-hero__copy">
+      <p class="pub-label">sales0 by Zer0</p>
+      <h1 class="pub-title">The AI-native CRM for <span class="pub-accent">small sales teams.</span></h1>
+      <p class="pub-lead">sales0 finds buyer intent on LinkedIn, keeps your pipeline current and drafts outreach from your own Gmail. You review, approve and close.</p>
+      <div class="pub-actions">
+        <a class="pub-btn pub-btn--primary" href="{{ access_url }}">Request access</a>
+        <a class="pub-btn pub-btn--secondary" href="#how">See how it works</a>
+      </div>
+      <ul class="pub-pills" aria-label="Highlights">
+        <li>Human approval on every send</li>
+        <li>Sends from your own Gmail</li>
+        <li>Built-in AI spend cap</li>
+      </ul>
+    </div>
+
+    <div class="pub-mock" aria-hidden="true">
+      <div class="pub-mock__bar">
+        <span class="pub-mock__dots"><i></i><i></i><i></i></span>
+        <span class="pub-mock__url">sales0 · Review inbox</span>
+      </div>
+      <div class="pub-mock__body">
+        <div class="pub-item">
+          <p class="pub-item__meta"><span class="pub-item__tag">High priority</span> LinkedIn post · 2h ago</p>
+          <p class="pub-item__text">"Looking for a partner to run an AI workshop for our leadership team next month."</p>
+          <p class="pub-item__why">Genuine buyer enquiry · offering: AI training</p>
+          <p class="pub-item__actions"><span class="pub-chip pub-chip--primary">Accept</span><span class="pub-chip">Discard</span></p>
+        </div>
+        <div class="pub-item">
+          <p class="pub-item__meta"><span class="pub-item__tag pub-item__tag--quiet">Draft ready</span> Outreach · Acme Ltd</p>
+          <p class="pub-item__text">Researched the company and the contact. Drafted an intro email with the deck attached.</p>
+          <p class="pub-item__actions"><span class="pub-chip pub-chip--primary">Approve &amp; send</span><span class="pub-chip">Edit</span></p>
+        </div>
+        <p class="pub-mock__lead"><span class="pub-dot"></span>Reply detected · Acme Ltd moved to Lead</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section" id="how">
+  <div class="pub-wrap">
+    <div class="pub-section__head">
+      <p class="pub-label">How it works</p>
+      <h2 class="pub-heading">From buyer intent to a booked meeting.</h2>
+      <p class="pub-body">Agents do the searching, sorting, researching and drafting. Your team makes every call that matters.</p>
+    </div>
+    <div class="pub-cards pub-cards--4">
+      <article class="pub-card">
+        <p class="pub-card__num">01</p>
+        <h3 class="pub-subheading">Discover</h3>
+        <p class="pub-body">Searches LinkedIn posts with your team's own session, slowly and within safe limits. AI keeps only genuine buyer enquiries.</p>
+      </article>
+      <article class="pub-card">
+        <p class="pub-card__num">02</p>
+        <h3 class="pub-subheading">Review</h3>
+        <p class="pub-body">Accept or discard in one click. Every decision teaches the triage what a real enquiry looks like for you.</p>
+      </article>
+      <article class="pub-card">
+        <p class="pub-card__num">03</p>
+        <h3 class="pub-subheading">Reach out</h3>
+        <p class="pub-body">Researches the company and contact, drafts the email, waits for your approval, then sends from your own Gmail.</p>
+      </article>
+      <article class="pub-card">
+        <p class="pub-card__num">04</p>
+        <h3 class="pub-subheading">Close</h3>
+        <p class="pub-body">Follow-ups at 3, 7 and 14 days. Replies are detected and the pipeline moves with them.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section pub-section--tight">
+  <div class="pub-wrap">
+    <div class="pub-panel">
+      <div class="pub-panel__grid">
+        <div>
+          <p class="pub-label pub-label--gold">The pipeline</p>
+          <h2 class="pub-heading pub-heading--on-ink">A CRM that keeps itself up to date.</h2>
+          <ol class="pub-steps">
+            <li><span>1</span><div><strong>Prospect.</strong> A company with an open enquiry.</div></li>
+            <li><span>2</span><div><strong>Lead.</strong> A person on your team decides it is worth pursuing.</div></li>
+            <li><span>3</span><div><strong>Client.</strong> An enquiry marked won.</div></li>
+          </ol>
+          <p class="pub-body pub-body--on-ink">Every company carries its people, enquiries, outreach, follow-ups and a full timeline. "Due today" tells you what needs a human next.</p>
+        </div>
+        <div class="pub-feed" aria-label="Example pipeline">
+          <p class="pub-feed__title">Example: due today</p>
+          <ul>
+            <li><span class="pub-feed__name">Acme Ltd</span><span class="pub-feed__mail">Reply received · suggested: Lead</span><span class="pub-feed__tag">Lead</span></li>
+            <li><span class="pub-feed__name">Northwind</span><span class="pub-feed__mail">Follow-up 2 of 3 is due</span><span class="pub-feed__tag">Prospect</span></li>
+            <li><span class="pub-feed__name">Globex</span><span class="pub-feed__mail">Meeting scheduled</span><span class="pub-feed__tag">Lead</span></li>
+            <li><span class="pub-feed__name">Initech</span><span class="pub-feed__mail">Enquiry won</span><span class="pub-feed__tag">Client</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section" id="features">
+  <div class="pub-wrap">
+    <div class="pub-section__head">
+      <p class="pub-label">What's inside</p>
+      <h2 class="pub-heading">Everything a small sales team runs on.</h2>
+    </div>
+    <div class="pub-cards pub-cards--3">
+      <article class="pub-card">
+        <h3 class="pub-subheading">Review inbox</h3>
+        <p class="pub-body">Only relevant posts, each with a reason, summary, priority and the offering it matches.</p>
+      </article>
+      <article class="pub-card">
+        <h3 class="pub-subheading">Pipeline CRM</h3>
+        <p class="pub-body">Companies, people, enquiries and statuses from Open to Won, with a timeline for each.</p>
+      </article>
+      <article class="pub-card">
+        <h3 class="pub-subheading">Gmail outreach</h3>
+        <p class="pub-body">Drafts you approve, sent from each person's own Gmail, with your deck attached.</p>
+      </article>
+      <article class="pub-card">
+        <h3 class="pub-subheading">Reply tracking</h3>
+        <p class="pub-body">Read-only Gmail polling spots replies, classifies them and suggests the next stage.</p>
+      </article>
+      <article class="pub-card">
+        <h3 class="pub-subheading">Prospect watch</h3>
+        <p class="pub-body">Track a LinkedIn profile and catch new posts the moment they signal a need.</p>
+      </article>
+      <article class="pub-card">
+        <h3 class="pub-subheading">Metrics &amp; AI spend</h3>
+        <p class="pub-body">Weekly funnel, keyword yield, AI cost per relevant enquiry, CSV export and an optional monthly cap.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section">
+  <div class="pub-wrap pub-split">
+    <div>
+      <p class="pub-label">Built to be trusted</p>
+      <h2 class="pub-heading">Agents do the work. People keep control.</h2>
+      <p class="pub-body">Nothing goes out without a person approving it. LinkedIn is browsed slowly, with daily caps and automatic safety stops. Your Google Sheets are imported read-only, and sales0 never writes to them.</p>
+    </div>
+    <div class="pub-stats">
+      <div class="pub-stat"><p class="pub-stat__value">100%</p><p class="pub-label">Approved sends</p><p class="pub-caption">Every email waits for a yes.</p></div>
+      <div class="pub-stat"><p class="pub-stat__value">Your</p><p class="pub-label">Gmail</p><p class="pub-caption">Mail goes from each person's own account.</p></div>
+      <div class="pub-stat"><p class="pub-stat__value">Read-only</p><p class="pub-label">Google Sheets</p><p class="pub-caption">Imported, never written to.</p></div>
+      <div class="pub-stat"><p class="pub-stat__value">Capped</p><p class="pub-label">AI spend</p><p class="pub-caption">Set a monthly limit and see cost per enquiry.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section" id="zer0">
+  <div class="pub-wrap">
+    <div class="pub-section__head">
+      <p class="pub-label">Part of Zer0, by smallTech</p>
+      <h2 class="pub-heading">The multi-agent OS for small businesses.</h2>
+      <p class="pub-body">sales0 is one of the Zer0 agents. Each runs a workflow end to end, with approval gates where it matters and an audit trail for everything.</p>
+    </div>
+    <div class="pub-cards pub-cards--4">
+      <article class="pub-card pub-card--current">
+        <p class="pub-label">You are here</p>
+        <h3 class="pub-subheading">sales0</h3>
+        <p class="pub-body">The AI-native CRM: discovery, pipeline, outreach and follow-up.</p>
+      </article>
+      <a class="pub-card pub-card--link" href="https://chatbot0.smalltech.in">
+        <h3 class="pub-subheading">chatbot0</h3>
+        <p class="pub-body">A chat agent on your website that answers visitors and captures leads.</p>
+        <span class="pub-link">Learn more</span>
+      </a>
+      <a class="pub-card pub-card--link" href="https://github.com/smallTechOrg/workshop0">
+        <h3 class="pub-subheading">workshop0</h3>
+        <p class="pub-body">Hands-on workshops, run live, with a real-time room dashboard.</p>
+        <span class="pub-link">Learn more</span>
+      </a>
+      <a class="pub-card pub-card--link" href="https://zer0.smalltech.in">
+        <h3 class="pub-subheading">The full suite</h3>
+        <p class="pub-body">data0, cloud0, zero-shot-harness and what is coming next.</p>
+        <span class="pub-link">Visit Zer0</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="pub-section pub-section--tight">
+  <div class="pub-wrap">
+    <div class="pub-panel pub-cta">
+      <h2 class="pub-heading pub-heading--on-ink">Bring sales0 to your team.</h2>
+      <p class="pub-body pub-body--on-ink">Tell us what you sell and who buys it. We'll set up discovery around your offerings.</p>
+      <div class="pub-actions pub-actions--center">
+        <a class="pub-btn pub-btn--primary" href="{{ access_url }}">Request access</a>
+        <a class="pub-btn pub-btn--secondary-on-ink" href="mailto:{{ contact_email }}">Email {{ contact_email }}</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

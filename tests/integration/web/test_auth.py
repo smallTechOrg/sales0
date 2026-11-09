@@ -327,9 +327,9 @@ def test_no_password_everything_open(make_client: Callable[..., TestClient]) -> 
         assert c.get(path).status_code == 200, path
     assert c.get("/api/runs/1").status_code != 401
     r = c.get("/login")
-    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert r.status_code == 303 and r.headers["location"] == "/app"
     r = _login(c, "anything")
-    assert r.status_code == 303 and r.headers["location"] == "/" and "set-cookie" not in r.headers
+    assert r.status_code == 303 and r.headers["location"] == "/app" and "set-cookie" not in r.headers
     page = c.get("/inbox")
     assert 'id="logout"' not in page.text
     assert c.get("/inbox", headers=HX).status_code == 200

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <meta name="description" content="{{ page_description }}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{{ canonical }}">
+  <meta name="theme-color" content="#F5F1EE">
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/img/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="sales0">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ page_description }}">
+  <meta property="og:url" content="{{ canonical }}">
+  <meta property="og:image" content="{{ site_url }}/static/img/og-sales0.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="sales0, the AI-native CRM for small sales teams, by smallTech">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ page_title }}">
+  <meta name="twitter:description" content="{{ page_description }}">
+  <meta name="twitter:image" content="{{ site_url }}/static/img/og-sales0.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/css/public.css">
+  {% block head %}{% endblock %}
+</head>
+<body class="pub">
+  <a class="pub-skip" href="#main">Skip to content</a>
+  <header class="pub-header">
+    <div class="pub-wrap pub-header__inner">
+      <a class="pub-brand" href="/" aria-label="sales0 home">
+        <span class="pub-wordmark">sales<span class="pub-zero">0</span></span>
+      </a>
+      <nav class="pub-nav" aria-label="Main">
+        <a href="/#how" class="pub-nav__link">How it works</a>
+        <a href="/#features" class="pub-nav__link">Features</a>
+        <a href="/#zer0" class="pub-nav__link">Zer0</a>
+      </nav>
+      <a class="pub-btn pub-btn--primary pub-header__cta" href="{{ access_url }}">Request access</a>
+      <details class="pub-menu">
+        <summary class="pub-menu__toggle" aria-label="Menu">Menu</summary>
+        <div class="pub-menu__panel">
+          <a href="/#how">How it works</a>
+          <a href="/#features">Features</a>
+          <a href="/#zer0">Zer0</a>
+          <a href="mailto:{{ contact_email }}">Contact</a>
+          <a class="pub-btn pub-btn--primary" href="{{ access_url }}">Request access</a>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="pub-footer">
+    <div class="pub-wrap">
+      <div class="pub-footer__top">
+        <div class="pub-footer__brand">
+          <p class="pub-footer__product"><span class="pub-wordmark">sales<span class="pub-zero">0</span></span></p>
+          <p class="pub-footer__by">by</p>
+          <a href="https://smalltech.in" class="pub-footer__logo" aria-label="smallTech">
+            <img src="/static/img/logo-smalltech.svg" alt="smallTech" width="416" height="92">
+          </a>
+        </div>
+        <nav class="pub-footer__nav" aria-label="Footer">
+          <div>
+            <p class="pub-label">sales0</p>
+            <a href="/">Overview</a>
+            <a href="/#features">Features</a>
+            <a href="{{ access_url }}">Request access</a>
+          </div>
+          <div>
+            <p class="pub-label">smallTech</p>
+            <a href="https://zer0.smalltech.in">Zer0</a>
+            <a href="https://smalltech.in">smalltech.in</a>
+            <a href="https://smalltech.in/#training">AI training</a>
+          </div>
+          <div>
+            <p class="pub-label">Contact</p>
+            <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+            <a href="/app" rel="nofollow">Team login</a>
+          </div>
+        </nav>
+      </div>
+      <p class="pub-footer__legal">&copy; 2026 madhyamakist pvt ltd</p>
+    </div>
+  </footer>
+</body>
+</html>

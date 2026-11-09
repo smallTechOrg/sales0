@@ -39,6 +39,7 @@ from sales0.web.routes import (
     metrics,
     oauth,
     outreach,
+    public,
     pipeline,
     registries,
     replies,
@@ -129,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.include_router(health.router)
+    app.include_router(public.router)  # SMA-8: public front page (/, /sales-agent, /pricing), no login
     app.include_router(stubs.router)
     app.include_router(setup.router)
     app.include_router(runs.router)

@@ -67,8 +67,9 @@ def test_baseline_migration_creates_and_seeds_app_meta(db_url: str) -> None:
         assert row is not None and "0001_baseline" in row.value
 
 
-def test_root_redirects_to_inbox_which_renders_with_assets(client: TestClient) -> None:
-    root = client.get("/", follow_redirects=False)
+def test_app_redirects_to_inbox_which_renders_with_assets(client: TestClient) -> None:
+    assert "AI-native CRM" in client.get("/").text  # "/" is the public landing page
+    root = client.get("/app", follow_redirects=False)
     assert root.status_code == 303 and root.headers["location"] == "/inbox"
     inbox = client.get("/inbox")
     assert inbox.status_code == 200 and "Review inbox" in inbox.text
@@ -202,7 +203,8 @@ def test_documented_run_command_boots_and_serves_health(db_url: str, tmp_path: P
                 time.sleep(0.2)
         assert body is not None, f"server did not become healthy (exit={proc.poll()})"
         assert body["data"]["db_revision"] == head_revision() and body["data"]["api_key_present"] is True
-        root = httpx.get(f"http://127.0.0.1:{port}/", timeout=2)
+        assert httpx.get(f"http://127.0.0.1:{port}/", timeout=2).status_code == 200  # the public landing page
+        root = httpx.get(f"http://127.0.0.1:{port}/app", timeout=2)
         assert root.status_code == 303 and root.headers["location"] == "/inbox"
         inbox = httpx.get(f"http://127.0.0.1:{port}/inbox", timeout=5)
         assert inbox.status_code == 200 and "Review inbox" in inbox.text

@@ -51,7 +51,7 @@ def _login_page(request: Request, next_path: str, *, email: str = "", error: str
 async def login_page(request: Request, next: str | None = None, db: Session = Depends(get_db)) -> Response:
     settings = _settings(request)
     if not accounts.auth_enabled(db, settings):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/app", status_code=303)
     target = auth.safe_next(next)
     if getattr(request.state, "login_member_id", None):
         return RedirectResponse(target, status_code=303)
@@ -69,7 +69,7 @@ async def login_submit(
 ) -> Response:
     settings = _settings(request)
     if not accounts.auth_enabled(db, settings):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/app", status_code=303)
     guard: auth.LoginGuard = request.app.state.login_throttle
     target = auth.safe_next(next)
     ip = auth.client_ip(request, settings)
