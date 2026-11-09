@@ -34,7 +34,7 @@ SESSION_PURPOSE = "session"
 OPEN_PATHS = ("/login", "/logout", "/api/health", "/static/", "/set-password/", "/api/worker/")  # plus "/__fixtures/" in fixture mode
 # SMA-8 public front page (routes/public.py). Matched EXACTLY, never as prefixes ("/" would otherwise open everything).
 # "/" itself only renders the landing for an anonymous visitor; the team is still sent on to the gated /inbox.
-PUBLIC_PATHS = frozenset({"/", "/sales-agent", "/pricing", "/robots.txt", "/sitemap.xml"})
+PUBLIC_PATHS = frozenset({"/", "/sales-agent", "/robots.txt", "/sitemap.xml"})
 FIXTURE_PREFIX = "/__fixtures/"
 DEFAULT_NEXT = "/inbox"
 THROTTLE_WINDOW_S = 60

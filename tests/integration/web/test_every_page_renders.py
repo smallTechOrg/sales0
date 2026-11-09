@@ -64,7 +64,7 @@ COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/setup/offerings", "/outreach/ins
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
                     "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker",
                     # SMA-8 public front page: covered by test_public_pages.py
-                    "/sales-agent", "/pricing", "/robots.txt", "/sitemap.xml"}
+                    "/sales-agent", "/robots.txt", "/sitemap.xml"}
 
 FALLBACK_NOTE = "Google Chrome not found — using the built-in browser"
 

@@ -263,3 +263,18 @@ body.pub {
   .pub-footer__top { grid-template-columns: 1fr 2fr; }
 }
 .pub-card .pub-actions { margin: 16px 0 0; }
+
+/* 0-line wordmark: identical in header and footer; the 0 in Gold Master */
+.pub-wordmark { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; color: var(--ink); }
+.pub-zero { color: var(--gold); }
+
+/* Review-inbox items in the hero mock */
+.pub-item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
+.pub-item__meta { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pub-item__tag { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); background: var(--gold); border-radius: 999px; padding: 2px 8px; }
+.pub-item__tag--quiet { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.pub-item__text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+.pub-item__why { font-size: 12px; color: var(--muted); }
+.pub-item__actions { display: flex; gap: 6px; margin-top: 2px; }
+.pub-chip { font-size: 12px; font-weight: 600; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; color: var(--ink); }
+.pub-chip--primary { background: var(--gold); border-color: var(--gold); }

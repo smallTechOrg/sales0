@@ -1,6 +1,6 @@
-"""Public front page for the Zer0 Sales Agent (sales0.smalltech.in), Linear SMA-8.
+"""Public front page for sales0, the AI-native CRM (sales0.smalltech.in), Linear SMA-8.
 
-The customer-facing pages that used to live on zero.smalltech.in, server-rendered here. They are the only pages a
+Server-rendered marketing pages for sales0 itself. They are the only pages a
 visitor can open without logging in (``auth.PUBLIC_PATHS``), they take no input, read nothing from the database
 and render no internal context.
 
@@ -11,8 +11,6 @@ locally in open mode."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 
@@ -21,8 +19,8 @@ from sales0.web.templating import get_templates
 router = APIRouter()
 
 SITE_URL = "https://sales0.smalltech.in"
-SIGNUP_URL = "https://zer0.smalltech.in/signup"
 CONTACT_EMAIL = "contact@smalltech.in"
+ACCESS_URL = f"mailto:{CONTACT_EMAIL}?subject=sales0%20access"
 
 # Public pages load Montserrat from Google Fonts; the app's own CSP (middleware.security_headers) allows only
 # 'self'. This policy is set on public responses only, and HardeningMiddleware keeps a header the route already set.
@@ -42,40 +40,6 @@ PUBLIC_CSP = "; ".join(
 )
 
 
-@dataclass(frozen=True)
-class Plan:
-    key: str
-    name: str
-    monthly: str  # display price billed monthly
-    yearly: str | None  # display price per month billed yearly
-    features: tuple[tuple[str, bool], ...]  # (feature, included)
-    cta: str
-    featured: bool = False
-
-
-# Ported from zer0-frontend-web pricing (Free / Basic / Pro, yearly saves 25%).
-PLANS: tuple[Plan, ...] = (
-    Plan(
-        "free", "Free", "$0", None,
-        (("200 conversations a month", True), ("Built-in lead dashboard", True), ("Priority support", False),
-         ("Free customisations", False), ("Free backend integration", False)),
-        "Start free",
-    ),
-    Plan(
-        "basic", "Basic", "$4", "$3",
-        (("1,000 conversations a month", True), ("Built-in lead dashboard", True), ("Priority support", True),
-         ("Free customisations", True), ("Free backend integration", False)),
-        "Choose Basic",
-    ),
-    Plan(
-        "pro", "Pro", "$12", "$10",
-        (("Unlimited conversations", True), ("Built-in lead dashboard", True), ("Priority support", True),
-         ("Free customisations", True), ("Free backend integration", True)),
-        "Choose Pro", featured=True,
-    ),
-)
-
-
 def _page(request: Request, template: str, *, path: str, title: str, description: str) -> HTMLResponse:
     ctx = {
         "page_path": path,
@@ -83,17 +47,16 @@ def _page(request: Request, template: str, *, path: str, title: str, description
         "page_description": description,
         "canonical": SITE_URL + path,
         "site_url": SITE_URL,
-        "signup_url": SIGNUP_URL,
+        "access_url": ACCESS_URL,
         "contact_email": CONTACT_EMAIL,
-        "plans": PLANS,
     }
     return get_templates().TemplateResponse(request, template, ctx, headers={"Content-Security-Policy": PUBLIC_CSP})
 
 
-LANDING_TITLE = "Zer0 Sales Agent — an AI sales agent for your website"
+LANDING_TITLE = "sales0, the AI-native CRM for small sales teams"
 LANDING_DESCRIPTION = (
-    "The Zer0 Sales Agent sits on your website, answers visitors, qualifies them and captures their details, "
-    "then hands you the warm conversation. Free plan with 200 conversations a month. No code. By smallTech."
+    "sales0 finds buyer intent on LinkedIn, keeps your pipeline current and drafts outreach from your own Gmail. "
+    "You review, approve and close. Part of Zer0 by smallTech."
 )
 
 
@@ -116,26 +79,16 @@ def sales_agent(request: Request) -> HTMLResponse:
     return landing(request)
 
 
-@router.get("/pricing", response_class=HTMLResponse)
-def pricing(request: Request) -> HTMLResponse:
-    return _page(
-        request, "public/pricing.html", path="/pricing",
-        title="Pricing — Zer0 Sales Agent",
-        description="Simple pricing for the Zer0 Sales Agent. Start free with 200 conversations a month, "
-        "upgrade from $4 a month. Save 25% billed yearly. No hidden fees.",
-    )
-
-
 @router.get("/robots.txt", response_class=PlainTextResponse)
 def robots() -> PlainTextResponse:
     body = "\n".join(
-        ["User-agent: *", "Allow: /$", "Allow: /pricing", "Allow: /static/", "Disallow: /", f"Sitemap: {SITE_URL}/sitemap.xml", ""]
+        ["User-agent: *", "Allow: /$", "Allow: /static/", "Disallow: /", f"Sitemap: {SITE_URL}/sitemap.xml", ""]
     )
     return PlainTextResponse(body)
 
 
 @router.get("/sitemap.xml")
 def sitemap() -> Response:
-    urls = "".join(f"<url><loc>{SITE_URL}{p}</loc></url>" for p in ("/", "/pricing"))
+    urls = "".join(f"<url><loc>{SITE_URL}{p}</loc></url>" for p in ("/",))
     body = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
     return Response(body, media_type="application/xml")
