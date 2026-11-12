@@ -246,6 +246,11 @@ def allowed_origins(request: Request) -> set[Origin]:
     public = _parse_origin(settings.public_base_url) if settings.public_base_url else None
     if public:
         origins.add(public)  # a VPS behind a domain: the browser's Origin is the public URL
+    for part in settings.allowed_hosts.split(","):
+        part = part.strip()
+        extra = _parse_origin(f"https://{part}") if part else None
+        if extra:
+            origins.add(extra)  # extra public hostnames (custom domains) are served over https
     for host in trusted_hosts:
         for port in ports:
             parsed = _parse_origin(f"http://{'[' + host + ']' if ':' in host else host}:{port}")

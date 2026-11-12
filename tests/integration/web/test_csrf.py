@@ -136,3 +136,22 @@ def test_live_server_same_origin_and_cross_origin(fixture_server: str) -> None:
         cross = http.post("/setup/keywords", data={"text": "ai consulting"}, headers={"Origin": EVIL})
         assert cross.status_code == 403
     assert _keyword_count() == 1
+
+
+def test_https_origin_of_an_allowed_custom_domain_is_same_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cloud Run: the app sees http, the browser sends https://sales0.smalltech.in (SALES0_ALLOWED_HOSTS)."""
+    from starlette.requests import Request
+
+    from sales0.web.middleware import _parse_origin, allowed_origins
+
+    from sales0.config import reset_settings
+
+    monkeypatch.setenv("SALES0_ALLOWED_HOSTS", "sales0.smalltech.in")
+    reset_settings()
+    monkeypatch.setattr("sales0.config.get_settings", get_settings)  # restore cache handle on teardown
+    request = Request({"type": "http", "method": "POST", "scheme": "http", "path": "/", "headers": [(b"host", b"sales0.smalltech.in")]})
+    origins = allowed_origins(request)
+    assert _parse_origin("https://sales0.smalltech.in") in origins
+    assert _parse_origin("https://attacker.example") not in origins
+    monkeypatch.delenv("SALES0_ALLOWED_HOSTS")
+    reset_settings()
