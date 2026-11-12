@@ -94,7 +94,7 @@ def sales_agent_moved() -> RedirectResponse:
 @router.get("/robots.txt", response_class=PlainTextResponse)
 def robots() -> PlainTextResponse:
     body = "\n".join(
-        ["User-agent: *", "Allow: /$", "Allow: /static/", "Disallow: /", f"Sitemap: {SITE_URL}/sitemap.xml", ""]
+        ["User-agent: *", "Allow: /$", "Allow: /sitemap.xml", "Allow: /static/", "Disallow: /", f"Sitemap: {SITE_URL}/sitemap.xml", ""]
     )
     return PlainTextResponse(body)
 
