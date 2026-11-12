@@ -21,14 +21,14 @@ COLUMNS = ("status_override_sub", "status_override_stage", "status_override_by",
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("companies") as batch:
-        for col in COLUMNS:
-            batch.drop_column(col)
+    # Plain ALTER TABLE ... DROP COLUMN on every dialect (SQLite >= 3.35 supports it): never a batch table rebuild, which
+    # on SQLite would drop + recreate ``companies`` and fire the ON DELETE SET NULL of every table pointing at it.
+    for col in COLUMNS:
+        op.execute(f"ALTER TABLE companies DROP COLUMN {col}")
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("companies") as batch:
-        batch.add_column(sa.Column("status_override_at", sa.DateTime(timezone=True)))
-        batch.add_column(sa.Column("status_override_by", sa.String(80)))
-        batch.add_column(sa.Column("status_override_stage", sa.String(10)))
-        batch.add_column(sa.Column("status_override_sub", sa.String(20)))
+    op.add_column("companies", sa.Column("status_override_at", sa.DateTime(timezone=True)))
+    op.add_column("companies", sa.Column("status_override_by", sa.String(80)))
+    op.add_column("companies", sa.Column("status_override_stage", sa.String(10)))
+    op.add_column("companies", sa.Column("status_override_sub", sa.String(20)))
