@@ -33,9 +33,10 @@ def _seed() -> None:
 
 def test_health_page_lists_every_part(client: TestClient) -> None:
     html = unescape(client.get("/health").text)
-    for key in ("replies", "worker", "linkedin", "ai", "runs", "sheet", "auto_status", "database"):
+    for key in ("replies", "worker", "linkedin", "ai", "runs", "sheet", "database"):
         assert f'id="health-{key}"' in html
     assert 'id="health-summary"' in html and "Schema up to date" in html
+    assert "Could not check" not in html  # every row is computed (none crashed)
 
 
 def test_analytics_numbers(client: TestClient) -> None:

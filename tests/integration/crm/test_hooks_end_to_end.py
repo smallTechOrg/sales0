@@ -38,7 +38,7 @@ def test_send_then_human_reply_walks_the_prospect_to_a_lead(db: Session, team: T
     sent = messages.send(db, msg.id, team.ann)
     assert sent.state == "sent"
     p = prospects.get_prospect(db, v.id)
-    assert p.stage == "contacted" and p.contacted_at is not None
+    assert p.stage == "new" and p.contacted_at is not None  # q25: recorded, the stage is not moved
     assert db.scalar(select(func.count(FollowUp.id)).where(FollowUp.prospect_id == v.id)) == 3
     db.refresh(e)
     assert e.date_email_sent is not None

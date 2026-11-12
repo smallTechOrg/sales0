@@ -36,13 +36,13 @@ def test_plan_is_contact_day_plus_settings_offsets() -> None:
     ]  # fmt: skip
 
 
-def test_log_contact_moves_new_to_contacted_with_channel_note_and_custom_dates(db) -> None:
+def test_log_contact_records_channel_note_and_custom_dates_without_moving(db) -> None:
     v = _new(db)
     out = prospects.log_contact(
         db, v.id, channel="WhatsApp", note="sent the brochure", now=D,
         due_dates={"follow_up_1": date(2026, 10, 3), "follow_up_2": None, "final_follow_up": date(2026, 10, 20)},
     )  # fmt: skip
-    assert out.stage == "contacted"
+    assert out.stage == "new"  # q25: recorded, the stage is not moved
     rows = _rows(db, v.id)
     assert {k: f.due_on for k, f in rows.items()} == {
         "follow_up_1": date(2026, 10, 3), "follow_up_2": date(2026, 10, 8), "final_follow_up": date(2026, 10, 20)}
@@ -74,18 +74,17 @@ def test_back_dated_contact_counts_offsets_from_that_day(db) -> None:
     assert prospects.get_prospect(db, v.id).contacted_at.date() == date(2026, 9, 28)
 
 
-def test_mark_done_with_channel_moves_the_stage_and_records_channel_and_note(db) -> None:
+def test_mark_done_with_channel_records_channel_and_note_without_moving(db) -> None:
     v = _new(db)
     prospects.log_contact(db, v.id, channel="call", now=D)
     fu1 = _rows(db, v.id)["follow_up_1"]
     view = followups.complete(db, fu1.id, channel="LinkedIn", note="InMail sent", now=D + timedelta(days=3))
     assert view.done and view.channel == "linkedin" and view.channel_label == "LinkedIn"
     assert fu1.channel == "linkedin" and fu1.note == "InMail sent"
-    assert prospects.get_prospect(db, v.id).stage == "follow_up_1"
+    assert prospects.get_prospect(db, v.id).stage == "new"  # q25: recorded, the stage is not moved
     done = _events(db, v.id, "follow_up_done")[-1]
     assert done.data["channel"] == "linkedin" and done.body == "Follow-up 1 done via LinkedIn: InMail sent"
-    stage = _events(db, v.id, "stage_change")[-1]
-    assert stage.data == {**stage.data, "from": "contacted", "to": "follow_up_1", "channel": "linkedin"}
+    assert not [t for t in _events(db, v.id, "stage_change") if (t.data or {}).get("to") == "follow_up_1"]  # no move
     with pytest.raises(DomainError):
         followups.complete(db, _rows(db, v.id)["follow_up_2"].id, channel="fax")
 
@@ -119,10 +118,10 @@ def test_gmail_send_marks_the_follow_up_done_via_email(db, installed) -> None:
     v = prospects.ensure_for_enquiry(db, e.id)
     first = h.sent_message(db, m, enquiry_row=e, sent_at=D)
     events.publish(db, events.MessageSent(outreach_message_id=first.id, member_id=m.id, to_addrs=("asha@acme.example",), sent_at=D))
-    assert prospects.get_prospect(db, v.id).stage == "contacted"
+    assert prospects.get_prospect(db, v.id).stage == "new"  # q25: recorded, the stage is not moved
     later = D + timedelta(days=3)
     second = h.sent_message(db, m, enquiry_row=e, sent_at=later)
     events.publish(db, events.MessageSent(outreach_message_id=second.id, member_id=m.id, to_addrs=("asha@acme.example",), sent_at=later))
     fu1 = _rows(db, v.id)["follow_up_1"]
     assert fu1.done_at is not None and fu1.channel == "email"
-    assert prospects.get_prospect(db, v.id).stage == "follow_up_1"
+    assert prospects.get_prospect(db, v.id).stage == "new"  # q25: the reminder is done, the stage is not moved

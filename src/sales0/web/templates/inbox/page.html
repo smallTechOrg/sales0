@@ -21,6 +21,7 @@
 {% block content %}
   <div class="stack">
     {% include "inbox/_tabs.html" %}
+    {% include "pipeline/_add_enquiry.html" %}
     <datalist id="company-names">{% for n in company_names|default([]) %}<option value="{{ n }}">{% endfor %}</datalist>
     {% if tab == "skipped" %}{% include "inbox/_skipped.html" %}{% else %}{% include "inbox/_list.html" %}{% endif %}
   </div>

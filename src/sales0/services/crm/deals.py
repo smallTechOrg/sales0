@@ -4,11 +4,9 @@ ONE list for every enquiry, set by a person (Enquiries board, company page) or b
 contacted, follow_up_1, follow_up_2, final_follow_up, meeting_scheduled, proposal_sent, won, lost, no_response,
 on_hold. "Hot / Warm" are the priority tag. The enquiry status and the company's (prospect) status are DIFFERENT things.
 
-Link 1 (owner decision), enquiry -> company, for ANY accepted enquiry of the company:
-* contacted / follow_up_1 / follow_up_2 / final_follow_up: while the company is a NEW prospect (stage prospect, no
-  off-ramp) the prospect sub-status moves to the same stage, FORWARD ONLY (already at or past it: nothing happens).
-* meeting_scheduled / proposal_sent: show "Suggested: Lead"; a person confirms. won: the company becomes a client.
-* open / lost / no_response / on_hold: no effect on the company.
+Link 1, enquiry -> company (q25: an enquiry status NEVER moves the company; a person moves companies between boards):
+* meeting_scheduled .. interviews: show "Suggested: Lead"; won: show "Suggested: Client". A person confirms.
+* every other status: no effect on the company.
 A company that is not a prospect (lead, client, off-ramp) or no company at all: the status just changes.
 
 Link 2, prospect -> enquiry: when the prospect itself moves forward to contacted / follow-up 1 / 2 / final (a logged
@@ -23,8 +21,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from sales0.db.models import Company, Enquiry
-from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES, PROSPECT_STAGES
+from sales0.db.models import Enquiry
+from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES
 from sales0.errors import DomainError
 from sales0.services._common import now_or, not_found
 from sales0.services.crm import lifecycle, timeline
@@ -45,20 +43,6 @@ STAGE_DRIVING = ("contacted", "follow_up_1", "follow_up_2", "final_follow_up")
 
 def deal_label(status: str | None) -> str:
     return DEAL_LABELS.get(status or "", "Not accepted yet")
-
-
-def _advance_prospect(db: Session, e: Enquiry, status: str, *, actor: Actor, source: str, stamp: datetime) -> bool:
-    """Move the company's prospect sub-status forward to ``status``. True when it moved; no error when it cannot."""
-    co = db.get(Company, e.company_id) if e.company_id else None
-    if co is None or co.stage != "prospect" or co.off_ramp:
-        return False
-    if source == "sheet" and co.stage_source == "app":
-        return False  # a stage a person set in the app is never moved by the sheet
-    current = co.sub_status if co.sub_status in PROSPECT_STAGES else "new"
-    if PROSPECT_STAGES.index(status) <= PROSPECT_STAGES.index(current):
-        return False  # forward only
-    lifecycle.set_prospect_status(db, co.id, status, actor=actor, note="Set from an enquiry status", now=stamp)
-    return True
 
 
 def advance_from_prospect(db: Session, prospect_id: int, stage: str, *, actor: Actor, stamp: datetime) -> int:
@@ -98,7 +82,7 @@ def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM
         return e
     e.deal_status = status
     db.flush()
-    moved = status in STAGE_DRIVING and _advance_prospect(db, e, status, actor=actor, source=src, stamp=stamp)
+    moved = False  # an enquiry status never moves the company (a person moves companies between boards)
     timeline.add_event(
         db, subject_type="enquiry", subject_id=e.id, kind="stage_change", enquiry_id=e.id, company_id=e.company_id,
         prospect_id=e.prospect_id, actor=actor, occurred_at=stamp,
@@ -110,5 +94,5 @@ def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM
         if status in ("meeting_scheduled", "assessment", "proposal_sent", "interviews"):
             lifecycle.suggest_lead(db, e.company_id, "enquiry", f"enquiry {e.id} {status}", now=stamp)
         elif status == "won":
-            lifecycle.mark_client(db, e.company_id, actor=actor, note="An enquiry was marked Won", now=stamp)
+            lifecycle.suggest_client(db, e.company_id, f"enquiry {e.id} was marked Won", now=stamp)
     return e

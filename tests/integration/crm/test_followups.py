@@ -75,26 +75,27 @@ def test_due_today_overdue_and_count_with_a_frozen_clock(db) -> None:
     assert followups.due_count(db, today=date(2026, 10, 9)) == 2  # fu1 + fu2 overdue
 
 
-def test_complete_moves_the_prospect_to_the_reminder_stage(db) -> None:
+def test_complete_records_the_reminder_and_never_moves_the_prospect(db) -> None:
     v = _contacted(db)
+    stage = prospects.get_prospect(db, v.id).stage
     fu1 = _rows(db, v.id)["follow_up_1"]
     out = followups.complete(db, fu1.id, note="emailed again", now=D + timedelta(days=4))
     assert out.kind == "follow_up_1"
-    assert prospects.get_prospect(db, v.id).stage == "follow_up_1"
+    assert prospects.get_prospect(db, v.id).stage == stage  # q25: a person moves the company
     assert followups.list_due(db, today=date(2026, 10, 4)).due_today == []
     assert prospects.get_prospect(db, v.id).next_follow_up_on == date(2026, 10, 8)
     followups.complete(db, fu1.id)  # idempotent
     fu2 = _rows(db, v.id)["follow_up_2"]
     followups.complete(db, fu2.id, now=D + timedelta(days=8))
     followups.complete(db, fu1.id)
-    assert prospects.get_prospect(db, v.id).stage == "follow_up_2"  # never moved back
+    assert prospects.get_prospect(db, v.id).stage == stage
 
 
 def test_completing_a_later_reminder_completes_the_earlier_ones(db) -> None:
     v = _contacted(db)
     followups.complete(db, _rows(db, v.id)["final_follow_up"].id, now=D)
     rows = _rows(db, v.id)
-    assert all(f.done_at for f in rows.values()) and prospects.get_prospect(db, v.id).stage == "final_follow_up"
+    assert all(f.done_at for f in rows.values())  # the earlier reminders are done too; the stage does not move
     assert prospects.get_prospect(db, v.id).next_follow_up_on is None
 
 

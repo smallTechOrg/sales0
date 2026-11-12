@@ -107,7 +107,7 @@ def test_approve_and_send_marks_exactly_that_reminder_done_by_email_and_stays_in
     f = db.get(FollowUp, sent.follow_up_id)
     assert f.done_at is not None and f.channel == "email"
     p = prospects.get_prospect(db, v.id)
-    assert p.stage == "follow_up_1" and p.next_follow_up_on == db.scalar(select(FollowUp.due_on).where(FollowUp.prospect_id == v.id, FollowUp.kind == "follow_up_2"))
+    assert p.stage == "new" and p.next_follow_up_on == db.scalar(select(FollowUp.due_on).where(FollowUp.prospect_id == v.id, FollowUp.kind == "follow_up_2"))
     assert [t for t in p.timeline if t.kind == "follow_up_done" and t.data.get("channel") == "email"]
     # the other two reminders are untouched
     assert sorted(x.kind for x in db.scalars(select(FollowUp).where(FollowUp.prospect_id == v.id, FollowUp.done_at.is_(None)))) == ["final_follow_up", "follow_up_2"]
@@ -256,7 +256,7 @@ def test_first_contact_by_whatsapp_then_email_follow_up_without_a_thread(db: Ses
     sent = messages.send(db, draft.id, team.ann)
     assert sent.state == "sent"
     db.expire_all()
-    assert db.get(FollowUp, f.id).channel == "email" and db.get(Prospect, p.id).stage == "follow_up_1"
+    assert db.get(FollowUp, f.id).channel == "email" and db.get(Prospect, p.id).stage == "new"  # q25: no move
 
 
 # ------------------------------------------------------------------------------------------------ scheduler (opt-in)

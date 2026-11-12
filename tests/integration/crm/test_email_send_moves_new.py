@@ -1,5 +1,6 @@
-"""E1: an outreach email sent for a prospect in stage ``new`` moves it to ``contacted`` and schedules the three
-follow-ups, on EVERY send path (real ``messages.send`` / ``retry_send`` with a fake Gmail)."""
+"""E1: an outreach email sent for a prospect in stage ``new`` records the contact date and schedules the three
+follow-ups, on EVERY send path (real ``messages.send`` / ``retry_send`` with a fake Gmail). q25: the stage itself is NOT
+moved - a person moves the company."""
 
 from __future__ import annotations
 
@@ -39,10 +40,10 @@ def _opens(db: Session, pid: int) -> list[FollowUp]:
 def _assert_contacted(db: Session, pid: int) -> Prospect:
     db.expire_all()
     p = db.get(Prospect, pid)
-    assert p.stage == "contacted" and p.contacted_at is not None and not p.contacted_estimated
+    assert p.stage == "new" and p.contacted_at is not None and not p.contacted_estimated  # q25: recorded, not moved
     assert [f.kind for f in _opens(db, pid)] == ["follow_up_1", "follow_up_2", "final_follow_up"]
     t = [t for t in db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == pid)) if t.kind == "stage_change"]
-    assert any((x.data or {}).get("to") == "contacted" and (x.data or {}).get("channel") == "email" for x in t)
+    assert any((x.data or {}).get("channel") == "email" and (x.data or {}).get("contacted_at") for x in t)
     return p
 
 
@@ -90,7 +91,7 @@ def test_sheet_imported_prospect_with_an_estimated_contact_date_still_gets_remin
     db.commit()
     _send(db, team, msg)
     got = _assert_contacted(db, p.id)
-    assert got.stage_source == "app"
+    assert got.stage_source == "sheet"  # q25: the stage was not touched, so it stays as the sheet set it
 
 
 def test_prospect_reached_through_a_contact_link(db: Session, team: Team, installed) -> None:

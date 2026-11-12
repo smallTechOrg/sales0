@@ -265,9 +265,7 @@ def go_off_ramp(db: Session, company_id: int, off_ramp: str, *, reason: str | No
 
 def reopen(db: Session, company_id: int, *, actor: Actor = TEAM, is_admin: bool = False, now: datetime | None = None) -> Company:
     """Reopen a closed company: it goes back to the Prospects board as New (q24; a lost client is won back as a client).
-    Do not contact needs an admin. The reopen is a manual status, so earlier outreach does not push it forward again."""
-    from sales0.services.crm import auto_status
-
+    Do not contact needs an admin."""
     co = company_row(db, company_id)
     stamp = now_or(now)
     off = co.off_ramp
@@ -290,7 +288,6 @@ def reopen(db: Session, company_id: int, *, actor: Actor = TEAM, is_admin: bool 
         timeline.add_event(db, subject_type="company", subject_id=company_id, kind="stage_change", company_id=company_id,
                            body=f"Reopened (was {OFF_RAMP_LABELS.get(off, off)}): back to Prospects as New",
                            data={"reopened": off}, actor=actor, occurred_at=stamp)
-    auto_status.set_override(db, company_id, actor=actor, now=stamp)
     return co
 
 
@@ -344,10 +341,9 @@ def move_label(target: str) -> str:
 
 def move_to(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, why: str | None = None,
             meeting_at: datetime | None = None, is_admin: bool = False, now: datetime | None = None) -> Company:
-    """A PERSON sets the company's status (a board drag or the "..." menu): any board column, Client, or a close reason.
-    It is a manual override: the automatic status holds until the next real outreach event."""
-    from sales0.services.crm import auto_status
-
+    """A PERSON sets the company's status (a board drag, a card's Move... button or the "..." menu): any board column,
+    Client, or a close reason. The only way a company changes board: nothing moves one automatically. A company marked
+    Client by mistake can be moved back to any Leads or Prospects status (``undo_client``)."""
     if target not in MOVE_TARGETS:
         raise invalid("stage_invalid", "Choose a valid status.")
     co = company_row(db, company_id)
@@ -356,6 +352,10 @@ def move_to(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, w
     kind, _, sub = target.partition(":")
     if kind == "closed":
         return go_off_ramp(db, company_id, sub, reason=note, actor=actor, now=stamp)
+    if co.stage == "client" and kind in ("lead", "prospect"):
+        undo_client(db, company_id, target, actor=actor, why=note, meeting_at=meeting_at, now=stamp)
+        _refresh(db, co)
+        return co
     if co.off_ramp:
         if kind == "prospect" or co.off_ramp in COMPANY_ONLY_OFF_RAMPS:
             reopen(db, company_id, actor=actor, is_admin=is_admin, now=stamp)
@@ -379,7 +379,75 @@ def move_to(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, w
             _refresh(db, co)
         set_prospect_status(db, company_id, sub, actor=actor, note=note, now=stamp)
     _refresh(db, co)
-    auto_status.set_override(db, company_id, actor=actor, now=stamp)
+    return co
+
+
+def undo_client(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, why: str | None = None,
+                meeting_at: datetime | None = None, now: datetime | None = None) -> Company:
+    """A company was marked Client BY MISTAKE: put it back as if it never was one, at ``target`` (``lead:<stage>`` or
+    ``prospect:<stage>``). The client record is removed (its people and characteristics move back to the prospect), the
+    won lead is reopened at the chosen lead stage (or removed for a Prospects status, when it only existed to make the
+    client), enquiries marked Won go back to the chosen status, and the timeline says what was undone."""
+    from sales0.db.models import ContactLink, Enquiry, EntityCharacteristic
+    from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES
+
+    kind, _, sub = target.partition(":")
+    if kind not in ("lead", "prospect") or sub not in COMPANY_SUB_STATUSES[kind]:
+        raise invalid("stage_invalid", "Choose a Leads or Prospects status.")
+    co = company_row(db, company_id)
+    stamp = now_or(now)
+    pids = select(Prospect.id).where(Prospect.company_id == company_id)
+    clients = list(db.scalars(select(Client).where((Client.company_id == company_id) | Client.prospect_id.in_(pids))))
+    won = list(db.scalars(select(Lead).where(Lead.stage == "won", (Lead.company_id == company_id) | Lead.prospect_id.in_(pids))
+                         .order_by(Lead.id.desc())))
+    if not clients and not won:
+        raise DomainError("stage_invalid", "This company is not a client.", 409)
+    p = primary_prospect(db, company_id) or ensure_ledger(db, company_id, actor=actor, now=stamp)
+    for c in clients:  # what hung off the client goes back to the prospect, then the client row goes
+        for ec in db.scalars(select(EntityCharacteristic).where(EntityCharacteristic.entity_type == "client", EntityCharacteristic.entity_id == c.id)):
+            dup = db.scalar(select(EntityCharacteristic.id).where(EntityCharacteristic.characteristic_id == ec.characteristic_id,
+                                                                  EntityCharacteristic.entity_type == "prospect", EntityCharacteristic.entity_id == p.id))
+            if dup is None:
+                ec.entity_type, ec.entity_id = "prospect", p.id
+            else:
+                db.delete(ec)
+        for cl in db.scalars(select(ContactLink).where(ContactLink.entity_type == "client", ContactLink.entity_id == c.id)):
+            db.delete(cl)
+        db.delete(c)
+    db.flush()
+    keep = won[0] if won else None
+    for ld in won[1:]:  # older won leads of the same company: close them as no response (history kept)
+        ld.stage, ld.updated_at = "no_response", stamp
+    if co.off_ramp == "lost_client":
+        co.off_ramp, co.off_ramp_reason, co.off_ramp_at = None, None, None
+    if kind == "lead":
+        if keep is None:
+            if p.status == "closed":
+                prospects.reopen(db, p.id, actor=actor, now=stamp)
+            leads.convert(db, p.id, stage=sub, meeting_at=meeting_at, opened_by="manual", actor=actor, now=stamp, require_contact=False)
+        else:
+            keep.stage, keep.closed_at, keep.updated_at = sub, None, stamp
+            if meeting_at is not None:
+                keep.meeting_at = meeting_at
+    else:
+        if keep is not None:
+            db.delete(keep)  # the lead only stood for the (mistaken) win
+        db.flush()
+        if p.status != "open":
+            p.status, p.closed_reason, p.closed_at = "open", None, None
+        p.stage, p.stage_source, p.updated_at = sub, "app", stamp
+    db.flush()
+    deal = sub if sub in ENQUIRY_DEAL_STATUSES else ("open" if sub == "new" else None)
+    if deal:
+        for e in db.scalars(select(Enquiry).where(Enquiry.company_id == company_id, Enquiry.deal_status == "won")):
+            e.deal_status, e.deal_status_source = deal, "app"
+    timeline.add_event(
+        db, subject_type="company", subject_id=company_id, kind="stage_change", company_id=company_id, actor=actor,
+        body=f"Client status undone (marked by mistake): now {move_label(target)}" + (f" - {why}" if why else ""),
+        data={"undo_client": True, "to": target, "clients_removed": len(clients)}, occurred_at=stamp,
+    )
+    company_projection.recompute(db.connection(), {company_id}, actor=actor.label, actor_member_id=actor.member_id)
+    _refresh(db, co)
     return co
 
 
@@ -389,7 +457,8 @@ def suggest_lead(db: Session, company_id: int, kind: str, detail: str, *, now: d
     enquiry marked Meeting scheduled / Proposal sent). NEVER moves the stage. A dismissed hint of the same kind and
     detail is not raised again. Returns whether the hint was set."""
     co = db.get(Company, company_id)
-    if co is None or co.stage != "prospect" or co.off_ramp in COMPANY_ONLY_OFF_RAMPS:
+    allowed = ("prospect", "lead") if kind == "client" else ("prospect",)
+    if co is None or co.stage not in allowed or co.off_ramp in COMPANY_ONLY_OFF_RAMPS:
         return False
     cur = co.lead_suggestion or {}
     if cur and cur.get("kind") == kind and cur.get("detail") == detail:
@@ -402,9 +471,16 @@ def suggest_lead(db: Session, company_id: int, kind: str, detail: str, *, now: d
 
 def active_suggestion(co: Company) -> dict[str, Any] | None:
     s = co.lead_suggestion
-    if not s or s.get("dismissed_at") or co.stage != "prospect":
+    if not s or s.get("dismissed_at"):
+        return None
+    if co.stage != "prospect" and not (s.get("kind") == "client" and co.stage == "lead"):
         return None
     return s
+
+
+def suggest_client(db: Session, company_id: int, detail: str, *, now: datetime | None = None) -> bool:
+    """Show a "suggested: Client" hint (an enquiry was marked Won). NEVER moves the company: a person decides."""
+    return suggest_lead(db, company_id, "client", detail, now=now)
 
 
 def dismiss_suggestion(db: Session, company_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> Company:
@@ -418,6 +494,9 @@ def dismiss_suggestion(db: Session, company_id: int, *, actor: Actor = TEAM, now
 
 
 def accept_suggestion(db: Session, company_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> Company:
+    co = company_row(db, company_id)
+    if (co.lead_suggestion or {}).get("kind") == "client":
+        return mark_client(db, company_id, actor=actor, note="Accepted the suggestion (an enquiry was marked Won)", now=now)
     return mark_lead(db, company_id, actor=actor, note="Accepted the suggestion", now=now)
 
 
@@ -449,11 +528,6 @@ class LifeView(BaseModel):
     client_since: date | None = None
     primary_prospect_id: int | None = None
     ledger_count: int = 0
-    # q24 automatic status
-    auto_enabled: bool = True
-    override_active: bool = False
-    override_at: datetime | None = None
-    override_by: str | None = None
     status_help: str | None = None  # what moves the current status
     move_groups: list[tuple[str, list[tuple[str, str, str]]]] = Field(default_factory=list)  # (group, [(target, label, help)])
 
@@ -474,12 +548,11 @@ def life_view(db: Session, company_id: int) -> LifeView:
         select(Prospect.id).where(Prospect.company_id == company_id))).order_by(Client.id).limit(1))
     p = primary_prospect(db, company_id)
     owner = db.get(TeamMember, co.owner_member_id) if co.owner_member_id else None
-    from sales0.services.crm import auto_status
+    from sales0.services.crm.status_help import STATUS_HELP
 
     resume = None
     if co.off_ramp and co.off_ramp != "lost_client":
         resume = "Prospects / New"
-    over = auto_status.override_active(db, co) if co.stage and not co.off_ramp else False
     return LifeView(
         company_id=co.id, name=co.name, website=co.website, linkedin_url=co.linkedin_url, city=co.city, stage=stage,
         stage_label=stage_label(stage), sub_status=co.sub_status, sub_label=sub_label(co.sub_status) if co.sub_status else None,
@@ -492,9 +565,7 @@ def life_view(db: Session, company_id: int) -> LifeView:
         lead_value_estimate=ld.value_estimate if ld else None, lead_outcome_note=ld.outcome_note if ld else None,
         client_since=client.started_on if client else None, primary_prospect_id=p.id if p else None,
         ledger_count=len(ledger_prospects(db, company_id)),
-        auto_enabled=auto_status.enabled(), override_active=over, override_at=co.status_override_at if over else None,
-        override_by=co.status_override_by if over else None,
-        status_help=auto_status.RULES_HELP.get(co.sub_status or "") if co.stage and not co.off_ramp else None,
+        status_help=STATUS_HELP.get(co.sub_status or "") if co.stage and not co.off_ramp else None,
         move_groups=move_groups(co),
     )
 
@@ -509,14 +580,16 @@ CLOSE_HELP = {
 
 def move_groups(co: Company) -> list[tuple[str, list[tuple[str, str, str]]]]:
     """The statuses a person may pick by hand for this company (the "..." menu and the board drag), with what each means."""
-    from sales0.services.crm import auto_status
+    from sales0.services.crm.status_help import STATUS_HELP
 
     out: list[tuple[str, list[tuple[str, str, str]]]] = []
-    if co.stage in (None, "prospect") or co.off_ramp:
-        out.append(("Prospects", [(f"prospect:{s}", SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in PROSPECT_STAGES]))
-    if co.stage != "client" or co.off_ramp:
-        out.append(("Leads", [(f"lead:{s}", SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]))
-    out.append(("Client", [("client", "Client", auto_status.RULES_HELP["active"])]))
+    back = co.stage == "client" and not co.off_ramp  # marked client by mistake: back to any Leads / Prospects status
+    if co.stage in (None, "prospect") or co.off_ramp or back:
+        out.append(("Prospects" + (" (undo client)" if back else ""),
+                    [(f"prospect:{s}", SUB_LABELS[s], STATUS_HELP[s]) for s in PROSPECT_STAGES]))
+    out.append(("Leads" + (" (undo client)" if back else ""),
+                [(f"lead:{s}", SUB_LABELS[s], STATUS_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]))
+    out.append(("Client", [("client", "Client", STATUS_HELP["active"])]))
     if not co.off_ramp and co.stage:
         out.append(("Close", [(f"closed:{k}", OFF_RAMP_LABELS[k], CLOSE_HELP[k]) for k in OFF_RAMPS_BY_STAGE.get(co.stage, ("do_not_contact",))]))
     return out
@@ -589,5 +662,5 @@ def set_owner(db: Session, company_id: int, member_id: int | None) -> Company:
 __all__ = [
     "COMPANY_STAGES", "OFF_RAMP_LABELS", "SUB_LABELS", "SYSTEM", "accept_suggestion", "active_suggestion", "add_to_pipeline",
     "dismiss_suggestion", "ensure_contactable", "ensure_ledger", "go_off_ramp", "mark_client", "mark_lead", "primary_prospect",
-    "MOVE_TARGETS", "move_label", "move_to", "reopen", "set_lead_status", "set_prospect_status", "suggest_lead",
+    "MOVE_TARGETS", "move_label", "move_to", "undo_client", "reopen", "set_lead_status", "set_prospect_status", "suggest_lead",
 ]

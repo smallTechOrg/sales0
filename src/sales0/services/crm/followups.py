@@ -230,18 +230,17 @@ def complete(
         _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done{how}" + (f": {note}" if note else ""), actor, now,
                data={**({"channel": channel} if channel else {}), **({"note": note} if note else {})})
         stop_drafts(db, [f.id], f"{KIND_LABELS.get(f.kind, f.kind)} was done{how}", now=stamp)  # a pending draft is moot now
-        if f.prospect_id and f.kind != "custom":
-            from sales0.services.crm import prospects
-
-            prospects.advance_to(db, f.prospect_id, f.kind, actor=actor, now=now, reason=f"{KIND_LABELS[f.kind]} done{how}",
-                                 extra={"channel": channel} if channel else None)
-        if f.prospect_id:
+        if f.prospect_id and f.kind != "custom":  # earlier auto reminders are done too (the company does NOT move)
+            complete_up_to(db, f.prospect_id, f.kind, actor=actor, now=now, reason=f"{KIND_LABELS.get(f.kind, f.kind)} was done")
+        if f.prospect_id:  # a done reminder never moves the company (a person moves it)
             refresh_next(db, f.prospect_id)
     return views_for(db, [f], _today(now))[0]
 
 
-def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, now: datetime | None = None) -> int:
-    """Mark the open auto reminders whose stage is not after ``stage`` done (stage moved forward by hand)."""
+def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, now: datetime | None = None,
+                   reason: str | None = None) -> int:
+    """Mark the open auto reminders whose stage is not after ``stage`` done (stage moved forward by hand, or a later
+    reminder was done: ``reason``)."""
     from sales0.services.crm.stages import stage_label, stage_rank
 
     stamp = now_or(now)
@@ -254,9 +253,10 @@ def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, n
             done.append(f)
     if n:
         db.flush()
-        stop_drafts(db, [f.id for f in done], f"stage moved to {stage_label(stage)}", now=stamp)
+        why = reason or f"stage moved to {stage_label(stage)}"
+        stop_drafts(db, [f.id for f in done], why, now=stamp)
         for f in done:
-            _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done (stage moved to {stage_label(stage)})", actor, stamp,
+            _event(db, f, "follow_up_done", f"{KIND_LABELS.get(f.kind, f.kind)} done ({why})", actor, stamp,
                    data={"auto": True, "stage": stage})
         refresh_next(db, prospect_id)
     return n

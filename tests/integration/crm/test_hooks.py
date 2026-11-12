@@ -98,7 +98,7 @@ def test_sent_message_marks_contacted_and_schedules_three_reminders(db, installe
     v, e = _accepted(db)
     msg = _sent(db, m, e)
     p = prospects.get_prospect(db, v.id)
-    assert p.stage == "contacted" and p.contacted_at == h.T0 and not p.contacted_estimated
+    assert p.stage == "new" and p.contacted_at == h.T0 and not p.contacted_estimated  # q25: recorded, the stage is not moved
     assert sorted(f.due_on for f in db.scalars(select(FollowUp).where(FollowUp.prospect_id == v.id))) == [h.day(3), h.day(7), h.day(14)]
     assert "email_sent" in [t.kind for t in p.timeline]
     sent_ev = next(t for t in p.timeline if t.kind == "email_sent")
@@ -129,17 +129,17 @@ def test_second_publish_of_the_same_message_is_idempotent(db, installed) -> None
     assert ks.count("email_sent") == 1 and db.scalar(select(func.count(FollowUp.id))) == 3
 
 
-def test_a_follow_up_send_completes_the_earliest_reminder_and_advances_the_stage(db, installed) -> None:
+def test_a_follow_up_send_completes_the_earliest_reminder_without_moving(db, installed) -> None:
     m = h.member(db)
     v, e = _accepted(db)
     first = _sent(db, m, e)
     fu = h.sent_message(db, m, enquiry_row=e, sent_at=h.T0 + timedelta(days=4), follow_up_of_id=first.id)
     events.publish(db, events.MessageSent(outreach_message_id=fu.id, member_id=m.id, to_addrs=("asha@acme.example",), sent_at=fu.sent_at))
     p = prospects.get_prospect(db, v.id)
-    assert p.stage == "follow_up_1" and p.next_follow_up_on == h.day(7)
+    assert p.stage == "new" and p.next_follow_up_on == h.day(7)  # q25: recorded, the stage is not moved
     fu2 = h.sent_message(db, m, enquiry_row=e, sent_at=h.T0 + timedelta(days=8))
     events.publish(db, events.MessageSent(outreach_message_id=fu2.id, member_id=m.id, to_addrs=(), sent_at=fu2.sent_at))
-    assert prospects.get_prospect(db, v.id).stage == "follow_up_2"
+    assert prospects.get_prospect(db, v.id).stage == "new"  # q25: reminders are done, the stage is not moved
 
 
 def test_an_accepted_enquiry_without_a_prospect_gets_one_on_send(db, installed) -> None:
@@ -148,7 +148,7 @@ def test_an_accepted_enquiry_without_a_prospect_gets_one_on_send(db, installed) 
     assert e.prospect_id is None
     _sent(db, m, e)
     db.refresh(e)
-    assert e.prospect_id is not None and db.get(Prospect, e.prospect_id).stage == "contacted"
+    assert e.prospect_id is not None and db.get(Prospect, e.prospect_id).stage == "new"  # q25: recorded, the stage is not moved
 
 
 def test_a_message_that_resolves_to_no_prospect_is_ignored(db, installed) -> None:
@@ -164,7 +164,7 @@ def test_send_to_a_closed_prospect_records_the_contact_but_keeps_it_closed(db, i
     prospects.close(db, v.id, "duplicate")
     _sent(db, m, e)
     p = prospects.get_prospect(db, v.id)
-    assert p.status == "closed" and p.contacted_at is not None and p.stage == "contacted"
+    assert p.status == "closed" and p.contacted_at is not None and p.stage == "new"  # q25: recorded, the stage is not moved
     assert "email_sent" in [t.kind for t in p.timeline]
     assert not [f for f in p.follow_ups if not f.done]  # a closed prospect gets no reminders
 
@@ -235,7 +235,7 @@ def test_auto_reply_and_bounce_never_count(db, installed) -> None:
     p = prospects.get_prospect(db, v.id)
     assert p.responded_at is None and p.status == "open" and db.scalar(select(func.count(Lead.id))) == 0
     notes = [t for t in p.timeline if t.kind == "note"]
-    assert len(notes) == 2 and p.stage == "contacted"
+    assert len(notes) == 2 and p.stage == "new"  # q25: recorded, the stage is not moved
     assert db.scalar(select(func.count(FollowUp.id)).where(FollowUp.cancelled_at.is_(None))) == 3  # reminders intact
 
 

@@ -19,7 +19,7 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page = ui
     page.on("dialog", lambda d: d.accept())
     log_in(page, env, target="/pipeline")
-    expect(page.locator("#pipeline-help")).to_contain_text("nobody has reached out")
+    expect(page.locator("#pipeline-help")).to_contain_text("only move when someone moves them")
 
     with get_sessionmaker()() as db:
         seeded = seed_pending_enquiries(db, count=2)
@@ -75,6 +75,8 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     # an enquiry marked Won makes the company a client
     page.goto(company_url)
     page.locator(f"#enquiry-status-form-{first}").get_by_role("button", name="Won").click()
+    expect(page.locator("#lead-suggestion")).to_contain_text("Suggested: Client")  # q25: a person confirms
+    page.locator("#lead-suggestion").get_by_role("button", name="Mark as client").click()
     expect(page.locator("#stage-badge")).to_have_text("Client")
     with get_sessionmaker()() as db:
         assert {e.deal_status for e in db.scalars(select(Enquiry).where(Enquiry.id.in_(seeded.enquiry_ids)))} >= {"won"}
@@ -100,3 +102,16 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page.locator('#confirm-dialog [value="confirm"]').click()
     expect(page.locator("#stage-badge")).to_have_text("Client")
     expect(page.locator("#off-ramp-badge")).to_have_count(0)
+
+    # q25: marked client by mistake -> the "..." menu puts it back on the Leads board as if it never was a client
+    page.locator("#status-menu summary").click()
+    expect(page.locator("#undo-client-hint")).to_be_visible()
+    page.select_option("#override-target", "lead:proposal_sent")
+    page.fill("#override-why", "marked client by mistake")
+    page.locator("#btn-set-status").click()
+    page.locator('#confirm-dialog [value="confirm"]').click()
+    expect(page.locator("#stage-badge")).to_have_text("Lead")
+    expect(page.locator("#sub-status-badge")).to_have_text("Proposal sent")
+    expect(page.locator("#timeline")).to_contain_text("Client status undone")
+    page.goto(f"{env.base}/pipeline?tab=clients")
+    expect(page.locator("#pipeline-list tbody tr")).to_have_count(0)

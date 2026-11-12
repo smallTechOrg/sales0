@@ -1,0 +1,22 @@
+{# q25: Add an enquiry by hand - paste the post (or any requirement text); the AI reads it like a discovered enquiry. #}
+<details class="card add-enquiry" id="add-enquiry">
+  <summary class="card__header"><h2 class="add-enquiry__title">+ Add an enquiry</h2> <span class="muted">paste a post, an email or a message</span></summary>
+  <form class="card__body stack" method="post" action="/enquiries/add" data-busy-submit data-busy-text="Reading it…">
+    <div class="field">
+      <label class="field__label" for="ae-text">The post or message</label>
+      <textarea class="input" id="ae-text" name="text" rows="6" minlength="40" maxlength="20000" required
+                placeholder="Paste the whole post as it is: who posted it, what they need, where, when, contact details…"></textarea>
+    </div>
+    <div class="grid-2">
+      <div class="field"><label class="field__label" for="ae-link">Link to the post (optional)</label>
+        <input class="input" id="ae-link" name="link" maxlength="2000" placeholder="https://www.linkedin.com/posts/…"></div>
+      <div class="field"><label class="field__label" for="ae-author">Who posted it (optional)</label>
+        <input class="input" id="ae-author" name="author" maxlength="300" placeholder="Name"></div>
+      <div class="field"><label class="field__label" for="ae-author-url">Their profile link (optional)</label>
+        <input class="input" id="ae-author-url" name="author_profile_url" maxlength="2000" placeholder="https://www.linkedin.com/in/…"></div>
+    </div>
+    <label class="enquiry__select"><input type="checkbox" name="accept" value="1" checked id="ae-accept"> Accept now (it goes straight onto the Enquiries board; untick to review it in the Inbox first)</label>
+    <div class="row"><button class="btn btn--primary" type="submit" id="btn-add-enquiry">Add enquiry</button>
+      <span class="hint">The AI fills in the summary, company, contact, email, priority and offering - the same as for found posts. A post already in sales0 is not added twice.</span></div>
+  </form>
+</details>

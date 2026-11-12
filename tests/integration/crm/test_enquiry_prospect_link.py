@@ -1,6 +1,6 @@
-"""Enquiry status <-> prospect status (deals.py module doc). They are different things; the ONE link: contacted /
-follow-up N on ANY accepted enquiry of a company that is still a new prospect moves the prospect forward to the same
-stage (forward only, no error when it cannot). The prospect's own forward moves carry its open enquiries along (parked statuses stay)."""
+"""Enquiry status <-> prospect status (deals.py module doc). They are different things. q25: an enquiry status NEVER
+moves the company (a person moves companies); meeting / proposal / won only show a suggestion. When a person moves the
+prospect forward, its open enquiries follow it (parked statuses stay)."""
 
 from __future__ import annotations
 
@@ -40,39 +40,13 @@ def test_every_enquiry_gets_the_same_statuses(db) -> None:
 
 
 @pytest.mark.parametrize("which", ["first", "second"])
-def test_any_enquiry_of_a_new_prospect_moves_it_forward(db, which) -> None:
+def test_an_enquiry_status_never_moves_the_company(db, which) -> None:
     e1, _, co = _accepted(db)
     e = e1 if which == "first" else _second(db)
-    deals.set_status(db, e.id, "follow_up_1", actor=Actor("Ana", None), now=h.T0)
-    db.refresh(co), db.refresh(e)
-    assert (co.stage, co.sub_status) == ("prospect", "follow_up_1") and e.deal_status == "follow_up_1"
-    bodies = [t.body or "" for t in db.scalars(select(TimelineEvent).where(TimelineEvent.company_id == co.id))]
-    assert any("Company: Prospect / new -> Prospect / follow up 1" in b for b in bodies)
-    assert any("prospect stage follows" in b for b in bodies)
-
-
-def test_the_prospect_never_moves_backwards_and_no_error(db) -> None:
-    e1, _, co = _accepted(db)
-    e2 = _second(db)
-    deals.set_status(db, e1.id, "follow_up_2", now=h.T0)
-    deals.set_status(db, e2.id, "contacted", now=h.T0)  # behind the prospect: only the enquiry changes
-    db.refresh(co), db.refresh(e2)
-    assert co.sub_status == "follow_up_2" and e2.deal_status == "contacted"
-    deals.set_status(db, e1.id, "follow_up_1", now=h.T0)  # same on the enquiry that moved it
-    db.refresh(co), db.refresh(e1)
-    assert co.sub_status == "follow_up_2" and e1.deal_status == "follow_up_1"
-    deals.set_status(db, e2.id, "final_follow_up", now=h.T0)
-    db.refresh(co)
-    assert co.sub_status == "final_follow_up"
-
-
-def test_open_lost_no_response_on_hold_leave_the_prospect_alone(db) -> None:
-    e1, _, co = _accepted(db)
-    deals.set_status(db, e1.id, "contacted", now=h.T0)
-    for st in ("lost", "no_response", "on_hold", "open"):
-        deals.set_status(db, e1.id, st, now=h.T0)
-        db.refresh(co), db.refresh(e1)
-        assert (co.stage, co.sub_status, e1.deal_status) == ("prospect", "contacted", st)
+    for st in ("contacted", "follow_up_1", "final_follow_up", "lost", "no_response", "on_hold", "open"):
+        deals.set_status(db, e.id, st, actor=Actor("Ana", None), now=h.T0)
+        db.refresh(co), db.refresh(e)
+        assert (co.stage, co.sub_status, e.deal_status) == ("prospect", "new", st)
 
 
 def test_lead_client_and_off_ramp_companies_are_unaffected_without_error(db) -> None:
@@ -103,14 +77,14 @@ def test_a_sheet_never_moves_a_stage_set_in_the_app(db) -> None:
     assert co.sub_status == "new"
 
 
-def test_meeting_or_proposal_still_only_suggests_lead(db) -> None:
+def test_meeting_proposal_and_won_only_suggest(db) -> None:
     e1, _, co = _accepted(db)
     deals.set_status(db, e1.id, "meeting_scheduled", now=h.T0)
     db.refresh(co)
-    assert co.stage == "prospect" and lifecycle.active_suggestion(co) is not None  # a person confirms
+    assert co.stage == "prospect" and lifecycle.active_suggestion(co)["kind"] != "client"  # a person confirms
     deals.set_status(db, e1.id, "won", now=h.T0)
     db.refresh(co)
-    assert co.stage == "client"
+    assert co.stage == "prospect" and lifecycle.active_suggestion(co)["kind"] == "client"
 
 
 def test_company_cadence_moves_open_enquiries_but_not_parked_ones(db) -> None:
@@ -132,7 +106,7 @@ def test_no_ping_pong(db) -> None:
     assert _events(db, co, "company") == before
     db.flush()
     db.refresh(co)
-    assert co.sub_status == "contacted"
+    assert co.sub_status == "new"
 
 
 def test_invalid_status_is_refused(db) -> None:
@@ -183,10 +157,13 @@ def test_attach_requires_a_name(db) -> None:
         companies.attach_to_enquiry(db, e.id, name="  ")
 
 
-def test_contacting_the_prospect_moves_its_enquiries_forward(db) -> None:
+def test_moving_the_prospect_moves_its_enquiries_forward(db) -> None:
     e1, v, _ = _accepted(db)
     e2 = _second(db)
-    prospects.log_contact(db, v.id, channel="email", actor=Actor("Ana", None), now=h.T0)
+    prospects.log_contact(db, v.id, channel="email", actor=Actor("Ana", None), now=h.T0)  # recorded; nothing moves
+    db.refresh(e1), db.refresh(e2)
+    assert (e1.deal_status, e2.deal_status) == ("open", "open")
+    prospects.move_stage(db, v.id, "contacted", now=h.T0)  # a person moves the company
     db.refresh(e1), db.refresh(e2)
     assert (e1.deal_status, e2.deal_status) == ("contacted", "contacted")
 

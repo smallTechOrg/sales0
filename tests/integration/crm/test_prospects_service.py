@@ -137,7 +137,7 @@ def test_moving_forward_completes_the_earlier_reminders(db) -> None:
 def test_mark_contacted_uses_when_and_is_idempotent(db) -> None:
     v = _prospect(db)
     out = prospects.mark_contacted(db, v.id, when=h.T0, channel="phone", now=h.T0 + timedelta(hours=2))
-    assert out.stage == "contacted" and out.contacted_at == h.T0 and not out.contacted_estimated
+    assert out.stage == "new" and out.contacted_at == h.T0 and not out.contacted_estimated  # q25: recorded, the stage is not moved
     prospects.mark_contacted(db, v.id, when=h.T0, now=h.T0)
     assert db.scalar(select(func.count(FollowUp.id)).where(FollowUp.prospect_id == v.id)) == 3
 
