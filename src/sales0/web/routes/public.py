@@ -20,16 +20,26 @@ SITE_URL = "https://sales0.smalltech.in"
 CONTACT_EMAIL = "contact@smalltech.in"
 ACCESS_URL = f"mailto:{CONTACT_EMAIL}?subject=sales0%20access"
 
-# Public pages load Montserrat from Google Fonts; the app's own CSP (middleware.security_headers) allows only
-# 'self'. This policy is set on public responses only, and HardeningMiddleware keeps a header the route already set.
+# Public pages load Montserrat from Google Fonts and the shared smallTech analytics script (static/js/st-analytics.js,
+# Google Analytics 4: it pulls gtag.js from googletagmanager.com and reports to the google-analytics hosts); the app's
+# own CSP (middleware.security_headers) allows only 'self'. This policy is set on public responses only, and
+# HardeningMiddleware keeps a header the route already set, so no logged-in page can load or talk to Google Analytics.
+GA_SCRIPT_SOURCES = ("https://www.googletagmanager.com",)
+GA_CONNECT_SOURCES = (
+    "https://www.google-analytics.com",
+    "https://*.google-analytics.com",
+    "https://*.analytics.google.com",
+    "https://www.googletagmanager.com",
+)
+GA_IMG_SOURCES = ("https://www.google-analytics.com", "https://www.googletagmanager.com")
 PUBLIC_CSP = "; ".join(
     [
         "default-src 'self'",
-        "script-src 'none'",
+        f"script-src 'self' {' '.join(GA_SCRIPT_SOURCES)}",
         "style-src 'self' https://fonts.googleapis.com",
         "font-src https://fonts.gstatic.com",
-        "img-src 'self' data:",
-        "connect-src 'none'",
+        f"img-src 'self' data: {' '.join(GA_IMG_SOURCES)}",
+        f"connect-src 'self' {' '.join(GA_CONNECT_SOURCES)}",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'none'",

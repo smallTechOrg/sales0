@@ -41,6 +41,18 @@ form-action 'self' https://accounts.google.com; frame-ancestors 'none'
 * Verified in headless Chromium against a booted fixture-mode instance (every main page, an `hx-post` form, the
   confirm dialog, an auto-submitting select): zero violations, and an injected inline script is blocked.
 
+### Public marketing pages (analytics)
+
+The public pages (`routes/public.py`, today only `/`) set their own policy, `PUBLIC_CSP`, and the middleware keeps it.
+It is the only place a third-party origin is allowed: Google Fonts (styles and font files) and Google Analytics 4.
+`templates/public/base.html` loads `static/js/st-analytics.js`, the shared smallTech analytics script (copied unchanged
+into every smallTech site; do not edit it here). It runs only on `sales0.smalltech.in`, skips `/app`, `/dashboard`,
+`/admin`, and sends page views plus clicks on `.pub-btn` and `mailto:` links. For it, `PUBLIC_CSP` has
+`script-src 'self' https://www.googletagmanager.com`, the Google Analytics hosts in `connect-src`, and the two beacon
+hosts in `img-src`; still no inline script and no eval. No other template loads the script and every other response
+keeps the strict policy above, so the logged-in app sends nothing to Google
+(`test_public_pages.py::test_analytics_is_on_public_pages_only`).
+
 ## Vendored htmx
 
 `static/vendor/htmx.min.js` is htmx **2.0.11** (the file reports `version:"2.0.11"`). Offline best effort: I know of no

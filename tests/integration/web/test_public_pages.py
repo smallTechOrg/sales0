@@ -3,6 +3,7 @@ weakening the login gate on the internal app (real app + migrated SQLite, TestCl
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -57,13 +58,32 @@ def test_public_pages_open_without_login(make_client: Callable[..., TestClient],
     assert "set-cookie" not in r.headers
 
 
-def test_anonymous_root_is_the_landing_and_its_csp_allows_only_google_fonts(make_client: Callable[..., TestClient]) -> None:
+ANALYTICS_TAG = '<script src="/static/js/st-analytics.js" defer></script>'
+
+
+def _directives(csp: str) -> dict[str, str]:
+    return {d.split(" ", 1)[0]: d for d in csp.split("; ")}
+
+
+def test_anonymous_root_is_the_landing_and_its_csp_allows_only_google_fonts_and_analytics(make_client: Callable[..., TestClient]) -> None:
     c = make_client(locked=True)
     r = c.get("/")
     _assert_landing(r.text)
     csp = r.headers["content-security-policy"]
-    assert "script-src 'none'" in csp and "font-src https://fonts.gstatic.com" in csp and "frame-ancestors 'none'" in csp
     assert r.headers.get_list("content-security-policy") == [csp]  # the app default was not appended on top
+    d = _directives(csp)
+    assert d["script-src"] == "script-src 'self' https://www.googletagmanager.com"
+    assert d["connect-src"] == (
+        "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com "
+        "https://*.analytics.google.com https://www.googletagmanager.com"
+    )
+    assert d["img-src"] == "img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com"
+    assert d["font-src"] == "font-src https://fonts.gstatic.com" and d["frame-ancestors"] == "frame-ancestors 'none'"
+    assert d["form-action"] == "form-action 'none'" and "'unsafe-inline'" not in csp and "'unsafe-eval'" not in csp
+    # the one executable script is the shared analytics file, served by the app itself (JSON-LD is a data block)
+    tags = [t for t in re.findall(r"<script[^>]*>", r.text) if 'type="application/ld+json"' not in t]
+    assert tags == [ANALYTICS_TAG[: -len("</script>")]]
+    assert c.get("/static/js/st-analytics.js").status_code == 200
     assert c.get("/pricing").status_code == 303  # no public pricing page: behind the login gate like any internal path
 
 
@@ -97,3 +117,18 @@ def test_open_mode_root_is_the_landing_and_app_goes_to_the_inbox(make_client: Ca
     assert r.status_code == 303 and r.headers["location"] == "/inbox"
     r = c.get("/sales-agent")
     assert r.status_code == 308 and r.headers["location"] == "/"
+
+
+def test_analytics_is_on_public_pages_only(make_client: Callable[..., TestClient]) -> None:
+    """Google Analytics never reaches the logged-in app: no script tag, and the strict app CSP would block it anyway."""
+    c = make_client(locked=True)
+    assert ANALYTICS_TAG in c.get("/").text
+    login = c.get("/login")
+    assert c.post("/login", data={"email": ADMIN_EMAIL, "password": PASSWORD, "next": ""}).status_code == 303
+    for r in (login, c.get("/inbox"), c.get("/pipeline"), c.get("/setup")):
+        assert r.status_code == 200, r.url
+        assert "st-analytics" not in r.text and "googletagmanager" not in r.text, r.url
+        csp = r.headers["content-security-policy"]
+        d = _directives(csp)
+        assert d["script-src"] == "script-src 'self'" and d["connect-src"] == "connect-src 'self'", r.url
+        assert d["img-src"] == "img-src 'self' data:" and "google" not in csp.replace("accounts.google.com", ""), r.url
