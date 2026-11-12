@@ -13,21 +13,18 @@
             title="{{ {'prospect': 'Prospect: we are working towards a first conversation (Prospects board).', 'lead': 'Lead: in conversation (Leads board).', 'client': 'Client: they bought from us (Clients).'}.get(life.stage, 'Not in the pipeline yet.') }}">{{ life.stage_label }}</span>
       {% if life.sub_label %}<span class="badge has-tip" id="sub-status-badge" tabindex="0" title="{{ life.status_help or '' }}">{{ life.sub_label }}</span>{% endif %}
       {% if life.off_ramp %}<span class="badge badge--warn has-tip" id="off-ramp-badge" tabindex="0" title="Closed: on no board. Reopening puts it back on Prospects as New.">Closed: {{ life.off_ramp_label }}{% if life.off_ramp_reason %} · {{ life.off_ramp_reason }}{% endif %}</span>{% endif %}
-      {% if life.stage and not life.off_ramp and life.auto_enabled %}
-        {% if life.override_active %}<span class="badge badge--info has-tip" id="status-mode" tabindex="0" title="A person set this status{% if life.override_by %} ({{ life.override_by }}){% endif %}{% if life.override_at %} on {{ life.override_at|localdt('%d %b %Y') }}{% endif %}. The automatic status holds until the next real outreach (an email, a logged follow-up).">Manual status</span>
-        {% else %}<span class="badge has-tip" id="status-mode" tabindex="0" title="The status follows the outreach automatically: it is recalculated after every saved email, follow-up, note or enquiry change, and each change is written to the timeline with what triggered it.">Automatic status</span>{% endif %}
-      {% endif %}
       {% if p %}<span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>{{ flag_badges(p.flags) }}{% endif %}
       {% if life.stage or life.off_ramp %}{% include "pipeline/_status_menu.html" %}{% endif %}
     </div>
-    {% if life.status_help %}<p class="hint status-rules" id="status-rules"><strong>What moves it:</strong> {{ life.status_help }}</p>{% endif %}
+    {% if life.status_help %}<p class="hint status-rules" id="status-rules"><strong>This status:</strong> {{ life.status_help }}</p>{% endif %}
     <p class="hint" id="company-help">A company is the one record for who we deal with: Enquiries → Prospects → Leads → Clients, one board at a time. Its people, enquiries, outreach and follow-ups all live here.</p>
 
     {% if life.suggestion %}
       <div class="notice" id="lead-suggestion" role="status">
-        <strong>Suggested: Lead</strong> - {{ life.suggestion.get("detail") }}. Nothing moves until a person decides.
+        {% set to_client = life.suggestion.get("kind") == "client" %}
+        <strong>Suggested: {{ "Client" if to_client else "Lead" }}</strong> - {{ life.suggestion.get("detail") }}. Nothing moves until a person decides.
         <form class="row" method="post" action="{{ base }}/suggestion">
-          <button class="btn btn--primary btn--sm" name="decision" value="accept" type="submit">Mark as lead</button>
+          <button class="btn btn--primary btn--sm" name="decision" value="accept" type="submit">{{ "Mark as client" if to_client else "Mark as lead" }}</button>
           <button class="btn btn--sm" name="decision" value="dismiss" type="submit">Dismiss</button>
         </form>
       </div>

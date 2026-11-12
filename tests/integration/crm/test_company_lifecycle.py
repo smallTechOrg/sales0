@@ -85,9 +85,13 @@ def test_mark_lead_overrides_the_preconditions(db) -> None:
     assert co.sub_status == "meeting_scheduled"
 
 
-def test_won_enquiry_makes_the_company_a_client(db) -> None:
+def test_won_enquiry_suggests_client_and_a_person_confirms(db) -> None:
     e, _, co = _accepted(db)
     deals.set_status(db, e.id, "won", actor=Actor("Ana", None))
+    db.refresh(co)
+    assert (co.stage, co.sub_status) == ("prospect", "new")  # q25: nothing moves by itself
+    assert lifecycle.active_suggestion(co)["kind"] == "client"
+    lifecycle.accept_suggestion(db, co.id, actor=Actor("Ana", None))
     db.refresh(co)
     assert (co.stage, co.sub_status) == ("client", "active")
     events = [t.body for t in db.scalars(select(TimelineEvent).where(TimelineEvent.subject_type == "company", TimelineEvent.subject_id == co.id))]
@@ -113,7 +117,6 @@ def test_off_ramps_and_reopen_return_to_prospects_as_new(db) -> None:
     lifecycle.reopen(db, co.id)
     db.refresh(co)
     assert (co.off_ramp, co.stage, co.sub_status) == (None, "prospect", "new")  # q24: reopen = Prospects / New
-    assert co.status_override_at is not None  # earlier outreach does not push it forward again
     lifecycle.mark_lead(db, co.id)
     lifecycle.go_off_ramp(db, co.id, "not_interested", reason="budget")
     db.refresh(co)

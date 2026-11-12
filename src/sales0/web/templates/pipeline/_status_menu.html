@@ -1,12 +1,12 @@
-{# The "..." menu of the company header. Needs: life (LifeView), base, is_admin. Setting the status by hand is a MANUAL
-   OVERRIDE (behind a confirmation): it holds until the next real outreach event. #}
+{# The "..." menu of the company header. Needs: life (LifeView), base, is_admin. Statuses change only here, by a board
+   drag or a card's Move... button (behind a confirmation): nothing moves a company automatically. #}
 <details class="menu" id="status-menu">
   <summary class="btn btn--sm menu__toggle" aria-label="More actions: set the status by hand, close or reopen" title="More actions">…</summary>
   <div class="menu__panel card">
     {% if life.move_groups %}
     <form class="stack" id="status-override-form" method="post" action="{{ base }}/move" hx-post="{{ base }}/move" hx-swap="none"
-          hx-confirm="Set the status of {{ life.name }} by hand? The automatic status stops until the next real outreach (an email or a logged follow-up).">
-      <h2 class="menu__title">Set the status by hand</h2>
+          hx-confirm="Change the status of {{ life.name }}?{% if life.stage == 'client' %} Moving a client back to Leads or Prospects undoes the client status (for a company marked client by mistake).{% endif %}">
+      <h2 class="menu__title">Change the status</h2>
       <div class="field">
         <label class="field__label" for="override-target">New status</label>
         <select class="select" id="override-target" name="target" data-move-select>
@@ -24,15 +24,9 @@
         <label class="field__label" for="override-why" data-move-why-label>Why (optional)</label>
         <input class="input" id="override-why" name="why" maxlength="200" placeholder="e.g. they asked us to pause until April">
       </div>
-      <p class="hint">Manual override: the automatic status holds until the next real outreach event{% if not life.auto_enabled %} (automatic status is switched off on this server){% endif %}.</p>
+      {% if life.stage == "client" %}<p class="hint" id="undo-client-hint">Marked client by mistake? Pick a Leads or Prospects status: the client status is undone as if it never happened.</p>{% endif %}
       <div><button class="btn btn--primary" id="btn-set-status" type="submit">Set status</button></div>
     </form>
-    {% endif %}
-    {% if life.override_active %}
-      <form method="post" action="{{ base }}/auto-status" hx-post="{{ base }}/auto-status" hx-swap="none" class="row">
-        <button class="btn" id="btn-resume-auto" type="submit">Back to automatic status</button>
-        <span class="hint">Drops the manual status and recalculates from the outreach now.</span>
-      </form>
     {% endif %}
     {% if life.off_ramp and not (life.off_ramp == "do_not_contact" and not is_admin) %}
       <p class="hint">Closed companies reopen as Prospects / New (a lost client is won back as a client): use Reopen.</p>

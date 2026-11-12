@@ -768,3 +768,6 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .funnel__bar { height: 0.75rem; background: var(--color-bg); border-radius: 999px; overflow: hidden; }
 .funnel__bar span { display: block; height: 100%; background: var(--color-primary); }
 .field[hidden], [data-move-meeting][hidden] { display: none !important; }
+.add-enquiry > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: var(--space-3); }
+.add-enquiry > summary::-webkit-details-marker { display: none; }
+.add-enquiry__title { font-size: 1rem; margin: 0; color: var(--color-primary); }

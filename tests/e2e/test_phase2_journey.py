@@ -298,6 +298,8 @@ def test_enquiry_to_client_journey_with_sync_contacts_and_import(env: Env, ui: P
         assert db.get(Lead, lead_id).proposal_sent_on == today
         assert db.execute(select(Enquiry.date_proposal_sent).where(Enquiry.prospect_id == pid, Enquiry.date_proposal_sent.is_not(None))).first()
     page.locator(f"#enquiry-status-form-{first}").get_by_role("button", name="Won").click()
+    expect(page.locator("#lead-suggestion")).to_contain_text("Suggested: Client")  # q25: a person confirms
+    page.locator("#lead-suggestion").get_by_role("button", name="Mark as client").click()
     expect(page.locator("#stage-badge")).to_have_text("Client")
     with get_sessionmaker()() as db:
         client = db.execute(select(Client)).scalar_one()

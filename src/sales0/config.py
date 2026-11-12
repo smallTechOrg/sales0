@@ -288,9 +288,6 @@ class Settings(BaseSettings):
     # The three automatic follow-ups (1, 2, final) on first contact. Off: follow-ups are a free-text log and the
     # reminders the team asks for ("call again Tuesday"), nothing is pre-scheduled.
     followup_auto_schedule: bool = False
-    # q24: the company status follows the outreach (services.crm.auto_status): recalculated after every saved action on a
-    # company, contact or enquiry; a manual override holds until the next real outreach event.
-    auto_status: bool = True
     followup_days_1: int = Field(3, ge=1)
     followup_days_2: int = Field(7, ge=1)
     followup_days_final: int = Field(14, ge=1)

@@ -126,9 +126,6 @@ def add_event(
     )
     db.add(row)
     db.flush()
-    from sales0.services.crm import auto_status
-
-    auto_status.note_event(db, row)  # the company's status is recalculated before the commit
     return row
 
 

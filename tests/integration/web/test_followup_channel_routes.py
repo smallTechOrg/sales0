@@ -74,7 +74,7 @@ def test_mark_done_with_channel_and_inline_date_edit(web: TestClient) -> None:
     assert done.status_code == 200 and "Follow-up done via WhatsApp." in done.text
     assert "Done via WhatsApp" in done.text and ">Follow-up 1<" in done.text  # the header + list fragments are swapped in
     page = web.get(f"/pipeline/prospects/{pid}").text
-    assert ">Follow-up 1</span>" in page or "Follow-up 1" in page.split('id="stage-badge"', 1)[1][:40]
+    assert 'id="sub-status-badge"' in page and ">New</span>" in page  # q25: the reminder is done, the stage is not moved
     assert 'data-channel="whatsapp"' in page and "Pinged on WhatsApp" in page
 
     bad = web.post(f"/pipeline/followups/{rows['follow_up_2'].id}/done", headers=HX, data={"channel": "fax"})

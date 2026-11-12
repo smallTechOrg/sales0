@@ -175,3 +175,60 @@ def import_paste(
 
 
 __all__ = ["batch_view", "router"]
+
+
+# ---------------------------------------------------------------------- q25: Add enquiry (any team member)
+@router.post("/enquiries/add", response_model=None)
+def add_enquiry(
+    request: Request,
+    text: str = Form(""),
+    link: str = Form(""),
+    author: str = Form(""),
+    author_profile_url: str = Form(""),
+    accept: str = Form(""),
+    db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional),
+    llm: LLMClient = Depends(get_llm),
+) -> Response:
+    """Paste a post (or any requirement text): it is deduped and triaged exactly like a discovered enquiry (summary,
+    company, contact, email, priority, offering). ``accept`` ticked (the default in the form): accepted at once, so the
+    company lands on the Enquiries board; unticked: it waits in the Inbox to review."""
+    back = "/pipeline?tab=enquiries"
+
+    def run() -> Response:
+        if len(text) > MAX_PASTE_CHARS:
+            raise DomainError("import_too_large", f"That text is too long (max {MAX_PASTE_CHARS:,} characters) - paste the relevant part.", 413)
+        for label, value, limit in (("Link", link, 2000), ("Author", author, 300), ("Author profile link", author_profile_url, 2000)):
+            if len(value.strip()) > limit:
+                raise DomainError("import_invalid", f"{label} is too long (max {limit} characters).", 400)
+        try:
+            result = importer.paste_post(
+                db, llm, text=text.strip(), link=opt_str(link), author=opt_str(author),
+                author_profile_url=opt_str(author_profile_url), actor=actor_of(member),
+            )  # fmt: skip
+        except (LLMAuthError, LLMModelNotFound) as exc:
+            db.commit()  # keep the error llm_calls row
+            raise DomainError("llm_unavailable", f"The AI service refused the request ({type(exc).__name__}) - check the API key.", 502) from exc
+        except LLMError as exc:
+            raise DomainError("triage_failed", "The AI service is unavailable right now. Try again in a minute.", 502) from exc
+        from sales0.db.models import Enquiry
+        from sales0.web.acting import acted_by_id
+
+        e = db.get(Enquiry, result.enquiry_id)
+        assert e is not None
+        if result.outcome == "duplicate":
+            message, url = "This enquiry is already in sales0" + ("." if e.company_id else " - it is in the Inbox."), (f"/companies/{e.company_id}" if e.company_id else back)
+        elif accept.strip().lower() in ("1", "true", "on", "yes") and e.triage_status != "pending":
+            inbox_service.decide(db, [e.id], "accept", actor_member_id=member.id if member else None, acted_by_member_id=acted_by_id(member))
+            db.flush()
+            db.refresh(e)
+            name = e.company or e.requirement_summary or "The enquiry"
+            message = f"Enquiry added and accepted: {name}." + ("" if e.triage_status == "done" else " (AI reading failed - fill in the details by hand.)")
+            url = f"/companies/{e.company_id}" if e.company_id else back
+        else:
+            message, url = "Enquiry added - review it in the Inbox (To review).", back
+        if wants_json(request):
+            return envelope_ok({"enquiry_id": e.id, "outcome": result.outcome, "company_id": e.company_id}, 200 if result.outcome == "duplicate" else 201)
+        return crm_done(request, url, message)
+
+    return crm_guard(request, back, run, db)

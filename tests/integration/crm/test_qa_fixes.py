@@ -86,12 +86,13 @@ def test_m1_first_email_after_manual_contact_does_not_advance_the_stage(db, inst
     assert reminders == ["follow_up_1", "follow_up_2", "final_follow_up"]
     msg = _send(db, m, e)
     p = db.get(Prospect, v.id)
-    assert p.stage == "contacted"
+    assert p.stage == "new"  # q25: recorded, the stage is not moved
     assert "email_sent" in _kinds(db, v.id)
     assert not [f for f in db.scalars(select(FollowUp).where(FollowUp.prospect_id == v.id)) if f.done_at]
     # the SECOND email is a real follow-up
     _send(db, m, e, at=h.T0 + timedelta(days=5))
-    assert db.get(Prospect, v.id).stage == "follow_up_1"
+    fu1 = db.scalar(select(FollowUp).where(FollowUp.prospect_id == v.id, FollowUp.kind == "follow_up_1"))
+    assert fu1.done_at is not None and db.get(Prospect, v.id).stage == "new"  # q25: the reminder is done, no move
     assert msg.id
 
 
@@ -103,7 +104,7 @@ def test_m1_first_email_after_manual_contact_schedules_reminders_when_none_exist
         db.delete(f)
     db.flush()
     _send(db, m, e)
-    assert db.get(Prospect, v.id).stage == "contacted"
+    assert db.get(Prospect, v.id).stage == "new"  # q25: recorded, the stage is not moved
     assert len(list(db.scalars(select(FollowUp).where(FollowUp.prospect_id == v.id, FollowUp.auto.is_(True))))) == 3
 
 

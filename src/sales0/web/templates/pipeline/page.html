@@ -64,6 +64,7 @@
       </div>
     </div>
 
+    {% if params.tab == "enquiries" %}{% include "pipeline/_add_enquiry.html" %}{% endif %}
     {% if params.tab == "enquiries" and research_overview is defined %}{% include "pipeline/_research_all.html" %}{% endif %}
 
     {% include "pipeline/_body.html" %}

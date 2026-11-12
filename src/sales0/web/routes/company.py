@@ -23,7 +23,7 @@ from sales0.services.crm import company_offerings, companies as companies_servic
 from sales0.services.crm import contacts as contacts_service
 from sales0.services.crm import deals
 from sales0.services.crm import followups as followups_service
-from sales0.services.crm import auto_status, lifecycle
+from sales0.services.crm import lifecycle
 from sales0.services.crm import prospects as prospects_service
 from sales0.services.crm import timeline as timeline_service
 from sales0.web.acting import get_acting_member_optional, require_admin
@@ -195,7 +195,6 @@ def set_status(
                                       outcome_note=opt_str(outcome_note))
         else:
             lifecycle.set_prospect_status(db, company_id, sub_status, actor=actor_of(member))
-        auto_status.set_override(db, company_id, actor=actor_of(member))
         return f"Now {lifecycle.sub_label(sub_status)}."
 
     return _act(request, db, company_id, None, go)
@@ -206,7 +205,6 @@ def mark_lead(request: Request, company_id: PathId, meeting_at: str = Form(""), 
               member: TeamMember | None = Depends(get_acting_member_optional)) -> Response:
     def go() -> str:
         lifecycle.mark_lead(db, company_id, meeting_at=parse_local_datetime(meeting_at), actor=actor_of(member))
-        auto_status.set_override(db, company_id, actor=actor_of(member))
         return "Marked as a lead."
 
     return _act(request, db, company_id, None, go)
@@ -227,8 +225,8 @@ def move(
     request: Request, company_id: PathId, target: str = Form(""), why: str = Form(""), meeting_at: str = Form(""),
     next: str = Form(""), db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
-    """Set the status by hand (the "..." menu, a board drag): any board column, Client or a close reason. A manual
-    override: the automatic status holds until the next real outreach. From a board, the board is re-rendered."""
+    """Set the status by hand (the "..." menu, a board drag): any board column, Client or a close reason; a client marked
+    by mistake goes back to any Leads / Prospects status. From a board, the board is re-rendered."""
     back = pl._safe_next(next)  # noqa: SLF001
 
     def go() -> str:
@@ -245,18 +243,6 @@ def move(
             return flash_redirect(back, text)
 
         return crm_guard(request, back, run, db)
-    return _act(request, db, company_id, None, go)
-
-
-@router.post("/companies/{company_id}/auto-status", response_model=None)
-def resume_auto(request: Request, company_id: PathId, db: Session = Depends(get_db),
-                member: TeamMember | None = Depends(get_acting_member_optional)) -> Response:
-    """Drop the manual override and let the automatic status recalculate now."""
-    def go() -> str:
-        auto_status.clear_override(db, company_id)
-        changed = auto_status.recalc(db, company_id, trigger="Automatic status resumed", actor=actor_of(member)) if auto_status.enabled() else None
-        return changed or "Automatic status is back on - nothing to change right now."
-
     return _act(request, db, company_id, None, go)
 
 

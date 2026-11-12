@@ -1,5 +1,4 @@
-"""The Health page: one row per moving part (replies, laptop worker, LinkedIn session, AI, sheet sync, runs, database,
-automatic status), each with a state (ok | warn | off | error), a one-line summary and what to do about it.
+"""The Health page: one row per moving part (replies, laptop worker, LinkedIn session, AI, sheet sync, runs, database), each with a state (ok | warn | off | error), a one-line summary and what to do about it.
 
 Read-only; never raises for one broken part (that row says what failed instead)."""
 
@@ -8,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sales0.clock import ensure_utc
@@ -40,12 +39,12 @@ def _replies(db: Session) -> Check:
 
     s = get_settings()
     h = replies.poller_health(db)
-    state = {"ok": "ok", "idle": "warn", "warn": "warn", "off": "off"}.get(h.state, "warn")
+    state = {"ok": "ok", "idle": "warn", "warn": "warn", "off": "off"}.get(h.level, "warn")
     fix = ""
-    if h.state == "off" and s.is_hosted:
+    if h.level == "off" and s.is_hosted:
         fix = ("Cloud Run has no background timer, so replies are checked by the laptop worker. Set SALES0_WORKER_TOKEN on "
                "the hosted app and run `sales0 worker` on the laptop (SALES0_WORKER_REPLY_CHECK_MINUTES, default 10).")
-    elif h.state == "off":
+    elif h.level == "off":
         fix = "Set SALES0_REPLY_POLL_MINUTES (e.g. 10) and restart, or press Check now on the Replies page."
     elif "worker" in h.label:
         fix = "Start the laptop worker (`sales0 worker`) - it asks for a reply check every few minutes - or press Check now on Replies."
@@ -145,24 +144,13 @@ def _database(db: Session) -> Check:
     return Check("database", "Database", "error", f"Schema at {cur}, code expects {head}.", "Run the migration (`alembic upgrade head`) / redeploy.")
 
 
-def _auto_status(db: Session) -> Check:
-    from sales0.db.models import TimelineEvent
-
-    s = get_settings()
-    if not s.auto_status:
-        return Check("auto_status", "Automatic company status", "off", "Off: statuses only move by hand.", "Set SALES0_AUTO_STATUS=true.")
-    last = db.scalar(select(func.max(TimelineEvent.occurred_at)).where(
-        TimelineEvent.kind == "stage_change", TimelineEvent.subject_type == "company", TimelineEvent.body.like("Status updated automatically%")))
-    return Check("auto_status", "Automatic company status", "ok", f"On; last automatic change {_ago(last)}.")
-
-
 def report(db: Session, now: datetime | None = None) -> list[Check]:
     stamp = now or datetime.now(UTC)
     out: list[Check] = []
     for key, title, fn in (("replies", "Replies (Gmail)", lambda: _replies(db)), ("worker", "Laptop worker", lambda: _worker(db)),
                            ("linkedin", "LinkedIn session", lambda: _linkedin(db)), ("ai", "AI (Anthropic)", lambda: _ai(db)),
                            ("runs", "LinkedIn search runs", lambda: _runs(db, stamp)), ("sheet", "Google Sheet sync", lambda: _sheet(db)),
-                           ("auto_status", "Automatic company status", lambda: _auto_status(db)), ("database", "Database", lambda: _database(db))):
+                           ("database", "Database", lambda: _database(db))):
         try:
             out.append(fn())
         except Exception as exc:  # noqa: BLE001 - one broken part must not hide the others

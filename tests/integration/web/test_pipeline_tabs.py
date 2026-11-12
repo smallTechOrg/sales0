@@ -134,6 +134,7 @@ def test_leads_tab_columns_and_clients_list(web: TestClient) -> None:
     web.post(f"/companies/{cid_p}/status", data={"sub_status": "proposal_sent"})
     web.post(f"/companies/{cid_w}/mark-lead")
     assert web.post(f"/pipeline/enquiries/{eid_w}/status", data={"status": "won"}, follow_redirects=False).status_code == 303
+    web.post(f"/companies/{cid_w}/suggestion", data={"decision": "accept"})  # q25: Won only suggests Client; a person confirms
     html = web.get("/pipeline?tab=leads").text
     keys = re.findall(r'<section class="board__col[^"]*"[^>]*data-stage="(\w+)"', html)
     assert keys == ["meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold"]
@@ -173,21 +174,15 @@ def test_enquiries_board_holds_uncontacted_inbound_with_one_status_control(web: 
     opts = [re.findall(r'<option value="(\w*)"', c) for c in (card, other_card)]
     assert opts[0] == opts[1] == list(deals_service.SETTABLE)
     assert "(auto)" not in card and "disabled" not in card and ">Open<" in card and 'draggable="true"' in card
-    # an enquiry status of Follow-up 1 moves the company forward: it leaves the Enquiries board for Prospects
+    # q25: an enquiry status never moves the company; a person moves it (here: the board move), then it leaves this board
     r = web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "follow_up_1", "next": "/pipeline?tab=enquiries"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/pipeline?tab=enquiries"
     with session_scope() as db:
-        assert db.scalar(select(Prospect.stage)) == "follow_up_1"
+        assert db.scalar(select(Prospect.stage)) == "new" and db.scalar(select(Enquiry.deal_status).where(Enquiry.id == eid)) == "follow_up_1"
+    assert f'id="enquiry-{eid}"' in web.get("/pipeline").text
+    web.post("/pipeline/move", headers=HX, data={"company_id": str(cid), "target": "prospect:follow_up_1", "next": "/pipeline"})
     assert f'id="company-{cid}"' in _col(web.get("/pipeline?tab=prospects").text, "follow_up_1")
     assert f'id="enquiry-{eid}"' not in web.get("/pipeline").text and f'id="enquiry-{other}"' not in web.get("/pipeline").text
-    # the second enquiry of the same prospect moves it forward too, never back
-    ok = web.post(f"/pipeline/enquiries/{other}/status", data={"status": "final_follow_up", "next": "/pipeline"}, follow_redirects=True)
-    assert "flash--error" not in ok.text
-    with session_scope() as db:
-        assert db.scalar(select(Prospect.stage)) == "final_follow_up"
-    web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "contacted", "next": "/pipeline"})
-    with session_scope() as db:
-        assert db.scalar(select(Prospect.stage)) == "final_follow_up" and db.scalar(select(Enquiry.deal_status).where(Enquiry.id == eid)) == "contacted"
 
 
 def test_company_cards_show_the_people_main_contact_first(web: TestClient) -> None:

@@ -209,7 +209,7 @@ def test_free_text_follow_up_is_structured_logged_and_sets_a_reminder(web: TestC
         rem = db.get(Reminder, note.reminder_id)
         assert rem.due_on == TODAY() + timedelta(days=5) and rem.prospect_id == pid and rem.company_id == cid
         p = db.get(Prospect, pid)
-        assert p.stage == "contacted"  # the first logged contact
+        assert p.stage == "new" and p.contacted_at is not None  # q25: recorded, the stage is not moved
         assert db.scalars(select(FollowUp).where(FollowUp.prospect_id == pid)).all() == []  # nothing pre-scheduled
     page = unescape(web.get(f"/companies/{cid}").text)
     assert 'id="fu-note-form"' in page and "Priya liked the proposal; needs CFO approval." in page and 'id="fu-reminders"' in page

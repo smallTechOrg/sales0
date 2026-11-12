@@ -292,6 +292,9 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     assert won.status_code == 303 and won.headers["location"] == f"/companies/{cid}"
     page = web.get(f"/companies/{cid}").text
     assert "flash--error" not in page, page[page.index("crm-flash"):][:300]
+    assert "Suggested: Client" in page and "stage-badge--client" not in page  # q25: a person confirms
+    _post(web, f"/companies/{cid}/suggestion", {"decision": "accept"})
+    page = web.get(f"/companies/{cid}").text
     assert 'stage-badge--client' in page and "client since" in page and 'data-deal-status="won"' in page
     assert re.search(r'id="company-\d+" data-stage="client"', web.get("/pipeline?tab=clients").text)
     assert f'id="company-{cid}"' not in web.get("/pipeline?tab=leads").text

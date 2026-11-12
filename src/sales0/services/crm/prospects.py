@@ -217,15 +217,14 @@ def mark_contacted(
     p = _get(db, prospect_id)
     _require_open(p)
     stamp = now_or(now)
-    if p.stage == "new":
-        _set_stage(db, p, "contacted", actor=actor, now=stamp, note=note, when=when, extra={"channel": channel}, due_dates=due_dates,
-                   channels=channels)
-    elif p.contacted_at is None or p.contacted_estimated:
+    # records the contact; never moves the company (a person moves it between statuses)
+    if p.contacted_at is None or p.contacted_estimated:
         p.contacted_at, p.contacted_estimated, p.updated_at = (when or stamp), False, stamp
         db.flush()
         timeline.add_event(db, subject_type="prospect", subject_id=p.id, kind="stage_change",
                            body="Contact date recorded" + (f" - {note.strip()}" if note and note.strip() else ""),
-                           data={"channel": channel, "contacted_at": p.contacted_at.isoformat()}, actor=actor, occurred_at=stamp)
+                           data={"channel": channel, "contacted_at": p.contacted_at.isoformat(),
+                                 **({"note": note.strip()} if note and note.strip() else {})}, actor=actor, occurred_at=stamp)
         followups.schedule_for_contact(db, p.id, p.contacted_at, now=stamp, due_dates=due_dates, channels=channels)
     return _view(db, p)
 
@@ -234,13 +233,13 @@ def log_contact(
     db: Session, prospect_id: int, *, channel: str, note: str | None = None, contacted_on: date | None = None,
     due_dates: dict | None = None, actor: Actor = TEAM, now: datetime | None = None, channels: dict | None = None,
 ) -> ProspectView:
-    """The FIRST contact made by hand (WhatsApp / LinkedIn / Email / Call): New -> Contacted, the contact date recorded
-    and the three follow-ups scheduled (the agent's dates, else contact day + offsets). The stage_change timeline entry
+    """The FIRST contact made by hand (WhatsApp / LinkedIn / Email / Call): the contact date recorded (the stage is NOT
+    moved - a person moves the company) and the three follow-ups scheduled (the agent's dates, else contact day + offsets). The stage_change timeline entry
     carries the channel and the note."""
     ch = followups.check_channel(channel, required=True)
     p = _get(db, prospect_id)
     _require_open(p)
-    if p.stage != "new" and p.contacted_at is not None and not p.contacted_estimated:
+    if p.contacted_at is not None and not p.contacted_estimated:
         raise invalid("already_contacted", "This prospect is already contacted - mark its follow-ups done instead.")
     stamp = now_or(now)
     tz = get_settings().tz
@@ -264,17 +263,15 @@ def record_email_contact(
 ) -> bool:
     """A real email went out to ``prospect_id`` whatever its status (closed / converted included).
 
-    Records ``contacted_at`` (a real date replaces an estimated one) and moves a ``new`` stage to ``contacted``;
-    the status never changes. Reminders are scheduled only when ``schedule`` and the prospect is open.
+    Records ``contacted_at`` (a real date replaces an estimated one); neither the stage nor the status changes (a
+    person moves the company). Reminders are scheduled only when ``schedule`` and the prospect is open.
     Returns True when anything was recorded.
     """
     p = _get(db, prospect_id)
     stamp = now_or(now)
-    if p.contacted_at is not None and not p.contacted_estimated and p.stage != "new":
+    if p.contacted_at is not None and not p.contacted_estimated:
         return False
-    if p.status == "open":
-        if p.stage == "new":
-            return _set_stage(db, p, "contacted", actor=actor, now=stamp, when=when, extra={"channel": "email"}, schedule=schedule)
+    if p.status == "open":  # the contact date is recorded; the stage never moves by itself
         p.contacted_at, p.contacted_estimated, p.updated_at = when, False, stamp
         db.flush()
         timeline.add_event(db, subject_type="prospect", subject_id=p.id, kind="stage_change", body="Contact date recorded",
@@ -284,17 +281,12 @@ def record_email_contact(
         return True
     if p.contacted_at is None or p.contacted_estimated:
         p.contacted_at, p.contacted_estimated = when, False
-    prev = p.stage
-    if prev == "new":
-        p.stage, p.stage_source = "contacted", "app"
     p.updated_at = stamp
     db.flush()
     timeline.add_event(
         db, subject_type="prospect", subject_id=p.id, kind="stage_change",
-        body=f"Email sent while the prospect is {p.status}: contact date recorded"
-        + (f", stage {stage_label(prev)} -> {stage_label(p.stage)}" if prev != p.stage else "") + "; status unchanged, no reminders scheduled.",
-        data={"channel": "email", "contacted_at": p.contacted_at.isoformat(), "status": p.status,
-              **({"from": prev, "to": p.stage} if prev != p.stage else {})},
+        body=f"Email sent while the prospect is {p.status}: contact date recorded; status unchanged, no reminders scheduled.",
+        data={"channel": "email", "contacted_at": p.contacted_at.isoformat(), "status": p.status},
         actor=actor, occurred_at=stamp,
     )
     return True

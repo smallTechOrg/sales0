@@ -147,32 +147,34 @@ TABS = ("enquiries", "prospects", "leads", "clients")
 DEFAULT_TAB = "enquiries"
 TAB_LABELS = {"enquiries": "Enquiries", "prospects": "Prospects", "leads": "Leads", "clients": "Clients"}
 TAB_HELP = {
-    "enquiries": "What is this? Inbound enquiries nobody has reached out on yet. The first email or logged follow-up moves "
-                 "the company to Prospects / Contacted. A company is only ever on one board. Enquiries still to review stay in the Inbox.",
+    "enquiries": "What is this? Inbound enquiries whose company is still New. Move a company on when you reach out (drag the "
+                 "card or press Move…): companies only move when someone moves them. A company is only ever on one board. "
+                 "Enquiries still to review stay in the Inbox; + Add an enquiry pastes one in by hand.",
     "prospects": "What is this? Companies in the outreach cadence: New (cold-list companies), Contacted, Follow-up 1, "
-                 "Follow-up 2, Final follow-up. The status follows the outreach automatically; a logged meeting (or a drag "
-                 "onto Meeting scheduled) makes the company a lead and moves it to the Leads board.",
+                 "Follow-up 2, Final follow-up. Drag a card (or press Move…) to change its status; nothing moves a company "
+                 "by itself. Meeting scheduled makes it a lead (Leads board).",
     "leads": "What is this? Companies in conversation: Meeting scheduled, Assessment, Proposal sent, Interviews, On hold. "
              "Won moves the company to Clients; Lost or No response closes it (Companies → Archived).",
     "clients": "What is this? Companies that have bought from us, with their characteristics, priority and next follow-up. "
-               "A new enquiry from a client is an upsell, not a new prospect.",
+               "A new enquiry from a client is an upsell, not a new prospect. Marked client by mistake? Open the company and "
+               "use the … menu to move it back to Leads or Prospects.",
 }
 TAB_OF_STAGE = {"prospect": "prospects", "lead": "leads", "client": "clients", "closed": "prospects"}
 
 
 def _move_ctx() -> dict[str, Any]:
     """The move popup's statuses (all of them, grouped) and what each one means (column / badge tooltips)."""
-    from sales0.services.crm import auto_status
+    from sales0.services.crm.status_help import STATUS_HELP
 
     groups: list[tuple[str, list[tuple[str, str, str]]]] = [
-        ("Prospects", [(f"prospect:{s}", lifecycle_service.SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in COMPANY_SUB_STATUSES["prospect"]]),
-        ("Leads", [(f"lead:{s}", lifecycle_service.SUB_LABELS[s], auto_status.RULES_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]),
-        ("Client", [("client", "Client (won)", auto_status.RULES_HELP["active"])]),
+        ("Prospects", [(f"prospect:{s}", lifecycle_service.SUB_LABELS[s], STATUS_HELP[s]) for s in COMPANY_SUB_STATUSES["prospect"]]),
+        ("Leads", [(f"lead:{s}", lifecycle_service.SUB_LABELS[s], STATUS_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]),
+        ("Client", [("client", "Client (won)", STATUS_HELP["active"])]),
         ("Close", [(f"closed:{k}", label, lifecycle_service.CLOSE_HELP[k]) for k, label in (
             ("not_interested", "Not interested / Lost"), ("dormant", "No response (dormant)"), ("do_not_contact", "Do not contact"))]),
     ]
     help_map = {t: h for _g, items in groups for t, _l, h in items}
-    help_map["client"] = auto_status.RULES_HELP["active"]
+    help_map["client"] = STATUS_HELP["active"]
     return {"move_targets": groups, "move_help": help_map}
 STAGE_OF_TAB = {"prospects": "prospect", "leads": "lead", "clients": "client"}
 
@@ -345,7 +347,7 @@ def _followups_ctx(p: Any, base: str, no_fu: bool, db: Session | None = None, me
     """The follow-ups card: open + done reminders, the channel choices and, before the first contact, the planned
     Follow-up 1 / 2 / Final dates (editable in the Log contact form; they become live reminders when it is saved)."""
     can_act = p.status == "open" and p.lead is None
-    needs_contact = can_act and p.stage == "new" and (p.contacted_at is None or p.contacted_estimated)
+    needs_contact = can_act and (p.contacted_at is None or bool(p.contacted_estimated))
     info = _draft_info(db, p, member) if db is not None and can_act else {}
     today = _today()
     from sales0.config import get_settings as _settings

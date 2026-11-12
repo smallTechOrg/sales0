@@ -71,7 +71,7 @@
         <section class="card" id="company-enquiries" aria-labelledby="enq-title">
           <div class="card__header"><h2 id="enq-title">Enquiries</h2><span class="muted">{{ co.enquiries|length }}</span></div>
           <div class="card__body">
-            <p class="hint">Each enquiry is one specific requirement. Contacted and follow-up statuses follow this company's outreach; on the enquiry that brought the company in you can also set them here and the company's prospect stage follows. The others are set here.</p>
+            <p class="hint">Each enquiry is one specific requirement with its own status. Changing an enquiry's status never moves the company (use the … menu or the board); Meeting / Proposal / Won only suggest a move.</p>
             {% for e in co.enquiries %}
               <div class="reply-item" id="enquiry-{{ e.id }}">
                 <strong>{{ e.requirement_summary or "(no summary)" }}</strong>
