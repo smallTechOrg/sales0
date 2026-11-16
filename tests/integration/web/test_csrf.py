@@ -3,6 +3,7 @@ run). Unsafe methods are checked against Origin, then Referer; headerless client
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from html import unescape
 
@@ -135,6 +136,11 @@ def test_live_server_same_origin_and_cross_origin(fixture_server: str) -> None:
         assert same.status_code == 200 and "<strong>ai workshop</strong>" in same.text
         cross = http.post("/setup/keywords", data={"text": "ai consulting"}, headers={"Origin": EVIL})
         assert cross.status_code == 403
+    # The request's DB session commits when its dependency tears down, which FastAPI does AFTER the response has been
+    # sent: a read straight after the response can see the old state on a slow machine (flaky in CI). Wait for it.
+    deadline = time.monotonic() + 10
+    while _keyword_count() != 1 and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert _keyword_count() == 1
 
 
