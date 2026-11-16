@@ -78,7 +78,7 @@ def _fields(name, website, approx_clients, client_names, contact, email, notes) 
         try:
             out["approx_clients"] = int(approx_clients) if approx_clients not in (None, "") else None
         except (TypeError, ValueError):
-            raise invalid("competitor_invalid", "Approx. clients must be a whole number.") from None
+            raise invalid("competitor_invalid", "Approx. customers must be a whole number.") from None
     if client_names is not UNSET:
         out["client_names"] = (client_names or "").strip() or None
     if contact is not UNSET:
@@ -182,7 +182,7 @@ def link_competitor(db: Session, competitor_id: int, entity_type: str, entity_id
     _get_competitor(db, competitor_id)
     model = {"enquiry": Enquiry, "client": Client, "prospect": Prospect}.get(entity_type)
     if model is None:
-        raise invalid("competitor_invalid", "A competitor links to an enquiry, a client or a prospect.")
+        raise invalid("competitor_invalid", "A competitor links to an enquiry, a customer or a prospect.")
     if db.get(model, entity_id) is None:
         raise not_found()
     existing = db.scalar(select(CompetitorMention).where(CompetitorMention.competitor_id == competitor_id,

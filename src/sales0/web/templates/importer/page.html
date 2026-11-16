@@ -32,6 +32,7 @@
             <div class="field"><label class="field__label" for="paste-author">Author (optional)</label><input class="input" id="paste-author" name="author" maxlength="200" value="{{ form.author or '' }}"></div>
           </div>
           <div class="field"><label class="field__label" for="paste-profile">Author profile URL (optional)</label><input class="input" id="paste-profile" name="author_profile_url" maxlength="1000" placeholder="https://www.linkedin.com/in/…" value="{{ form.author_profile_url or '' }}"></div>
+          <div class="field"><label class="field__label" for="paste-date">Date posted (optional, empty = today)</label><input class="input" id="paste-date" type="date" name="date_posted" min="2000-01-01"></div>
           <div class="row">
             <button class="btn btn--primary" id="paste-btn" type="submit">Add to inbox</button>
             <span class="htmx-indicator" id="paste-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Asking the AI to triage it… a few seconds.</span>

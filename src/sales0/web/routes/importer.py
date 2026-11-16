@@ -25,7 +25,7 @@ from sales0.services.importer import ImportBatchView
 from sales0.services.importer.csv_import import MAX_BYTES
 from sales0.web.acting import clear_flash, get_acting_member_optional, pop_flash, require_admin
 from sales0.web.context import PathId
-from sales0.web.context import actor_of, crm_done, crm_guard, opt_str, render_page
+from sales0.web.context import actor_of, crm_done, crm_guard, opt_str, parse_date, render_page
 from sales0.web.envelope import ok as envelope_ok
 from sales0.web.envelope import wants_json
 
@@ -39,7 +39,7 @@ KINDS: tuple[tuple[str, str], ...] = (
     ("working", "Working sheet"),
     ("competitors", "Competitors"),
     ("groups", "Groups"),
-    ("clients", "Legacy clients"),
+    ("clients", "Legacy customers"),
     ("contacts", "Contacts"),
 )
 KIND_LABELS = {**dict(KINDS), "paste": "Pasted post"}
@@ -136,6 +136,7 @@ def import_paste(
     link: str = Form(""),
     author: str = Form(""),
     author_profile_url: str = Form(""),
+    date_posted: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
     llm: LLMClient = Depends(get_llm),
@@ -151,7 +152,8 @@ def import_paste(
         try:
             result = importer.paste_post(
                 db, llm, text=text.strip(), link=opt_str(link), author=opt_str(author),
-                author_profile_url=opt_str(author_profile_url), actor=actor_of(member),
+                author_profile_url=opt_str(author_profile_url),
+                date_posted=parse_date(date_posted, label="date posted"), actor=actor_of(member),
             )  # fmt: skip
         except (LLMAuthError, LLMModelNotFound) as exc:
             db.commit()  # keep the error llm_calls row
@@ -185,6 +187,7 @@ def add_enquiry(
     link: str = Form(""),
     author: str = Form(""),
     author_profile_url: str = Form(""),
+    date_posted: str = Form(""),
     accept: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -204,7 +207,8 @@ def add_enquiry(
         try:
             result = importer.paste_post(
                 db, llm, text=text.strip(), link=opt_str(link), author=opt_str(author),
-                author_profile_url=opt_str(author_profile_url), actor=actor_of(member),
+                author_profile_url=opt_str(author_profile_url),
+                date_posted=parse_date(date_posted, label="date posted"), actor=actor_of(member),
             )  # fmt: skip
         except (LLMAuthError, LLMModelNotFound) as exc:
             db.commit()  # keep the error llm_calls row

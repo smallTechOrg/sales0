@@ -628,7 +628,7 @@ def apply_accept_choices(
     if as_client:
         from sales0.services.crm import leads as leads_mod
 
-        leads_mod.promote_to_client(db, view.id, actor=actor, note="Accepted from the Inbox as an existing client", now=now)
+        leads_mod.promote_to_client(db, view.id, actor=actor, note="Accepted from the Inbox as an existing customer", now=now)
     return _view(db, _get(db, view.id))
 
 

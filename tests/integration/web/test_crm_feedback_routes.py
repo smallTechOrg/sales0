@@ -56,7 +56,7 @@ def test_accept_form_offers_characteristics_with_ai_pre_tick(web: TestClient) ->
     buyer_card = html.split(f'id="enquiry-{buyer}"', 1)[1].split("</article>", 1)[0]
     tp = _trait("training_provider")
     assert f'value="{tp}" checked data-ai-suggested="1"' in agency_card and "(AI suggestion)" in agency_card
-    assert 'data-ai-suggested' not in buyer_card and 'name="as_client"' in buyer_card and "Already a client" in buyer_card
+    assert 'data-ai-suggested' not in buyer_card and 'name="as_client"' in buyer_card and "Already a customer" in buyer_card
 
 
 def test_accept_with_characteristics_and_as_client(web: TestClient) -> None:
@@ -106,7 +106,7 @@ def test_edit_characteristics_on_pages_and_filter_lists(web: TestClient) -> None
 
 def test_registry_add_rename_turn_off(web: TestClient) -> None:
     page = web.get("/competitors").text
-    assert 'id="characteristics-registry"' in page and "Training provider" in page and "Outreach client" in page
+    assert 'id="characteristics-registry"' in page and "Training provider" in page and "Outreach customer" in page
     created = web.post("/competitors/characteristic", data={"name": "Reseller"}, headers=JSON).json()
     assert created["ok"] and created["data"]["name"] == "Reseller"
     tid = created["data"]["id"]

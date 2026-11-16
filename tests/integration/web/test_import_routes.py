@@ -60,7 +60,7 @@ def test_import_page_has_both_cards_the_sheet_note_and_empty_batches(web: TestCl
         assert hook in main, hook
     assert "Your Google Sheets are synced automatically" in main and 'href="/sync"' in main
     assert "Nothing imported yet." in main
-    for label in ("Enquiries", "Discarded enquiries", "Outreach", "Prospects", "Working sheet", "Competitors", "Groups", "Legacy clients", "Contacts"):
+    for label in ("Enquiries", "Discarded enquiries", "Outreach", "Prospects", "Working sheet", "Competitors", "Groups", "Legacy customers", "Contacts"):
         assert f">{label}</option>" in main, label
     assert 'enctype="multipart/form-data"' in main and 'minlength="40"' in main
     assert "Coming in Phase 2" not in html

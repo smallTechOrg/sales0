@@ -22,7 +22,7 @@ from sales0.services.crm import _keys, characteristics, companies, deals, lifecy
 from sales0.services.crm._common import page_params
 from sales0.services.crm.views import CharacteristicView
 
-COLUMN_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Client", "closed": "Closed"}
+COLUMN_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Customer", "closed": "Closed"}
 # deal statuses that live in the collapsed lane of the Enquiries tab
 ENQUIRY_CLOSED_STATUSES = ("lost", "no_response", "on_hold")
 ENQUIRY_ACTIVE_STATUSES = tuple(x for x in ENQUIRY_DEAL_STATUSES if x not in ENQUIRY_CLOSED_STATUSES)

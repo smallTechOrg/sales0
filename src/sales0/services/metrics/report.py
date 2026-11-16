@@ -222,7 +222,7 @@ def _funnel(db: Session, weeks: list[Week], scanned: list[int]) -> Funnel:
         for k, v in zip(keys, (accepted, contacted, replied, proposal, won), strict=True):
             weekly[i][k] += int(v)
     labels = (("scanned", "Scanned"), ("relevant", "Relevant"), ("accepted", "Accepted prospect"), ("contacted", "Contacted"),
-              ("replied", "Replied / lead"), ("proposal", "Proposal"), ("won", "Won / client"))
+              ("replied", "Replied / lead"), ("proposal", "Proposal"), ("won", "Won / customer"))
     totals = {k: sum(w[k] for w in weekly) for k, _ in labels}
     stages: list[FunnelStage] = []
     prev: int | None = None

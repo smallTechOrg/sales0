@@ -31,7 +31,7 @@ log = get_logger("sales0.analytics")
 
 PERIODS = {"30": 30, "90": 90, "365": 365, "all": None}
 OFF_LABELS = {"not_interested": "Not interested / Lost", "dormant": "No response", "do_not_contact": "Do not contact",
-              "lost_client": "Lost client"}
+              "lost_client": "Lost customer"}
 INSIGHTS_KEY = "analytics_insights"
 PROMPT_VERSION = "analytics-insights-v1"
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
@@ -119,7 +119,7 @@ def _stage_time(label: str, values: list[float], help_: str) -> StageTime:
 def funnel_and_times(db: Session, ids: set[int]) -> tuple[list[FunnelStep], list[StageTime]]:
     if not ids:
         return [FunnelStep(k, lbl, 0) for k, lbl in (("pipeline", "In the pipeline"), ("contacted", "Contacted"),
-                                                         ("lead", "Became a lead"), ("client", "Became a client"))], []
+                                                         ("lead", "Became a lead"), ("client", "Became a customer"))], []
     idl = list(ids)
     prospects = db.execute(select(Prospect.company_id, Prospect.created_at, Prospect.contacted_at).where(Prospect.company_id.in_(idl))).all()
     leads = db.execute(select(func.coalesce(Lead.company_id, Prospect.company_id), Lead.opened_at, Lead.stage, Lead.closed_at)
@@ -148,7 +148,7 @@ def funnel_and_times(db: Session, ids: set[int]) -> tuple[list[FunnelStep], list
         ("pipeline", "In the pipeline", len(in_pipe | contacted), "Companies that entered the pipeline (an accepted enquiry or added by hand)."),
         ("contacted", "Contacted", len(contacted), "Someone reached out at least once (email, call, message, logged follow-up)."),
         ("lead", "Became a lead", len(lead_set), "A meeting or more: the company reached the Leads board."),
-        ("client", "Became a client", len(set(won_at)), "Won: the company bought."),
+        ("client", "Became a customer", len(set(won_at)), "Won: the company bought."),
     ]
     out: list[FunnelStep] = []
     first = steps[0][2] or 0
@@ -161,7 +161,7 @@ def funnel_and_times(db: Session, ids: set[int]) -> tuple[list[FunnelStep], list
                     "Days from entering the pipeline to the first outreach."),
         _stage_time("Contacted → Lead", [d for c, t in first_lead.items() if (d := _days(first_contact.get(c), t)) is not None],
                     "Days from the first outreach to becoming a lead (a meeting)."),
-        _stage_time("Lead → Client", [d for c, t in won_at.items() if (d := _days(first_lead.get(c), t)) is not None],
+        _stage_time("Lead → Customer", [d for c, t in won_at.items() if (d := _days(first_lead.get(c), t)) is not None],
                     "Days from becoming a lead to winning."),
     ]
     return out, times
@@ -285,7 +285,7 @@ class Insights(BaseModel):
 def _schema() -> dict[str, Any]:
     item = {"type": "object", "properties": {"point": {"type": "string"}, "evidence": {"type": "string"}}, "required": ["point", "evidence"]}
     return {"type": "object", "properties": {
-        "worked": {"type": "array", "items": item, "description": "what made companies move forward (lead / client), 3-6 items"},
+        "worked": {"type": "array", "items": item, "description": "what made companies move forward (lead / customer), 3-6 items"},
         "did_not_work": {"type": "array", "items": item, "description": "what went wrong with companies that closed or stalled, 3-6 items"},
         "patterns": {"type": "array", "items": {"type": "string"}, "description": "patterns by offering, segment, channel, timing"},
         "next_steps": {"type": "array", "items": {"type": "string"}, "description": "concrete changes the team should make"},
@@ -331,7 +331,7 @@ def evidence(db: Session, *, per_side: int = 20) -> tuple[str, int]:
     stalled = list(db.scalars(select(Company).where(Company.stage == "prospect", Company.off_ramp.is_(None),
                                                     Company.sub_status.in_(("follow_up_2", "final_follow_up")))
                               .order_by(Company.updated_at.desc()).limit(per_side // 2)))
-    parts = ["# Moved forward (lead or client)"] + [_company_story(db, c, offers) for c in good]
+    parts = ["# Moved forward (lead or customer)"] + [_company_story(db, c, offers) for c in good]
     parts += ["# Closed (lost, no response, not interested)"] + [_company_story(db, c, offers) for c in bad]
     parts += ["# Stalled (late follow-ups, no answer yet)"] + [_company_story(db, c, offers) for c in stalled]
     return "\n\n".join(parts)[:60_000], len(good) + len(bad) + len(stalled)

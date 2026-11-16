@@ -13,10 +13,10 @@
         </form>
         <form id="refresh-all-form" class="row" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
               hx-swap="innerHTML" hx-disabled-elt="find button"
-              hx-confirm="Refresh all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or params.offering }}companies? This rewrites each summary from what we already know and sets Partner / Direct client and offerings where missing - no new web research.">
+              hx-confirm="Refresh all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or params.offering }}companies? This rewrites each summary from what we already know and sets Partner / Direct customer and offerings where missing - no new web research.">
           <input type="hidden" name="mode" value="refresh"><input type="hidden" name="all_matching" value="1"><input type="hidden" name="q" value="{{ params.q }}"><input type="hidden" name="characteristic" value="{{ params.characteristic }}"><input type="hidden" name="offering" value="{{ params.offering }}">
           <button class="btn" id="btn-refresh-all" type="submit">Refresh all {{ page.total }}{{ " matching" if params.q or params.characteristic or params.offering }}</button>
-          <span class="hint">Summary + Partner / Direct client + offerings from current info (a few seconds each).</span>
+          <span class="hint">Summary + Partner / Direct customer + offerings from current info (a few seconds each).</span>
         </form>
         <form id="research-bulk-form" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
               hx-swap="innerHTML" hx-indicator="#research-bulk-indicator" hx-disabled-elt="#btn-research-selected, #btn-refresh-selected">
@@ -36,8 +36,8 @@
               <td><a href="/companies/{{ co.id }}">{{ co.name }}</a>{% if co.website %}<div class="muted">{{ co.website }}</div>{% endif %}</td>
               <td>{% if co.priority %}<span class="chip-priority" data-priority="{{ co.priority }}">{{ co.priority|capitalize }}</span>{% endif %}</td>
               <td>{% if co.off_ramp %}<span class="badge badge--warn closed-tag has-tip" tabindex="0" title="Closed ({{ co.off_ramp|replace('_', ' ') }}): on no board. Reopen returns it to Prospects as New.">Closed</span> <span class="muted">{{ co.off_ramp|replace("_", " ")|capitalize }}</span>
-                    {% if co.off_ramp != "do_not_contact" or is_admin %}<button class="btn btn--sm" type="button" id="reopen-{{ co.id }}" hx-post="/companies/{{ co.id }}/reopen" hx-swap="none" hx-confirm="Reopen {{ co.name }}? It goes back to {{ 'Clients' if co.off_ramp == 'lost_client' else 'Prospects as New' }}.">Reopen</button>{% endif %}
-                  {% elif co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
+                    {% if co.off_ramp != "do_not_contact" or is_admin %}<button class="btn btn--sm" type="button" id="reopen-{{ co.id }}" hx-post="/companies/{{ co.id }}/reopen" hx-swap="none" hx-confirm="Reopen {{ co.name }}? It goes back to {{ 'Customers' if co.off_ramp == 'lost_client' else 'Prospects as New' }}.">Reopen</button>{% endif %}
+                  {% elif co.stage %}<span class="badge stage-badge stage-badge--{{ co.stage }}">{{ 'Customer' if co.stage == 'client' else co.stage|capitalize }}{% if co.sub_status and co.stage != "client" %}: {{ co.sub_status|replace("_", " ") }}{% endif %}</span>{% else %}<span class="muted">Not in pipeline</span>{% endif %}</td>
               <td>{{ trait_chips(co.characteristics) }}</td>
               <td>{% for name in co.offerings %}<span class="chip">{{ name }}</span> {% else %}<span class="muted">-</span>{% endfor %}</td>
               <td class="num">{{ co.contacts }}</td>

@@ -124,7 +124,7 @@ def anchor_of(db: Session, entity_type: str, entity_id: int) -> tuple[str, int]:
         if c is None:
             raise not_found()
         return ("prospect", c.prospect_id) if c.prospect_id else ("client", c.id)
-    raise invalid("characteristic_invalid", "Characteristics belong to a prospect, a lead or a client.")
+    raise invalid("characteristic_invalid", "Characteristics belong to a prospect, a lead or a customer.")
 
 
 def _rows_for(db: Session, entity_type: str, ids: Iterable[int]) -> dict[int, list[CharacteristicView]]:

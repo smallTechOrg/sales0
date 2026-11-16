@@ -5,7 +5,7 @@
   <div class="menu__panel card">
     {% if life.move_groups %}
     <form class="stack" id="status-override-form" method="post" action="{{ base }}/move" hx-post="{{ base }}/move" hx-swap="none"
-          hx-confirm="Change the status of {{ life.name }}?{% if life.stage == 'client' %} Moving a client back to Leads or Prospects undoes the client status (for a company marked client by mistake).{% endif %}">
+          hx-confirm="Change the status of {{ life.name }}?{% if life.stage == 'client' %} Moving a customer back to Leads or Prospects undoes the customer status (for a company marked customer by mistake).{% endif %}">
       <h2 class="menu__title">Change the status</h2>
       <div class="field">
         <label class="field__label" for="override-target">New status</label>
@@ -24,12 +24,12 @@
         <label class="field__label" for="override-why" data-move-why-label>Why (optional)</label>
         <input class="input" id="override-why" name="why" maxlength="200" placeholder="e.g. they asked us to pause until April">
       </div>
-      {% if life.stage == "client" %}<p class="hint" id="undo-client-hint">Marked client by mistake? Pick a Leads or Prospects status: the client status is undone as if it never happened.</p>{% endif %}
+      {% if life.stage == "client" %}<p class="hint" id="undo-client-hint">Marked customer by mistake? Pick a Leads or Prospects status: the customer status is undone as if it never happened.</p>{% endif %}
       <div><button class="btn btn--primary" id="btn-set-status" type="submit">Set status</button></div>
     </form>
     {% endif %}
     {% if life.off_ramp and not (life.off_ramp == "do_not_contact" and not is_admin) %}
-      <p class="hint">Closed companies reopen as Prospects / New (a lost client is won back as a client): use Reopen.</p>
+      <p class="hint">Closed companies reopen as Prospects / New (a lost customer is won back as a customer): use Reopen.</p>
     {% endif %}
   </div>
 </details>

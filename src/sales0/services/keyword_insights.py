@@ -238,7 +238,7 @@ def grouped(stats: list[KeywordStat], view: str) -> list[Group]:
             g.keywords.append(s)
         return sorted(groups.values(), key=lambda g: (g.key == "none", g.label.lower()))
     if view == "outcome":
-        buckets = [Group("won", "Led to a client / won deal"), Group("leads", "Led to a lead"),
+        buckets = [Group("won", "Led to a customer / won deal"), Group("leads", "Led to a lead"),
                    Group("contacted", "Led to contacted enquiries"), Group("accepted", "Led to accepted enquiries"),
                    Group("nothing", "Nothing downstream yet")]
         for s in stats:

@@ -17,7 +17,7 @@
           {% if e.person_name and e.company_id %}<div class="pcard__meta">{% if e.contact_id %}<a href="/contacts/{{ e.contact_id }}">{{ e.person_name }}</a>{% else %}{{ e.person_name }}{% endif %}{% if e.person_title %} · {{ e.person_title }}{% endif %}</div>
           {% elif e.person_name %}<div class="pcard__meta">No company yet{% if e.person_title %} · {{ e.person_title }}{% endif %}</div>{% endif %}
           <div class="pcard__badges">
-            {% if c and c.stage and c.sub_label %}<span class="badge stage-badge stage-badge--{{ c.stage }}" title="The company's status: nobody has reached out yet - the first email or logged follow-up moves it to Prospects / Contacted">{{ c.stage_label }}{% if c.stage != "client" %}: {{ c.sub_label }}{% endif %}</span>{% endif %}
+            {% if c and c.stage and c.sub_label %}<span class="badge stage-badge stage-badge--{{ c.stage }}" title="The company's status: nobody has reached out yet. Move it on with Move… or by dragging the card">{{ c.stage_label }}{% if c.stage != "client" %}: {{ c.sub_label }}{% endif %}</span>{% endif %}
             {% if c and c.off_ramp %}<span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}
             {% if c %}{{ trait_chips(c.characteristics) }}{% endif %}
           </div>

@@ -155,7 +155,7 @@
               {% for ch in characteristic_options %}
                 <label class="accept-options__item"><input type="checkbox" name="characteristic_ids" value="{{ ch.id }}"{% if ch.system_key and (ch.system_key in hint or (ch.system_key == "partner" and card.category == "channel_partner")) %} checked data-ai-suggested="1"{% endif %}> {{ ch.name }}{% if ch.system_key and (ch.system_key in hint or (ch.system_key == "partner" and card.category == "channel_partner")) %} <span class="muted">(AI suggestion)</span>{% endif %}</label>
               {% endfor %}
-              <label class="accept-options__item" title="The company is already a client: it is marked Client (a person's decision) instead of starting as a Prospect"><input type="checkbox" name="as_client" value="1"> Already a client</label>
+              <label class="accept-options__item" title="The company is already a customer: it is marked Customer (a person's decision) instead of starting as a Prospect"><input type="checkbox" name="as_client" value="1"> Already a customer</label>
             </fieldset>
           {% endif %}
         </form>
@@ -174,7 +174,7 @@
             </select>
             <label class="field__label" for="enquiry-{{ card.id }}-custom-reason">Or your own reason <span class="muted">(the AI learns from it)</span></label>
             <input class="input" id="enquiry-{{ card.id }}-custom-reason" name="custom_reason" maxlength="200"
-                   placeholder="e.g. Agency reselling our workshop to its client">
+                   placeholder="e.g. Agency reselling our workshop to its customer">
             {% if can_save_rule %}
               <label class="enquiry__select"><input type="checkbox" name="save_rule" value="1"> Save as a triage rule (exclude)</label>
             {% endif %}

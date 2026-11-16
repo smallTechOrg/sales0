@@ -80,7 +80,7 @@ class BulkResult:
             return "Nothing to research - every active enquiry already has up-to-date research."
         n = self.researched
         if any(o.status == "refreshed" for o in self.outcomes):
-            parts = [f"Refreshed {n} compan{'y' if n == 1 else 'ies'} (summary, Partner / Direct client and offerings)"]
+            parts = [f"Refreshed {n} compan{'y' if n == 1 else 'ies'} (summary, Partner / Direct customer and offerings)"]
         else:
             parts = [f"Researched {n} compan{'y' if n == 1 else 'ies'} (company, enquiry and people)"]
         if self.failed:

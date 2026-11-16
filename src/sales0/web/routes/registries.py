@@ -55,7 +55,7 @@ def _clients_count(raw: str) -> int | None:
     except ValueError:
         count = -1
     if not 0 <= count <= MAX_APPROX_CLIENTS:
-        raise DomainError("competitor_invalid", "Approx. clients must be a whole number of 0 or more.", 400)
+        raise DomainError("competitor_invalid", "Approx. customers must be a whole number of 0 or more.", 400)
     return count
 
 
@@ -192,7 +192,7 @@ def link_competitor(
 
     def run() -> Response:
         if entity_type not in ("enquiry", "client"):
-            raise DomainError("bad_request", "Choose an enquiry or a client to link.", 400)
+            raise DomainError("bad_request", "Choose an enquiry or a customer to link.", 400)
         target = opt_int(entity_id, "selection")
         if target is None:
             raise DomainError("bad_request", "Choose what to link.", 400)
