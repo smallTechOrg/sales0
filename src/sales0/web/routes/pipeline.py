@@ -145,7 +145,7 @@ def _fragments(request: Request, parts: list[tuple[str, dict[str, Any]]], messag
 # ---------------------------------------------------------------------- list page
 TABS = ("enquiries", "prospects", "leads", "clients")
 DEFAULT_TAB = "enquiries"
-TAB_LABELS = {"enquiries": "Enquiries", "prospects": "Prospects", "leads": "Leads", "clients": "Clients"}
+TAB_LABELS = {"enquiries": "Enquiries", "prospects": "Prospects", "leads": "Leads", "clients": "Customers"}
 TAB_HELP = {
     "enquiries": "What is this? Inbound enquiries whose company is still New. Move a company on when you reach out (drag the "
                  "card or press Move…): companies only move when someone moves them. A company is only ever on one board. "
@@ -154,9 +154,9 @@ TAB_HELP = {
                  "Follow-up 2, Final follow-up. Drag a card (or press Move…) to change its status; nothing moves a company "
                  "by itself. Meeting scheduled makes it a lead (Leads board).",
     "leads": "What is this? Companies in conversation: Meeting scheduled, Assessment, Proposal sent, Interviews, On hold. "
-             "Won moves the company to Clients; Lost or No response closes it (Companies → Archived).",
+             "Won moves the company to Customers; Lost or No response closes it (Companies → Archived).",
     "clients": "What is this? Companies that have bought from us, with their characteristics, priority and next follow-up. "
-               "A new enquiry from a client is an upsell, not a new prospect. Marked client by mistake? Open the company and "
+               "A new enquiry from a customer is an upsell, not a new prospect. Marked customer by mistake? Open the company and "
                "use the … menu to move it back to Leads or Prospects.",
 }
 TAB_OF_STAGE = {"prospect": "prospects", "lead": "leads", "client": "clients", "closed": "prospects"}
@@ -169,7 +169,7 @@ def _move_ctx() -> dict[str, Any]:
     groups: list[tuple[str, list[tuple[str, str, str]]]] = [
         ("Prospects", [(f"prospect:{s}", lifecycle_service.SUB_LABELS[s], STATUS_HELP[s]) for s in COMPANY_SUB_STATUSES["prospect"]]),
         ("Leads", [(f"lead:{s}", lifecycle_service.SUB_LABELS[s], STATUS_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]),
-        ("Client", [("client", "Client (won)", STATUS_HELP["active"])]),
+        ("Customer", [("client", "Customer (won)", STATUS_HELP["active"])]),
         ("Close", [(f"closed:{k}", label, lifecycle_service.CLOSE_HELP[k]) for k, label in (
             ("not_interested", "Not interested / Lost"), ("dormant", "No response (dormant)"), ("do_not_contact", "Do not contact"))]),
     ]
@@ -263,7 +263,7 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
 def _tab_counts(db: Session) -> list[tuple[str, str, int]]:
     c = company_pipeline_service.counts(db)
     return [("enquiries", "Enquiries", c["enquiries"]), ("prospects", "Prospects", c["prospect"]), ("leads", "Leads", c["lead"]),
-            ("clients", "Clients", c["client"])]
+            ("clients", "Customers", c["client"])]
 
 
 @router.get("/pipeline", response_class=HTMLResponse)
@@ -1121,7 +1121,7 @@ def create_client(
 ) -> Response:
     def run() -> Response:
         if not name.strip():
-            raise DomainError("client_invalid", "A client needs a name.", 400)
+            raise DomainError("client_invalid", "A customer needs a name.", 400)
         view = clients_service.create_legacy(
             db, name=name.strip(), company=opt_str(company), started_on=parse_date(started_on, label="start date"),
             notes=opt_str(notes), actor=actor_of(member),
@@ -1129,7 +1129,7 @@ def create_client(
         if wants_json(request):
             return envelope_ok(view.model_dump(mode="json"), 201)
         return crm_done(request, f"/companies/{view.company_id}" if view.company_id else "/pipeline?tab=clients",
-                        f"Added client {view.name}.")
+                        f"Added customer {view.name}.")
 
     return crm_guard(request, "/pipeline?tab=clients", run, db)
 
@@ -1146,11 +1146,11 @@ def update_client(
 ) -> Response:
     def act() -> str:
         if not name.strip():
-            raise DomainError("client_invalid", "A client needs a name.", 400)
+            raise DomainError("client_invalid", "A customer needs a name.", 400)
         clients_service.update_client(
             db, client_id, name=name.strip(), notes=opt_str(notes), status=status or "active", actor=actor_of(member)
         )
-        return "Client saved."
+        return "Customer saved."
 
     return _client_action(request, db, client_id, act)
 

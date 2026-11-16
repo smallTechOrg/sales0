@@ -215,7 +215,7 @@ def mark_client(request: Request, company_id: PathId, db: Session = Depends(get_
                 member: TeamMember | None = Depends(get_acting_member_optional)) -> Response:
     def go() -> str:
         lifecycle.mark_client(db, company_id, actor=actor_of(member))
-        return "Marked as a client."
+        return "Marked as a customer."
 
     return _act(request, db, company_id, None, go)
 

@@ -65,7 +65,7 @@ def create_from_lead(db: Session, lead_id: int, *, actor: Actor = SYSTEM, now: d
     if p.contact_id:
         contacts.link(db, p.contact_id, "client", c.id, "buyer")
     timeline.add_event(
-        db, subject_type="client", subject_id=c.id, kind="client_created", body=f"Client created from won lead: {c.name}",
+        db, subject_type="client", subject_id=c.id, kind="client_created", body=f"Customer created from won lead: {c.name}",
         data={"lead_id": ld.id, "prospect_id": p.id}, actor=actor, occurred_at=stamp,
     )
     return views_for(db, [c])[0]
@@ -78,7 +78,7 @@ def create_legacy(
     """A legacy client (older project). Idempotent per (name, company): an existing legacy client is returned."""
     clean = clip(_keys.collapse(name), 200)
     if not clean:
-        raise invalid("client_invalid", "A client needs a name.")
+        raise invalid("client_invalid", "A customer needs a name.")
     stamp = now_or(now)
     comp = companies.get_or_create_row(db, company, now=stamp) or companies.get_or_create_row(db, clean, now=stamp)  # a company of one
     stmt = select(Client).where(Client.status == "legacy", func.lower(Client.name) == clean.lower())
@@ -93,7 +93,7 @@ def create_legacy(
     )
     db.add(c)
     db.flush()
-    timeline.add_event(db, subject_type="client", subject_id=c.id, kind="client_created", body=f"Legacy client added: {c.name}",
+    timeline.add_event(db, subject_type="client", subject_id=c.id, kind="client_created", body=f"Legacy customer added: {c.name}",
                        data={"status": "legacy"}, actor=actor, occurred_at=stamp, company_id=c.company_id)
     return view_of(c)
 
@@ -125,7 +125,7 @@ def update_client(
     if name is not UNSET:
         new = clip(_keys.collapse(name), 200)
         if not new:
-            raise invalid("client_invalid", "A client needs a name.")
+            raise invalid("client_invalid", "A customer needs a name.")
         if new != c.name:
             c.name = new
             changed.append("name")
@@ -134,7 +134,7 @@ def update_client(
         changed.append("notes")
     if status is not UNSET:
         if status not in ("active", "legacy"):
-            raise invalid("client_invalid", "A client is active or legacy.")
+            raise invalid("client_invalid", "A customer is active or legacy.")
         if status != c.status:
             c.status = status
             changed.append("status")

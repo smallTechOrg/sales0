@@ -1,5 +1,5 @@
 """The company model in a real browser (no LLM): accept an enquiry -> a Prospect company -> a person marks it a Lead ->
-an enquiry marked Won makes it a Client -> it can be closed (Lost client) and reopened; the Pipeline has the tabs
+an enquiry marked Won makes it a Customer -> it can be closed (Lost customer) and reopened; the Pipeline has the tabs
 Enquiries (default) | Prospects | Leads | Clients; the old per-stage URLs redirect to the matching tab / the company page."""
 
 from __future__ import annotations
@@ -75,9 +75,9 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     # an enquiry marked Won makes the company a client
     page.goto(company_url)
     page.locator(f"#enquiry-status-form-{first}").get_by_role("button", name="Won").click()
-    expect(page.locator("#lead-suggestion")).to_contain_text("Suggested: Client")  # q25: a person confirms
-    page.locator("#lead-suggestion").get_by_role("button", name="Mark as client").click()
-    expect(page.locator("#stage-badge")).to_have_text("Client")
+    expect(page.locator("#lead-suggestion")).to_contain_text("Suggested: Customer")  # q25: a person confirms
+    page.locator("#lead-suggestion").get_by_role("button", name="Mark as customer").click()
+    expect(page.locator("#stage-badge")).to_have_text("Customer")
     with get_sessionmaker()() as db:
         assert {e.deal_status for e in db.scalars(select(Enquiry).where(Enquiry.id.in_(seeded.enquiry_ids)))} >= {"won"}
         pid = db.scalar(select(Prospect.id))
@@ -92,7 +92,7 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page.select_option("#override-target", "closed:lost_client")
     page.locator("#btn-set-status").click()
     page.locator('#confirm-dialog [value="confirm"]').click()
-    expect(page.locator("#off-ramp-badge")).to_contain_text("Lost client")
+    expect(page.locator("#off-ramp-badge")).to_contain_text("Lost customer")
     page.goto(f"{env.base}/pipeline?tab=clients")
     expect(page.locator("#pipeline-list tbody tr")).to_have_count(0)
     page.goto(f"{env.base}/companies?view=archived")
@@ -100,7 +100,7 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page.goto(company_url)
     page.locator("#btn-reopen").click()
     page.locator('#confirm-dialog [value="confirm"]').click()
-    expect(page.locator("#stage-badge")).to_have_text("Client")
+    expect(page.locator("#stage-badge")).to_have_text("Customer")
     expect(page.locator("#off-ramp-badge")).to_have_count(0)
 
     # q25: marked client by mistake -> the "..." menu puts it back on the Leads board as if it never was a client
@@ -112,6 +112,6 @@ def test_company_stages_end_to_end(env: Env, ui: Page) -> None:  # noqa: F811
     page.locator('#confirm-dialog [value="confirm"]').click()
     expect(page.locator("#stage-badge")).to_have_text("Lead")
     expect(page.locator("#sub-status-badge")).to_have_text("Proposal sent")
-    expect(page.locator("#timeline")).to_contain_text("Client status undone")
+    expect(page.locator("#timeline")).to_contain_text("Customer status undone")
     page.goto(f"{env.base}/pipeline?tab=clients")
     expect(page.locator("#pipeline-list tbody tr")).to_have_count(0)

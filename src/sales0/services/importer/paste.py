@@ -9,12 +9,14 @@ A ``seen_posts`` row is kept so a later discovery sighting of the same post dedu
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sales0.clock import local_today
+from sales0.config import get_settings
 from sales0.db.models import Enquiry, EnquirySource, SeenPost
 from sales0.errors import DomainError
 from sales0.llm import LLMClient
@@ -78,11 +80,18 @@ def paste_post(
     link: str | None = None,
     author: str | None = None,
     author_profile_url: str | None = None,
+    date_posted: date | None = None,
     actor: Actor,
     now: datetime | None = None,
 ) -> PasteResult:
-    """Add one pasted post to To review. Flushes, never commits. ``paste_invalid`` 400 under 40 chars."""
+    """Add one pasted post to To review. Flushes, never commits. ``paste_invalid`` 400 under 40 chars.
+
+    ``date_posted``: when the post / enquiry was written (SMA-22); not given = today, so a hand-added enquiry never shows
+    "date unknown". It cannot be in the future."""
     stamp = now_or(now)
+    today = local_today(get_settings().tz, stamp)
+    if date_posted is not None and (date_posted > today or date_posted.year < 2000):
+        raise DomainError("paste_invalid", "The date posted must be today or earlier.", 400)
     body = (text or "").replace("\r\n", "\n").strip()
     if len(body) < MIN_CHARS or sum(ch.isalnum() for ch in normalize_text(body)) < MIN_WORD_CHARS:
         raise DomainError("paste_invalid", INVALID_TEXT, 400)
@@ -110,7 +119,8 @@ def paste_post(
     profile_id = profiles.touch_profile(db, profile_url=profile_url, name=name, headline=None, now=stamp)
     enquiry = Enquiry(
         source="linkedin_post", content_hash=chash, raw_text=body, author_name=name,
-        author_profile_url=profile_url, source_url=url, date_added=stamp, review_status="pending_review",
+        author_profile_url=profile_url, source_url=url, date_added=stamp, date_posted=date_posted,
+        review_status="pending_review",
         triage_status="pending", author_profile_id=profile_id, origin="manual",
     )  # fmt: skip
     db.add(enquiry)
@@ -148,6 +158,8 @@ def paste_post(
         enquiry.triage_status = "failed"
         enquiry.triage_error = clip(getattr(exc, "message", None) or str(exc) or type(exc).__name__, 300)
         log.warning("paste_triage_refused", error=type(exc).__name__)
+    if enquiry.date_posted is None:  # no date given: today (set AFTER triage - the AI is told only a date a person gave)
+        enquiry.date_posted = today
     db.flush()
     seen.triage_status = enquiry.triage_status
     seen.triage_error = enquiry.triage_error

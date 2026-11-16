@@ -92,7 +92,7 @@ def test_a_client_marked_by_mistake_goes_back_as_if_it_never_was(web: TestClient
         assert db.scalar(select(func.count()).select_from(Client)) == 0  # no client record left behind
         assert db.scalar(select(func.count()).select_from(Lead).where(Lead.stage == "won")) == 0
         assert db.get(Enquiry, eid).deal_status == sub
-        body = db.scalar(select(TimelineEvent.body).where(TimelineEvent.company_id == cid, TimelineEvent.body.like("Client status undone%")))
+        body = db.scalar(select(TimelineEvent.body).where(TimelineEvent.company_id == cid, TimelineEvent.body.like("Customer status undone%")))
         assert body and "clicked the wrong button" in body
         if kind == "lead":
             assert db.scalar(select(func.count()).select_from(Lead).where(Lead.closed_at.is_(None))) == 1
@@ -131,3 +131,28 @@ def test_add_enquiry_by_pasting_a_post(web: TestClient) -> None:
     with session_scope() as db:
         assert db.scalar(select(Enquiry.review_status).where(Enquiry.id != e.id)) == "pending_review"
     assert web.post("/enquiries/add", data={"text": "too short"}, headers=HX).status_code in (200, 400)
+
+
+def test_a_pasted_enquiry_has_a_date_posted_never_unknown(web: TestClient) -> None:
+    """SMA-22: Add enquiry takes the date the post was written; empty = today (the Inbox no longer says 'date unknown')."""
+    from datetime import date, timedelta
+
+    from sales0.clock import local_today
+    from sales0.config import get_settings
+
+    today = local_today(get_settings().tz)
+    page = web.get("/pipeline?tab=enquiries").text
+    assert 'name="date_posted"' in page and 'id="ae-date"' in page
+    web.post("/enquiries/add", data={"text": "Gamma Foods needs an AI literacy workshop for 50 managers in Chennai, ASAP please."})
+    old = today - timedelta(days=9)
+    web.post("/enquiries/add", data={"text": "Delta Labs wants a two-day prompt engineering bootcamp for 25 engineers in Hyderabad.",
+                                     "date_posted": old.isoformat()})
+    with session_scope() as db:
+        rows = {e.raw_text.split()[0]: e for e in db.scalars(select(Enquiry))}
+        assert rows["Gamma"].date_posted == today and rows["Delta"].date_posted == old
+    inbox = web.get("/inbox").text
+    assert "date unknown" not in inbox and "9d ago" in inbox
+    bad = web.post("/enquiries/add", headers=HX, data={"text": "Echo Ltd needs trainers for a GenAI course in Pune next month.",
+                                                      "date_posted": (today + timedelta(days=3)).isoformat()})
+    assert "today or earlier" in unescape(bad.text)
+    assert date(2000, 1, 1) <= today

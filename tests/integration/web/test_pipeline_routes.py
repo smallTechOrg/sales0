@@ -90,7 +90,7 @@ def test_empty_pipeline_page_has_every_empty_state(web: TestClient) -> None:
     assert 'id="pipeline-tabs"' in main and 'id="due-today"' in main and 'aria-live="polite"' in main
     assert "Nothing due today." in main
     assert "No accepted enquiries yet" in main  # the default tab is Enquiries
-    for tab in ("Enquiries", "Prospects", "Leads", "Clients"):
+    for tab in ("Enquiries", "Prospects", "Leads", "Customers"):
         assert tab in main
     assert 'id="pipeline-search"' in main and 'id="pipeline-help"' in main
     assert "Coming in Phase 2" not in html
@@ -292,16 +292,16 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     assert won.status_code == 303 and won.headers["location"] == f"/companies/{cid}"
     page = web.get(f"/companies/{cid}").text
     assert "flash--error" not in page, page[page.index("crm-flash"):][:300]
-    assert "Suggested: Client" in page and "stage-badge--client" not in page  # q25: a person confirms
+    assert "Suggested: Customer" in page and "stage-badge--client" not in page  # q25: a person confirms
     _post(web, f"/companies/{cid}/suggestion", {"decision": "accept"})
     page = web.get(f"/companies/{cid}").text
-    assert 'stage-badge--client' in page and "client since" in page and 'data-deal-status="won"' in page
+    assert 'stage-badge--client' in page and "customer since" in page and 'data-deal-status="won"' in page
     assert re.search(r'id="company-\d+" data-stage="client"', web.get("/pipeline?tab=clients").text)
     assert f'id="company-{cid}"' not in web.get("/pipeline?tab=leads").text
     # a churned client goes to Closed and comes back
     _post(web, f"/companies/{cid}/off-ramp", {"off_ramp": "lost_client", "reason": "churned"})
     closed = web.get("/pipeline?tab=clients&closed=1").text
-    assert f'id="company-{cid}"' in closed and "Lost client" in closed
+    assert f'id="company-{cid}"' in closed and "Lost customer" in closed
     _post(web, f"/companies/{cid}/reopen")
     assert 'data-stage="client"' in web.get("/pipeline?tab=clients").text
 
@@ -450,14 +450,14 @@ def test_legacy_client_create_update_note(web: TestClient) -> None:
     assert resp.status_code == 303 and re.fullmatch(r"/companies/\d+", resp.headers["location"])
     url = resp.headers["location"]
     page = web.get(url).text
-    assert "Old Customer Ltd" in page and "client since 01 Mar 2024" in page
+    assert "Old Customer Ltd" in page and "customer since 01 Mar 2024" in page
     assert "Old Customer Ltd" in web.get("/pipeline?tab=clients").text
     with session_scope() as db:
         from sales0.db.models import Client
 
         client_id = db.scalar(select(Client.id))
     upd = _post(web, f"/pipeline/clients/{client_id}", {"name": "Old Customer Pvt Ltd", "notes": "Renewed", "status": "legacy"}, hx=True)
-    assert upd.status_code == 204 and "Client saved." in web.get(url).text
+    assert upd.status_code == 204 and "Customer saved." in web.get(url).text
     note = _post(web, f"/pipeline/clients/{client_id}/note", {"body": "Renewal call booked"}, hx=True)
     assert note.status_code == 204
     assert "Renewal call booked" in web.get(url).text

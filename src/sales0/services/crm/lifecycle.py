@@ -34,7 +34,7 @@ from sales0.services.crm._common import invalid
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
 from sales0.services.crm.stages import stage_rank
 
-STAGE_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Client"}
+STAGE_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Customer"}
 SUB_LABELS = {
     "new": "New", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
     "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "assessment": "Assessment",
@@ -42,7 +42,7 @@ SUB_LABELS = {
 }
 OFF_RAMP_LABELS = {
     "not_interested": "Not interested", "dormant": "Dormant (no response)", "do_not_contact": "Do not contact",
-    "lost_client": "Lost client",
+    "lost_client": "Lost customer",
 }
 # off-ramps a person may choose per stage (do_not_contact is always available)
 OFF_RAMPS_BY_STAGE = {
@@ -167,7 +167,7 @@ def mark_lead(db: Session, company_id: int, *, stage: str = "meeting_scheduled",
     ensure_contactable(db, company_id=company_id)
     stamp = now_or(now)
     if co.stage == "client" and not co.off_ramp:
-        raise DomainError("stage_invalid", "This company is already a client.", 409)
+        raise DomainError("stage_invalid", "This company is already a customer.", 409)
     ld = open_lead_of(db, company_id)
     if ld is not None:
         leads.move_stage(db, ld.id, stage, meeting_at=meeting_at, actor=actor, now=stamp)
@@ -212,7 +212,7 @@ def mark_client(db: Session, company_id: int, *, actor: Actor = TEAM, note: str 
         select(Prospect.id).where(Prospect.company_id == company_id))).limit(1))
     if already is None:
         p = ensure_ledger(db, company_id, actor=actor, now=stamp)
-        leads.promote_to_client(db, p.id, actor=actor, note=note or "Marked as client", now=stamp)
+        leads.promote_to_client(db, p.id, actor=actor, note=note or "Marked as customer", now=stamp)
     co.lead_suggestion = None
     _refresh(db, co)
     return co
@@ -230,9 +230,9 @@ def go_off_ramp(db: Session, company_id: int, off_ramp: str, *, reason: str | No
     if co.off_ramp == off_ramp:
         return co
     if off_ramp == "lost_client" and co.stage != "client":
-        raise DomainError("off_ramp_invalid", "Only a client can become a lost client.", 409)
+        raise DomainError("off_ramp_invalid", "Only a customer can become a lost customer.", 409)
     if off_ramp in ("not_interested", "dormant") and co.stage not in ("prospect", "lead"):
-        raise DomainError("off_ramp_invalid", "A client is closed as 'Lost client'.", 409)
+        raise DomainError("off_ramp_invalid", "A customer is closed as 'Lost customer'.", 409)
     if off_ramp in COMPANY_ONLY_OFF_RAMPS:
         was = (co.stage, co.sub_status, co.off_ramp)
         co.resume_stage, co.resume_sub_status = co.stage, co.sub_status
@@ -335,7 +335,7 @@ def move_label(target: str) -> str:
     if kind == "closed":
         return f"Closed: {OFF_RAMP_LABELS.get(sub, sub)}"
     if kind == "client":
-        return "Client"
+        return "Customer"
     return f"{stage_label(kind)}: {sub_label(sub)}"
 
 
@@ -401,7 +401,7 @@ def undo_client(db: Session, company_id: int, target: str, *, actor: Actor = TEA
     won = list(db.scalars(select(Lead).where(Lead.stage == "won", (Lead.company_id == company_id) | Lead.prospect_id.in_(pids))
                          .order_by(Lead.id.desc())))
     if not clients and not won:
-        raise DomainError("stage_invalid", "This company is not a client.", 409)
+        raise DomainError("stage_invalid", "This company is not a customer.", 409)
     p = primary_prospect(db, company_id) or ensure_ledger(db, company_id, actor=actor, now=stamp)
     for c in clients:  # what hung off the client goes back to the prospect, then the client row goes
         for ec in db.scalars(select(EntityCharacteristic).where(EntityCharacteristic.entity_type == "client", EntityCharacteristic.entity_id == c.id)):
@@ -443,7 +443,7 @@ def undo_client(db: Session, company_id: int, target: str, *, actor: Actor = TEA
             e.deal_status, e.deal_status_source = deal, "app"
     timeline.add_event(
         db, subject_type="company", subject_id=company_id, kind="stage_change", company_id=company_id, actor=actor,
-        body=f"Client status undone (marked by mistake): now {move_label(target)}" + (f" - {why}" if why else ""),
+        body=f"Customer status undone (marked by mistake): now {move_label(target)}" + (f" - {why}" if why else ""),
         data={"undo_client": True, "to": target, "clients_removed": len(clients)}, occurred_at=stamp,
     )
     company_projection.recompute(db.connection(), {company_id}, actor=actor.label, actor_member_id=actor.member_id)
@@ -574,7 +574,7 @@ CLOSE_HELP = {
     "not_interested": "Closed: they said no (a lead becomes Lost). It leaves every board; reopen it later from Companies -> Archived.",
     "dormant": "Closed: no response after the follow-ups (a lead becomes No response). Reopen it later as a new prospect.",
     "do_not_contact": "Closed: never contact again - nothing can be drafted or sent. Only an admin can reopen it.",
-    "lost_client": "Closed: a client that left us. Winning them back makes them a client again.",
+    "lost_client": "Closed: a customer that left us. Winning them back makes them a customer again.",
 }
 
 
@@ -585,11 +585,11 @@ def move_groups(co: Company) -> list[tuple[str, list[tuple[str, str, str]]]]:
     out: list[tuple[str, list[tuple[str, str, str]]]] = []
     back = co.stage == "client" and not co.off_ramp  # marked client by mistake: back to any Leads / Prospects status
     if co.stage in (None, "prospect") or co.off_ramp or back:
-        out.append(("Prospects" + (" (undo client)" if back else ""),
+        out.append(("Prospects" + (" (undo customer)" if back else ""),
                     [(f"prospect:{s}", SUB_LABELS[s], STATUS_HELP[s]) for s in PROSPECT_STAGES]))
-    out.append(("Leads" + (" (undo client)" if back else ""),
+    out.append(("Leads" + (" (undo customer)" if back else ""),
                 [(f"lead:{s}", SUB_LABELS[s], STATUS_HELP[s]) for s in COMPANY_SUB_STATUSES["lead"]]))
-    out.append(("Client", [("client", "Client", STATUS_HELP["active"])]))
+    out.append(("Customer", [("client", "Customer", STATUS_HELP["active"])]))
     if not co.off_ramp and co.stage:
         out.append(("Close", [(f"closed:{k}", OFF_RAMP_LABELS[k], CLOSE_HELP[k]) for k in OFF_RAMPS_BY_STAGE.get(co.stage, ("do_not_contact",))]))
     return out

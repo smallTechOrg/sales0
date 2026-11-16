@@ -13,7 +13,7 @@
         <div class="pcard__meta">{% if co.city %}{{ co.city }}{% endif %}
           {% if co.website and co.website.startswith(("http://", "https://")) %} · <a href="{{ co.website }}" rel="noopener noreferrer" target="_blank">{{ co.website }}</a>{% elif co.website %} · {{ co.website }}{% endif %}
           {% if co.linkedin_url and co.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ co.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn page</a>{% endif %}</div>
-        <p class="muted" id="company-summary">{{ co.prospects|length }} prospect{{ "" if co.prospects|length == 1 else "s" }} · {{ co.leads|length }} lead{{ "" if co.leads|length == 1 else "s" }} · {{ co.clients|length }} client{{ "" if co.clients|length == 1 else "s" }} · {{ co.contacts|length }} contact{{ "" if co.contacts|length == 1 else "s" }} · {{ co.enquiries|length }} enquir{{ "y" if co.enquiries|length == 1 else "ies" }} · {{ co.messages|length }} email{{ "" if co.messages|length == 1 else "s" }}, {{ co.replies|length }} repl{{ "y" if co.replies|length == 1 else "ies" }} · {{ co.open_follow_ups }} open follow-up{{ "" if co.open_follow_ups == 1 else "s" }}</p>
+        <p class="muted" id="company-summary">{{ co.prospects|length }} prospect{{ "" if co.prospects|length == 1 else "s" }} · {{ co.leads|length }} lead{{ "" if co.leads|length == 1 else "s" }} · {{ co.clients|length }} customer{{ "" if co.clients|length == 1 else "s" }} · {{ co.contacts|length }} contact{{ "" if co.contacts|length == 1 else "s" }} · {{ co.enquiries|length }} enquir{{ "y" if co.enquiries|length == 1 else "ies" }} · {{ co.messages|length }} email{{ "" if co.messages|length == 1 else "s" }}, {{ co.replies|length }} repl{{ "y" if co.replies|length == 1 else "ies" }} · {{ co.open_follow_ups }} open follow-up{{ "" if co.open_follow_ups == 1 else "s" }}</p>
         {% if co.notes %}<p class="timeline__text">{{ co.notes }}</p>{% endif %}
         <details class="inline-edit">
           <summary>Edit company</summary>
@@ -45,7 +45,7 @@
     <div class="grid-2">
       <div class="stack">
         <section class="card" id="company-prospects" aria-labelledby="cp-title">
-          <div class="card__header"><h2 id="cp-title">Prospects, leads &amp; clients</h2></div>
+          <div class="card__header"><h2 id="cp-title">Prospects, leads &amp; customers</h2></div>
           <div class="card__body">
             {% for p in co.prospects %}
               <div class="reply-item"><a href="/pipeline/prospects/{{ p.id }}">{{ p.name }}</a> <span class="badge stage-badge">{{ p.stage_label }}</span>{% if p.priority %} <span class="chip-priority" data-priority="{{ p.priority }}">{{ p.priority|capitalize }}</span>{% endif %}
@@ -56,7 +56,7 @@
               <div class="reply-item" id="company-lead-{{ l.id }}"><span class="badge">Lead</span> <a href="/pipeline/leads/{{ l.id }}">{{ l.prospect_name }}</a> <span class="badge stage-badge stage-badge--{{ l.stage }}">{{ l.stage_label }}</span></div>
             {% endfor %}
             {% for c in co.clients %}
-              <div class="reply-item" id="company-client-{{ c.id }}"><span class="badge stage-badge stage-badge--won">Client</span> <a href="/pipeline/clients/{{ c.id }}">{{ c.name }}</a> <span class="muted">{{ c.status|capitalize }}{% if c.started_on %} since {{ c.started_on.strftime("%d %b %Y") }}{% endif %}</span> {{ trait_chips(c.characteristics) }}</div>
+              <div class="reply-item" id="company-client-{{ c.id }}"><span class="badge stage-badge stage-badge--won">Customer</span> <a href="/pipeline/clients/{{ c.id }}">{{ c.name }}</a> <span class="muted">{{ c.status|capitalize }}{% if c.started_on %} since {{ c.started_on.strftime("%d %b %Y") }}{% endif %}</span> {{ trait_chips(c.characteristics) }}</div>
             {% endfor %}
           </div>
         </section>

@@ -10,21 +10,21 @@
     <div class="record-head__title">
       <h1 id="company-title">{{ life.name }}</h1>
       <span class="badge stage-badge stage-badge--{{ life.stage or 'none' }} has-tip" id="stage-badge" tabindex="0"
-            title="{{ {'prospect': 'Prospect: we are working towards a first conversation (Prospects board).', 'lead': 'Lead: in conversation (Leads board).', 'client': 'Client: they bought from us (Clients).'}.get(life.stage, 'Not in the pipeline yet.') }}">{{ life.stage_label }}</span>
+            title="{{ {'prospect': 'Prospect: we are working towards a first conversation (Prospects board).', 'lead': 'Lead: in conversation (Leads board).', 'client': 'Customer: they bought from us (Customers).'}.get(life.stage, 'Not in the pipeline yet.') }}">{{ life.stage_label }}</span>
       {% if life.sub_label %}<span class="badge has-tip" id="sub-status-badge" tabindex="0" title="{{ life.status_help or '' }}">{{ life.sub_label }}</span>{% endif %}
       {% if life.off_ramp %}<span class="badge badge--warn has-tip" id="off-ramp-badge" tabindex="0" title="Closed: on no board. Reopening puts it back on Prospects as New.">Closed: {{ life.off_ramp_label }}{% if life.off_ramp_reason %} · {{ life.off_ramp_reason }}{% endif %}</span>{% endif %}
       {% if p %}<span id="priority-chip">{{ priority_chip(p.priority, p.priority_source == "manual") }}</span>{{ flag_badges(p.flags) }}{% endif %}
       {% if life.stage or life.off_ramp %}{% include "pipeline/_status_menu.html" %}{% endif %}
     </div>
     {% if life.status_help %}<p class="hint status-rules" id="status-rules"><strong>This status:</strong> {{ life.status_help }}</p>{% endif %}
-    <p class="hint" id="company-help">A company is the one record for who we deal with: Enquiries → Prospects → Leads → Clients, one board at a time. Its people, enquiries, outreach and follow-ups all live here.</p>
+    <p class="hint" id="company-help">A company is the one record for who we deal with: Enquiries → Prospects → Leads → Customers, one board at a time. Its people, enquiries, outreach and follow-ups all live here.</p>
 
     {% if life.suggestion %}
       <div class="notice" id="lead-suggestion" role="status">
         {% set to_client = life.suggestion.get("kind") == "client" %}
-        <strong>Suggested: {{ "Client" if to_client else "Lead" }}</strong> - {{ life.suggestion.get("detail") }}. Nothing moves until a person decides.
+        <strong>Suggested: {{ "Customer" if to_client else "Lead" }}</strong> - {{ life.suggestion.get("detail") }}. Nothing moves until a person decides.
         <form class="row" method="post" action="{{ base }}/suggestion">
-          <button class="btn btn--primary btn--sm" name="decision" value="accept" type="submit">{{ "Mark as client" if to_client else "Mark as lead" }}</button>
+          <button class="btn btn--primary btn--sm" name="decision" value="accept" type="submit">{{ "Mark as customer" if to_client else "Mark as lead" }}</button>
           <button class="btn btn--sm" name="decision" value="dismiss" type="submit">Dismiss</button>
         </form>
       </div>
@@ -41,7 +41,7 @@
         {% if p.responded_at %} · replied {{ p.responded_at|ago }}{% endif %}
         {% if p.next_follow_up_on %} · next follow-up <span class="{% if p.next_follow_up_on < today %}is-overdue{% endif %}">{{ p.next_follow_up_on.strftime("%d %b %Y") }}</span>{% endif %}
       {% endif %}
-      {% if life.client_since %} · client since {{ life.client_since.strftime("%d %b %Y") }}{% endif %}
+      {% if life.client_since %} · customer since {{ life.client_since.strftime("%d %b %Y") }}{% endif %}
     </div>
     {% if p and (p.sheet_status or p.sheet_tabs) %}
       <div class="row">{% for tab in p.sheet_tabs %}<span class="chip chip--sheet" title="Synced from the Google Sheet, read-only">{{ tab }}</span> {% endfor %}
@@ -62,7 +62,7 @@
       <span class="hint">Automatic = the highest priority of its enquiries; a value you pick is kept.</span>
     </form>
     {{ trait_editor(pbase + "/characteristics", p.characteristics, characteristic_options or [],
-                    note="Characteristics belong to the company and stay as it moves from Prospect to Lead to Client.") }}
+                    note="Characteristics belong to the company and stay as it moves from Prospect to Lead to Customer.") }}
     {% endif %}
 
     <div class="actions" id="company-actions">
@@ -75,7 +75,7 @@
         {% if life.off_ramp == "do_not_contact" and not is_admin %}
           <span class="hint" id="reopen-admin-only">Do not contact: nothing can be drafted or sent. Only an admin can reopen this company.</span>
         {% else %}
-          <form method="post" action="{{ base }}/reopen" hx-post="{{ base }}/reopen" hx-swap="none" hx-confirm="Reopen {{ life.name }}? It goes back to {{ life.resume_label or 'Clients' }}.">
+          <form method="post" action="{{ base }}/reopen" hx-post="{{ base }}/reopen" hx-swap="none" hx-confirm="Reopen {{ life.name }}? It goes back to {{ life.resume_label or 'Customers' }}.">
             <button class="btn btn--primary" id="btn-reopen" type="submit">Reopen{% if life.resume_label %} (back to {{ life.resume_label }}){% endif %}</button>
           </form>
         {% endif %}

@@ -14,6 +14,10 @@
         <input class="input" id="ae-author" name="author" maxlength="300" placeholder="Name"></div>
       <div class="field"><label class="field__label" for="ae-author-url">Their profile link (optional)</label>
         <input class="input" id="ae-author-url" name="author_profile_url" maxlength="2000" placeholder="https://www.linkedin.com/in/…"></div>
+      <div class="field"><label class="field__label" for="ae-date">Date posted (optional)</label>
+        <input class="input" id="ae-date" type="date" name="date_posted" min="2000-01-01"{% if today is defined %} max="{{ today.isoformat() }}"{% endif %}
+               title="When the post or enquiry was written. Left empty = today.">
+        <span class="hint">When it was written; empty = today.</span></div>
     </div>
     <label class="enquiry__select"><input type="checkbox" name="accept" value="1" checked id="ae-accept"> Accept now (it goes straight onto the Enquiries board; untick to review it in the Inbox first)</label>
     <div class="row"><button class="btn btn--primary" type="submit" id="btn-add-enquiry">Add enquiry</button>

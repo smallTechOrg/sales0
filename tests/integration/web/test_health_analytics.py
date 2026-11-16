@@ -48,7 +48,7 @@ def test_analytics_numbers(client: TestClient) -> None:
     assert any(counts.get("not_interested") for _m, counts in r.close_by_month)
     assert r.close_reasons == [("budget frozen", 1)]
     html = unescape(client.get("/metrics/analytics?period=all").text)
-    assert 'id="an-funnel"' in html and "Became a client" in html and "budget frozen" in html and 'id="insights-empty"' in html
+    assert 'id="an-funnel"' in html and "Became a customer" in html and "budget frozen" in html and 'id="insights-empty"' in html
 
 
 def test_the_ai_read_uses_the_history_and_is_stored(client: TestClient) -> None:

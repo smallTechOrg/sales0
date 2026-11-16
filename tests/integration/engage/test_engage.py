@@ -103,7 +103,7 @@ def test_refresh_all_updates_summary_and_tags_without_research(web: TestClient, 
     page = unescape(web.get("/companies").text)
     assert 'id="btn-refresh-all"' in page and "Refresh all 2" in page and 'id="btn-refresh-selected"' in page
     r = web.post("/companies/research", headers=HX, data={"mode": "refresh", "all_matching": "1"})
-    assert "Refreshed 2 companies (summary, Partner / Direct client and offerings)" in unescape(r.text)
+    assert "Refreshed 2 companies (summary, Partner / Direct customer and offerings)" in unescape(r.text)
     assert all(req.tool_name == "record_account_summary" for req in llm.requests)  # no web research, no Sonnet
     with session_scope() as db:
         assert set(company_offerings.names_by_company(db, [ca, cb])) == {ca, cb}

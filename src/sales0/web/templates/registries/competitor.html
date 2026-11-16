@@ -14,8 +14,8 @@
           {% if c.sheet_synced %}<span class="chip chip--sheet">Synced from sheet</span>{% endif %}</div>
         <dl class="kv">
           <dt>Website</dt><dd>{% if c.website and c.website.startswith(("http://", "https://")) %}<a href="{{ c.website }}" rel="noopener noreferrer" target="_blank">{{ c.website }}</a>{% else %}{{ c.website or "—" }}{% endif %}</dd>
-          <dt>Approx. clients</dt><dd>{{ c.approx_clients if c.approx_clients is not none else "—" }}</dd>
-          <dt>Client names</dt><dd>{{ c.client_names or "—" }}</dd>
+          <dt>Approx. customers</dt><dd>{{ c.approx_clients if c.approx_clients is not none else "—" }}</dd>
+          <dt>Customer names</dt><dd>{{ c.client_names or "—" }}</dd>
           <dt>Contact</dt><dd>{{ c.contact or "—" }}{% if c.email %} · {{ c.email }}{% endif %}</dd>
           <dt>Notes</dt><dd class="timeline__text">{{ c.notes or "—" }}</dd>
         </dl>
@@ -34,18 +34,18 @@
         </div>
       </section>
       <section class="card" id="competitor-clients" aria-labelledby="cl-title">
-        <div class="card__header"><h2 id="cl-title">Linked clients</h2><span class="muted">{{ c.clients|length }}</span></div>
+        <div class="card__header"><h2 id="cl-title">Linked customers</h2><span class="muted">{{ c.clients|length }}</span></div>
         <div class="card__body">
           {% for k in c.clients %}<div class="reply-item"><a href="/pipeline/clients/{{ k.id }}">{{ k.name }}</a></div>
-          {% else %}<p class="muted">No clients are linked.</p>{% endfor %}
+          {% else %}<p class="muted">No customers are linked.</p>{% endfor %}
           <form class="inline-form" id="link-client-form" method="post" action="/competitors/competitor/{{ c.id }}/link">
             <input type="hidden" name="entity_type" value="client">
-            <div class="field"><label class="field__label" for="link-client">Link a client</label>
+            <div class="field"><label class="field__label" for="link-client">Link a customer</label>
               <select class="input" id="link-client" name="entity_id" required>
-                <option value="">Choose a client…</option>
+                <option value="">Choose a customer…</option>
                 {% for k in client_choices %}<option value="{{ k.id }}">{{ k.name }}</option>{% endfor %}
               </select></div>
-            <button class="btn" type="submit">Link client</button>
+            <button class="btn" type="submit">Link customer</button>
           </form>
         </div>
       </section>

@@ -95,7 +95,7 @@ def test_won_enquiry_suggests_client_and_a_person_confirms(db) -> None:
     db.refresh(co)
     assert (co.stage, co.sub_status) == ("client", "active")
     events = [t.body for t in db.scalars(select(TimelineEvent).where(TimelineEvent.subject_type == "company", TimelineEvent.subject_id == co.id))]
-    assert any("Client" in (b or "") for b in events)
+    assert any("Customer" in (b or "") for b in events)
 
 
 def test_mark_client_directly_for_a_company_without_enquiry(db) -> None:

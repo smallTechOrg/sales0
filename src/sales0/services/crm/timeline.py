@@ -23,7 +23,7 @@ KIND_LABELS: dict[str, str] = {
     "reply_received": "Reply received",
     "lead_created": "Lead created",
     "lead_stage": "Lead stage changed",
-    "client_created": "Client created",
+    "client_created": "Customer created",
     "proposal_sent": "Proposal sent",
     "enquiry_linked": "Enquiry linked",
     "flag_set": "Flag set",

@@ -16,7 +16,7 @@ STATUS_HELP: dict[str, str] = {
     "proposal_sent": "Proposal sent: our proposal is with them (the date is recorded).",
     "interviews": "Interviews: trainer / team interviews after the proposal.",
     "on_hold": "On hold: paused on their side; it stays on the Leads board.",
-    "active": "Client: they bought from us. Marked by mistake? Move it back to a Leads or Prospects status.",
+    "active": "Customer: they bought from us. Marked by mistake? Move it back to a Leads or Prospects status.",
 }
 
 __all__ = ["STATUS_HELP"]
