@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "pipeline/_macros.html" import flash_banner %}
 {% block title %}Health{% endblock %}
 {% block page_header %}
   <div class="page__header"><div><h1>Health</h1>
@@ -6,6 +7,7 @@
 {% endblock %}
 {% block content %}
   <div class="stack" id="health">
+    {{ flash_banner(flash) }}
     {% set bad = checks|selectattr("state", "in", ("warn", "error"))|list %}
     <p class="notice" id="health-summary" role="status">{% if bad %}{{ bad|length }} thing{{ "s" if bad|length != 1 }} need{{ "" if bad|length != 1 else "s" }} attention: {{ bad|map(attribute="title")|join(", ") }}.{% else %}Everything that is switched on is working.{% endif %}</p>
     <section class="card"><div class="card__body table-wrap">
@@ -23,6 +25,7 @@
         </tbody>
       </table>
     </div></section>
+    <form class="row" method="post" action="/health/ai-check"><button class="btn" type="submit" id="health-check-ai">Check AI now</button><span class="hint">Sends one tiny request to Anthropic ("Reply with OK", well under a cent) and updates the AI row.</span></form>
     {% if checks|selectattr("key", "equalto", "replies")|list %}
       <form class="row" method="post" action="/replies/check"><button class="btn" type="submit" id="health-check-replies">Check replies now</button><span class="hint">Runs the same check the worker asks for, right now.</span></form>
     {% endif %}

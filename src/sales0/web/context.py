@@ -195,11 +195,18 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
         "nav": nav_items(request.url.path, due, admin=is_admin),
         "banner": banner_text(session, worker),
         "spend_cap": costs_report.spend_cap_status(db),
+        "ai": _ai_status(db),
         "mode": get_settings().linkedin_mode,
         "light": status_light_view(session, worker),
         "replies": replies_service.poller_health(db),
         "replies_unread": replies_service.unhandled_human_count(db, acting_member) if acting_member else 0,
     }
+
+
+def _ai_status(db: Session) -> Any:
+    from sales0.services import ai_status
+
+    return ai_status.status(db)
 
 
 # ---------------------------------------------------------------------- display helpers

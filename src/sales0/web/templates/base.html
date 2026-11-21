@@ -48,6 +48,13 @@
     <div class="banner banner--warn" id="open-mode-banner" role="status"><p class="banner__text"><strong>Open mode - anyone who can reach this app can use it.</strong> Add a password on the <a href="/users">Users page</a>.</p></div>
   {% endif %}
   <div class="banner-slot" id="banner-slot" hx-get="/_shell/banner" hx-trigger="session-changed from:body" hx-swap="innerHTML">{% if shell and shell.banner %}{% with banner=shell.banner %}{% include "_shell/banner.html" %}{% endwith %}{% endif %}</div>
+  {% if shell and shell.ai and shell.ai.down and not (shell.spend_cap and shell.spend_cap.state == 'exceeded') %}
+    <div class="banner banner--alert" id="ai-down-banner" role="alert">
+      <p class="banner__text"><strong>{{ shell.ai.label }}: {{ shell.ai.reason }}.</strong> {{ shell.ai.fix }}
+        AI reading, research and drafting are paused; everything else works and forms can be filled in by hand.
+        <a href="/health">Health</a></p>
+    </div>
+  {% endif %}
   {% if shell and shell.spend_cap and shell.spend_cap.message %}
     <div class="banner banner--{{ 'alert' if shell.spend_cap.state == 'exceeded' else 'warn' }}" id="spend-cap-banner" role="{{ 'alert' if shell.spend_cap.state == 'exceeded' else 'status' }}">
       <p class="banner__text"><strong>{{ shell.spend_cap.message }}</strong></p>

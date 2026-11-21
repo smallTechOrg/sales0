@@ -258,6 +258,9 @@ class AnthropicClient:
                     params = _plain_system(params)
                     continue
                 mapped = self._map_error(exc, str(params.get("model") or ""))
+                from sales0.llm import health
+
+                health.note_failure(mapped.error_type, mapped.message, feature)
                 self._log_call(
                     feature=feature,
                     prompt_version=prompt_version,
@@ -270,6 +273,9 @@ class AnthropicClient:
                 raise mapped from exc
 
         latency_ms = int((time.monotonic() - started) * 1000)
+        from sales0.llm import health
+
+        health.note_success()
         tool_input: dict[str, Any] | None = None
         texts: list[str] = []
         web_results: list[dict[str, Any]] = []

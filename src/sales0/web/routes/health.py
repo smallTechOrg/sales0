@@ -11,6 +11,7 @@ from sales0.config import get_settings
 from sales0.db.engine import get_db, get_engine
 from sales0.db.migrate_check import current_revision
 from sales0.logging import get_logger
+from sales0.web.acting import get_acting_member_optional
 from sales0.web.envelope import err, ok
 
 router = APIRouter()
@@ -42,6 +43,25 @@ def health(request: Request) -> JSONResponse:
 @router.get("/health", response_class=HTMLResponse)
 def health_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     from sales0.services import health_report
+    from sales0.web.acting import clear_flash, pop_flash
     from sales0.web.context import render_page
 
-    return render_page(request, db, "health/page.html", {"checks": health_report.report(db)})
+    flash = pop_flash(request)
+    response = render_page(request, db, "health/page.html", {"checks": health_report.report(db), "flash": flash})
+    if flash:
+        clear_flash(response)
+    return response
+
+
+@router.post("/health/ai-check")
+def health_ai_check(request: Request, db: Session = Depends(get_db), member=Depends(get_acting_member_optional)):  # noqa: ANN001, ANN201
+    """One tiny AI call to see whether Anthropic answers; the result shows on the Health page."""
+    from fastapi.responses import RedirectResponse
+
+    from sales0.services import ai_status
+    from sales0.web.acting import set_flash
+
+    st = ai_status.check_now(db)
+    response = RedirectResponse("/health", status_code=303)
+    set_flash(response, "The AI answered: working." if not st.down else f"{st.label}: {st.reason}. {st.fix}", "ok" if not st.down else "error")
+    return response

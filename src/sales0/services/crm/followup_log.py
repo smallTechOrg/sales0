@@ -21,7 +21,7 @@ from sales0.clock import local_today
 from sales0.config import get_settings
 from sales0.db.models import Contact, ContactLink, FollowUpNote, LlmCall, Prospect
 from sales0.errors import DomainError
-from sales0.llm import LLMAuthError, LLMClient, LLMError, LLMModelNotFound, get_llm_client
+from sales0.llm import LLMClient, LLMError, get_llm_client
 from sales0.llm.client import StructuredRequest
 from sales0.logging import get_logger
 from sales0.services import reminders
@@ -105,6 +105,12 @@ def _people(db: Session, p: Prospect) -> list[tuple[int, str]]:
     return [(int(i), str(n)) for i, n in db.execute(stmt.order_by(Contact.id).limit(40))]
 
 
+def people_for(db: Session, prospect_id: int) -> list[tuple[int, str]]:
+    """(contact id, name) of the people the follow-up form's Who list offers."""
+    p = db.get(Prospect, prospect_id)
+    return _people(db, p) if p is not None else []
+
+
 def _match(name: str, people: list[tuple[int, str]]) -> int | None:
     low = name.strip().lower()
     if not low:
@@ -117,7 +123,8 @@ def _match(name: str, people: list[tuple[int, str]]) -> int | None:
 
 
 def structure(db: Session, llm: LLMClient | None, text: str, *, today: date, people: list[str]) -> tuple[_Structured | None, int]:
-    """(the structured reading or None when the AI was unavailable / unusable, its cost). Auth / model errors propagate."""
+    """(the structured reading or None when the AI was unavailable / unusable, its cost). Never raises for an AI
+    failure (a rejected key, no credits, an outage): the note is saved as typed instead, and the failure is recorded."""
     known = "\n".join(f"- {n}" for n in people) or "- (none on file)"
     user = (f"Today is {today.isoformat()} ({today.strftime('%A')}).\n\nKnown people at this company:\n{known}\n\n"
             f"The note:\n<note>\n{text.replace('<', '&lt;').replace('>', '&gt;')}\n</note>\n")
@@ -130,11 +137,9 @@ def structure(db: Session, llm: LLMClient | None, text: str, *, today: date, peo
     stamp = datetime.now(UTC)
     try:
         resp = (llm or get_llm_client()).structured(req)
-    except (LLMAuthError, LLMModelNotFound):
-        raise
     except LLMError as exc:
         db.add(LlmCall(feature="summary", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
-                       error_type=type(exc).__name__[:100], created_at=stamp))
+                       error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=stamp))
         db.flush()
         return None, 0
     db.add(LlmCall(feature="summary", model=resp.model[:100], prompt_version=PROMPT_VERSION, input_tokens=resp.input_tokens,
@@ -148,9 +153,14 @@ def structure(db: Session, llm: LLMClient | None, text: str, *, today: date, peo
 
 
 def add_note(
-    db: Session, llm: LLMClient | None, prospect_id: int, text: str, *, actor: Actor = TEAM, now: datetime | None = None,
+    db: Session, llm: LLMClient | None, prospect_id: int, text: str, *, how: str | None = None, happened_on: date | None = None,
+    contact_id: int | None = None, remind_on: date | None = None, remind_note: str = "", actor: Actor = TEAM,
+    now: datetime | None = None,
 ) -> FollowUpNote:
-    """Structure ``text`` and add it to the prospect's follow-up log (flushed; the caller commits)."""
+    """Add ``text`` to the prospect's follow-up log (flushed; the caller commits).
+
+    When the person picked How on the form, the form's fields are used as given and NO AI call is made (this works
+    while the AI is down). Otherwise the AI structures the text; any field the person did fill in still wins."""
     raw = (text or "").replace("\r\n", "\n").strip()
     if len(raw) < 3:
         raise DomainError("followup_invalid", "Write what happened (a few words is enough).", 400)
@@ -163,17 +173,41 @@ def add_note(
     tz = get_settings().tz
     today = local_today(tz, stamp)
     people = _people(db, p)
-    parsed, _cost = structure(db, llm, raw, today=today, people=[n for _i, n in people])
-    if parsed is None:
-        how, happened, contact, notes, remind_on, remind_note, by = "other", today, "", clip(raw, 1000) or raw[:1000], None, "", "fallback"
+    picked_how = (how or "").strip().lower() or None
+    if picked_how is not None and picked_how not in HOWS:
+        raise DomainError("followup_invalid", "Pick how you followed up (WhatsApp, Email, LinkedIn, Call, Meeting or Other).", 400)
+    if happened_on is not None and happened_on > today:
+        raise DomainError("followup_invalid", "The follow-up date cannot be in the future.", 400)
+    if remind_on is not None and remind_on < today:
+        raise DomainError("followup_invalid", "The reminder date must be today or later.", 400)
+    picked_contact = ""
+    if contact_id is not None:
+        picked_contact = next((n for i, n in people if i == contact_id), "")
+        if not picked_contact:
+            raise DomainError("followup_invalid", "That person is not linked to this company.", 400)
+    remind_note = " ".join((remind_note or "").split())[:300]
+    if picked_how is not None:  # the person filled in the form: no AI needed
+        new_how, happened, contact, notes, new_remind, new_remind_note, by = (
+            picked_how, happened_on or today, picked_contact, clip(raw, 1000) or raw[:1000], remind_on, remind_note, "person")
     else:
-        happened = _iso(parsed.date) or today
-        happened = min(happened, today)
-        remind_on = _iso(parsed.remind_on)
-        if remind_on is not None and remind_on < today:
-            remind_on = None
-        how, contact, notes, remind_note, by = parsed.how, parsed.contact, parsed.notes or clip(raw, 1000), parsed.remind_note, "ai"
-    contact_id = _match(contact, people)
+        parsed, _cost = structure(db, llm, raw, today=today, people=[n for _i, n in people])
+        if parsed is None:
+            new_how, happened, contact, notes, new_remind, new_remind_note, by = (
+                "other", today, "", clip(raw, 1000) or raw[:1000], None, "", "fallback")
+        else:
+            happened = min(_iso(parsed.date) or today, today)
+            new_remind = _iso(parsed.remind_on)
+            if new_remind is not None and new_remind < today:
+                new_remind = None
+            new_how, contact, notes, new_remind_note, by = (
+                parsed.how, parsed.contact, parsed.notes or clip(raw, 1000), parsed.remind_note, "ai")
+        happened = happened_on or happened
+        contact = picked_contact or contact
+        if remind_on is not None:
+            new_remind, new_remind_note = remind_on, remind_note or new_remind_note
+    how, remind_on, remind_note = new_how, new_remind, new_remind_note
+    if contact_id is None:
+        contact_id = _match(contact, people)
     if contact_id is not None:
         contact = next(n for i, n in people if i == contact_id)
     reminder = None
@@ -217,5 +251,5 @@ def notes_for(db: Session, prospect_id: int, *, limit: int = 50) -> list[NoteVie
                      actor=r.actor, created_at=r.created_at, structured_by=r.structured_by) for r in rows]
 
 
-__all__ = ["HOWS", "HOW_LABELS", "NoteView", "add_note", "notes_for", "structure", "tool_schema"]
+__all__ = ["HOWS", "HOW_LABELS", "NoteView", "add_note", "notes_for", "people_for", "structure", "tool_schema"]
 
