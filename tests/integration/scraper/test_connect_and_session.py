@@ -219,7 +219,9 @@ def test_connect_times_out_when_the_user_never_logs_in(fixture_settings: Setting
         on_tick=ticks.append,
         should_cancel=NEVER,
         poll_interval_s=0.2,
-        timeout_s=1.2,
+        # The clock starts when the window opens, before the first page load; on a busy CI runner that load alone
+        # can take over a second, so leave room for at least three polls after it.
+        timeout_s=4.0,
         start_url=f"{base_url(fixture_settings)}/authwall",
     )
     assert (result.connected, result.reason, result.detail) == (False, "timeout", TIMEOUT_MESSAGE)
