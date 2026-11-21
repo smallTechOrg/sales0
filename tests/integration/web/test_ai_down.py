@@ -50,6 +50,14 @@ def keyed(db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_settings()
 
 
+@pytest.fixture
+def nokey(db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setenv("SALES0_ANTHROPIC_API_KEY", "")
+    reset_settings()
+    yield
+    reset_settings()
+
+
 def _app(llm: FakeLLMClient) -> TestClient:
     app = create_app()
     app.dependency_overrides[pipeline_routes.get_llm] = lambda: llm
@@ -86,7 +94,7 @@ def test_status_from_stored_calls_after_a_restart(keyed: None) -> None:
         assert st.down and "rejected the API key" in st.reason
 
 
-def test_no_key_is_down(db_url: str) -> None:
+def test_no_key_is_down(nokey: None) -> None:
     with session_scope() as db:
         st = ai_status.status(db)
         assert st.down and st.reason == "no API key is set"
@@ -150,7 +158,7 @@ def test_form_rejects_bad_values(keyed: None) -> None:
                       data={"how": "call", "contact_id": "999999", "text": "hello there"}).status_code == 400
 
 
-def test_check_ai_now_button(db_url: str) -> None:
+def test_check_ai_now_button(nokey: None) -> None:
     with TestClient(create_app()) as c:
         r = c.post("/health/ai-check", follow_redirects=True)
         assert r.status_code == 200 and "no API key is set" in unescape(r.text)
@@ -158,7 +166,7 @@ def test_check_ai_now_button(db_url: str) -> None:
         assert db.scalar(select(LlmCall.feature).where(LlmCall.feature == "ping")) == "ping"
 
 
-def test_form_saves_with_no_api_key_at_all(db_url: str) -> None:
+def test_form_saves_with_no_api_key_at_all(nokey: None) -> None:
     pid, _company_id, _cid = _prospect()
     with TestClient(create_app()) as c:  # the real dependency: no key -> no client
         r = c.post(f"/pipeline/prospects/{pid}/followup-notes", headers=HX, data={"how": "email", "text": "Emailed the brochure"})
