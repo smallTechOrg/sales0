@@ -91,7 +91,10 @@ def test_edit_validation_and_the_lazy_inbox_form(web: TestClient) -> None:
     frag = web.get(f"/enquiries/{eid}/edit-form?next=/inbox", headers=HX).text
     assert f'action="/enquiries/{eid}/edit"' in frag and "<html" not in frag
     page = web.get(f"/enquiries/{eid}/edit-form?next=//evil.example").text
-    assert 'id="enquiry-edit-page"' in page and "evil.example" not in page
+    assert 'id="enquiry-edit-page"' in page
+    # The edit page's own Back link and hidden next never carry the off-site target (the header's offering
+    # filter echoes the request URL into its own next, which its POST re-validates).
+    assert 'href="//evil.example"' not in page and 'name="next" value="//evil.example"' not in page
     inbox = web.get("/inbox?tab=accepted").text
     assert f'hx-get="/enquiries/{eid}/edit-form' in inbox
 

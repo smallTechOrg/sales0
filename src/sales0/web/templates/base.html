@@ -36,6 +36,7 @@
           <a id="replies-status" href="/replies" class="replies-status replies-status--{{ shell.replies.level }}" title="{{ shell.replies.detail }}"><span class="replies-status__dot" aria-hidden="true"></span><span>{{ shell.replies.label }}</span></a>
           {% with session=shell.session, light=shell.light %}{% include "_shell/status_light.html" %}{% endwith %}
           {% with cost=shell.cost %}{% include "_shell/cost_badge.html" %}{% endwith %}
+          {% include "_shell/offering_filter.html" %}
           {% include "team/_acting.html" %}
         </div>
       {% endif %}
@@ -44,6 +45,7 @@
       {% endif %}
     </div>
   </header>
+  {% if shell %}{% include "_shell/offering_filter_bar.html" %}{% endif %}
   {% if request.state.auth_enabled is defined and not request.state.auth_enabled %}
     <div class="banner banner--warn" id="open-mode-banner" role="status"><p class="banner__text"><strong>Open mode - anyone who can reach this app can use it.</strong> Add a password on the <a href="/users">Users page</a>.</p></div>
   {% endif %}

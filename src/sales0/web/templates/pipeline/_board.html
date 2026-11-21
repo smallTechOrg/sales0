@@ -6,7 +6,7 @@
 {% set stage = "prospect" if params.tab == "prospects" else "lead" %}
 {% if not any_cards %}
   <div class="empty-state" id="pipeline-empty">
-    {% if params.q or params.flag or params.characteristic or params.priority or params.category or params.offering %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}">Clear filters</a>
+    {% if params.q or params.flag or params.characteristic or params.priority or params.category or offering_on(params.offering) %}<p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}">Clear filters</a>
     {% elif params.tab == "prospects" %}<p>No prospects yet - companies move here from Enquiries at the first outreach, or add a cold-list company.</p><div class="row"><a class="btn btn--primary" href="/pipeline?tab=enquiries">See the Enquiries</a><a class="btn" href="#new-company">New company</a></div>
     {% else %}<p>No leads yet - a logged meeting makes a prospect a lead, or drag a prospect onto "Meeting scheduled".</p><a class="btn" href="/pipeline?tab=prospects">See the Prospects</a>{% endif %}
   </div>

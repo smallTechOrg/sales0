@@ -1,0 +1,13 @@
+{# SMA-32: shown under the header while the global offering filter is on. Needs: shell.offering_filter. #}
+{% set of = shell.offering_filter %}
+{% if of and of.current %}
+  <div class="offering-bar" id="offering-filter-bar" role="status">
+    <span class="chip chip--offering-filter">Filtered: <strong>{{ of.current.name }}</strong>{% if not of.current.active %} (off){% endif %}</span>
+    <span class="muted">Inbox, Pipeline, Companies and Analytics show only this offering.</span>
+    <form class="offering-bar__clear" method="post" action="/offering-filter">
+      <input type="hidden" name="next" value="{{ of.next }}">
+      <input type="hidden" name="offering_id" value="">
+      <button class="btn btn--sm btn--ghost" id="offering-filter-clear" type="submit">Clear</button>
+    </form>
+  </div>
+{% endif %}

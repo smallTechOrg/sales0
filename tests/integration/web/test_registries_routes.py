@@ -159,7 +159,7 @@ def test_competitor_detail_links_a_client(web: TestClient) -> None:
     assert linked.status_code == 303
     after = web.get(f"/competitors/competitor/{cid}").text
     assert f'href="/pipeline/clients/{client_id}"' in after and "Linked the client." in after
-    assert "<option value=\"%d\">" % client_id not in after  # no longer offered
+    assert "<option value=\"%d\">" % client_id not in after.split('<main id="main"', 1)[1]  # no longer offered (header aside)
     assert web.get(f"/competitors/competitor/{cid}", headers=JSON).json()["data"]["id"] == cid
     bad = web.post(f"/competitors/competitor/{cid}/link", data={"entity_type": "company", "entity_id": "1"}, headers=HX)
     assert "toast--error" in bad.text

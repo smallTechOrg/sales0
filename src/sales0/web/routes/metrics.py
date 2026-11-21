@@ -146,14 +146,18 @@ def analytics_page(request: Request, db: Session = Depends(get_db), period: str 
     from sales0.services import analytics
     from sales0.services import offerings as offerings_service
 
-    oid = int(offering) if offering.isdigit() and 0 < int(offering) < 2**31 else None
+    from sales0.web import offering_filter
+    from sales0.web.context import current_offering_id
+
+    # SMA-32: the page's own offering (an id, or "all") wins over the header's global offering filter
+    offering_param, oid = offering_filter.resolve(offering, current_offering_id(request, db))
     rep = analytics.report(db, period=period, offering_id=oid)
     insights, at, by = analytics.stored_insights(db)
     flash = pop_flash(request)
     response = render_page(request, db, "metrics/analytics.html", {
         "r": rep, "periods": analytics.PERIODS, "off_labels": analytics.OFF_LABELS, "insights": insights, "insights_at": at,
         "insights_by": by, "offering_options": offerings_service.list_offerings(db, include_inactive=True), "flash": flash,
-        "offering": str(oid or ""),
+        "offering": offering_param,
     })
     if flash:
         clear_flash(response)

@@ -46,6 +46,7 @@ EXEMPT_PREFIX = {
     "/suggestions/generate": "AI suggestion batch; decisions (accept/dismiss) are attributed",
     "/metrics/targets": "per-source target override stored in app_meta (shared setting, no actor column)",
     "/tracked/{profile_id}/pause": "pauses/resumes the watch of one profile (state on the profile row, no actor column)",
+    "/offering-filter": "sets the viewer's own offering-filter cookie (a view preference; nothing stored)",
 }
 
 

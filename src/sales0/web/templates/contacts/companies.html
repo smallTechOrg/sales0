@@ -26,8 +26,8 @@
       {% endif %}
       {% if offering_options %}
         <div class="field"><label class="field__label" for="company-offering">Offering</label>
-          <select class="input" id="company-offering" name="offering"><option value="">Any</option>
-            {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == params.offering %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+          <select class="input" id="company-offering" name="offering"><option value="{{ 'all' if shell and shell.offering_filter.current else '' }}"{% if not offering_on(params.offering) %} selected{% endif %}>Any</option>
+            {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == params.offering %} selected{% endif %}>{{ o.name }}{% if not o.active %} (off){% endif %}</option>{% endfor %}
           </select></div>
       {% endif %}
       <noscript><button class="btn" type="submit">Apply</button></noscript>

@@ -55,6 +55,7 @@ from sales0.web.context import (
     actor_of,
     crm_done,
     crm_guard,
+    current_offering_id,
     flash_redirect,
     is_htmx,
     opt_int,
@@ -69,6 +70,7 @@ from sales0.web.context import (
 )
 from sales0.web.envelope import ok as envelope_ok
 from sales0.web.envelope import wants_json
+from sales0.web import offering_filter
 
 router = APIRouter()
 
@@ -183,8 +185,9 @@ def _move_ctx() -> dict[str, Any]:
 STAGE_OF_TAB = {"prospects": "prospect", "leads": "lead", "clients": "client"}
 
 
-def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
-    """Query string -> params. ``tab`` wins; the old bookmarks still work: ``?view=companies`` (the former Companies
+def _normalise(raw: dict[str, Any], default_offering: int | None = None) -> dict[str, Any]:
+    """Query string -> params. ``offering``: an explicit id (or ``all``) wins over ``default_offering`` (the global
+    header filter, SMA-32). ``tab`` wins; the old bookmarks still work: ``?view=companies`` (the former Companies
     toggle) is the Prospects tab, ``?view=enquiries`` the Enquiries tab, ``?stage=prospect|lead|client|closed`` and the
     older ``?tab=prospects|leads|clients`` pick the matching tab."""
     stage_raw = str(raw.get("stage") or "")
@@ -211,10 +214,14 @@ def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
         "characteristic": str(raw.get("characteristic") or "") if str(raw.get("characteristic") or "").isdigit() else "",
         "priority": raw.get("priority") if raw.get("priority") in ("high", "medium", "low", "none") else "",
         "category": raw.get("category") if raw.get("category") in ("relevant_prospect", "channel_partner", "competitor") else "",
-        "offering": str(raw.get("offering") or "") if str(raw.get("offering") or "").isdigit() else "",
+        "offering": offering_filter.resolve(raw.get("offering"), default_offering)[0],
         "sort": "priority" if raw.get("sort") == "priority" else "",
         "page": page_number(raw.get("page")),
     }
+
+
+def _offering_id(params: dict[str, Any]) -> int | None:
+    return offering_filter.resolve(params.get("offering"), None)[1]
 
 
 def _trait_id(params: dict[str, Any]) -> int | None:
@@ -232,9 +239,10 @@ def _trait_options(db: Session) -> list[Any]:
     return characteristics_service.list_characteristics(db)
 
 
-def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
-    params = _normalise(raw)
+def _pipeline_ctx(db: Session, raw: dict[str, Any], default_offering: int | None = None) -> dict[str, Any]:
+    params = _normalise(raw, default_offering)
     trait = _trait_id(params)
+    offering_id = _offering_id(params)
     tab = params["tab"]
     ctx: dict[str, Any] = {"params": params, "characteristic_options": _trait_options(db), "priority_choices": priority_service.FILTER_CHOICES,
                            "category_choices": CATEGORY_CHOICES, "tab_help": TAB_HELP[tab],
@@ -242,7 +250,7 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     if tab == "enquiries":
         ctx.update(layout="board", enquiry_board=company_pipeline_service.enquiry_board(
             db, q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
-            category=params["category"] or None, offering_id=int(params["offering"]) if params["offering"] else None),
+            category=params["category"] or None, offering_id=offering_id),
             deal_options=[(k, deals_service.deal_label(k)) for k in deals_service.SETTABLE],
             research_overview=research_auto.overview(db))
     else:
@@ -253,7 +261,7 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
         ctx["layout"] = layout
         common = dict(q=params["q"] or None, characteristic_id=trait, priority_filter=params["priority"] or None,
                       category=params["category"] or None, flag=params["flag"] or None, sort=params["sort"] or None,
-                      offering_id=int(params["offering"]) if params["offering"] else None)
+                      offering_id=offering_id)
         if layout == "board":
             ctx["company_board"] = company_pipeline_service.tab_board(db, tab, **common)
         else:
@@ -264,18 +272,18 @@ def _pipeline_ctx(db: Session, raw: dict[str, Any]) -> dict[str, Any]:
     return ctx
 
 
-def _tab_counts(db: Session) -> list[tuple[str, str, int]]:
-    c = company_pipeline_service.counts(db)
+def _tab_counts(db: Session, offering_id: int | None = None) -> list[tuple[str, str, int]]:
+    c = company_pipeline_service.counts(db, offering_id=offering_id)
     return [("enquiries", "Enquiries", c["enquiries"]), ("prospects", "Prospects", c["prospect"]), ("leads", "Leads", c["lead"]),
             ("clients", "Customers", c["client"])]
 
 
 @router.get("/pipeline", response_class=HTMLResponse)
 def pipeline_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    ctx = _pipeline_ctx(db, dict(request.query_params))
+    ctx = _pipeline_ctx(db, dict(request.query_params), current_offering_id(request, db))
     if is_htmx(request):
         return HTMLResponse(render_html(request, "pipeline/_body.html", {**_clock_ctx(), **ctx}))
-    ctx.update(due=followups_service.list_due(db), tabs=_tab_counts(db))
+    ctx.update(due=followups_service.list_due(db), tabs=_tab_counts(db, _offering_id(ctx["params"])))
     return _page(request, db, "pipeline/page.html", ctx)
 
 
@@ -292,7 +300,7 @@ def api_prospect(prospect_id: PathId, db: Session = Depends(get_db)) -> Response
 def _board_refresh(request: Request, db: Session, next_url: str, message: str) -> HTMLResponse:
     """After a stage change from a board card: re-render the body the card came from + the Due panel."""
     raw = dict(parse_qsl(urlsplit(next_url).query))
-    ctx = _pipeline_ctx(db, raw)
+    ctx = _pipeline_ctx(db, raw, current_offering_id(request, db))
     parts = [("pipeline/_body.html", ctx), ("pipeline/_due.html", {"due": followups_service.list_due(db)})]
     return _fragments(request, parts, message)
 
