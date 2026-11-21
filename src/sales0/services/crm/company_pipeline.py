@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Company, Contact, Enquiry, Flag, Prospect, TeamMember
@@ -277,14 +277,22 @@ def company_list(db: Session, *, stage: str | None = None, sub_status: str | Non
     return CompanyListPage(items=cards_for(db, rows), total=total, page=page, page_size=size)
 
 
-def counts(db: Session) -> dict[str, int]:
-    """Active companies per stage (the filter pills) and the closed total."""
+def counts(db: Session, *, offering_id: int | None = None) -> dict[str, int]:
+    """Active companies per stage (the filter pills) and the closed total; with ``offering_id`` only that offering's
+    (the same rule as the boards: companies tagged with it; enquiries for it or whose company is tagged with it)."""
+    from sales0.services.crm import company_offerings
+
+    company_clause = Company.id.in_(company_offerings.companies_with(offering_id)) if offering_id else true()
+    enquiry_clause = ((Enquiry.offering_id == offering_id) | Enquiry.company_id.in_(company_offerings.companies_with(offering_id))
+                      if offering_id else true())
     out = {s: 0 for s in COMPANY_STAGES}
     for stage, n in db.execute(select(Company.stage, func.count()).where(Company.stage.is_not(None), Company.off_ramp.is_(None),
-                                                                         ~on_enquiries_board()).group_by(Company.stage)).all():
+                                                                         ~on_enquiries_board(), company_clause).group_by(Company.stage)).all():
         out[stage] = int(n)
-    out["enquiries"] = int(db.scalar(select(func.count()).select_from(Enquiry).where(Enquiry.review_status == "accepted", _enquiry_on_board())) or 0)
-    out["closed"] = int(db.scalar(select(func.count()).select_from(Company).where(Company.off_ramp.is_not(None), Company.stage.is_not(None))) or 0)
+    out["enquiries"] = int(db.scalar(select(func.count()).select_from(Enquiry).where(
+        Enquiry.review_status == "accepted", _enquiry_on_board(), enquiry_clause)) or 0)
+    out["closed"] = int(db.scalar(select(func.count()).select_from(Company).where(
+        Company.off_ramp.is_not(None), Company.stage.is_not(None), company_clause)) or 0)
     return out
 
 

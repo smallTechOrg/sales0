@@ -1,0 +1,16 @@
+{# SMA-32: the global offering filter. Needs: shell.offering_filter {options, current, next}. Works without JS (submit
+   button); with JS the select submits on change (data-autosubmit). #}
+{% set of = shell.offering_filter %}
+{% if of and of.options %}
+  <form class="offering-filter" id="offering-filter" method="post" action="/offering-filter">
+    <input type="hidden" name="next" value="{{ of.next }}">
+    <label class="offering-filter__label" for="offering-filter-select">Offering</label>
+    <select class="offering-filter__select" id="offering-filter-select" name="offering_id" data-autosubmit>
+      <option value=""{% if not of.current %} selected{% endif %}>All offerings</option>
+      {% for o in of.options %}
+        <option value="{{ o.id }}"{% if of.current and o.id == of.current.id %} selected{% endif %}>{{ o.name }}{% if not o.active %} (off){% endif %}</option>
+      {% endfor %}
+    </select>
+    <noscript><button class="btn btn--sm" type="submit">Apply</button></noscript>
+  </form>
+{% endif %}

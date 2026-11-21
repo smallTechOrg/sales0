@@ -6,16 +6,16 @@
       {% if page.items %}
         <form id="research-all-form" class="row" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
               hx-swap="innerHTML" hx-disabled-elt="find button"
-              hx-confirm="Research all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or params.offering }}companies? Each takes about a minute and uses the Sonnet research model; the run goes a few at a time and you press Continue between chunks.">
+              hx-confirm="Research all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or offering_on(params.offering) }}companies? Each takes about a minute and uses the Sonnet research model; the run goes a few at a time and you press Continue between chunks.">
           <input type="hidden" name="all_matching" value="1"><input type="hidden" name="q" value="{{ params.q }}"><input type="hidden" name="characteristic" value="{{ params.characteristic }}"><input type="hidden" name="offering" value="{{ params.offering }}">
-          <button class="btn" id="btn-research-all" type="submit">Research all {{ page.total }}{{ " matching" if params.q or params.characteristic or params.offering }}</button>
-          <span class="hint">Every company{{ " the search / filter matches" if params.q or params.characteristic or params.offering }}, not just this page (up to 500).</span>
+          <button class="btn" id="btn-research-all" type="submit">Research all {{ page.total }}{{ " matching" if params.q or params.characteristic or offering_on(params.offering) }}</button>
+          <span class="hint">Every company{{ " the search / filter matches" if params.q or params.characteristic or offering_on(params.offering) }}, not just this page (up to 500).</span>
         </form>
         <form id="refresh-all-form" class="row" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
               hx-swap="innerHTML" hx-disabled-elt="find button"
-              hx-confirm="Refresh all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or params.offering }}companies? This rewrites each summary from what we already know and sets Partner / Direct customer and offerings where missing - no new web research.">
+              hx-confirm="Refresh all {{ page.total }} {{ 'matching ' if params.q or params.characteristic or offering_on(params.offering) }}companies? This rewrites each summary from what we already know and sets Partner / Direct customer and offerings where missing - no new web research.">
           <input type="hidden" name="mode" value="refresh"><input type="hidden" name="all_matching" value="1"><input type="hidden" name="q" value="{{ params.q }}"><input type="hidden" name="characteristic" value="{{ params.characteristic }}"><input type="hidden" name="offering" value="{{ params.offering }}">
-          <button class="btn" id="btn-refresh-all" type="submit">Refresh all {{ page.total }}{{ " matching" if params.q or params.characteristic or params.offering }}</button>
+          <button class="btn" id="btn-refresh-all" type="submit">Refresh all {{ page.total }}{{ " matching" if params.q or params.characteristic or offering_on(params.offering) }}</button>
           <span class="hint">Summary + Partner / Direct customer + offerings from current info (a few seconds each).</span>
         </form>
         <form id="research-bulk-form" method="post" action="/companies/research" hx-post="/companies/research" hx-target="#research-bulk-result"
@@ -49,8 +49,8 @@
         </table>
         </form>
       {% elif params.view == "archived" %}
-        <div class="empty-state empty-state--compact" id="companies-empty"><p>No closed companies{% if params.q or params.characteristic or params.offering %} match these filters{% endif %}.</p></div>
-      {% elif params.q or params.characteristic or params.offering %}
+        <div class="empty-state empty-state--compact" id="companies-empty"><p>No closed companies{% if params.q or params.characteristic or offering_on(params.offering) %} match these filters{% endif %}.</p></div>
+      {% elif params.q or params.characteristic or offering_on(params.offering) %}
         <div class="empty-state empty-state--compact" id="companies-empty"><p>No companies match these filters.</p><a class="btn" href="/companies">Clear filters</a></div>
       {% else %}
         <div class="empty-state" id="companies-empty"><p>No companies yet. They are created when you accept an enquiry, add a company in the Pipeline, or add a person with one.</p></div>

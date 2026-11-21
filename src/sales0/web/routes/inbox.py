@@ -26,7 +26,9 @@ from sales0.services.crm import prospects as prospects_service
 from sales0.services.views import EnquiryCardView, InboxPage, SkippedPage
 from sales0.web.acting import acted_by_id, get_acting_member_optional, require_admin
 from sales0.web.context import PathId
-from sales0.web.context import actor_of, cost_badge_oob, is_htmx, redirect, render_html, render_page, toast_html
+from sales0.web.context import (
+    actor_of, cost_badge_oob, current_offering_id, is_htmx, redirect, render_html, render_page, toast_html,
+)
 
 router = APIRouter()
 
@@ -90,28 +92,30 @@ def _category(value: str | None) -> str | None:
     return value if value in {k for k, _ in CATEGORIES} else None
 
 
-def _load_page(db: Session, tab: Tab, q: str | None, page: int, category: str | None = None) -> InboxPage:
+def _load_page(db: Session, tab: Tab, q: str | None, page: int, category: str | None = None,
+               offering_id: int | None = None) -> InboxPage:
+    """``offering_id``: the header's global offering filter (SMA-32)."""
     if tab == "skipped":  # cards are never decided from the Skipped tab
         tab = "review"
-    result = inbox_service.list_enquiries(db, tab, q, page=page, page_size=PAGE_SIZE, category=category)
+    result = inbox_service.list_enquiries(db, tab, q, page=page, page_size=PAGE_SIZE, category=category, offering_id=offering_id)
     if not result.items and page > 1 and result.total:
         # The page emptied (e.g. after deciding its last cards): show the last real page.
         last = max(1, math.ceil(result.total / result.page_size))
-        result = inbox_service.list_enquiries(db, tab, q, page=last, page_size=PAGE_SIZE, category=category)
+        result = inbox_service.list_enquiries(db, tab, q, page=last, page_size=PAGE_SIZE, category=category, offering_id=offering_id)
     return result
 
 
-def _tab_counts(db: Session) -> dict[str, int]:
+def _tab_counts(db: Session, offering_id: int | None = None) -> dict[str, int]:
     """The four tab counts (+ ``skipped_failed``) from the inbox service."""
-    return dict(inbox_service.list_enquiries(db, "review", None, page=1, page_size=1).counts)
+    return dict(inbox_service.tab_counts(db, offering_id))
 
 
-def _skipped_ctx(db: Session, q: str | None, state: SkippedState, page: int) -> dict:
+def _skipped_ctx(db: Session, q: str | None, state: SkippedState, page: int, offering_id: int | None = None) -> dict:
     result: SkippedPage = seen_posts_service.list_skipped(db, q=q, state=state, page=page, page_size=PAGE_SIZE)
     if not result.items and page > 1 and result.total:
         last = max(1, math.ceil(result.total / result.page_size))
         result = seen_posts_service.list_skipped(db, q=q, state=state, page=last, page_size=PAGE_SIZE)
-    counts = _tab_counts(db)
+    counts = _tab_counts(db, offering_id)
     counts["skipped"] = result.counts.get("skipped", result.counts.get("discard", counts.get("skipped", 0)))
     counts["skipped_failed"] = result.counts.get("skipped_failed", result.counts.get("failed", counts.get("skipped_failed", 0)))
     pages = max(1, math.ceil(result.total / result.page_size)) if result.page_size else 1
@@ -128,7 +132,7 @@ def _skipped_ctx(db: Session, q: str | None, state: SkippedState, page: int) -> 
 
 
 def _skipped_response(request: Request, db: Session, q: str, state: str, page: str, toast: str) -> HTMLResponse:
-    ctx = _skipped_ctx(db, _q(q), _state(state), _page_number(page))
+    ctx = _skipped_ctx(db, _q(q), _state(state), _page_number(page), current_offering_id(request, db))
     body = (
         render_html(request, "inbox/_skipped.html", ctx)
         + render_html(request, "inbox/_tabs.html", {**ctx, "oob": True})
@@ -220,12 +224,13 @@ def inbox_page(
     category: str | None = None,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    offering_id = current_offering_id(request, db)  # SMA-32: the header's global offering filter
     if _tab(tab) == "skipped":
-        ctx = _skipped_ctx(db, _q(q), _state(state), _page_number(page))
+        ctx = _skipped_ctx(db, _q(q), _state(state), _page_number(page), offering_id)
         if is_htmx(request) and request.headers.get("HX-Target") == "inbox-list":
             return HTMLResponse(render_html(request, "inbox/_skipped.html", ctx))
         return render_page(request, db, "inbox/page.html", ctx)
-    inbox = _load_page(db, _tab(tab), _q(q), _page_number(page), _category(category))
+    inbox = _load_page(db, _tab(tab), _q(q), _page_number(page), _category(category), offering_id)
     return render_page(request, db, "inbox/page.html", _list_ctx(db, inbox, request))
 
 
@@ -285,7 +290,7 @@ def decide(
     current_tab, query, page_no, cat = _tab(tab), _q(q), _page_number(page), _category(category)
     if not is_htmx(request):
         return redirect("/inbox", tab=current_tab, q=query, category=cat, page=page_no if page_no > 1 else None)
-    inbox = _load_page(db, current_tab, query, page_no, cat)
+    inbox = _load_page(db, current_tab, query, page_no, cat, current_offering_id(request, db))
     ctx = _list_ctx(db, inbox, request)
     verb = "Accepted" if decision == "accept" else "Discarded"
     body = (
@@ -489,7 +494,7 @@ def file_competitor(
     current_tab, query, page_no, cat = _tab(tab), _q(q), _page_number(page), _category(category)
     if not is_htmx(request):
         return redirect("/inbox", tab=current_tab, q=query, category=cat)
-    inbox = _load_page(db, current_tab, query, page_no, cat)
+    inbox = _load_page(db, current_tab, query, page_no, cat, current_offering_id(request, db))
     ctx = _list_ctx(db, inbox, request)
     body = (
         render_html(request, "inbox/_list.html", ctx)

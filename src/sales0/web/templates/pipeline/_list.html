@@ -19,7 +19,7 @@
         {% endfor %}
         </tbody>
       </table>
-    {% elif params.q or params.sub or params.closed or params.flag or params.characteristic or params.priority or params.category or params.offering %}
+    {% elif params.q or params.sub or params.closed or params.flag or params.characteristic or params.priority or params.category or offering_on(params.offering) %}
       <div class="empty-state empty-state--compact" id="pipeline-empty"><p>Nothing matches these filters.</p><a class="btn" href="/pipeline?tab={{ params.tab }}&layout=list">Clear filters</a></div>
     {% else %}
       <div class="empty-state" id="pipeline-empty"><p>No {{ params.tab }} yet{% if params.tab == "prospects" %} - accept an enquiry in the Inbox, or add a company{% endif %}.</p>

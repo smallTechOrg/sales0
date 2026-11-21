@@ -25,10 +25,12 @@ from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound
 from sales0.services.research import auto as research_auto
 from sales0.web.acting import clear_flash, get_acting_member, get_acting_member_optional, pop_flash, require_admin
 from sales0.web.context import PathId
+from sales0.web import offering_filter
 from sales0.web.context import (
     actor_of,
     crm_done,
     crm_guard,
+    current_offering_id,
     is_htmx,
     opt_int,
     opt_str,
@@ -127,13 +129,14 @@ def companies_page(request: Request, db: Session = Depends(get_db)) -> Response:
     params = {
         "q": (raw.get("q") or "").strip()[:200],
         "characteristic": trait_raw if trait_raw.isdigit() and 0 < int(trait_raw) < 2**31 else "",
-        "offering": str(raw.get("offering") or "") if str(raw.get("offering") or "").isdigit() else "",
         "view": raw.get("view") if raw.get("view") in ("active", "archived") else "",
         "page": page_number(raw.get("page")),
     }
+    # SMA-32: the page's own offering (an id, or "all") wins over the header's global offering filter
+    params["offering"], offering_id = offering_filter.resolve(raw.get("offering"), current_offering_id(request, db))
     page = companies_service.list_companies(
         db, q=params["q"] or None, characteristic_id=int(params["characteristic"]) if params["characteristic"] else None,
-        page=params["page"], offering_id=int(params["offering"]) if params["offering"] else None, view=params["view"] or None,
+        page=params["page"], offering_id=offering_id, view=params["view"] or None,
     )
     if wants_json(request):
         return envelope_ok(_dump(page))

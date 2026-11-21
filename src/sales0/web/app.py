@@ -154,6 +154,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from sales0.web.routes import prospect_research
 
     app.include_router(prospect_research.router)  # q15: prospect research, account summary, our notes
+    from sales0.web import offering_filter
+
+    app.include_router(offering_filter.router)  # SMA-32: the header's global offering filter (cookie)
 
     if settings.linkedin_mode == "fixture":
         from sales0.linkedin_fixture.routes import router as fixture_router

@@ -13,8 +13,8 @@
         {% for key, days in periods.items() %}<option value="{{ key }}"{% if key == r.period %} selected{% endif %}>{{ "All time" if days is none else "Last %d days" % days }}</option>{% endfor %}
       </select>
       {% if offering_options %}<label class="field__label" for="an-offering">Offering</label>
-      <select class="select" id="an-offering" name="offering" data-autosubmit><option value="">All</option>
-        {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == offering %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+      <select class="select" id="an-offering" name="offering" data-autosubmit><option value="{{ 'all' if shell and shell.offering_filter.current else '' }}"{% if not offering_on(offering) %} selected{% endif %}>All</option>
+        {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == offering %} selected{% endif %}>{{ o.name }}{% if not o.active %} (off){% endif %}</option>{% endfor %}
       </select>{% endif %}
       <noscript><button class="btn" type="submit">Show</button></noscript>
     </form>
@@ -37,7 +37,7 @@
           </li>
         {% endfor %}
         </ol>
-        <p class="hint">Companies added in the period{% if offering %} that are a fit for the chosen offering{% endif %}. Each step counts companies that ever reached it.</p>
+        <p class="hint">Companies added in the period{% if offering_on(offering) %} that are a fit for the chosen offering{% endif %}. Each step counts companies that ever reached it.</p>
       </div>
     </section>
     <section class="card" id="an-times" aria-labelledby="an-times-title">

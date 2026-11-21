@@ -201,7 +201,27 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
         "light": status_light_view(session, worker),
         "replies": replies_service.poller_health(db),
         "replies_unread": replies_service.unhandled_human_count(db, acting_member) if acting_member else 0,
+        "offering_filter": _offering_filter(request, db),
     }
+
+
+def _offering_filter(request: Request, db: Session) -> dict[str, Any]:
+    """The header's global offering selector (SMA-32)."""
+    from sales0.web import offering_filter
+
+    return offering_filter.shell_view(request, db)
+
+
+def current_offering_id(request: Request, db: Session) -> int | None:
+    """The global offering filter's validated offering id (an existing offering), else None."""
+    from sales0.web import offering_filter
+
+    return offering_filter.current_offering_id(request, db)
+
+
+def offering_on(value: Any) -> bool:
+    """Whether a page's ``offering`` param narrows its list (``all`` / empty = every offering)."""
+    return str(value or "") not in ("", "all")
 
 
 def _ai_status(db: Session) -> Any:
@@ -373,6 +393,7 @@ HELPERS: dict[str, Any] = {
     "ago_text": ago_text,
     "cooldown_clock": cooldown_clock,
     "browser_is_chrome": browser_is_chrome,
+    "offering_on": offering_on,
 }
 
 
@@ -542,6 +563,7 @@ __all__ = [
     "cooldown_clock",
     "crm_done",
     "crm_guard",
+    "current_offering_id",
     "flash_redirect",
     "opt_int",
     "opt_str",

@@ -179,10 +179,15 @@ def _like(q: str) -> str:
     return f"%{escaped}%"
 
 
-def tab_counts(db: Session) -> dict[str, int]:
+def tab_counts(db: Session, offering_id: int | None = None) -> dict[str, int]:
+    """Enquiries per tab (with ``offering_id``: only enquiries for that offering) + the Skipped-by-AI counts (posts the AI
+    skipped have no offering, so the global offering filter never narrows them)."""
     counts: dict[str, int] = {tab: 0 for tab in TAB_STATUS}
     by_status = {status: tab for tab, status in TAB_STATUS.items()}
-    for status, n in db.execute(select(Enquiry.review_status, func.count(Enquiry.id)).group_by(Enquiry.review_status)):
+    stmt = select(Enquiry.review_status, func.count(Enquiry.id))
+    if offering_id:
+        stmt = stmt.where(Enquiry.offering_id == offering_id)
+    for status, n in db.execute(stmt.group_by(Enquiry.review_status)):
         if status in by_status:
             counts[by_status[status]] = int(n)
     from sales0.services.seen_posts import skipped_counts
@@ -200,7 +205,10 @@ def list_enquiries(
     page: int = 1,
     page_size: int = 25,
     category: str | None = None,
+    offering_id: int | None = None,
 ) -> InboxPage:
+    """One inbox tab's page; ``offering_id`` (the global offering filter, SMA-32) keeps only enquiries for that offering,
+    in the list and in the tab counts."""
     if tab not in TAB_STATUS:
         tab = "review"
     page = max(int(page or 1), 1)
@@ -211,6 +219,8 @@ def list_enquiries(
     category = category if category in ENQUIRY_CATEGORIES else None
     if category:
         conditions.append(Enquiry.category == category)
+    if offering_id:
+        conditions.append(Enquiry.offering_id == offering_id)
     if query:
         pattern = _like(query)
         conditions.append(
@@ -248,7 +258,7 @@ def list_enquiries(
         total=total,
         page=page,
         page_size=page_size,
-        counts=tab_counts(db),
+        counts=tab_counts(db, offering_id),
     )
 
 
