@@ -19,7 +19,7 @@ from sales0.clock import local_today
 from sales0.config import get_settings
 from sales0.db.models import Enquiry, EnquirySource, SeenPost
 from sales0.errors import DomainError
-from sales0.llm import LLMClient
+from sales0.llm import LLMClient, LLMError
 from sales0.logging import get_logger
 from sales0.scraper.types import ScrapedPost
 from sales0.scraper.urls import link_kind_of, profile_slug, urn_from_href
@@ -151,10 +151,11 @@ def paste_post(
     )  # fmt: skip
     batch = record_batch(db, filename="pasted post", kind="paste", actor=actor, counts=(1, 1, 0, 0, 0), issues=[], now=stamp)  # noqa: E501
 
-    # ONE real triage call. A refused/failed call keeps the enquiry (triage_status=failed, Retry in the inbox).
+    # ONE real triage call. A refused/failed call (no key, no credits, an outage, the spend cap) keeps the enquiry
+    # (triage_status=failed): it can be filled in by hand (Edit details) or retried from the inbox.
     try:
         triage_enquiry(db, enquiry.id, llm, now=stamp)
-    except FATAL_LLM_ERRORS as exc:
+    except (*FATAL_LLM_ERRORS, LLMError) as exc:
         enquiry.triage_status = "failed"
         enquiry.triage_error = clip(getattr(exc, "message", None) or str(exc) or type(exc).__name__, 300)
         log.warning("paste_triage_refused", error=type(exc).__name__)

@@ -61,7 +61,6 @@ def nokey(db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def _app(llm: FakeLLMClient) -> TestClient:
     app = create_app()
     app.dependency_overrides[pipeline_routes.get_llm] = lambda: llm
-    app.dependency_overrides[pipeline_routes.get_llm_optional] = lambda: llm
     return TestClient(app)
 
 

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "pipeline/_enquiry_edit.html" import enquiry_edit_fields %}
+{% block title %}Edit enquiry{% endblock %}
+{% block content %}
+<section class="card" id="enquiry-edit-page">
+  <div class="card__header"><h1>Edit enquiry</h1><a class="btn btn--ghost btn--sm" href="{{ next or '/inbox' }}">Back</a></div>
+  <div class="card__body">{{ enquiry_edit_fields(e, next) }}</div>
+</section>
+{% endblock %}

@@ -86,6 +86,35 @@ def _status(db: Session, now: datetime) -> AiStatus:
     return AiStatus(False)
 
 
+@dataclass(frozen=True)
+class Missed:
+    """Work the AI did not do (SMA-39): shown in the AI banner and on Health, with where to finish it."""
+    count: int
+    text: str
+    href: str
+
+
+def missed(db: Session) -> list[Missed]:
+    """What is waiting because an AI call failed: enquiries it could not read, found posts it could not check."""
+    try:
+        from sales0.db.models import Enquiry, SeenPost
+
+        out: list[Missed] = []
+        n = int(db.scalar(select(func.count()).select_from(Enquiry).where(Enquiry.triage_status == "failed",
+                                                                          Enquiry.review_status != "discarded")) or 0)
+        if n:
+            out.append(Missed(n, f"{n} enquir{'y' if n == 1 else 'ies'} not read by the AI (summary, company, contact not "
+                                 "filled in) - fill them in by hand or press Retry triage", "/inbox?tab=review"))
+        k = int(db.scalar(select(func.count()).select_from(SeenPost).where(SeenPost.triage_status == "failed",
+                                                                         SeenPost.enquiry_id.is_(None))) or 0)
+        if k:
+            out.append(Missed(k, f"{k} found post{'' if k == 1 else 's'} not checked by the AI", "/inbox?tab=skipped"))
+        return out
+    except Exception as exc:  # noqa: BLE001 - never break a page
+        log.warning("ai_missed_failed", error=f"{type(exc).__name__}: {exc}"[:200])
+        return []
+
+
 def check_now(db: Session, llm=None) -> AiStatus:  # type: ignore[no-untyped-def]
     """One tiny real call (\"Reply with OK\") to see whether the AI answers; recorded like any other call."""
     from sales0.llm import LLMError, get_llm_client
@@ -108,4 +137,4 @@ def check_now(db: Session, llm=None) -> AiStatus:  # type: ignore[no-untyped-def
     return status(db)
 
 
-__all__ = ["AiStatus", "check_now", "status"]
+__all__ = ["AiStatus", "Missed", "check_now", "missed", "status"]

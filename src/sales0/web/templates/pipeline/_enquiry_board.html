@@ -38,8 +38,8 @@
           </form>
         </article>
 {% endmacro %}
-{% set active = enquiry_board.columns|rejectattr("key", "in", ("lost", "no_response", "on_hold"))|selectattr("total")|list %}
-{% if not active %}{% set active = enquiry_board.columns|selectattr("key", "equalto", "open")|list %}{% endif %}
+{# SMA-31: every status is a column, empty or not #}
+{% set active = enquiry_board.columns|rejectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
 {% include "pipeline/_move_strip.html" %}
 {% set parked = enquiry_board.columns|selectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
 <div class="board board--enquiries" id="enquiry-board" role="list" aria-label="Enquiries by status" data-drag-board>
@@ -52,18 +52,16 @@
   {% endfor %}
 </div>
 {% set parked_total = parked|sum(attribute="total") %}
-{% if parked_total %}
 <details class="card board__closed" id="enquiry-closed-lane">
   <summary><strong>Lost, no response, on hold</strong> <span class="count-pill">{{ parked_total }}</span></summary>
   <div class="board board--enquiries">
-    {% for col in parked if col.total %}
+    {% for col in parked %}
       <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
         <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
-        {% for e in col.cards %}{{ ecard(e) }}{% endfor %}
+        {% for e in col.cards %}{{ ecard(e) }}{% else %}<p class="board__empty">Nothing here.</p>{% endfor %}
         {% if col.total > col.cards|length %}<p class="board__more">{{ col.total - col.cards|length }} more</p>{% endif %}
       </section>
     {% endfor %}
   </div>
 </details>
-{% endif %}
 {% endif %}

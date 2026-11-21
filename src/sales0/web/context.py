@@ -196,6 +196,7 @@ def shell_context(request: Request, db: Session) -> dict[str, Any]:
         "banner": banner_text(session, worker),
         "spend_cap": costs_report.spend_cap_status(db),
         "ai": _ai_status(db),
+        "ai_missed": _ai_missed(db),
         "mode": get_settings().linkedin_mode,
         "light": status_light_view(session, worker),
         "replies": replies_service.poller_health(db),
@@ -207,6 +208,12 @@ def _ai_status(db: Session) -> Any:
     from sales0.services import ai_status
 
     return ai_status.status(db)
+
+
+def _ai_missed(db: Session) -> Any:
+    from sales0.services import ai_status
+
+    return ai_status.missed(db)
 
 
 # ---------------------------------------------------------------------- display helpers
