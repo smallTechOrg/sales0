@@ -38,7 +38,7 @@ def test_convert_needs_contact_then_response(db) -> None:
 def test_convert_creates_one_open_lead_and_converts_the_prospect(db) -> None:
     v, _ = _contacted_and_responded(db)
     ld = leads.convert(db, v.id, note="warm", now=h.T0)
-    assert ld.stage == "meeting_scheduled" and ld.prospect_name == "Acme Training" and ld.company_name == "Acme Training"
+    assert ld.stage == "qualified" and ld.prospect_name == "Acme Training" and ld.company_name == "Acme Training"
     row = db.get(Prospect, v.id)
     assert row.status == "converted"
     assert db.scalar(select(func.count(FollowUp.id)).where(FollowUp.prospect_id == v.id, FollowUp.cancelled_at.is_(None), FollowUp.done_at.is_(None))) == 0
@@ -65,7 +65,7 @@ def test_convert_validates_stage_and_closed_prospect(db) -> None:
 def test_full_lifecycle_proposal_won_creates_exactly_one_client(db) -> None:
     v, e = _contacted_and_responded(db)
     ld = leads.convert(db, v.id, now=h.T0)
-    p = leads.move_stage(db, ld.id, "proposal_sent", proposal_sent_on=date(2026, 10, 12), value_estimate=250000)
+    p = leads.move_stage(db, ld.id, "engaged", proposal_sent_on=date(2026, 10, 12), value_estimate=250000)
     assert p.proposal_sent_on == date(2026, 10, 12) and p.value_estimate == 250000
     db.refresh(e)
     assert e.date_proposal_sent == date(2026, 10, 12)
@@ -80,10 +80,13 @@ def test_full_lifecycle_proposal_won_creates_exactly_one_client(db) -> None:
     assert prospects.get_prospect(db, v.id).client.id == c.id
 
 
-def test_proposal_sent_defaults_to_local_today(db) -> None:
+def test_the_proposal_date_is_a_field_not_a_stage(db) -> None:
+    """SMA-17: there is no Proposal sent stage; Engaged keeps no date until one is given (a retired name still works)."""
     v, _ = _contacted_and_responded(db)
     ld = leads.convert(db, v.id, now=h.T0)
     out = leads.move_stage(db, ld.id, "proposal_sent", now=h.T0)
+    assert out.stage == "engaged" and out.proposal_sent_on is None
+    out = leads.move_stage(db, ld.id, "engaged", proposal_sent_on=date(2026, 10, 1), now=h.T0)
     assert out.proposal_sent_on == date(2026, 10, 1)
 
 
@@ -101,8 +104,8 @@ def test_moving_back_clears_closed_at_but_keeps_the_client(db) -> None:
     v, _ = _contacted_and_responded(db)
     ld = leads.convert(db, v.id, now=h.T0)
     leads.move_stage(db, ld.id, "won", now=h.T0)
-    back = leads.move_stage(db, ld.id, "proposal_sent", now=h.T0)
-    assert back.closed_at is None and back.stage == "proposal_sent"
+    back = leads.move_stage(db, ld.id, "engaged", now=h.T0)
+    assert back.closed_at is None and back.stage == "engaged"
     assert db.scalar(select(func.count(Client.id))) == 1
 
 
@@ -136,7 +139,7 @@ def test_list_and_get_lead(db) -> None:
     ld = leads.convert(db, v.id, now=h.T0)
     page = leads.list_leads(db)
     assert page.total == 1 and page.items[0].id == ld.id and page.items[0].days_since_activity is not None
-    assert leads.list_leads(db, stage="proposal_sent").total == 0
+    assert leads.list_leads(db, stage="engaged").total == 0
     assert leads.list_leads(db, q="acme").total == 1 and leads.list_leads(db, q="zzz").total == 0
     leads.move_stage(db, ld.id, "lost", now=h.T0)
     assert leads.list_leads(db).total == 0 and leads.list_leads(db, open_only=False).total == 1

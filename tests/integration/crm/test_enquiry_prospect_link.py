@@ -34,16 +34,16 @@ def _events(db, co, subject_type: str) -> int:
 
 
 def test_every_enquiry_gets_the_same_statuses(db) -> None:
-    assert deals.SETTABLE == ("open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled",
-                              "assessment", "proposal_sent", "interviews", "won", "lost", "no_response", "on_hold")
-    assert [deals.deal_label(k) for k in deals.SETTABLE][:5] == ["Open", "Contacted", "Follow-up 1", "Follow-up 2", "Final follow-up"]
+    assert deals.SETTABLE == ("open", "contacted", "follow_up", "final_follow_up", "qualified", "engaged", "won", "lost",
+                              "no_response", "on_hold")  # SMA-17
+    assert [deals.deal_label(k) for k in deals.SETTABLE][:6] == ["Open", "Contacted", "Follow-up", "Final follow-up", "Qualified", "Engaged"]
 
 
 @pytest.mark.parametrize("which", ["first", "second"])
 def test_an_enquiry_status_never_moves_the_company(db, which) -> None:
     e1, _, co = _accepted(db)
     e = e1 if which == "first" else _second(db)
-    for st in ("contacted", "follow_up_1", "final_follow_up", "lost", "no_response", "on_hold", "open"):
+    for st in ("contacted", "follow_up", "final_follow_up", "lost", "no_response", "on_hold", "open"):
         deals.set_status(db, e.id, st, actor=Actor("Ana", None), now=h.T0)
         db.refresh(co), db.refresh(e)
         assert (co.stage, co.sub_status, e.deal_status) == ("prospect", "new", st)
@@ -59,9 +59,9 @@ def test_lead_client_and_off_ramp_companies_are_unaffected_without_error(db) -> 
     lifecycle.go_off_ramp(db, co3.id, "not_interested", actor=Actor("Ana", None), now=h.T0)
     db.refresh(co3)
     sub = co3.sub_status
-    deals.set_status(db, e3.id, "follow_up_1", now=h.T0)
+    deals.set_status(db, e3.id, "follow_up", now=h.T0)
     db.refresh(co3), db.refresh(e3)
-    assert co3.off_ramp == "not_interested" and co3.sub_status == sub and e3.deal_status == "follow_up_1"
+    assert co3.off_ramp == "not_interested" and co3.sub_status == sub and e3.deal_status == "follow_up"
     e4, _, co4 = _accepted(db, "Client Co")
     lifecycle.mark_client(db, co4.id, actor=Actor("Ana", None), now=h.T0)
     deals.set_status(db, e4.id, "contacted", now=h.T0)
@@ -92,10 +92,10 @@ def test_company_cadence_moves_open_enquiries_but_not_parked_ones(db) -> None:
     e2 = _second(db)
     deals.set_status(db, e2.id, "on_hold", now=h.T0)
     prospects.mark_contacted(db, v.id, when=h.T0, now=h.T0)
-    prospects.move_stage(db, v.id, "follow_up_2")
+    prospects.move_stage(db, v.id, "follow_up")
     db.refresh(co), db.refresh(e1), db.refresh(e2)
-    assert co.sub_status == "follow_up_2"
-    assert e1.deal_status == "follow_up_2" and e2.deal_status == "on_hold"  # parked statuses stay
+    assert co.sub_status == "follow_up"
+    assert e1.deal_status == "follow_up" and e2.deal_status == "on_hold"  # parked statuses stay
 
 
 def test_no_ping_pong(db) -> None:
@@ -172,10 +172,10 @@ def test_prospect_stage_never_moves_an_enquiry_backwards_or_out_of_a_parked_stat
     e1, v, _ = _accepted(db)
     e2 = _second(db)
     deals.set_status(db, e1.id, "on_hold", now=h.T0)
-    deals.set_status(db, e2.id, "follow_up_2", now=h.T0)
+    deals.set_status(db, e2.id, "follow_up", now=h.T0)
     prospects.move_stage(db, v.id, "contacted", now=h.T0)
     db.refresh(e1), db.refresh(e2)
-    assert (e1.deal_status, e2.deal_status) == ("on_hold", "follow_up_2")
+    assert (e1.deal_status, e2.deal_status) == ("on_hold", "follow_up")
 
 
 def test_relinking_heals_an_empty_derived_priority(db) -> None:

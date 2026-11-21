@@ -45,18 +45,18 @@ def test_rule3_no_response_depends_on_contact_evidence() -> None:
 
 @pytest.mark.parametrize("status", ["Meeting Scheduled", "meeting", "call scheduled", "interested", "replied", "Responded"])
 def test_rule4_meeting(status: str) -> None:
-    assert map_enquiry_status(status).lead_stage == "meeting_scheduled"
+    assert map_enquiry_status(status).lead_stage == "engaged"
 
 
 def test_rule5_proposal_by_word_or_date() -> None:
-    assert map_enquiry_status("Proposal Sent").lead_stage == "proposal_sent"
-    assert map_enquiry_status("anything", date_proposal_sent=D).lead_stage == "proposal_sent"
+    assert map_enquiry_status("Proposal Sent").lead_stage == "engaged"
+    assert map_enquiry_status("anything", date_proposal_sent=D).lead_stage == "engaged"
     assert map_enquiry_status("", date_proposal_sent=D).prospect_status == "converted"
 
 
 @pytest.mark.parametrize(
     ("status", "stage", "rule"),
-    [("FU1", "follow_up_1", "6"), ("follow up 2", "follow_up_2", "6b"), ("Final follow up", "final_follow_up", "6c")],
+    [("FU1", "follow_up", "6"), ("follow up 2", "follow_up", "6b"), ("Final follow up", "final_follow_up", "6c")],
 )
 def test_rule6_follow_ups(status: str, stage: str, rule: str) -> None:
     o = map_enquiry_status(status)
@@ -107,7 +107,7 @@ def test_proposal_words_in_negated_phrases_make_no_lead(status: str) -> None:
 
 @pytest.mark.parametrize("status", ["Proposal Sent", "proposal submitted", "Quotation sent", "Proposal-Sent!"])
 def test_explicit_proposal_phrases_open_a_proposal_lead(status: str) -> None:
-    assert map_enquiry_status(status).lead_stage == "proposal_sent"
+    assert map_enquiry_status(status).lead_stage == "engaged"
 
 
 @pytest.mark.parametrize("status", ["Hot", "warm", "In progress", "ongoing", "in discussion", "Negotiation"])
@@ -117,8 +117,8 @@ def test_temperature_words_do_not_create_a_meeting_lead(status: str) -> None:
 
 
 def test_proposal_date_implies_a_response_even_with_a_neutral_or_negated_status() -> None:
-    assert map_enquiry_status("New", date_proposal_sent=D).lead_stage == "proposal_sent"
-    assert map_enquiry_status("No proposal yet", date_proposal_sent=D).lead_stage == "proposal_sent"
+    assert map_enquiry_status("New", date_proposal_sent=D).lead_stage == "engaged"
+    assert map_enquiry_status("No proposal yet", date_proposal_sent=D).lead_stage == "engaged"
     assert map_enquiry_status("Closed", date_proposal_sent=D).lead_stage == "lost"
 
 

@@ -60,29 +60,32 @@ def test_enquiry_status_survives_the_cadence(db) -> None:
 
 def test_meeting_or_proposal_only_suggests_lead(db) -> None:
     e, _, co = _accepted(db)
-    deals.set_status(db, e.id, "meeting_scheduled")
+    deals.set_status(db, e.id, "qualified")
     db.refresh(co)
     assert co.stage == "prospect"  # the app never moves it
     assert lifecycle.active_suggestion(co) is not None
     lifecycle.dismiss_suggestion(db, co.id)
     db.refresh(co)
     assert lifecycle.active_suggestion(co) is None
-    deals.set_status(db, e.id, "proposal_sent")  # a different signal raises it again
+    deals.set_status(db, e.id, "engaged")  # a different signal raises it again
     db.refresh(co)
     assert lifecycle.active_suggestion(co) is not None
     lifecycle.accept_suggestion(db, co.id)
     db.refresh(co)
-    assert (co.stage, co.sub_status, co.lead_suggestion) == ("lead", "meeting_scheduled", None)
+    assert (co.stage, co.sub_status, co.lead_suggestion) == ("lead", "qualified", None)
 
 
 def test_mark_lead_overrides_the_preconditions(db) -> None:
     _, _, co = _accepted(db)  # never contacted, no response: the old Convert refused
-    lifecycle.mark_lead(db, co.id, stage="proposal_sent", actor=Actor("Ana", None))
+    lifecycle.mark_lead(db, co.id, stage="engaged", actor=Actor("Ana", None))
     db.refresh(co)
-    assert (co.stage, co.sub_status) == ("lead", "proposal_sent")
-    lifecycle.set_lead_status(db, co.id, "meeting_scheduled")
+    assert (co.stage, co.sub_status) == ("lead", "engaged")
+    lifecycle.set_lead_status(db, co.id, "meeting_scheduled")  # a retired name (a stale page) still works
     db.refresh(co)
-    assert co.sub_status == "meeting_scheduled"
+    assert co.sub_status == "engaged"
+    lifecycle.set_lead_status(db, co.id, "on_hold")
+    db.refresh(co)
+    assert co.sub_status == "on_hold"
 
 
 def test_won_enquiry_suggests_client_and_a_person_confirms(db) -> None:
@@ -110,10 +113,10 @@ def test_mark_client_directly_for_a_company_without_enquiry(db) -> None:
 
 def test_off_ramps_and_reopen_return_to_prospects_as_new(db) -> None:
     _, v, co = _accepted(db)
-    prospects.move_stage(db, v.id, "follow_up_2")
+    prospects.move_stage(db, v.id, "follow_up")
     lifecycle.go_off_ramp(db, co.id, "dormant", actor=Actor("Ana", None))
     db.refresh(co)
-    assert (co.off_ramp, co.stage, co.sub_status, co.resume_sub_status) == ("dormant", "prospect", "follow_up_2", "follow_up_2")
+    assert (co.off_ramp, co.stage, co.sub_status, co.resume_sub_status) == ("dormant", "prospect", "follow_up", "follow_up")
     lifecycle.reopen(db, co.id)
     db.refresh(co)
     assert (co.off_ramp, co.stage, co.sub_status) == (None, "prospect", "new")  # q24: reopen = Prospects / New
@@ -139,9 +142,9 @@ def test_do_not_contact_blocks_outreach_and_needs_an_admin_to_reopen(db) -> None
         lifecycle.ensure_contactable(db, prospect_id=v.id)
     assert ei2.value.code == "do_not_contact"
     # the ledger changing (e.g. the sheet) never clears a company-only off-ramp
-    prospects.move_stage(db, v.id, "follow_up_1")
+    prospects.move_stage(db, v.id, "follow_up")
     db.refresh(co)
-    assert co.off_ramp == "do_not_contact" and co.sub_status == "follow_up_1"
+    assert co.off_ramp == "do_not_contact" and co.sub_status == "follow_up"
     with pytest.raises(DomainError) as ei3:
         lifecycle.reopen(db, co.id, is_admin=False)
     assert ei3.value.http_status == 403

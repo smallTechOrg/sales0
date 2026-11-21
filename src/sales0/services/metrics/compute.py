@@ -93,7 +93,7 @@ def compute_counters(db: Session, weeks: list[Week]) -> dict[str, list[int]]:
                 linkedin.append((pid, at))
             if channel != "email":
                 manual_contacts.append(at)
-        if d.get("to") == "follow_up_1":
+        if d.get("to") in ("follow_up_1", "follow_up"):  # follow_up_1: before SMA-17
             follow1.append((pid, at))
     out["linkedin_outreach"] = b.distinct(linkedin)  # type: ignore[arg-type]
     out["first_follow_up"] = b.distinct(follow1)  # type: ignore[arg-type]
@@ -112,7 +112,7 @@ def compute_counters(db: Session, weeks: list[Week]) -> dict[str, list[int]]:
             TimelineEvent.occurred_at < hi,
         )
     ).all()
-    wanted = ("meeting_scheduled", "proposal_sent")
+    wanted = ("meeting_scheduled", "proposal_sent", "qualified", "engaged")  # the first two: before SMA-17
     out["meetings_proposals"] = b.distinct(
         (lid, at) for lid, kind, data, at in lead_rows
         if kind == "proposal_sent" or ((data or {}).get("stage") if kind == "lead_created" else (data or {}).get("to")) in wanted

@@ -62,7 +62,7 @@ def test_proposal_date_suggests_a_lead_and_sets_the_enquiry_status(sync) -> None
         assert lead is None and p.status == "open"
         co = db.get(Company, p.company_id)
         assert co.stage == "prospect" and co.lead_suggestion and co.lead_suggestion["kind"] == "enquiry"
-        assert db.scalar(select(Enquiry.deal_status).where(Enquiry.sheet_status == "New")) == "proposal_sent"
+        assert db.scalar(select(Enquiry.deal_status).where(Enquiry.sheet_status == "New")) == "engaged"
         _, lost = lead_of(db, "Closed")
         assert lost.stage == "lost" and lost.closed_at is not None
         p3, nr = lead_of(db, "No response")

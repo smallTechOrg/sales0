@@ -1,10 +1,9 @@
 """Pipeline read models for the company model, one per Pipeline board. A company is only ever on ONE board (q24):
 
-* Enquiries: inbound work nobody has reached out on yet - accepted enquiries whose company is a New prospect (or has
-  no company / is not in the pipeline yet);
-* Prospects: companies in the outreach cadence - New (cold-list companies with no accepted enquiry), Contacted,
-  Follow-up 1, Follow-up 2, Final follow-up;
-* Leads: Meeting scheduled, Assessment, Proposal sent, Interviews, On hold (Won -> Clients; Lost / No response -> closed);
+* Enquiries (SMA-33: the ENQUIRY path): accepted enquiries whose company came in through an enquiry and is still a
+  prospect (New, Contacted, Follow-up, Final follow-up), or has no company / is not in the pipeline yet;
+* Prospects (the OUTREACH path: partnership or a proposal of ours): New, Contacted, Follow-up, Final follow-up;
+* Leads (SMA-17): Qualified, Engaged, On hold (Won -> Customers; Lost / No response -> closed);
 * Clients: a list.
 Closed companies (an off-ramp) are on no board: they stay under Companies with a Closed tag (the Archived view)."""
 
@@ -102,16 +101,18 @@ def _has_accepted_enquiry():  # type: ignore[no-untyped-def]
 
 
 def on_enquiries_board():  # type: ignore[no-untyped-def]
-    """A company whose inbound enquiry nobody has acted on yet: it is on the Enquiries board, not Prospects."""
-    return and_(Company.stage == "prospect", Company.off_ramp.is_(None), Company.sub_status == "new", _has_accepted_enquiry())
+    """SMA-33: a prospect company on the ENQUIRY path (it came in through an accepted enquiry) stays on the Enquiries
+    board through New, Contacted, Follow-up and Final follow-up; one on the OUTREACH path is on the Prospects board."""
+    return and_(Company.stage == "prospect", Company.off_ramp.is_(None), func.coalesce(Company.pipeline_path, "enquiry") == "enquiry",
+                _has_accepted_enquiry())
 
 
-def board_of(stage: str | None, sub_status: str | None, off_ramp: str | None, has_enquiry: bool) -> str | None:
+def board_of(stage: str | None, sub_status: str | None, off_ramp: str | None, has_enquiry: bool, path: str | None = None) -> str | None:
     """The one board a company is on (None = closed / not in the pipeline)."""
     if off_ramp or stage is None:
         return None
     if stage == "prospect":
-        return "enquiries" if sub_status == "new" and has_enquiry else "prospects"
+        return "enquiries" if has_enquiry and (path or "enquiry") == "enquiry" else "prospects"
     return {"lead": "leads", "client": "clients"}.get(stage)
 
 
@@ -237,8 +238,8 @@ def _column(db: Session, key: str, label: str, stmt, f: dict, sort: str | None, 
 
 def _stage_stmt(stage: str, sub: str):  # type: ignore[no-untyped-def]
     stmt = select(Company).where(Company.stage == stage, Company.off_ramp.is_(None), Company.sub_status == sub)
-    if stage == "prospect" and sub == "new":
-        stmt = stmt.where(~_has_accepted_enquiry())  # those are on the Enquiries board
+    if stage == "prospect":
+        stmt = stmt.where(~on_enquiries_board())  # SMA-33: enquiry-path companies are on the Enquiries board
     return stmt
 
 

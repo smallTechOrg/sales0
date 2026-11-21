@@ -26,20 +26,18 @@ from sales0.db.models.enums_crm import (
     COMPANY_SUB_STATUSES,
     OFF_RAMPS,
     PROSPECT_STAGES,
+    canonical_stage,
 )
 from sales0.errors import DomainError
 from sales0.services._common import now_or, not_found
 from sales0.services.crm import followups, leads, prospects, timeline
 from sales0.services.crm._common import invalid
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
-from sales0.services.crm.stages import stage_rank
+from sales0.services.crm.stages import RETIRED_LABELS, stage_rank
+from sales0.services.crm.stages import STAGE_LABELS as STAGE_LABELS_
 
 STAGE_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Customer"}
-SUB_LABELS = {
-    "new": "New", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
-    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "assessment": "Assessment",
-    "proposal_sent": "Proposal sent", "interviews": "Interviews", "on_hold": "On hold", "active": "Active",
-}
+SUB_LABELS = {**STAGE_LABELS_, **RETIRED_LABELS, "active": "Active"}
 OFF_RAMP_LABELS = {
     "not_interested": "Not interested", "dormant": "Dormant (no response)", "do_not_contact": "Do not contact",
     "lost_client": "Lost customer",
@@ -135,6 +133,7 @@ def ensure_contactable(db: Session, *, company_id: int | None = None, prospect_i
 def set_prospect_status(db: Session, company_id: int, sub_status: str, *, actor: Actor = TEAM, note: str | None = None,
                         now: datetime | None = None) -> Company:
     """Move a PROSPECT company along the outreach cadence (new .. final follow-up)."""
+    sub_status = canonical_stage(sub_status) or sub_status
     if sub_status not in PROSPECT_STAGES:
         raise invalid("stage_invalid", "Choose a valid status.")
     co = company_row(db, company_id)
@@ -157,10 +156,11 @@ def add_to_pipeline(db: Session, company_id: int, *, actor: Actor = TEAM, now: d
     return co
 
 
-def mark_lead(db: Session, company_id: int, *, stage: str = "meeting_scheduled", meeting_at: datetime | None = None,
+def mark_lead(db: Session, company_id: int, *, stage: str = "qualified", meeting_at: datetime | None = None,
               actor: Actor = TEAM, note: str | None = None, now: datetime | None = None) -> Company:
     """A PERSON decides: this company is a lead. Overrides everything (no contact / response preconditions); a closed
     company is reopened first. Clears the "suggested: Lead" hint."""
+    stage = canonical_stage(stage) or stage
     if stage not in COMPANY_SUB_STATUSES["lead"]:
         raise invalid("stage_invalid", "Choose a valid lead status.")
     co = company_row(db, company_id)
@@ -187,6 +187,7 @@ def mark_lead(db: Session, company_id: int, *, stage: str = "meeting_scheduled",
 def set_lead_status(db: Session, company_id: int, sub_status: str, *, actor: Actor = TEAM, proposal_sent_on: date | None = None,
                     meeting_at: datetime | None = None, value_estimate: int | None = None, outcome_note: str | None = None,
                     now: datetime | None = None) -> Company:
+    sub_status = canonical_stage(sub_status) or sub_status
     if sub_status not in COMPANY_SUB_STATUSES["lead"]:
         raise invalid("stage_invalid", "Choose a valid lead status.")
     co = company_row(db, company_id)
@@ -282,6 +283,7 @@ def reopen(db: Session, company_id: int, *, actor: Actor = TEAM, is_admin: bool 
         db.refresh(co)
         if off == "lost_client" or co.stage == "client":
             return co
+    co.pipeline_path = "outreach"  # SMA-33: reopened = back to Prospects: New
     _restart_as_new(db, co, actor=actor, now=stamp)
     _refresh(db, co)
     if off not in COMPANY_ONLY_OFF_RAMPS:
@@ -344,6 +346,9 @@ def move_to(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, w
     """A PERSON sets the company's status (a board drag, a card's Move... button or the "..." menu): any board column,
     Client, or a close reason. The only way a company changes board: nothing moves one automatically. A company marked
     Client by mistake can be moved back to any Leads or Prospects status (``undo_client``)."""
+    kind0, sep, sub0 = target.partition(":")
+    if kind0 in ("lead", "prospect") and sep:
+        target = f"{kind0}:{canonical_stage(sub0)}"  # SMA-17: a stale page may still post a retired stage
     if target not in MOVE_TARGETS:
         raise invalid("stage_invalid", "Choose a valid status.")
     co = company_row(db, company_id)
@@ -377,6 +382,8 @@ def move_to(db: Session, company_id: int, target: str, *, actor: Actor = TEAM, w
         if co.stage is None:
             ensure_ledger(db, company_id, actor=actor, now=stamp)
             _refresh(db, co)
+        if sub == "new":  # SMA-33: a person putting it at Prospect: New means outreach (the Prospects board)
+            co.pipeline_path = "outreach"
         set_prospect_status(db, company_id, sub, actor=actor, note=note, now=stamp)
     _refresh(db, co)
     return co

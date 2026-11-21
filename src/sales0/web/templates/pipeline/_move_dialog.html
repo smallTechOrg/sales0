@@ -1,5 +1,5 @@
 {# Needs: move_targets ([(group, [(target, label, help)])]). The ONE move popup of the boards: what the company page asks
-   (the reason for a close, why, the meeting time for Meeting scheduled) and what the status means while it is chosen. #}
+   (the reason for a close, why, the meeting time for a lead) and what the status means while it is chosen. #}
 <dialog class="confirm-dialog move-dialog" id="move-dialog" aria-labelledby="move-title">
   <form method="post" action="/pipeline/move" hx-post="/pipeline/move" hx-swap="none" id="move-form">
     <h2 id="move-title">Move <span id="move-company">company</span></h2>
@@ -15,7 +15,7 @@
     </div>
     <p class="hint move-help" id="move-help" data-move-help aria-live="polite"></p>
     <div class="field" data-move-meeting hidden>
-      <label class="field__label" for="move-meeting">Meeting time</label>
+      <label class="field__label" for="move-meeting">Meeting time (optional)</label>
       <input class="input" id="move-meeting" type="datetime-local" name="meeting_at">
     </div>
     <div class="field">

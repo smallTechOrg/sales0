@@ -8,13 +8,10 @@ from __future__ import annotations
 STATUS_HELP: dict[str, str] = {
     "new": "New: nobody has reached out yet.",
     "contacted": "Contacted: we reached out once.",
-    "follow_up_1": "Follow-up 1: the first follow-up has gone out.",
-    "follow_up_2": "Follow-up 2: the second follow-up has gone out.",
+    "follow_up": "Follow-up: we have followed up (once or more).",
     "final_follow_up": "Final follow-up: the last follow-up; close the company if they never answer.",
-    "meeting_scheduled": "Meeting scheduled: a meeting is booked. The company moves to the Leads board.",
-    "assessment": "Assessment: they are assessing us (a trial, a test session, a review).",
-    "proposal_sent": "Proposal sent: our proposal is with them (the date is recorded).",
-    "interviews": "Interviews: trainer / team interviews after the proposal.",
+    "qualified": "Qualified: a new lead - they are interested and it is a real opportunity. The company moves to the Leads board.",
+    "engaged": "Engaged: we are in active talks (meetings, an assessment, a proposal, interviews).",
     "on_hold": "On hold: paused on their side; it stays on the Leads board.",
     "active": "Customer: they bought from us. Marked by mistake? Move it back to a Leads or Prospects status.",
 }

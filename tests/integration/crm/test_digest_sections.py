@@ -68,7 +68,7 @@ def reminder(db: Session, p: Prospect, due: date, kind: str = "follow_up_1", **k
     return f
 
 
-def lead(db: Session, p: Prospect, *, stage: str = "proposal_sent", opened: datetime | None = None, **kw: object) -> Lead:
+def lead(db: Session, p: Prospect, *, stage: str = "engaged", opened: datetime | None = None, **kw: object) -> Lead:
     row = Lead(prospect_id=p.id, company_id=p.company_id, stage=stage, opened_at=opened or hours_ago(24 * 40), **kw)
     db.add(row)
     db.commit()
@@ -156,13 +156,13 @@ def test_a_lead_reminder_links_to_the_lead(db: Session) -> None:
 def test_a_lead_quiet_for_19_days_is_stale_and_one_quiet_for_5_is_not(db: Session) -> None:
     quiet = prospect(db, "Quiet Person", "Acme", status="converted")
     fresh = prospect(db, "Fresh Person", "Beta", status="converted")
-    l_quiet = lead(db, quiet, stage="proposal_sent")
-    lead(db, fresh, stage="meeting_scheduled")
+    l_quiet = lead(db, quiet, stage="engaged")
+    lead(db, fresh, stage="qualified")
     event(db, quiet, NOW - timedelta(days=30))
     event(db, quiet, NOW - timedelta(days=19))  # the NEWEST event decides
     event(db, fresh, NOW - timedelta(days=5))
     sec = section(db, "stale_leads")
-    assert texts(sec) == ["Acme - Proposal sent, quiet for 19 days"]
+    assert texts(sec) == ["Acme - Engaged, quiet for 19 days"]
     assert dg.item_href(sec.items[0]) == f"/pipeline/leads/{l_quiet.id}"
     assert sec.stats == {"stale": 1, "open_leads": 2}
 
@@ -175,12 +175,12 @@ def test_stale_boundary_closed_leads_and_leads_without_events(db: Session) -> No
     lead(db, edge)
     lead(db, just_in)
     lead(db, closed, stage="lost", closed_at=NOW - timedelta(days=40))
-    lead(db, no_events, stage="meeting_scheduled", opened=NOW - timedelta(days=20))
+    lead(db, no_events, stage="qualified", opened=NOW - timedelta(days=20))
     event(db, edge, NOW - timedelta(days=14, seconds=1))  # older than 14 days: stale
     event(db, just_in, NOW - timedelta(days=14))  # exactly 14 days: not older than the threshold
     event(db, closed, NOW - timedelta(days=60))
     sec = section(db, "stale_leads")
-    assert texts(sec) == ["Old Co - Meeting scheduled, quiet for 20 days", "Edge Co - Proposal sent, quiet for 14 days"]
+    assert texts(sec) == ["Old Co - Qualified, quiet for 20 days", "Edge Co - Engaged, quiet for 14 days"]
     assert sec.stats == {"stale": 2, "open_leads": 3}
 
 
@@ -189,13 +189,13 @@ def test_sheet_removed_rows_are_not_stale_leads(db: Session) -> None:
     gone_enq = prospect(db, "Gone Enq", "Enq Co", status="converted")
     live_enq = prospect(db, "Live Enq", "Live Co", status="converted")
     for p in (gone_person, gone_enq, live_enq):
-        lead(db, p, stage="proposal_sent")
+        lead(db, p, stage="engaged")
         event(db, p, NOW - timedelta(days=30))
     db.add(Enquiry(raw_text="x", content_hash="h-gone", source="linkedin_post", prospect_id=gone_enq.id, sheet_removed_at=NOW))
     db.add(Enquiry(raw_text="y", content_hash="h-live", source="linkedin_post", prospect_id=live_enq.id))
     db.commit()
     sec = section(db, "stale_leads")
-    assert texts(sec) == ["Live Co - Proposal sent, quiet for 30 days"]
+    assert texts(sec) == ["Live Co - Engaged, quiet for 30 days"]
     assert sec.stats == {"stale": 1, "open_leads": 1}
 
 

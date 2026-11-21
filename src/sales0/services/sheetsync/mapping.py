@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from sales0.services.crm.actor import Actor
 
 ORIGINS = ("sheet", "import")
-OPEN_LEAD_STAGES = ("meeting_scheduled", "proposal_sent")
+OPEN_LEAD_STAGES = ("qualified", "engaged")
 PLATFORMS = ("whatsapp", "linkedin", "telegram", "facebook", "other")
 PLATFORM_ALIASES = {"fb": "facebook", "wa": "whatsapp", "li": "linkedin", "tg": "telegram", "whats app": "whatsapp"}
 NO_TEXT = "(no text in the sheet row)"
@@ -853,7 +853,7 @@ def _apply_outcome(
         changed.append("prospect_status")
     # the enquiry -> prospect link (services/crm/deals.py) is forward only: any enquiry's contacted / follow-up status
     # moves the prospect ahead, never back
-    forward_only = enquiry is not None and outcome.prospect_stage in ("contacted", "follow_up_1", "follow_up_2", "final_follow_up")
+    forward_only = enquiry is not None and outcome.prospect_stage in ("contacted", "follow_up", "final_follow_up")
     behind = forward_only and prospect.stage in PROSPECT_STAGES and PROSPECT_STAGES.index(outcome.prospect_stage) <= PROSPECT_STAGES.index(prospect.stage)  # type: ignore[arg-type]
     if outcome.prospect_stage is not None and prospect.stage != outcome.prospect_stage and not behind:
         old = prospect.stage
@@ -868,12 +868,12 @@ def _apply_outcome(
                   {"status": "closed", "reason": outcome.closed_reason, "rule": outcome.rule}, **scopes)
     elif outcome.prospect_status == "closed" and not keep_lead and prospect.status == "closed" and prospect.closed_reason != "enquiry_discarded" and prospect.closed_reason != outcome.closed_reason:
         prospect.closed_reason = outcome.closed_reason
-    if (outcome.contacted or prospect.stage in ("follow_up_1", "follow_up_2", "final_follow_up")) and prospect.contacted_at is None:
+    if (outcome.contacted or prospect.stage in ("follow_up", "final_follow_up")) and prospect.contacted_at is None:
         sent = enquiry.date_email_sent if enquiry else None
         prospect.contacted_at = local_midnight_utc(sent) or ctx.now
         prospect.contacted_estimated = True
         changed.append("contacted_at")
-    if outcome.lead_stage in ("meeting_scheduled", "proposal_sent") and enquiry is not None:
+    if outcome.lead_stage in OPEN_LEAD_STAGES and enquiry is not None:
         # company model: only a PERSON moves a company to Lead. An enquiry row saying "meeting scheduled" / "proposal
         # sent" sets the enquiry's own status and shows the "suggested: Lead" hint on the company.
         if prospect.company_id is not None:
@@ -977,7 +977,7 @@ def _apply_lead(ctx: Ctx, prospect: Prospect, outcome: StatusOutcome, enquiry: E
         old = lead.stage
         lead.stage = target
         lead.closed_at = (local_midnight_utc(proposal) or ctx.now) if closing else None
-        if proposal and target == "proposal_sent":
+        if proposal and target == "engaged":
             lead.proposal_sent_on = proposal
         ctx.event("lead", lead.id, "lead_stage", f"Lead stage updated from the sheet ({old} -> {target})", {"from": old, "to": target}, **scopes)
         changed.append("lead_stage")

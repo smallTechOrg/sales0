@@ -63,7 +63,7 @@ def test_nothing_moves_a_company_by_itself(db_url: str) -> None:
         followups.complete(db, fid, actor=ANA, channel="call")
     assert _co(cid) == ("prospect", "new", None)
     with session_scope() as db:  # enquiry statuses: the enquiry changes, the company does not
-        deals.set_status(db, eid, "follow_up_2", actor=ANA)
+        deals.set_status(db, eid, "follow_up", actor=ANA)
         deals.set_status(db, eid, "won", actor=ANA)
         assert db.get(Enquiry, eid).deal_status == "won"
         co = db.get(Company, cid)
@@ -75,7 +75,7 @@ def test_nothing_moves_a_company_by_itself(db_url: str) -> None:
     assert _co(cid)[0] == "client"
 
 
-@pytest.mark.parametrize("target", ["lead:proposal_sent", "prospect:follow_up_1"])
+@pytest.mark.parametrize("target", ["lead:engaged", "prospect:follow_up"])
 def test_a_client_marked_by_mistake_goes_back_as_if_it_never_was(web: TestClient, target: str) -> None:
     eid, pid, cid = _inbound()
     with session_scope() as db:
@@ -83,7 +83,7 @@ def test_a_client_marked_by_mistake_goes_back_as_if_it_never_was(web: TestClient
         lifecycle.mark_client(db, cid, actor=ANA)
     assert _co(cid)[0] == "client"
     page = unescape(web.get(f"/companies/{cid}").text)
-    assert 'id="undo-client-hint"' in page and 'value="lead:meeting_scheduled"' in page and 'value="prospect:new"' in page
+    assert 'id="undo-client-hint"' in page and 'value="lead:qualified"' in page and 'value="prospect:new"' in page
     r = web.post(f"/companies/{cid}/move", headers=HX, data={"target": target, "why": "clicked the wrong button"})
     assert r.status_code == 204
     kind, sub = target.split(":")
@@ -98,8 +98,10 @@ def test_a_client_marked_by_mistake_goes_back_as_if_it_never_was(web: TestClient
             assert db.scalar(select(func.count()).select_from(Lead).where(Lead.closed_at.is_(None))) == 1
         else:
             assert db.get(Prospect, pid).status == "open"
-    board = web.get(f"/pipeline?tab={'leads' if kind == 'lead' else 'prospects'}").text
-    assert f'id="company-{cid}"' in board
+    if kind == "lead":
+        assert f'id="company-{cid}"' in web.get("/pipeline?tab=leads").text
+    else:  # SMA-33: it came in through an enquiry, so as a prospect it is back on the Enquiries board
+        assert f'id="enquiry-{eid}"' in web.get("/pipeline?tab=enquiries").text
 
 
 def test_add_enquiry_by_pasting_a_post(web: TestClient) -> None:

@@ -28,7 +28,7 @@ from sales0.db.models import (
     TeamMember,
 )
 from sales0.config import get_settings
-from sales0.db.models.enums_crm import PROSPECT_STAGES
+from sales0.db.models.enums_crm import PROSPECT_STAGES, RETIRED_STAGES
 from sales0.errors import DomainError
 from sales0.scraper.urls import link_kind_of
 from sales0.services import profiles
@@ -49,11 +49,7 @@ from sales0.services.crm.views import (
 )
 
 UNTRACK_REASONS = ("no_response", "lost", "not_interested")
-DEAL_LABELS = {
-    "open": "Open", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
-    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "proposal_sent": "Proposal sent",
-    "won": "Won", "lost": "Lost", "no_response": "No response", "on_hold": "On hold",
-}
+from sales0.services.crm.stages import DEAL_LABELS  # noqa: E402 - one list of enquiry status labels
 
 
 # ---------------------------------------------------------------------------- views
@@ -193,6 +189,7 @@ def _set_stage(
 def move_stage(
     db: Session, prospect_id: int, stage: str, *, actor: Actor = TEAM, note: str | None = None, now: datetime | None = None
 ) -> ProspectView:
+    stage = RETIRED_STAGES.get(stage, stage)
     if stage not in PROSPECT_STAGES:
         raise invalid("stage_invalid", "Choose a valid stage.")
     p = _get(db, prospect_id)
@@ -207,6 +204,7 @@ def advance_to(
 ) -> None:
     """Move forward only (never back), and only an open prospect; used by completed reminders."""
     p = db.get(Prospect, prospect_id)
+    stage = RETIRED_STAGES.get(stage, stage)
     if p is None or p.status != "open" or stage not in PROSPECT_STAGES or stage_rank(stage) <= stage_rank(p.stage):
         return
     _set_stage(db, p, stage, actor=actor, now=now, note=reason, extra=extra)

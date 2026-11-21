@@ -103,14 +103,15 @@ def test_prospects_tab_columns_hold_only_prospects(web: TestClient) -> None:
     _, _, cid_lead = _company("Globex Insurance", "P3")
     _, _, cid_client = _company("Old Client Ltd", "P4")
     _, pid_closed, cid_closed = _company("Closed Co", "P5")
-    assert web.post(f"/pipeline/prospects/{pid_b}/stage", data={"stage": "follow_up_1"}, headers=HX).status_code == 200
+    web.post("/pipeline/move", headers=HX, data={"company_id": str(cid_b), "target": "prospect:new", "next": "/pipeline"})  # outreach
+    assert web.post(f"/pipeline/prospects/{pid_b}/stage", data={"stage": "follow_up"}, headers=HX).status_code == 200
     web.post(f"/companies/{cid_lead}/mark-lead")
     web.post(f"/companies/{cid_client}/mark-client")
     web.post(f"/pipeline/prospects/{pid_closed}/close", data={"reason": "not_interested"}, headers=HX)
     html = web.get("/pipeline?tab=prospects").text
     keys = re.findall(r'<section class="board__col[^"]*"[^>]*data-stage="(\w+)"', html)
-    assert keys == ["new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up"]  # no Became lead / Closed lanes
-    assert f'id="company-{cid_b}"' in _col(html, "follow_up_1")
+    assert keys == ["new", "contacted", "follow_up", "final_follow_up"]  # no Became lead / Closed lanes
+    assert f'id="company-{cid_b}"' in _col(html, "follow_up")
     for cid in (cid_a, cid_lead, cid_client, cid_closed):  # New inbound -> Enquiries; lead, client, closed elsewhere
         assert f'id="company-{cid}"' not in html
     assert 'id="closed-lane"' not in html and "Companies → Archived" in html
@@ -131,14 +132,14 @@ def test_leads_tab_columns_and_clients_list(web: TestClient) -> None:
     _, _, cid_prospect = _company("Still Prospect", "P4")
     web.post(f"/companies/{cid_m}/mark-lead")
     web.post(f"/companies/{cid_p}/mark-lead")
-    web.post(f"/companies/{cid_p}/status", data={"sub_status": "proposal_sent"})
+    web.post(f"/companies/{cid_p}/status", data={"sub_status": "engaged"})
     web.post(f"/companies/{cid_w}/mark-lead")
     assert web.post(f"/pipeline/enquiries/{eid_w}/status", data={"status": "won"}, follow_redirects=False).status_code == 303
     web.post(f"/companies/{cid_w}/suggestion", data={"decision": "accept"})  # q25: Won only suggests Client; a person confirms
     html = web.get("/pipeline?tab=leads").text
     keys = re.findall(r'<section class="board__col[^"]*"[^>]*data-stage="(\w+)"', html)
-    assert keys == ["meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold"]
-    assert f'id="company-{cid_m}"' in _col(html, "meeting_scheduled") and f'id="company-{cid_p}"' in _col(html, "proposal_sent")
+    assert keys == ["qualified", "engaged", "on_hold"]  # SMA-17
+    assert f'id="company-{cid_m}"' in _col(html, "qualified") and f'id="company-{cid_p}"' in _col(html, "engaged")
     assert f'id="company-{cid_w}"' not in html and f'id="company-{cid_prospect}"' not in html  # won -> Clients only
     assert _count(html, "leads") == 2 and _count(html, "clients") == 1 and _count(html, "enquiries") == 1
     clients = web.get("/pipeline?tab=clients").text
@@ -176,13 +177,19 @@ def test_enquiries_board_holds_uncontacted_inbound_with_one_status_control(web: 
     assert opts[0] == opts[1] == list(deals_service.SETTABLE)
     assert "(auto)" not in card and "disabled" not in card and ">Open<" in card and 'draggable="true"' in card
     # q25: an enquiry status never moves the company; a person moves it (here: the board move), then it leaves this board
-    r = web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "follow_up_1", "next": "/pipeline?tab=enquiries"}, follow_redirects=False)
+    r = web.post(f"/pipeline/enquiries/{eid}/status", data={"status": "follow_up", "next": "/pipeline?tab=enquiries"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/pipeline?tab=enquiries"
     with session_scope() as db:
-        assert db.scalar(select(Prospect.stage)) == "new" and db.scalar(select(Enquiry.deal_status).where(Enquiry.id == eid)) == "follow_up_1"
+        assert db.scalar(select(Prospect.stage)) == "new" and db.scalar(select(Enquiry.deal_status).where(Enquiry.id == eid)) == "follow_up"
     assert f'id="enquiry-{eid}"' in web.get("/pipeline").text
-    web.post("/pipeline/move", headers=HX, data={"company_id": str(cid), "target": "prospect:follow_up_1", "next": "/pipeline"})
-    assert f'id="company-{cid}"' in _col(web.get("/pipeline?tab=prospects").text, "follow_up_1")
+    # SMA-33: moving the company along keeps it on this board (its enquiries follow it forward) ...
+    web.post("/pipeline/move", headers=HX, data={"company_id": str(cid), "target": "prospect:final_follow_up", "next": "/pipeline"})
+    board = web.get("/pipeline").text
+    assert f'id="enquiry-{eid}"' in _col(board, "final_follow_up") and f'id="enquiry-{other}"' in _col(board, "final_follow_up")
+    assert f'id="company-{cid}"' not in web.get("/pipeline?tab=prospects").text
+    assert 'data-drop-target="prospect:follow_up"' in board and 'data-drop-target="lead:qualified"' in board
+    # ... a lead leaves it for the Leads board
+    web.post("/pipeline/move", headers=HX, data={"company_id": str(cid), "target": "lead:qualified", "next": "/pipeline"})
     assert f'id="enquiry-{eid}"' not in web.get("/pipeline").text and f'id="enquiry-{other}"' not in web.get("/pipeline").text
 
 

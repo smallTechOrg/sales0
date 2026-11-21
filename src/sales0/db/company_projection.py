@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import event, insert, select, update
+from sqlalchemy import case, event, exists, insert, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,7 @@ from sales0.db.models.enums_crm import COMPANY_ONLY_OFF_RAMPS, PROSPECT_STAGES
 
 _PROSPECT_RANK = {s: i for i, s in enumerate(PROSPECT_STAGES)}
 # the open lead furthest along wins; On hold ranks lowest (any active lead beats a parked one)
-_LEAD_RANK = {"on_hold": -1, "meeting_scheduled": 0, "assessment": 1, "proposal_sent": 2, "interviews": 3}
+_LEAD_RANK = {"on_hold": -1, "qualified": 0, "engaged": 1}
 STAGE_NAMES = {"prospect": "Prospect", "lead": "Lead", "client": "Customer"}
 # the closed_reason values that mean "they said no"; anything else (no response, sheet "Hold"...) means dormant
 NOT_INTERESTED_REASONS = frozenset({"not_interested", "lost", "enquiry_discarded"})
@@ -86,7 +86,7 @@ def derive(rows: Rows) -> Lifecycle | None:
                              p["stage"], p["stage_source"], p["closed_reason"]))
     for x in rows.leads:
         if x["closed_at"] is not None and x["stage"] in ("lost", "no_response"):
-            sub = "proposal_sent" if x.get("proposal_sent_on") else "meeting_scheduled"
+            sub = "engaged" if x.get("proposal_sent_on") else "qualified"
             closures.append((x["closed_at"], "not_interested" if x["stage"] == "lost" else "dormant", "lead", sub,
                              x["stage_source"], x["stage"]))
     if closures:
@@ -158,6 +158,10 @@ def recompute(conn: Connection, company_ids: set[int], *, actor: str = "system",
                     actor=actor[:80], actor_member_id=actor_member_id, occurred_at=now, created_at=now,
                 ))
                 changed += 1
+        if life is not None and life.stage is not None:  # SMA-33: a company entering the pipeline gets its path once
+            via_enquiry = exists().where(et.c.company_id == cid, et.c.review_status != "discarded")
+            conn.execute(update(ct).where(ct.c.id == cid, ct.c.pipeline_path.is_(None))
+                         .values(pipeline_path=case((via_enquiry, "enquiry"), else_="outreach")))
         conn.execute(  # accepted but not yet given a status: open
             update(et).where(et.c.company_id == cid, et.c.review_status == "accepted", et.c.deal_status.is_(None))
             .values(deal_status="open")
