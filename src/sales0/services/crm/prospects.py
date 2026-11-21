@@ -64,6 +64,8 @@ def linked_enquiry_view(e: Enquiry) -> LinkedEnquiryView:
         prospect_id=e.prospect_id, author_name=e.author_name, author_profile_url=e.author_profile_url,
         link_kind=link_kind_of(e.source_url), deal_status=e.deal_status,
         deal_label=DEAL_LABELS.get(e.deal_status or "") if e.deal_status else None, deal_source=e.deal_status_source,
+        contact_person=e.contact_person, email=e.email, phone=e.phone, city=e.city, notes=e.notes, date_posted=e.date_posted,
+        triage_status=e.triage_status,
     )
 
 

@@ -185,6 +185,14 @@ class LinkedEnquiryView(_View):
     deal_status: str | None = None
     deal_label: str | None = None
     deal_source: str | None = None
+    # SMA-40: the editable details
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    city: str | None = None
+    notes: str | None = None
+    date_posted: date | None = None
+    triage_status: str | None = None
 
 
 class LinkedMessageView(_View):

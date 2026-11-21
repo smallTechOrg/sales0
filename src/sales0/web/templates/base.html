@@ -53,6 +53,12 @@
       <p class="banner__text"><strong>{{ shell.ai.label }}: {{ shell.ai.reason }}.</strong> {{ shell.ai.fix }}
         AI reading, research and drafting are paused; everything else works and forms can be filled in by hand.
         <a href="/health">Health</a></p>
+      {% if shell.ai_missed %}<ul class="banner__list" id="ai-missed">{% for m in shell.ai_missed %}<li>Not done: <a href="{{ m.href }}">{{ m.text }}</a></li>{% endfor %}</ul>{% endif %}
+    </div>
+  {% elif shell and shell.ai_missed %}
+    <div class="banner banner--warn" id="ai-missed-banner" role="status">
+      <p class="banner__text"><strong>Not done while the AI was unavailable:</strong>
+        {% for m in shell.ai_missed %}<a href="{{ m.href }}">{{ m.text }}</a>{% if not loop.last %}; {% endif %}{% endfor %}.</p>
     </div>
   {% endif %}
   {% if shell and shell.spend_cap and shell.spend_cap.message %}

@@ -193,6 +193,7 @@ a:hover { color: var(--color-primary-hover); }
   max-width: none;
 }
 .banner__text { flex: 1 1 20rem; }
+.banner__list { flex: 1 1 100%; margin: 0; padding-left: 1.25rem; }
 .banner-slot { padding: 0 var(--space-4); }
 .banner-slot:empty { display: none; }
 

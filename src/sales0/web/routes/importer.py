@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sales0.db.engine import get_db
 from sales0.db.models import TeamMember
 from sales0.errors import DomainError
-from sales0.llm import LLMAuthError, LLMClient, LLMError, LLMModelNotFound, get_llm_client
+from sales0.llm import LLMAuthError, LLMClient, LLMError, LLMModelNotFound
 from sales0.services import inbox as inbox_service
 from sales0.services import importer
 from sales0.services.importer import ImportBatchView
@@ -48,8 +48,11 @@ MAX_PASTE_CHARS = 20_000
 
 
 def get_llm() -> LLMClient:
-    """The LLM client for the paste route (same seam as triage / outreach; override in tests)."""
-    return get_llm_client()
+    """The LLM client for the paste route (same seam as triage / outreach; override in tests). With no API key the
+    pasted enquiry is still saved: the client stands in and the triage records the failure."""
+    from sales0.llm import client_or_unavailable
+
+    return client_or_unavailable()
 
 
 def batch_view(batch: ImportBatchView) -> dict[str, Any]:
@@ -227,10 +230,18 @@ def add_enquiry(
             db.flush()
             db.refresh(e)
             name = e.company or e.requirement_summary or "The enquiry"
-            message = f"Enquiry added and accepted: {name}." + ("" if e.triage_status == "done" else " (AI reading failed - fill in the details by hand.)")
-            url = f"/companies/{e.company_id}" if e.company_id else back
+            if e.triage_status == "done":
+                message = f"Enquiry added and accepted: {name}."
+                url = f"/companies/{e.company_id}" if e.company_id else back
+            else:  # SMA-39: say what did not happen, and open the form to do it by hand
+                message = ("Enquiry saved and accepted, but the AI could not read it (it is unavailable right now), so the summary, "
+                           "company and contact are not filled in. Fill them in below.")
+                url = f"/companies/{e.company_id}#enquiry-edit-{e.id}" if e.company_id else back
         else:
             message, url = "Enquiry added - review it in the Inbox (To review).", back
+            if e.triage_status == "failed":
+                message = ("Enquiry saved, but the AI could not read it (it is unavailable right now) - open it in the Inbox and "
+                           "fill in the details, or press Retry triage later.")
         if wants_json(request):
             return envelope_ok({"enquiry_id": e.id, "outcome": result.outcome, "company_id": e.company_id}, 200 if result.outcome == "duplicate" else 201)
         return crm_done(request, url, message)

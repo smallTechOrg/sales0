@@ -167,7 +167,8 @@ def test_enquiries_board_holds_uncontacted_inbound_with_one_status_control(web: 
         prospects.ensure_for_enquiry(db, other)
     html = web.get("/pipeline").text
     keys = re.findall(r'<section class="board__col"[^>]*data-status="(\w+)"', html)
-    assert keys == ["open"]  # only the statuses that hold cards (all inbound here is still Open)
+    # SMA-31: every status is a column (the parked ones in the collapsed lane), even when empty
+    assert keys == [k for k in deals_service.BOARD_ORDER if k not in ("lost", "no_response", "on_hold")] + ["lost", "no_response", "on_hold"]
     assert 'id="enquiry-' + str(eid) + '"' in _col(html, "open") and 'id="move-strip"' in html
     card = re.search(rf'<article class="pcard" id="enquiry-{eid}".*?</article>', html, re.S).group(0)  # type: ignore[union-attr]
     other_card = re.search(rf'<article class="pcard" id="enquiry-{other}".*?</article>', html, re.S).group(0)  # type: ignore[union-attr]

@@ -348,3 +348,55 @@ def enquiry_status(
         return crm_done(request, back, msg)
 
     return crm_guard(request, back, run, db)
+
+
+def _safe_enquiry_next(value: str) -> str:
+    """A same-site /companies, /pipeline or /inbox path (open-redirect safe), else ''."""
+    nxt = (value or "").strip()
+    return nxt if nxt.startswith(("/companies/", "/pipeline", "/inbox")) and not nxt.startswith("//") and "\\" not in nxt else ""
+
+
+@router.post("/enquiries/{enquiry_id}/edit", response_model=None)
+def enquiry_edit(
+    request: Request, enquiry_id: PathId, requirement_summary: str = Form(""), company: str = Form(""),
+    contact_person: str = Form(""), email: str = Form(""), phone: str = Form(""), city: str = Form(""),
+    author_name: str = Form(""), source_url: str = Form(""), author_profile_url: str = Form(""), notes: str = Form(""),
+    date_posted: str = Form(""), next: str = Form(""),  # noqa: A002
+    db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
+) -> Response:
+    """SMA-40: edit an enquiry's details by hand (every field of the form is saved as given; empty clears it)."""
+    from sales0.db.models import Enquiry
+    from sales0.services.crm import enquiry_edit
+
+    e = db.get(Enquiry, enquiry_id)
+    cid = e.company_id if e else None
+    safe = _safe_enquiry_next(next)
+    back = safe or (f"/companies/{cid}#enquiry-{enquiry_id}" if cid else "/inbox")
+
+    def run() -> Response:
+        fields = {"requirement_summary": requirement_summary, "company": company, "contact_person": contact_person, "email": email,
+                  "phone": phone, "city": city, "author_name": author_name, "source_url": source_url,
+                  "author_profile_url": author_profile_url, "notes": notes}
+        row = enquiry_edit.edit(db, enquiry_id, fields=fields, date_posted=parse_date(date_posted, label="date posted"),
+                                clear_date=not date_posted.strip(), actor=actor_of(member))
+        if wants_json(request):
+            return envelope_ok({"id": row.id, "company_id": row.company_id})
+        return crm_done(request, back if not (row.company_id and back.startswith("/companies/") and cid != row.company_id)
+                        else f"/companies/{row.company_id}#enquiry-{row.id}", "Enquiry saved.")
+
+    return crm_guard(request, back, run, db)
+
+
+@router.get("/enquiries/{enquiry_id}/edit-form", response_class=HTMLResponse)
+def enquiry_edit_form(request: Request, enquiry_id: PathId, next: str = "", db: Session = Depends(get_db)) -> HTMLResponse:  # noqa: A002
+    """The edit form (SMA-40): a fragment for the Inbox's lazy "Edit details", a page for a plain link."""
+    from sales0.db.models import Enquiry
+    from sales0.web.context import render_fragment, render_page
+
+    e = db.get(Enquiry, enquiry_id)
+    if e is None:
+        raise not_found()
+    safe = _safe_enquiry_next(next)
+    if is_htmx(request):
+        return render_fragment(request, "pipeline/_enquiry_edit_fragment.html", {"e": e, "next": safe})
+    return render_page(request, db, "pipeline/enquiry_edit_page.html", {"e": e, "next": safe})

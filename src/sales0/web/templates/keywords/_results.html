@@ -1,38 +1,4 @@
-{# Needs: params, groups, shown, total, tier_counts, tier_labels, tiers, offerings, views, sorts; oob optional. #}
-{% set back = "q=" ~ (params.q|urlencode) ~ "&view=" ~ params.view ~ "&sort=" ~ params.sort ~ "&tier=" ~ params.tier ~ "&status=" ~ params.status ~ "&offering=" ~ params.offering %}
-<div id="keyword-results"{% if oob %} hx-swap-oob="outerHTML:#keyword-results"{% endif %}>
-  <form class="filters" id="kw-filters" method="get" action="/keywords" role="search"
-        hx-get="/keywords" hx-target="#keyword-results" hx-swap="outerHTML" hx-push-url="true" hx-trigger="change, input changed delay:300ms from:#kw-q, submit">
-    <div class="field field--grow"><label class="field__label" for="kw-q">Search</label>
-      <input class="input" id="kw-q" type="search" name="q" value="{{ params.q }}" placeholder="Find a keyword…" autocomplete="off"></div>
-    <div class="field"><label class="field__label" for="kw-view">Organise by</label>
-      <select class="input" id="kw-view" name="view">{% for v, label in (("offering", "Offering"), ("tier", "Performance tier"), ("outcome", "Enquiry outcome"), ("table", "One table")) %}<option value="{{ v }}"{% if params.view == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-    <div class="field"><label class="field__label" for="kw-sort">Sort</label>
-      <select class="input" id="kw-sort" name="sort">{% for v, label in (("tier", "Tier"), ("relevant", "Most relevant"), ("rate", "Relevant %"), ("accepted", "Most accepted"), ("won", "Most won / leads"), ("scanned", "Most scanned"), ("recent", "Newest"), ("text", "A-Z")) %}<option value="{{ v }}"{% if params.sort == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-    <div class="field"><label class="field__label" for="kw-tier">Tier</label>
-      <select class="input" id="kw-tier" name="tier"><option value="">Any</option>{% for t in tiers %}<option value="{{ t }}"{% if params.tier == t %} selected{% endif %}>{{ tier_labels[t] }} ({{ tier_counts[t] }})</option>{% endfor %}</select></div>
-    <div class="field"><label class="field__label" for="kw-status">Status</label>
-      <select class="input" id="kw-status" name="status"><option value="">Any</option><option value="active"{% if params.status == "active" %} selected{% endif %}>Active</option><option value="paused"{% if params.status == "paused" %} selected{% endif %}>Paused</option></select></div>
-    <div class="field"><label class="field__label" for="kw-offering">Offering</label>
-      <select class="input" id="kw-offering" name="offering"><option value="">Any</option><option value="none"{% if params.offering == "none" %} selected{% endif %}>No offering</option>
-        {% for o in offerings %}<option value="{{ o.id }}"{% if params.offering == o.id|string %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select></div>
-    <noscript><button class="btn" type="submit">Apply</button></noscript>
-  </form>
-  <datalist id="offering-group-names">{% for n in group_names %}<option value="{{ n }}"></option>{% endfor %}</datalist>
-  <p class="muted" id="kw-counts">Showing {{ shown }} of {{ total }} · {% for t in tiers %}{{ tier_labels[t] }} <span class="mono">{{ tier_counts[t] }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
-
-  <form id="kw-bulk-form" class="row" method="post" action="/keywords/bulk" hx-post="/keywords/bulk" hx-swap="none" hx-disabled-elt="find button">
-    <input type="hidden" name="back" value="{{ back }}">
-      <label class="enquiry__select"><input type="checkbox" data-select-all=".kw-pick" aria-label="Tick every keyword shown"> All shown</label>
-      <button class="btn btn--sm" type="submit" name="action" value="activate">Activate</button>
-      <button class="btn btn--sm" type="submit" name="action" value="pause">Pause</button>
-      <select class="select" name="move_to" aria-label="Offering to move the ticked keywords to"><option value="">No offering</option>
-        {% for o in offerings %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
-      <button class="btn btn--sm" type="submit" name="action" value="move">Move</button>
-      <button class="btn btn--sm btn--danger" type="button" hx-post="/keywords/bulk" hx-include="#kw-bulk-form" hx-vals='{"action": "delete"}'
-              hx-swap="none" hx-confirm="Remove the ticked keywords? Their run history is kept.">Remove</button>
-  </form>
-    {% for group in groups %}
+{% macro kw_group(group) %}
       <section class="card keyword-tier" data-group="{{ group.key }}" aria-label="{{ group.label }}">
         <div class="card__header"><h2>{{ group.label }} <span class="muted">({{ group.keywords|length }} keyword{{ "" if group.keywords|length == 1 else "s" }})</span></h2>
           {% if group.offering %}{% set o = group.offering %}<span class="chip">{{ o.group.name }}</span>
@@ -107,7 +73,53 @@
           {% endif %}
         </div>
       </section>
+{% endmacro %}
+{# Needs: params, groups, shown, total, tier_counts, tier_labels, tiers, offerings, views, sorts; oob optional. #}
+{% set back = "q=" ~ (params.q|urlencode) ~ "&view=" ~ params.view ~ "&sort=" ~ params.sort ~ "&tier=" ~ params.tier ~ "&status=" ~ params.status ~ "&offering=" ~ params.offering %}
+<div id="keyword-results"{% if oob %} hx-swap-oob="outerHTML:#keyword-results"{% endif %}>
+  <form class="filters" id="kw-filters" method="get" action="/keywords" role="search"
+        hx-get="/keywords" hx-target="#keyword-results" hx-swap="outerHTML" hx-push-url="true" hx-trigger="change, input changed delay:300ms from:#kw-q, submit">
+    <div class="field field--grow"><label class="field__label" for="kw-q">Search</label>
+      <input class="input" id="kw-q" type="search" name="q" value="{{ params.q }}" placeholder="Find a keyword…" autocomplete="off"></div>
+    <div class="field"><label class="field__label" for="kw-view">Organise by</label>
+      <select class="input" id="kw-view" name="view">{% for v, label in (("offering", "Offering"), ("tier", "Performance tier"), ("outcome", "Enquiry outcome"), ("table", "One table")) %}<option value="{{ v }}"{% if params.view == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="field__label" for="kw-sort">Sort</label>
+      <select class="input" id="kw-sort" name="sort">{% for v, label in (("tier", "Tier"), ("relevant", "Most relevant"), ("rate", "Relevant %"), ("accepted", "Most accepted"), ("won", "Most won / leads"), ("scanned", "Most scanned"), ("recent", "Newest"), ("text", "A-Z")) %}<option value="{{ v }}"{% if params.sort == v %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="field__label" for="kw-tier">Tier</label>
+      <select class="input" id="kw-tier" name="tier"><option value="">Any</option>{% for t in tiers %}<option value="{{ t }}"{% if params.tier == t %} selected{% endif %}>{{ tier_labels[t] }} ({{ tier_counts[t] }})</option>{% endfor %}</select></div>
+    <div class="field"><label class="field__label" for="kw-status">Status</label>
+      <select class="input" id="kw-status" name="status"><option value="">Any</option><option value="active"{% if params.status == "active" %} selected{% endif %}>Active</option><option value="paused"{% if params.status == "paused" %} selected{% endif %}>Paused</option></select></div>
+    <div class="field"><label class="field__label" for="kw-offering">Offering</label>
+      <select class="input" id="kw-offering" name="offering"><option value="">Any</option><option value="none"{% if params.offering == "none" %} selected{% endif %}>No offering</option>
+        {% for o in offerings %}<option value="{{ o.id }}"{% if params.offering == o.id|string %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select></div>
+    <noscript><button class="btn" type="submit">Apply</button></noscript>
+  </form>
+  <datalist id="offering-group-names">{% for n in group_names %}<option value="{{ n }}"></option>{% endfor %}</datalist>
+  <p class="muted" id="kw-counts">Showing {{ shown }} of {{ total }} · {% for t in tiers %}{{ tier_labels[t] }} <span class="mono">{{ tier_counts[t] }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+
+  <form id="kw-bulk-form" class="row" method="post" action="/keywords/bulk" hx-post="/keywords/bulk" hx-swap="none" hx-disabled-elt="find button">
+    <input type="hidden" name="back" value="{{ back }}">
+      <label class="enquiry__select"><input type="checkbox" data-select-all=".kw-pick" aria-label="Tick every keyword shown"> All shown</label>
+      <button class="btn btn--sm" type="submit" name="action" value="activate">Activate</button>
+      <button class="btn btn--sm" type="submit" name="action" value="pause">Pause</button>
+      <select class="select" name="move_to" aria-label="Offering to move the ticked keywords to"><option value="">No offering</option>
+        {% for o in offerings %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
+      <button class="btn btn--sm" type="submit" name="action" value="move">Move</button>
+      <button class="btn btn--sm btn--danger" type="button" hx-post="/keywords/bulk" hx-include="#kw-bulk-form" hx-vals='{"action": "delete"}'
+              hx-swap="none" hx-confirm="Remove the ticked keywords? Their run history is kept.">Remove</button>
+  </form>
+    {% set off_groups = groups|selectattr("offering")|rejectattr("offering.active")|list %}
+    {% for group in groups if not (group.offering and not group.offering.active) %}
+{{ kw_group(group) }}
     {% else %}
-      <div class="empty-state" id="kw-empty"><p>{% if total %}No keywords match these filters.{% else %}No keywords yet. Add some above, or ask the AI for ideas.{% endif %}</p></div>
+      {% if not off_groups %}<div class="empty-state" id="kw-empty"><p>{% if total %}No keywords match these filters.{% else %}No keywords yet. Add some above, or ask the AI for ideas.{% endif %}</p></div>{% endif %}
     {% endfor %}
+    {% if off_groups %}
+    <details class="card keyword-inactive" id="kw-inactive-offerings">
+      <summary class="card__header"><h2>Switched-off offerings <span class="count-pill">{{ off_groups|length }}</span></h2> <span class="muted">not searched; open to see or switch them back on</span></summary>
+      <div class="card__body stack">
+      {% for group in off_groups %}{{ kw_group(group) }}{% endfor %}
+      </div>
+    </details>
+    {% endif %}
 </div>

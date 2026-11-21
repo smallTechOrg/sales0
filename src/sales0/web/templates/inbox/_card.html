@@ -120,6 +120,8 @@
     </details>
   </div>
 
+  {% if not pending %}{% from "pipeline/_enquiry_edit.html" import enquiry_edit_lazy %}
+  <div class="card__body">{{ enquiry_edit_lazy(card, "/inbox?tab=%s&q=%s" % (tab or "review", (q or "")|urlencode)) }}</div>{% endif %}
   <footer class="card__footer">
     {% if not pending %}
       <label class="enquiry__select">

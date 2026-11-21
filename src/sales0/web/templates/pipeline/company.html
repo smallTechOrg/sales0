@@ -72,6 +72,7 @@
           <div class="card__header"><h2 id="enq-title">Enquiries</h2><span class="muted">{{ co.enquiries|length }}</span></div>
           <div class="card__body">
             <p class="hint">Each enquiry is one specific requirement with its own status. Changing an enquiry's status never moves the company (use the … menu or the board); Meeting / Proposal / Won only suggest a move.</p>
+            {% from "pipeline/_enquiry_edit.html" import enquiry_edit_form %}
             {% for e in co.enquiries %}
               <div class="reply-item" id="enquiry-{{ e.id }}">
                 <strong>{{ e.requirement_summary or "(no summary)" }}</strong>
@@ -99,6 +100,7 @@
                   <button class="btn btn--sm" name="status" value="lost" type="submit">Lost</button>
                 </form>
                 {% endif %}
+                {{ enquiry_edit_form(e, "/companies/%d#enquiry-%d" % (life.company_id, e.id), open=(e.triage_status == "failed" and not e.requirement_summary)) }}
               </div>
             {% else %}<p class="muted">No enquiries yet. This company is here without one (for example from a sheet or a cold list).</p>{% endfor %}
           </div>

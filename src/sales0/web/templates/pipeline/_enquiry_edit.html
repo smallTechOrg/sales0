@@ -1,0 +1,50 @@
+{# SMA-40: edit an enquiry by hand. ``e`` has the fields of LinkedEnquiryView / an inbox card (missing ones show empty). #}
+{% macro edit_summary(e) %}{% if e.triage_status == "failed" %}The AI could not read this enquiry - fill in the details{% else %}Edit details{% endif %}{% endmacro %}
+
+{# The form inside a closed / open <details> (company page). #}
+{% macro enquiry_edit_form(e, next="", open=False) %}
+<details class="inline-edit enquiry-edit" id="enquiry-edit-{{ e.id }}"{% if open %} open{% endif %}>
+  <summary>{{ edit_summary(e) }}</summary>
+  {{ enquiry_edit_fields(e, next) }}
+</details>
+{% endmacro %}
+
+{# The inbox: the form is fetched when the <details> is opened (the list stays light). #}
+{% macro enquiry_edit_lazy(e, next="") %}
+<details class="inline-edit enquiry-edit" id="enquiry-edit-{{ e.id }}" hx-get="/enquiries/{{ e.id }}/edit-form?next={{ next|urlencode }}"
+         hx-trigger="toggle once" hx-target="find .enquiry-edit__body" hx-swap="innerHTML">
+  <summary>{{ edit_summary(e) }}</summary>
+  <div class="enquiry-edit__body"><a href="/enquiries/{{ e.id }}/edit-form?next={{ next|urlencode }}">Open the form</a></div>
+</details>
+{% endmacro %}
+
+{% macro enquiry_edit_fields(e, next="") %}
+  <form class="stack stack--tight" method="post" action="/enquiries/{{ e.id }}/edit">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="field"><label class="field__label" for="ee-summary-{{ e.id }}">Summary (what they need)</label>
+      <textarea class="input" id="ee-summary-{{ e.id }}" name="requirement_summary" rows="2" maxlength="1000">{{ e.requirement_summary or "" }}</textarea></div>
+    <div class="grid-2">
+      <div class="field"><label class="field__label" for="ee-company-{{ e.id }}">Company</label>
+        <input class="input" id="ee-company-{{ e.id }}" name="company" maxlength="200" value="{{ e.company or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-city-{{ e.id }}">City</label>
+        <input class="input" id="ee-city-{{ e.id }}" name="city" maxlength="100" value="{{ e.city or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-contact-{{ e.id }}">Contact person</label>
+        <input class="input" id="ee-contact-{{ e.id }}" name="contact_person" maxlength="200" value="{{ e.contact_person or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-email-{{ e.id }}">Email</label>
+        <input class="input" id="ee-email-{{ e.id }}" type="email" name="email" maxlength="254" value="{{ e.email or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-phone-{{ e.id }}">Phone</label>
+        <input class="input" id="ee-phone-{{ e.id }}" name="phone" maxlength="50" value="{{ e.phone or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-date-{{ e.id }}">Date posted</label>
+        <input class="input input--date" id="ee-date-{{ e.id }}" type="date" name="date_posted" value="{{ e.date_posted.isoformat() if e.date_posted else '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-link-{{ e.id }}">Link to the post</label>
+        <input class="input" id="ee-link-{{ e.id }}" type="url" name="source_url" maxlength="1000" placeholder="https://www.linkedin.com/posts/…" value="{{ e.source_url or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-author-{{ e.id }}">Posted by</label>
+        <input class="input" id="ee-author-{{ e.id }}" name="author_name" maxlength="200" value="{{ e.author_name or '' }}"></div>
+      <div class="field"><label class="field__label" for="ee-profile-{{ e.id }}">Their profile link</label>
+        <input class="input" id="ee-profile-{{ e.id }}" type="url" name="author_profile_url" maxlength="1000" placeholder="https://www.linkedin.com/in/…" value="{{ e.author_profile_url or '' }}"></div>
+    </div>
+    <div class="field"><label class="field__label" for="ee-notes-{{ e.id }}">Notes</label>
+      <textarea class="input" id="ee-notes-{{ e.id }}" name="notes" rows="2" maxlength="4000">{{ e.notes or "" }}</textarea></div>
+    <div><button class="btn btn--primary btn--sm" type="submit" id="btn-enquiry-edit-{{ e.id }}">Save enquiry</button></div>
+  </form>
+{% endmacro %}

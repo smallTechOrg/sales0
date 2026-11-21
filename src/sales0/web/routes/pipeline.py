@@ -45,7 +45,7 @@ from sales0.services.crm import priority as priority_service
 from sales0.services.crm import prospects as prospects_service
 from sales0.services.crm import timeline as timeline_service
 from sales0.services.crm.stages import LEAD_STAGES, PROSPECT_STAGES, STAGE_LABELS
-from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound, get_llm_client
+from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound
 from sales0.services import followup_drafts as followup_drafts_service
 from sales0.services.research import auto as research_auto
 from sales0.web.acting import clear_flash, get_acting_member, get_acting_member_optional, pop_flash
@@ -113,18 +113,11 @@ def _safe_next(value: str | None) -> str | None:
 
 
 def get_llm() -> LLMClient:
-    """LLM seam for the follow-up drafts (``sales0.llm.set_llm_client`` in tests)."""
-    return get_llm_client()
+    """LLM seam for the follow-up drafts / notes (``sales0.llm.set_llm_client`` in tests). With no API key a stand-in
+    whose calls raise the auth error, so a route that only might use the AI (a follow-up note) still works."""
+    from sales0.llm import client_or_unavailable
 
-
-def get_llm_optional() -> LLMClient | None:
-    """Like ``get_llm`` but None when no client can be built (no API key): the follow-up form must still save."""
-    from sales0.llm import LLMError
-
-    try:
-        return get_llm()
-    except LLMError:
-        return None
+    return client_or_unavailable()
 
 
 def _safe_back(value: str | None, default: str) -> str:
@@ -778,7 +771,7 @@ def prospect_log_contact(
 def add_followup_note(
     request: Request, prospect_id: PathId, text: str = Form(""), how: str = Form(""), happened_on: str = Form(""),
     contact_id: str = Form(""), remind_on: str = Form(""), remind_note: str = Form(""), db: Session = Depends(get_db),
-    member: TeamMember | None = Depends(get_acting_member_optional), llm: LLMClient | None = Depends(get_llm_optional),
+    member: TeamMember | None = Depends(get_acting_member_optional), llm: LLMClient = Depends(get_llm),
 ) -> Response:
     """The follow-up form. With How picked the form's fields are saved as given (no AI); with How left blank one AI
     call structures the text (How / Date / Contact / Notes, + a reminder if it asks for one). Any AI failure still
