@@ -113,7 +113,12 @@ def test_accepting_enquiries_of_one_company_puts_one_company_on_the_board(web: T
         cids = set(db.scalars(select(Enquiry.company_id)))
     assert len(cids) == 1  # one company, two enquiries
     cid = cids.pop()
+    # SMA-33: contacting an enquiry company keeps it on the Enquiries board (both enquiries follow to Contacted) ...
     _post(web, "/pipeline/move", {"company_id": str(cid), "target": "prospect:contacted", "next": "/pipeline"}, hx=True)
+    assert 'id="company-' not in web.get("/pipeline?tab=prospects").text.split('id="pipeline-body"', 1)[1]
+    assert web.get("/pipeline").text.count('data-status="contacted"') >= 3  # the column + both cards
+    # ... and putting it at Prospect: New makes it an outreach company: one card on the Prospects board
+    _post(web, "/pipeline/move", {"company_id": str(cid), "target": "prospect:new", "next": "/pipeline"}, hx=True)
     html = web.get("/pipeline?tab=prospects").text
     cards = re.findall(r'<article class="pcard" id="company-(\d+)" data-stage="prospect"', html)
     assert cards == [str(cid)] and "2 enquiries" in html and 'class="count-pill"' in html
@@ -216,13 +221,13 @@ def test_status_move_to_contacted_schedules_three_followups_and_updates_the_comp
         detail = prospects.get_prospect(db, pid)
         assert detail.stage == "contacted" and len(detail.follow_ups) == 3
     # the company-level control does the same through the lifecycle service
-    plain = _post(web, f"/companies/{cid}/status", {"sub_status": "follow_up_1"})
+    plain = _post(web, f"/companies/{cid}/status", {"sub_status": "follow_up"})
     assert plain.status_code == 303 and plain.headers["location"] == f"/companies/{cid}"
     page = web.get(f"/companies/{cid}").text
     assert len(re.findall(r'id="fu-\d+"', page)) == 3 and "Follow-up 1" in page and "Final follow-up" in page
-    assert re.search(r'<option value="follow_up_1" selected>', page)
+    assert re.search(r'<option value="follow_up" selected>', page)
     # the prospect's moves (Contacted, then Follow-up 1) carry its open enquiry along
-    assert 'data-deal-status="follow_up_1"' in page
+    assert 'data-deal-status="follow_up"' in page
 
 
 def test_invalid_stage_is_an_error_toast_or_flash(web: TestClient) -> None:
@@ -285,7 +290,7 @@ def test_mark_as_lead_needs_no_preconditions_then_client_and_reopen(web: TestCli
     assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
     assert f'id="company-{cid}"' not in web.get("/pipeline?tab=prospects").text  # only ever on one board
     # lead status, then Won on the enquiry makes the company a client
-    _post(web, f"/companies/{cid}/status", {"sub_status": "proposal_sent", "proposal_sent_on": _today().isoformat()})
+    _post(web, f"/companies/{cid}/status", {"sub_status": "engaged", "proposal_sent_on": _today().isoformat()})
     with session_scope() as db:
         eid = db.scalar(select(Enquiry.id).where(Enquiry.company_id == cid))
     won = _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "won"})
@@ -335,13 +340,13 @@ def test_suggestion_is_a_hint_a_person_accepts_or_dismisses(web: TestClient) -> 
     assert f'id="enquiry-{eid}"' in web.get("/pipeline?tab=enquiries").text  # still New: on the Enquiries board
     _post(web, f"/companies/{cid}/suggestion", {"decision": "dismiss"})
     assert 'id="lead-suggestion"' not in web.get(f"/companies/{cid}").text
-    _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "proposal_sent"})
+    _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "engaged"})
     _post(web, f"/companies/{cid}/suggestion", {"decision": "accept"})
     assert re.search(r'id="company-\d+" data-stage="lead"', web.get("/pipeline?tab=leads").text)
     # on a lead the enquiry status just changes: no error, the company stays a lead
-    ok = _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "follow_up_1"})
+    ok = _post(web, f"/pipeline/enquiries/{eid}/status", {"status": "follow_up"})
     page = web.get(f"/companies/{cid}").text
-    assert ok.status_code == 303 and "flash--error" not in page and 'data-deal-status="follow_up_1"' in page
+    assert ok.status_code == 303 and "flash--error" not in page and 'data-deal-status="follow_up"' in page
 
 
 def test_do_not_contact_blocks_drafting_and_only_an_admin_reopens(web: TestClient) -> None:
@@ -416,7 +421,7 @@ def test_flag_tracked_and_close_reopen(web: TestClient) -> None:
     assert "Prospect reopened." in _post(web, f"/pipeline/prospects/{pid}/reopen", hx=True).text
     assert 'data-stage="prospect"' in web.get("/pipeline?tab=prospects").text
     _post(web, f"/pipeline/prospects/{pid}/close", {"reason": "lost"}, hx=True)
-    assert "toast--error" in _post(web, f"/pipeline/prospects/{pid}/stage", {"stage": "follow_up_1"}, hx=True).text
+    assert "toast--error" in _post(web, f"/pipeline/prospects/{pid}/stage", {"stage": "follow_up"}, hx=True).text
 
 
 def test_edit_company_details(web: TestClient) -> None:
@@ -469,8 +474,8 @@ def test_search_and_filters_return_a_fragment_for_htmx_and_a_page_otherwise(web:
     a = _company_of(_prospect("P1", company="Acme Logistics"))
     b = _company_of(_prospect("P8", company="Globex Insurance", email="x@globex.example", contact_person="Gina Globex"))
     assert a != b
-    for cid in (a, b):  # q24: New inbound companies are on the Enquiries board; move them into the cadence
-        _post(web, "/pipeline/move", {"company_id": str(cid), "target": "prospect:contacted", "next": "/pipeline"}, hx=True)
+    for cid in (a, b):  # SMA-33: inbound companies are on the Enquiries board; Prospect: New makes them outreach companies
+        _post(web, "/pipeline/move", {"company_id": str(cid), "target": "prospect:new", "next": "/pipeline"}, hx=True)
     frag = web.get("/pipeline?tab=prospects&q=Globex", headers=HX)
     assert frag.status_code == 200 and "<html" not in frag.text and 'id="pipeline-body"' in frag.text
     assert f'id="company-{b}"' in frag.text and f'id="company-{a}"' not in frag.text

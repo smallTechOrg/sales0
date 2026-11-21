@@ -15,17 +15,19 @@ from sales0.services.crm.timeline import KIND_LABELS
 
 
 def test_stage_tuples_and_labels_follow_the_lifecycle() -> None:
-    assert stages.PROSPECT_STAGES == ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
-    assert stages.LEAD_STAGES == ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold", "won", "lost",
-                                  "no_response")
-    assert stages.STAGE_LABELS["follow_up_1"] == "Follow-up 1" and stages.STAGE_LABELS["meeting_scheduled"] == "Meeting scheduled"
+    # SMA-17
+    assert stages.PROSPECT_STAGES == ("new", "contacted", "follow_up", "final_follow_up")
+    assert stages.LEAD_STAGES == ("qualified", "engaged", "on_hold", "won", "lost", "no_response")
+    assert stages.STAGE_LABELS["follow_up"] == "Follow-up" and stages.STAGE_LABELS["qualified"] == "Qualified"
+    assert stages.stage_label("meeting_scheduled") == "Meeting scheduled"  # retired names still read in old history
+    assert stages.stage_rank("follow_up_2") == stages.stage_rank("follow_up")
     assert set(stages.STAGE_LABELS) == set(stages.PROSPECT_STAGES) | set(stages.LEAD_STAGES)
     assert stages.stage_label("final_follow_up") == "Final follow-up" and stages.stage_label("odd_thing") == "Odd thing"
 
 
 def test_ranks_are_ordered_and_distinct() -> None:
     ranks = [stages.stage_rank(s) for s in (*stages.PROSPECT_STAGES, *stages.LEAD_STAGES)]
-    assert ranks == sorted(ranks) and len(set(ranks)) == 13
+    assert ranks == sorted(ranks) and len(set(ranks)) == 10
     assert stages.stage_rank("contacted") > stages.stage_rank("new")
     with pytest.raises(ValueError):
         stages.stage_rank("nope")

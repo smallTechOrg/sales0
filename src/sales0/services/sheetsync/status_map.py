@@ -91,13 +91,13 @@ def map_enquiry_status(
             return StatusOutcome(None, "converted", lead_stage="no_response", rule="3")
         return StatusOutcome(None, "closed", closed_reason="no_response", rule="3")
     if s in MEETING and not neg:
-        return StatusOutcome(None, "converted", lead_stage="meeting_scheduled", rule="4")
+        return StatusOutcome(None, "converted", lead_stage="engaged", rule="4")  # SMA-17: meeting / proposal -> Engaged
     if (s in PROPOSAL and not neg) or date_proposal_sent is not None:
-        return StatusOutcome(None, "converted", lead_stage="proposal_sent", rule="5")
+        return StatusOutcome(None, "converted", lead_stage="engaged", rule="5")
     if s in FOLLOW_1:
-        return StatusOutcome("follow_up_1", "open", rule="6")
+        return StatusOutcome("follow_up", "open", rule="6")
     if s in FOLLOW_2:
-        return StatusOutcome("follow_up_2", "open", rule="6b")
+        return StatusOutcome("follow_up", "open", rule="6b")
     if s in FOLLOW_FINAL:
         return StatusOutcome("final_follow_up", "open", rule="6c")
     # Deviation (documented in NOTES): an explicit "closed"-family word beats the date-only

@@ -1,7 +1,7 @@
 {# Needs: params, move_help. Drop zones for moves to ANOTHER board (and closing): drag a card here. #}
 {% set zones = {
-  "enquiries": [("prospect:contacted", "Contacted → Prospects"), ("lead:meeting_scheduled", "Meeting scheduled → Leads"), ("client", "Won → Customer"), ("closed:not_interested", "Close…")],
-  "prospects": [("lead:meeting_scheduled", "Meeting scheduled → Leads"), ("client", "Won → Customer"), ("closed:not_interested", "Close…")],
+  "enquiries": [("prospect:new", "Outreach → Prospects: New"), ("lead:qualified", "Qualified → Leads"), ("client", "Won → Customer"), ("closed:not_interested", "Close…")],
+  "prospects": [("lead:qualified", "Qualified → Leads"), ("client", "Won → Customer"), ("closed:not_interested", "Close…")],
   "leads": [("client", "Won → Customer"), ("closed:not_interested", "Lost / no response → Close…")],
 }[params.tab] %}
 <div class="move-strip" id="move-strip" aria-label="Move to another board">

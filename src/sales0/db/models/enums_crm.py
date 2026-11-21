@@ -7,13 +7,25 @@ table) and the services' validation.
 from __future__ import annotations
 
 PROSPECT_KINDS: tuple[str, ...] = ("company_enquiry", "outreach_person")
-PROSPECT_STAGES: tuple[str, ...] = ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up")
+# SMA-17: Follow-up 1 and Follow-up 2 are one "Follow-up" stage.
+PROSPECT_STAGES: tuple[str, ...] = ("new", "contacted", "follow_up", "final_follow_up")
 # q24: Assessment / Interviews / On hold added. Open stages in board order (Meeting scheduled, Assessment, Proposal sent,
 # Interviews, On hold), then the terminal ones (won -> client, lost / no_response -> closed).
-LEAD_STAGES: tuple[str, ...] = (
-    "meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold", "won", "lost", "no_response",
-)
-LEAD_OPEN_STAGES: tuple[str, ...] = ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold")
+# SMA-17: the lead board is Qualified (new lead) / Engaged / On hold; Won (-> customer) and Lost / No response (-> closed)
+# are final and not columns.
+LEAD_STAGES: tuple[str, ...] = ("qualified", "engaged", "on_hold", "won", "lost", "no_response")
+LEAD_OPEN_STAGES: tuple[str, ...] = ("qualified", "engaged", "on_hold")
+# SMA-17 (q27): the retired stage names and where they went. Old sheet rows, timeline history and stale forms may still
+# carry them; ``canonical_stage`` maps them.
+RETIRED_STAGES: dict[str, str] = {
+    "follow_up_1": "follow_up", "follow_up_2": "follow_up",
+    "meeting_scheduled": "engaged", "assessment": "engaged", "proposal_sent": "engaged", "interviews": "engaged",
+}
+
+
+def canonical_stage(value: str | None) -> str | None:
+    """A stage / deal status in today's vocabulary (a retired name -> its replacement)."""
+    return RETIRED_STAGES.get(value, value) if value else value
 STAGE_SOURCES: tuple[str, ...] = ("app", "sheet")
 PROSPECT_STATUSES: tuple[str, ...] = ("open", "converted", "closed")
 PROSPECT_SOURCES: tuple[str, ...] = ("enquiry", "sheet", "manual", "import")
@@ -69,8 +81,8 @@ PROSPECT_PRIORITY_SOURCES: tuple[str, ...] = ("derived", "manual")
 # table rebuild of the FK-referenced ``companies``).
 COMPANY_STAGES: tuple[str, ...] = ("prospect", "lead", "client")
 COMPANY_SUB_STATUSES: dict[str, tuple[str, ...]] = {
-    "prospect": ("new", "contacted", "follow_up_1", "follow_up_2", "final_follow_up"),
-    "lead": ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold"),
+    "prospect": PROSPECT_STAGES,
+    "lead": LEAD_OPEN_STAGES,
     "client": ("active",),
 }
 # Off-ramps: company end states a person can reopen (do_not_contact needs an admin). ``lost_client`` = churned client.
@@ -80,8 +92,7 @@ OFF_RAMPS: tuple[str, ...] = ("not_interested", "dormant", "do_not_contact", "lo
 COMPANY_ONLY_OFF_RAMPS: tuple[str, ...] = ("do_not_contact", "lost_client")
 # Enquiry deal status (after the inbox review accepted it): the Active Enquiries sheet vocabulary.
 ENQUIRY_DEAL_STATUSES: tuple[str, ...] = (
-    "open", "contacted", "follow_up_1", "follow_up_2", "final_follow_up", "meeting_scheduled", "assessment", "proposal_sent",
-    "interviews", "won", "lost", "no_response", "on_hold",
+    "open", "contacted", "follow_up", "final_follow_up", "qualified", "engaged", "won", "lost", "no_response", "on_hold",
 )
 PERSON_ROLES: tuple[str, ...] = ("decision_maker", "hr_ld", "influencer", "other")
 PERSON_ROLE_LABELS: dict[str, str] = {

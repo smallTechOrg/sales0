@@ -17,7 +17,7 @@
       </div>
       <p class="hint move-help" data-move-help aria-live="polite"></p>
       <div class="field" data-move-meeting hidden>
-        <label class="field__label" for="override-meeting">Meeting time</label>
+        <label class="field__label" for="override-meeting">Meeting time (optional)</label>
         <input class="input" id="override-meeting" type="datetime-local" name="meeting_at" value="{{ life.lead_meeting_at|localdt('%Y-%m-%dT%H:%M') if life.lead_meeting_at else '' }}">
       </div>
       <div class="field">

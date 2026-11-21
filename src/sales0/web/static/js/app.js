@@ -201,7 +201,7 @@
 
   // ------------------------------------------------------------------ status help that stays visible while choosing
   // <select data-move-select> in a form: the chosen option's data-help is shown in the form's [data-move-help] while
-  // the person is choosing (not a hover tooltip), and the meeting time field shows for "Meeting scheduled".
+  // the person is choosing (not a hover tooltip), and the meeting time field shows for Qualified / Engaged (optional).
   function syncMoveHelp(sel) {
     var form = sel.form || sel.closest("form");
     if (!form) return;
@@ -209,7 +209,7 @@
     var help = form.querySelector("[data-move-help]");
     if (help) help.textContent = opt ? (opt.getAttribute("data-help") || "") : "";
     var meeting = form.querySelector("[data-move-meeting]");
-    if (meeting) meeting.hidden = !(sel.value === "lead:meeting_scheduled");
+    if (meeting) meeting.hidden = !(sel.value === "lead:qualified" || sel.value === "lead:engaged");
     var whyLabel = form.querySelector("[data-move-why-label]");
     if (whyLabel) whyLabel.textContent = sel.value.indexOf("closed:") === 0 ? "Why (optional - shown on the company)" : "Why (optional)";
   }
@@ -239,7 +239,7 @@
       syncMoveHelp(sel);
     }
     dialog.showModal();
-    var focus = target && target.indexOf("lead:meeting_scheduled") === 0 ? dialog.querySelector("#move-meeting") : dialog.querySelector("#move-why");
+    var focus = dialog.querySelector("#move-why");
     if (focus) focus.focus();
   }
   var dragged = null;

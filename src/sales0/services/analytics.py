@@ -246,7 +246,7 @@ def activity(db: Session, *, weeks: int = 12, now: datetime | None = None, ids: 
             if w is not None:
                 w.follow_ups += 1
             member(mid).follow_ups += 1
-        elif kind == "meeting" or (kind == "lead_created" and d.get("stage") == "meeting_scheduled") or (kind == "lead_stage" and d.get("to") == "meeting_scheduled"):
+        elif kind in ("meeting", "lead_created") or (kind == "lead_stage" and d.get("to") in ("meeting_scheduled", "engaged")):
             if w is not None:
                 w.meetings += 1
             member(mid).meetings += 1
@@ -329,7 +329,7 @@ def evidence(db: Session, *, per_side: int = 20) -> tuple[str, int]:
     bad = list(db.scalars(select(Company).where(Company.off_ramp.is_not(None))
                           .order_by(Company.off_ramp_at.desc().nulls_last(), Company.id.desc()).limit(per_side)))
     stalled = list(db.scalars(select(Company).where(Company.stage == "prospect", Company.off_ramp.is_(None),
-                                                    Company.sub_status.in_(("follow_up_2", "final_follow_up")))
+                                                    Company.sub_status.in_(("follow_up", "final_follow_up")))
                               .order_by(Company.updated_at.desc()).limit(per_side // 2)))
     parts = ["# Moved forward (lead or customer)"] + [_company_story(db, c, offers) for c in good]
     parts += ["# Closed (lost, no response, not interested)"] + [_company_story(db, c, offers) for c in bad]

@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sales0.db.engine import session_scope
-from sales0.db.models import Prospect
+from sales0.db.models import Company, Prospect
 from sales0.llm import set_llm_client
 from sales0.services.crm import prospects
 from sales0.web.app import create_app
@@ -32,7 +32,8 @@ def _prospect(post: str, company: str, prio: str) -> int:
     eid = make_enquiry(post, **fields)
     with session_scope() as db:
         pid = prospects.ensure_for_enquiry(db, eid).id
-        prospects.move_stage(db, pid, "contacted")  # q24: a New inbound company sits on the Enquiries board
+        prospects.move_stage(db, pid, "contacted")
+        db.get(Company, db.get(Prospect, pid).company_id).pipeline_path = "outreach"  # SMA-33: on the Prospects board
         return pid
 
 

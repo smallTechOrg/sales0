@@ -1,17 +1,16 @@
 """Enquiry deal status: where one specific requirement (an accepted enquiry) stands.
 
 ONE list for every enquiry, set by a person (Enquiries board, company page) or by the Active Enquiries sheet: open,
-contacted, follow_up_1, follow_up_2, final_follow_up, meeting_scheduled, proposal_sent, won, lost, no_response,
-on_hold. "Hot / Warm" are the priority tag. The enquiry status and the company's (prospect) status are DIFFERENT things.
+contacted, follow_up, final_follow_up, qualified, engaged, won, lost, no_response, on_hold (SMA-17). "Hot / Warm" are the priority tag. The enquiry status and the company's (prospect) status are DIFFERENT things.
 
 Link 1, enquiry -> company (q25: an enquiry status NEVER moves the company; a person moves companies between boards):
-* meeting_scheduled .. interviews: show "Suggested: Lead"; won: show "Suggested: Client". A person confirms.
+* qualified / engaged: show "Suggested: Lead"; won: show "Suggested: Client". A person confirms.
 * every other status: no effect on the company.
 A company that is not a prospect (lead, client, off-ramp) or no company at all: the status just changes.
 
-Link 2, prospect -> enquiry: when the prospect itself moves forward to contacted / follow-up 1 / 2 / final (a logged
+Link 2, prospect -> enquiry: when the prospect itself moves forward to contacted / follow-up / final (a logged
 contact, a sent email, a completed reminder), its accepted enquiries that are still behind that stage follow it, FORWARD
-ONLY. Parked or finished enquiry statuses (meeting scheduled .. on hold) are never touched.
+ONLY. Parked or finished enquiry statuses (qualified .. on hold) are never touched.
 """
 
 from __future__ import annotations
@@ -22,23 +21,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Enquiry
-from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES
+from sales0.db.models.enums_crm import ENQUIRY_DEAL_STATUSES, canonical_stage
 from sales0.errors import DomainError
 from sales0.services._common import now_or, not_found
 from sales0.services.crm import lifecycle, timeline
 from sales0.services.crm._common import invalid
+from sales0.services.crm.stages import DEAL_LABELS
 from sales0.services.crm.actor import TEAM, Actor
 
-DEAL_LABELS = {
-    "open": "Open", "contacted": "Contacted", "follow_up_1": "Follow-up 1", "follow_up_2": "Follow-up 2",
-    "final_follow_up": "Final follow-up", "meeting_scheduled": "Meeting scheduled", "assessment": "Assessment",
-    "proposal_sent": "Proposal sent", "interviews": "Interviews",
-    "won": "Won", "lost": "Lost", "no_response": "No response", "on_hold": "On hold",
-}
+# (DEAL_LABELS: sales0.services.crm.stages)
 SETTABLE = ENQUIRY_DEAL_STATUSES  # the same list for every enquiry
 BOARD_ORDER = ENQUIRY_DEAL_STATUSES
 # the enquiry statuses that move a NEW prospect company forward to the same stage
-STAGE_DRIVING = ("contacted", "follow_up_1", "follow_up_2", "final_follow_up")
+STAGE_DRIVING = ("contacted", "follow_up", "final_follow_up")
 
 
 def deal_label(status: str | None) -> str:
@@ -47,6 +42,7 @@ def deal_label(status: str | None) -> str:
 
 def advance_from_prospect(db: Session, prospect_id: int, stage: str, *, actor: Actor, stamp: datetime) -> int:
     """Move the prospect's accepted enquiries forward to ``stage`` (forward only). Returns how many moved."""
+    stage = canonical_stage(stage) or stage
     if stage not in STAGE_DRIVING:
         return 0
     target = STAGE_DRIVING.index(stage)
@@ -67,6 +63,7 @@ def advance_from_prospect(db: Session, prospect_id: int, stage: str, *, actor: A
 
 def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM, source: str = "app", note: str | None = None,
                now: datetime | None = None) -> Enquiry:
+    status = canonical_stage(status) or status
     if status not in ENQUIRY_DEAL_STATUSES:
         raise invalid("status_invalid", "Choose a valid enquiry status.")
     e = db.get(Enquiry, enquiry_id)
@@ -91,7 +88,7 @@ def set_status(db: Session, enquiry_id: int, status: str, *, actor: Actor = TEAM
         data={"from": prev, "to": status, "source": src, "prospect_moved": moved},
     )
     if e.company_id is not None:
-        if status in ("meeting_scheduled", "assessment", "proposal_sent", "interviews"):
+        if status in ("qualified", "engaged"):
             lifecycle.suggest_lead(db, e.company_id, "enquiry", f"enquiry {e.id} {status}", now=stamp)
         elif status == "won":
             lifecycle.suggest_client(db, e.company_id, f"enquiry {e.id} was marked Won", now=stamp)

@@ -189,9 +189,9 @@ def test_status_rules_end_to_end(sync) -> None:  # type: ignore[no-untyped-def]
         _, p, lead = _by_company(db, "Cygnus")
         assert lead.stage == "no_response"
         e, p, lead = _by_company(db, "Draco")  # meeting scheduled: the enquiry's status + a "suggested: Lead" hint, no lead
-        assert lead is None and e.deal_status == "meeting_scheduled"
+        assert lead is None and e.deal_status == "engaged"  # SMA-17
         e, p, lead = _by_company(db, "Eridanus")
-        assert lead is None and e.deal_status == "proposal_sent" and e.date_proposal_sent == date(2026, 7, 10)
+        assert lead is None and e.deal_status == "engaged" and e.date_proposal_sent == date(2026, 7, 10)
         _, p, lead = _by_company(db, "Fornax")  # Email Sent
         assert (p.stage, p.status, lead) == ("contacted", "open", None) and p.contacted_estimated
         _, p, lead = _by_company(db, "Gemini")  # plain Closed: a closed prospect, never a false client
@@ -201,7 +201,7 @@ def test_status_rules_end_to_end(sync) -> None:  # type: ignore[no-untyped-def]
         unknown = db.scalars(select(TimelineEvent).where(TimelineEvent.prospect_id == p.id, TimelineEvent.kind == "sheet_status")).all()
         assert len(unknown) == 1 and unknown[0].data["unknown"] is True
         _, p, _ = _by_company(db, "Indus")
-        assert p.stage == "follow_up_2"
+        assert p.stage == "follow_up"
         _, p, lead = _by_company(db, "Lyra")
         assert (p.stage, p.status, lead) == ("new", "open", None)
         # stage changes by the sync are stage_change events with actor sheet-sync
@@ -211,10 +211,10 @@ def test_status_rules_end_to_end(sync) -> None:  # type: ignore[no-untyped-def]
 
 def test_a_status_edit_moves_the_enquiry_status_in_place(sync) -> None:  # type: ignore[no-untyped-def]
     sync({"Active Enquiries": matrix_csv()}, tabs=(ACTIVE,))
-    sync({"Active Enquiries": matrix_csv().replace("Meeting Scheduled", "Proposal Sent")}, tabs=(ACTIVE,))
+    sync({"Active Enquiries": matrix_csv().replace("Meeting Scheduled", "On hold")}, tabs=(ACTIVE,))
     with session_scope() as db:
         e, p, lead = _by_company(db, "Draco")
-        assert e.deal_status == "proposal_sent" and e.deal_status_source == "sheet" and lead is None
+        assert e.deal_status == "on_hold" and e.deal_status_source == "sheet" and lead is None
         assert db.scalar(select(func.count()).select_from(Lead).where(Lead.prospect_id == p.id)) == 0
         ev = db.scalars(select(TimelineEvent).where(TimelineEvent.subject_type == "enquiry", TimelineEvent.subject_id == e.id,
                                                     TimelineEvent.kind == "stage_change")).all()
@@ -412,8 +412,8 @@ def test_the_sheet_moves_a_new_prospect_forward_through_any_of_its_enquiries(syn
     with session_scope() as db:
         co = db.scalar(select(Company).where(Company.name == "Indus"))
         p = db.scalar(select(Prospect).where(Prospect.company_id == co.id))
-        p.stage, p.stage_source = "follow_up_2", "app"
+        p.stage, p.stage_source = "follow_up", "app"
     sync({"Active Enquiries": header + "\n" + first.replace("Contacted", "Follow Up 1") + second}, tabs=(ACTIVE,))
     with session_scope() as db:
         co = db.scalar(select(Company).where(Company.name == "Indus"))
-        assert co.sub_status == "follow_up_2" and co.stage_source == "app"
+        assert co.sub_status == "follow_up" and co.stage_source == "app"

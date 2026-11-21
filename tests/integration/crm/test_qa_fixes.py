@@ -169,7 +169,7 @@ def test_m3_moving_a_lead_back_from_lost_or_no_response_restores_tracking(db, in
     for terminal in ("lost", "no_response"):
         leads.move_stage(db, lead.id, terminal)
         assert db.get(LinkedinProfile, prof.id).tracked is False
-        leads.move_stage(db, lead.id, "proposal_sent")
+        leads.move_stage(db, lead.id, "engaged")
         assert db.get(LinkedinProfile, prof.id).tracked is True
 
 
@@ -177,10 +177,10 @@ def test_m3_moving_a_lead_back_from_lost_or_no_response_restores_tracking(db, in
 def test_l2_complete_up_to_leaves_timeline_events(db) -> None:
     v = prospects.create_manual(db, name="Solo")
     prospects.mark_contacted(db, v.id, when=h.T0, now=h.T0)
-    prospects.move_stage(db, v.id, "follow_up_2", now=h.T0)
+    prospects.move_stage(db, v.id, "follow_up", now=h.T0)
     done = [t for t in prospects.get_prospect(db, v.id).timeline if t.kind == "follow_up_done"]
-    assert len(done) == 2 and all(t.data.get("auto") for t in done)
-    assert followups.complete_up_to(db, v.id, "final_follow_up", actor=prospects.TEAM) == 1
+    assert len(done) == 1 and all(t.data.get("auto") for t in done)  # SMA-17: "Follow-up" covers the first reminder
+    assert followups.complete_up_to(db, v.id, "final_follow_up", actor=prospects.TEAM) == 2
 
 
 def test_l2_upsert_enrichment_is_logged_and_noop_upserts_are_not(db) -> None:

@@ -43,7 +43,10 @@ def _prospect(post: str = "P1", **extra: object) -> int:
     eid = _pending(post, review_status="accepted", **extra)
     with session_scope() as db:
         pid = prospects.ensure_for_enquiry(db, eid).id
-        prospects.move_stage(db, pid, "contacted")  # q24: a New inbound company sits on the Enquiries board
+        prospects.move_stage(db, pid, "contacted")
+        from sales0.db.models import Company
+
+        db.get(Company, db.get(Prospect, pid).company_id).pipeline_path = "outreach"  # SMA-33: on the Prospects board
         return pid
 
 

@@ -27,9 +27,10 @@ from sqlalchemy.orm import Session
 from sales0.clock import local_today
 from sales0.config import get_settings
 from sales0.db.engine import get_db
+from sales0.db.models import Company as Company_
 from sales0.db.models import Prospect as Prospect_
 from sales0.db.models import TeamMember
-from sales0.db.models.enums_crm import COMPANY_SUB_STATUSES
+from sales0.db.models.enums_crm import COMPANY_SUB_STATUSES, LEAD_OPEN_STAGES
 from sales0.errors import DomainError
 from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import clients as clients_service
@@ -81,7 +82,7 @@ CLOSE_REASONS: tuple[tuple[str, str], ...] = (
     ("not_interested", "Not interested"),
 )
 CLIENT_STATUSES: tuple[tuple[str, str], ...] = (("active", "Active"), ("legacy", "Legacy"))
-OPEN_LEAD_STAGES = ("meeting_scheduled", "assessment", "proposal_sent", "interviews", "on_hold")
+OPEN_LEAD_STAGES = LEAD_OPEN_STAGES
 CATEGORY_CHOICES: tuple[tuple[str, str], ...] = (
     ("relevant_prospect", "Relevant prospect"), ("channel_partner", "Channel partner"), ("competitor", "Competitor"),
 )
@@ -523,7 +524,7 @@ def prospect_response(
 def prospect_convert(
     request: Request,
     prospect_id: PathId,
-    stage: str = Form("meeting_scheduled"),
+    stage: str = Form("qualified"),
     meeting_at: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -534,7 +535,7 @@ def prospect_convert(
         cid = db.scalar(select_(Prospect_.company_id).where(Prospect_.id == prospect_id))
         if cid is None:
             raise DomainError("not_found", "That item no longer exists - refresh the page.", 404)
-        lifecycle_service.mark_lead(db, cid, stage=stage or "meeting_scheduled", meeting_at=parse_local_datetime(meeting_at),
+        lifecycle_service.mark_lead(db, cid, stage=stage or "qualified", meeting_at=parse_local_datetime(meeting_at),
                                     actor=actor_of(member))
         if wants_json(request):
             return envelope_ok(lifecycle_service.life_view(db, cid).model_dump(mode="json"), 201)
@@ -567,6 +568,10 @@ def prospect_reopen(
 ) -> Response:
     def act() -> str:
         prospects_service.reopen(db, prospect_id, actor=actor_of(member))
+        p = db.get(Prospect_, prospect_id)
+        co = db.get(Company_, p.company_id) if p is not None and p.company_id else None
+        if co is not None:  # SMA-33: a reopened company is back in Prospects: New (the outreach path)
+            co.pipeline_path = "outreach"
         return "Prospect reopened."
 
     return _prospect_action(request, db, prospect_id, act)

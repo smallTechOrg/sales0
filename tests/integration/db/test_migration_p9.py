@@ -150,8 +150,8 @@ def _seed_duplicates(url: str) -> dict[str, int]:
         lose2 = _old_prospect(s, name="Beta Corp", origin_enquiry_id=e.id, created_at=t, updated_at=t)
         solo = _old_prospect(s, name="Solo Ltd", origin_enquiry_id=other.id, created_at=t, updated_at=t)
         s.execute(update(Enquiry.__table__).where(Enquiry.__table__.c.id == e.id).values(prospect_id=lose.id))  # a LOSER
-        k_lead = Lead(prospect_id=keep.id, opened_at=t)
-        l_lead = Lead(prospect_id=lose.id, opened_at=t)  # second OPEN lead -> must be closed
+        k_lead = Lead(prospect_id=keep.id, opened_at=t, stage="meeting_scheduled")  # the p9 schema
+        l_lead = Lead(prospect_id=lose.id, opened_at=t, stage="meeting_scheduled")  # second OPEN lead -> must be closed
         s.add_all([k_lead, l_lead])
         s.flush()
         # Core insert: the FollowUp model also maps q13's ``channel``, which does not exist yet at this revision.

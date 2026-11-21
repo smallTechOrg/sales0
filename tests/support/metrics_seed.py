@@ -161,7 +161,7 @@ def seed(db: Session) -> dict[str, int]:
                     db.add(TimelineEvent(subject_type="prospect", subject_id=p.id, prospect_id=p.id, kind="stage_change",
                                          occurred_at=later + timedelta(days=1), data={"from": "contacted", "to": "follow_up_1"}))
             if k < REPLY[w]:
-                ld = Lead(prospect_id=p.id, stage="won" if k < WON[w] else "proposal_sent" if k < PROPOSAL[w] else "meeting_scheduled",
+                ld = Lead(prospect_id=p.id, stage="won" if k < WON[w] else "engaged" if k < PROPOSAL[w] else "qualified",
                           proposal_sent_on=date(2026, 1, 1) if k < PROPOSAL[w] else None, opened_at=later)
                 db.add(ld)
                 db.flush()

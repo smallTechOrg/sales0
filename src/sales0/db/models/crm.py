@@ -68,6 +68,9 @@ class Company(Base):
     off_ramp_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     resume_stage: Mapped[str | None] = mapped_column(String(10))
     resume_sub_status: Mapped[str | None] = mapped_column(String(20))
+    # SMA-33 (q27): 'enquiry' = came in through an accepted enquiry (the Enquiries board while it is a prospect);
+    # 'outreach' = we reach out to them (partnership / a proposal of ours: the Prospects board). NULL = not in the pipeline.
+    pipeline_path: Mapped[str | None] = mapped_column(String(10))
     # 'app' = a person set it (a sheet never overwrites it); 'sheet' = it came from the sheet
     stage_source: Mapped[str] = mapped_column(String(6), nullable=False, default="app", server_default="app")
     stage_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
@@ -159,7 +162,7 @@ class Lead(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     prospect_id: Mapped[int] = mapped_column(ForeignKey("prospects.id", ondelete="CASCADE"), nullable=False, index=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
-    stage: Mapped[str] = mapped_column(String(20), nullable=False, default="meeting_scheduled", server_default="meeting_scheduled")
+    stage: Mapped[str] = mapped_column(String(20), nullable=False, default="qualified", server_default="qualified")
     stage_source: Mapped[str] = mapped_column(String(6), nullable=False, default="app", server_default="app")
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=now_utc)
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

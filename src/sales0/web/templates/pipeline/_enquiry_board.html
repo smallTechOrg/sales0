@@ -7,7 +7,7 @@
 {% else %}
 {% macro ecard(e) %}
         {% set c = e.company_card %}
-        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}"{% if e.company_id and c and c.stage and not c.off_ramp %} draggable="true" data-company-id="{{ e.company_id }}" data-company-name="{{ e.company_name or 'Company' }}" data-current="prospect:new"{% endif %}>
+        <article class="pcard" id="enquiry-{{ e.id }}" data-status="{{ e.deal_status }}"{% if e.company_id and c and c.stage and not c.off_ramp %} draggable="true" data-company-id="{{ e.company_id }}" data-company-name="{{ e.company_name or 'Company' }}" data-current="{{ c.stage }}:{{ c.sub_status }}"{% endif %}>
           <h3>
             {% if e.company_id %}<a href="/companies/{{ e.company_id }}">{{ e.company_name or "Company" }}</a>
             {% elif e.person_name %}{% if e.contact_id %}<a href="/contacts/{{ e.contact_id }}">{{ e.person_name }}</a>{% else %}{{ e.person_name }}{% endif %}
@@ -38,13 +38,16 @@
           </form>
         </article>
 {% endmacro %}
-{# SMA-31: every status is a column, empty or not #}
+{# SMA-31: every status is a column, empty or not. SMA-33: dropping a card on a column moves the COMPANY there (the
+   enquiry-path company stays on this board through Contacted / Follow-up / Final follow-up; its enquiries follow). #}
+{% set drop_of = {"contacted": "prospect:contacted", "follow_up": "prospect:follow_up", "final_follow_up": "prospect:final_follow_up",
+                  "qualified": "lead:qualified", "engaged": "lead:engaged", "on_hold": "lead:on_hold", "won": "client"} %}
 {% set active = enquiry_board.columns|rejectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
 {% include "pipeline/_move_strip.html" %}
 {% set parked = enquiry_board.columns|selectattr("key", "in", ("lost", "no_response", "on_hold"))|list %}
 <div class="board board--enquiries" id="enquiry-board" role="list" aria-label="Enquiries by status" data-drag-board>
   {% for col in active %}
-    <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}">
+    <section class="board__col" role="listitem" data-status="{{ col.key }}" aria-labelledby="ecol-{{ col.key }}"{% if drop_of.get(col.key) %} data-drop-target="{{ drop_of[col.key] }}"{% endif %}>
       <div class="board__head"><h2 id="ecol-{{ col.key }}">{{ col.label }}</h2><span class="count-pill">{{ col.total }}</span></div>
       {% for e in col.cards %}{{ ecard(e) }}{% else %}<p class="board__empty">Nothing here.</p>{% endfor %}
       {% if col.total > col.cards|length %}<p class="board__more">{{ col.total - col.cards|length }} more</p>{% endif %}

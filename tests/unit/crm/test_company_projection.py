@@ -15,7 +15,7 @@ def prospect(stage="new", status="open", reason=None, closed_at=None, source="ap
     return {"stage": stage, "status": status, "closed_reason": reason, "closed_at": closed_at, "stage_source": source, "updated_at": T}
 
 
-def lead(stage="meeting_scheduled", closed_at=None, source="app", proposal=None):
+def lead(stage="qualified", closed_at=None, source="app", proposal=None):
     return {"stage": stage, "closed_at": closed_at, "stage_source": source, "proposal_sent_on": proposal}
 
 
@@ -24,8 +24,8 @@ def test_no_ledger_row_leaves_the_company_alone() -> None:
 
 
 def test_open_prospect_is_a_prospect_with_its_cadence_status() -> None:
-    life = derive(Rows(prospects=[prospect("follow_up_1")]))
-    assert (life.stage, life.sub_status, life.off_ramp) == ("prospect", "follow_up_1", None)
+    life = derive(Rows(prospects=[prospect("follow_up")]))
+    assert (life.stage, life.sub_status, life.off_ramp) == ("prospect", "follow_up", None)
 
 
 def test_the_most_advanced_open_thread_wins() -> None:
@@ -33,11 +33,11 @@ def test_the_most_advanced_open_thread_wins() -> None:
     assert life.sub_status == "final_follow_up"
 
 
-def test_open_lead_beats_prospects_and_proposal_beats_meeting() -> None:
+def test_open_lead_beats_prospects_and_engaged_beats_qualified() -> None:
     rows = Rows(prospects=[prospect("contacted", status="converted"), prospect("new")],
-                leads=[lead("meeting_scheduled"), lead("proposal_sent")])
+                leads=[lead("qualified"), lead("engaged")])
     life = derive(rows)
-    assert (life.stage, life.sub_status) == ("lead", "proposal_sent")
+    assert (life.stage, life.sub_status) == ("lead", "engaged")
 
 
 def test_client_or_a_won_lead_wins_over_everything() -> None:
@@ -47,9 +47,9 @@ def test_client_or_a_won_lead_wins_over_everything() -> None:
 
 
 def test_closed_prospect_is_an_off_ramp_that_remembers_where_it_stood() -> None:
-    gone = derive(Rows(prospects=[prospect("follow_up_2", status="closed", reason="no_response", closed_at=T)]))
+    gone = derive(Rows(prospects=[prospect("follow_up", status="closed", reason="no_response", closed_at=T)]))
     assert (gone.stage, gone.sub_status, gone.off_ramp, gone.resume_stage, gone.resume_sub_status) == (
-        "prospect", "follow_up_2", "dormant", "prospect", "follow_up_2")
+        "prospect", "follow_up", "dormant", "prospect", "follow_up")
     no = derive(Rows(prospects=[prospect("contacted", status="closed", reason="not_interested", closed_at=T)]))
     assert no.off_ramp == "not_interested"
     assert derive(Rows(prospects=[prospect(status="closed", reason="enquiry_discarded", closed_at=T)])).off_ramp == "not_interested"
@@ -58,9 +58,9 @@ def test_closed_prospect_is_an_off_ramp_that_remembers_where_it_stood() -> None:
 
 def test_lost_and_no_response_leads_are_off_ramps_from_the_lead_stage() -> None:
     lost = derive(Rows(prospects=[prospect(status="converted")], leads=[lead("lost", closed_at=T, proposal=T.date())]))
-    assert (lost.stage, lost.sub_status, lost.off_ramp, lost.resume_stage) == ("lead", "proposal_sent", "not_interested", "lead")
+    assert (lost.stage, lost.sub_status, lost.off_ramp, lost.resume_stage) == ("lead", "engaged", "not_interested", "lead")
     stale = derive(Rows(prospects=[prospect(status="converted")], leads=[lead("no_response", closed_at=T)]))
-    assert (stale.off_ramp, stale.sub_status) == ("dormant", "meeting_scheduled")
+    assert (stale.off_ramp, stale.sub_status) == ("dormant", "qualified")
 
 
 def test_the_latest_closure_decides() -> None:
@@ -75,4 +75,4 @@ def test_a_sheet_only_stage_is_marked_sheet_so_the_app_keeps_precedence() -> Non
 
 
 def test_one_enquiry_status_list() -> None:
-    assert len(set(ENQUIRY_DEAL_STATUSES)) == 13 and ENQUIRY_DEAL_STATUSES[0] == "open"
+    assert len(set(ENQUIRY_DEAL_STATUSES)) == 10 and ENQUIRY_DEAL_STATUSES[0] == "open"

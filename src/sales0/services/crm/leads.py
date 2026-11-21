@@ -9,11 +9,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from sales0.db.models import Client, Company, Enquiry, Lead, OutreachMessage, Prospect, TimelineEvent
-from sales0.db.models.enums_crm import LEAD_OPEN_STAGES, LEAD_STAGES
+from sales0.db.models.enums_crm import LEAD_OPEN_STAGES, LEAD_STAGES, canonical_stage
 from sales0.errors import DomainError
 from sales0.services._common import clip, now_or, not_found
 from sales0.services.crm import _keys, characteristics, clients, contacts, flags, followups, priority, timeline
-from sales0.services.crm._common import invalid, page_params, today_local
+from sales0.services.crm._common import invalid, page_params
 from sales0.services.crm.actor import TEAM, Actor
 from sales0.services.crm.stages import TERMINAL_LEAD_STAGES, stage_label
 from sales0.services.crm.views import ClientView, LeadDetail, LeadPage, LeadView
@@ -80,7 +80,7 @@ def _retrack(db: Session, p: Prospect) -> bool:
 
 
 def convert(
-    db: Session, prospect_id: int, *, stage: str = "meeting_scheduled", meeting_at: datetime | None = None,
+    db: Session, prospect_id: int, *, stage: str = "qualified", meeting_at: datetime | None = None,
     opened_by: str = "manual", actor: Actor = TEAM, note: str | None = None, now: datetime | None = None,
     require_contact: bool = True,
 ) -> LeadView:
@@ -89,6 +89,7 @@ def convert(
     p = db.get(Prospect, prospect_id)
     if p is None:
         raise not_found()
+    stage = canonical_stage(stage) or stage
     if stage not in OPEN_START_STAGES:
         raise invalid("stage_invalid", "Choose a valid stage.")
     if opened_by not in ("reply", "manual", "sheet"):
@@ -111,8 +112,6 @@ def convert(
     p.status, p.updated_at = "converted", stamp
     p.actor, p.actor_member_id = actor.label[:80], actor.member_id
     db.flush()
-    if stage == "proposal_sent":
-        _set_proposal_date(db, ld, p, today_local(stamp))
     followups.cancel_open(db, prospect_id=p.id, reason="lead_created", actor=actor, now=stamp)
     retracked = _retrack(db, p)
     if p.contact_id:
@@ -131,6 +130,7 @@ def move_stage(
     db: Session, lead_id: int, stage: str, *, proposal_sent_on: date | None = None, meeting_at: datetime | None = None,
     value_estimate: int | None = None, outcome_note: str | None = None, actor: Actor = TEAM, now: datetime | None = None,
 ) -> LeadView:
+    stage = canonical_stage(stage) or stage
     if stage not in LEAD_STAGES:
         raise invalid("stage_invalid", "Choose a valid stage.")
     ld = _get(db, lead_id)
@@ -155,7 +155,8 @@ def move_stage(
     if note is not None and note != ld.outcome_note:
         ld.outcome_note = note
         edited.append("outcome_note")
-    if stage == prev and not edited and not (stage == "proposal_sent" and proposal_sent_on and proposal_sent_on != ld.proposal_sent_on):
+    new_proposal = proposal_sent_on is not None and proposal_sent_on != ld.proposal_sent_on
+    if stage == prev and not edited and not new_proposal:
         return views_for(db, [ld], now=stamp)[0]
     ld.stage, ld.stage_source = stage, "app"
     ld.actor, ld.actor_member_id, ld.updated_at = actor.label[:80], actor.member_id, stamp
@@ -164,10 +165,8 @@ def move_stage(
             ld.closed_at = stamp
     else:
         ld.closed_at = None
-    if stage == "proposal_sent":
-        _set_proposal_date(db, ld, p, proposal_sent_on or ld.proposal_sent_on or today_local(stamp))
-    elif proposal_sent_on is not None:
-        _set_proposal_date(db, ld, p, proposal_sent_on)
+    if new_proposal:  # SMA-17: the proposal date is a field of the lead (no "Proposal sent" stage any more)
+        _set_proposal_date(db, ld, p, proposal_sent_on)  # type: ignore[arg-type]
     p.updated_at = stamp
     db.flush()
     extra: dict = {}
@@ -182,16 +181,15 @@ def move_stage(
         followups.cancel_open(db, lead_id=ld.id, reason=f"lead_{stage}", actor=actor, now=stamp)
     if stage == "won":
         clients.create_from_lead(db, ld.id, actor=actor, now=stamp)
-    if prev != stage:
-        kind = "proposal_sent" if stage == "proposal_sent" else "lead_stage"
-        body = (
-            f"Proposal sent on {ld.proposal_sent_on.isoformat()}" if stage == "proposal_sent" and ld.proposal_sent_on
-            else f"Lead stage: {stage_label(prev)} -> {stage_label(stage)}"
-        )
+    if new_proposal and ld.proposal_sent_on:
         timeline.add_event(
-            db, subject_type="lead", subject_id=ld.id, kind=kind, body=body,
-            data={"from": prev, "to": stage, **extra, **({"proposal_sent_on": ld.proposal_sent_on.isoformat()} if ld.proposal_sent_on and stage == "proposal_sent" else {})},
-            actor=actor, occurred_at=stamp,
+            db, subject_type="lead", subject_id=ld.id, kind="proposal_sent", body=f"Proposal sent on {ld.proposal_sent_on.isoformat()}",
+            data={"proposal_sent_on": ld.proposal_sent_on.isoformat()}, actor=actor, occurred_at=stamp,
+        )
+    if prev != stage:
+        timeline.add_event(
+            db, subject_type="lead", subject_id=ld.id, kind="lead_stage", body=f"Lead stage: {stage_label(prev)} -> {stage_label(stage)}",
+            data={"from": prev, "to": stage, **extra}, actor=actor, occurred_at=stamp,
         )
     elif edited:
         timeline.add_event(db, subject_type="lead", subject_id=ld.id, kind="note", body="Lead details edited: " + ", ".join(edited),

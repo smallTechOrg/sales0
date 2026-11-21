@@ -97,13 +97,13 @@ def test_move_stage_any_direction_sets_app_source_and_records_events(db) -> None
     out = prospects.move_stage(db, v.id, "contacted", actor=Actor("Priya", None), now=h.T0)
     assert out.stage == "contacted" and out.contacted_at == h.T0 and out.next_follow_up_on == h.day(3)
     assert db.scalar(select(func.count(FollowUp.id)).where(FollowUp.prospect_id == v.id)) == 3
-    assert prospects.move_stage(db, v.id, "follow_up_2", now=h.T0).stage == "follow_up_2"
+    assert prospects.move_stage(db, v.id, "follow_up", now=h.T0).stage == "follow_up"
     back = prospects.move_stage(db, v.id, "contacted", now=h.T0)
     assert back.stage == "contacted"
     row = db.get(Prospect, v.id)
     assert row.stage_source == "app"
     changes = [t for t in prospects.get_prospect(db, v.id).timeline if t.kind == "stage_change" and t.subject_type == "prospect"]
-    assert [(c.data["from"], c.data["to"]) for c in changes][:3] == [("follow_up_2", "contacted"), ("contacted", "follow_up_2"), ("new", "contacted")]
+    assert [(c.data["from"], c.data["to"]) for c in changes][:3] == [("follow_up", "contacted"), ("contacted", "follow_up"), ("new", "contacted")]
 
 
 def test_moving_to_the_same_stage_is_a_noop(db) -> None:
@@ -128,10 +128,11 @@ def test_invalid_stage_and_closed_prospect_are_refused(db) -> None:
 def test_moving_forward_completes_the_earlier_reminders(db) -> None:
     v = _prospect(db)
     prospects.mark_contacted(db, v.id, when=h.T0, now=h.T0)
-    prospects.move_stage(db, v.id, "follow_up_2", now=h.T0 + timedelta(days=8))
+    prospects.move_stage(db, v.id, "follow_up", now=h.T0 + timedelta(days=8))
     rows = {f.kind: f for f in db.scalars(select(FollowUp).where(FollowUp.prospect_id == v.id))}
-    assert rows["follow_up_1"].done_at and rows["follow_up_2"].done_at and rows["final_follow_up"].done_at is None
-    assert prospects.get_prospect(db, v.id).next_follow_up_on == h.day(14)
+    # SMA-17: the one "Follow-up" stage covers the first planned reminder; the second and the final stay open
+    assert rows["follow_up_1"].done_at and rows["follow_up_2"].done_at is None and rows["final_follow_up"].done_at is None
+    assert prospects.get_prospect(db, v.id).next_follow_up_on == rows["follow_up_2"].due_on
 
 
 def test_mark_contacted_uses_when_and_is_idempotent(db) -> None:

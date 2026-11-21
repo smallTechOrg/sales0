@@ -237,17 +237,31 @@ def complete(
     return views_for(db, [f], _today(now))[0]
 
 
+_KIND_ORDER = {"follow_up_1": 1, "follow_up_2": 2, "final_follow_up": 3}
+# SMA-17: a prospect stage -> the last planned reminder it covers ("Follow-up" = the first one; leads cover all)
+_STAGE_COVERS = {"new": 0, "contacted": 0, "follow_up": 1, "final_follow_up": 3}
+
+
+def _reminder_rank(kind_or_stage: str) -> int:
+    from sales0.db.models.enums_crm import canonical_stage
+
+    if kind_or_stage in _KIND_ORDER:
+        return _KIND_ORDER[kind_or_stage]
+    return _STAGE_COVERS.get(canonical_stage(kind_or_stage) or "", 99)
+
+
 def complete_up_to(db: Session, prospect_id: int, stage: str, *, actor: Actor, now: datetime | None = None,
                    reason: str | None = None) -> int:
     """Mark the open auto reminders whose stage is not after ``stage`` done (stage moved forward by hand, or a later
     reminder was done: ``reason``)."""
-    from sales0.services.crm.stages import stage_label, stage_rank
+    from sales0.services.crm.stages import stage_label
 
     stamp = now_or(now)
     n = 0
     done: list[FollowUp] = []
+    upto = _reminder_rank(stage)
     for f in db.scalars(select(FollowUp).where(FollowUp.prospect_id == prospect_id, FollowUp.kind != "custom", *_OPEN)):
-        if stage_rank(f.kind) <= stage_rank(stage):
+        if _reminder_rank(f.kind) <= upto:
             f.done_at, f.done_actor, f.updated_at = stamp, actor.label[:80], stamp
             n += 1
             done.append(f)
