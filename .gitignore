@@ -39,3 +39,4 @@ playwright-report/
 .DS_Store
 .idea/
 .vscode/
+.claude/worktrees/
