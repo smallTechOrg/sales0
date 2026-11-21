@@ -10,12 +10,33 @@
     {% if _pid %}
       <form class="stack stack--tight" id="fu-note-form" method="post" action="/pipeline/prospects/{{ _pid }}/followup-notes"
             hx-post="/pipeline/prospects/{{ _pid }}/followup-notes" hx-swap="none" hx-disabled-elt="find button" hx-indicator="#fu-note-indicator" data-reset-on-success>
-        <label class="field__label" for="fu-note-text">Log a follow-up</label>
+        <h3 id="fu-note-title">Log a follow-up</h3>
+        {% set _ai_down = ai_down if ai_down is defined else False %}
+        {% if _ai_down %}<p class="banner banner--warn" id="fu-ai-down">The AI is down right now: pick How and fill in the fields yourself - the note is saved as you write it.</p>{% endif %}
+        <div class="grid-2">
+          <div class="field"><label class="field__label" for="fu-how">How</label>
+            <select class="select" id="fu-how" name="how"{% if _ai_down %} required{% endif %}>
+              <option value="">{% if _ai_down %}Choose...{% else %}Let the AI read it from the note{% endif %}</option>
+              {% for key, label in (fu_hows if fu_hows is defined and fu_hows else [("whatsapp", "WhatsApp"), ("email", "Email"), ("linkedin", "LinkedIn"), ("call", "Call"), ("meeting", "Meeting"), ("other", "Other")]) %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label class="field__label" for="fu-when">When</label>
+            <input class="input input--date" id="fu-when" type="date" name="happened_on" max="{{ today.isoformat() }}" value="{{ today.isoformat() }}"></div>
+          <div class="field"><label class="field__label" for="fu-who">Who</label>
+            <select class="select" id="fu-who" name="contact_id">
+              <option value="">{% if _ai_down %}(nobody in particular){% else %}From the note / nobody in particular{% endif %}</option>
+              {% for cid, name in (fu_people if fu_people is defined else []) %}<option value="{{ cid }}">{{ name }}</option>{% endfor %}
+            </select></div>
+          <div class="field"><label class="field__label" for="fu-remind-on">Remind me on (optional)</label>
+            <input class="input input--date" id="fu-remind-on" type="date" name="remind_on" min="{{ today.isoformat() }}"></div>
+        </div>
+        <div class="field"><label class="field__label" for="fu-note-text">Notes</label>
         <textarea class="input" id="fu-note-text" name="text" rows="3" maxlength="2000" required
-                  placeholder="e.g. Called Priya today, she liked the proposal but needs approval from her CFO. Call again next Tuesday."></textarea>
+                  placeholder="e.g. Sent the deck on WhatsApp; she needs CFO approval. Call again next Tuesday."></textarea></div>
+        <div class="field"><label class="field__label" for="fu-remind-note">Next step for the reminder (optional)</label>
+          <input class="input" id="fu-remind-note" name="remind_note" maxlength="300" placeholder="e.g. Call Priya about CFO approval"></div>
         <div class="row"><button class="btn btn--primary btn--sm" id="btn-fu-note" type="submit">Add to log</button>
-          <span class="htmx-indicator" id="fu-note-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Structuring...</span>
-          <span class="hint">Write it the way you would say it: the AI picks out how, when, who and the notes, and sets a reminder if you mention a next date.</span></div>
+          <span class="htmx-indicator" id="fu-note-indicator" role="status"><span class="spinner" aria-hidden="true"></span>&nbsp;Saving...</span>
+          <span class="hint">{% if _ai_down %}Saved exactly as you fill it in.{% else %}Pick How to save it exactly as filled in; leave How blank and the AI reads how, when, who and any next date from the note.{% endif %}</span></div>
       </form>
       {% set _rems = reminders if reminders is defined else [] %}
       {% if _rems %}

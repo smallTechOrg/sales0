@@ -61,6 +61,7 @@ def web(db_url: str, llm: FakeLLMClient, monkeypatch: pytest.MonkeyPatch) -> Ite
     reset_settings()
     app = create_app()
     app.dependency_overrides[pipeline_routes.get_llm] = lambda: llm
+    app.dependency_overrides[pipeline_routes.get_llm_optional] = lambda: llm
     app.dependency_overrides[contacts_routes.get_llm] = lambda: llm
     with TestClient(app) as c:
         yield c

@@ -117,6 +117,16 @@ def get_llm() -> LLMClient:
     return get_llm_client()
 
 
+def get_llm_optional() -> LLMClient | None:
+    """Like ``get_llm`` but None when no client can be built (no API key): the follow-up form must still save."""
+    from sales0.llm import LLMError
+
+    try:
+        return get_llm()
+    except LLMError:
+        return None
+
+
 def _safe_back(value: str | None, default: str) -> str:
     """A same-site /pipeline or /outreach path (open-redirect safe), else ``default``."""
     text = (value or "").strip()
@@ -361,10 +371,23 @@ def _followups_ctx(p: Any, base: str, no_fu: bool, db: Session | None = None, me
         "fu_plan": followups_service.plan(_today()) if needs_contact and auto else [],
         "needs_contact": needs_contact and auto,
         "fu_notes": followup_log.notes_for(db, p.id) if db is not None else [],
+        "fu_people": followup_log.people_for(db, p.id) if db is not None else [],
+        "fu_hows": list(followup_log.HOW_LABELS.items()), "ai_down": _ai_down(db),
         "reminders": reminders_service.open_for(db, prospect_id=p.id) if db is not None else [],
         "draft_info": info, "prospect_id": p.id,
         "draft_due_ready": sum(1 for v in p.follow_ups if not v.done and v.due_on <= today and info.get(v.id) is not None and info[v.id].ok),
     }  # fmt: skip
+
+
+def _ai_down(db: Session | None) -> bool:
+    if db is None:
+        return False
+    from sales0.services import ai_status
+
+    try:
+        return ai_status.status(db).down
+    except Exception:  # noqa: BLE001 - the form must render whatever the AI check does
+        return False
 
 
 def _draft_info(db: Session, p: Any, member: TeamMember | None) -> dict[int, Any]:
@@ -753,17 +776,24 @@ def prospect_log_contact(
 # ---------------------------------------------------------------------- follow-up log + reminders (q23)
 @router.post("/pipeline/prospects/{prospect_id}/followup-notes", response_model=None)
 def add_followup_note(
-    request: Request, prospect_id: PathId, text: str = Form(""), db: Session = Depends(get_db),
-    member: TeamMember | None = Depends(get_acting_member_optional), llm: LLMClient = Depends(get_llm),
+    request: Request, prospect_id: PathId, text: str = Form(""), how: str = Form(""), happened_on: str = Form(""),
+    contact_id: str = Form(""), remind_on: str = Form(""), remind_note: str = Form(""), db: Session = Depends(get_db),
+    member: TeamMember | None = Depends(get_acting_member_optional), llm: LLMClient | None = Depends(get_llm_optional),
 ) -> Response:
-    """Free text -> one AI call structures it (How / Date / Contact / Notes, + a reminder if it asks for one)."""
+    """The follow-up form. With How picked the form's fields are saved as given (no AI); with How left blank one AI
+    call structures the text (How / Date / Contact / Notes, + a reminder if it asks for one). Any AI failure still
+    saves the note as typed."""
     from sales0.services.crm import followup_log
 
     def act() -> str:
-        try:
-            row = followup_log.add_note(db, llm, prospect_id, text, actor=actor_of(member))
-        except (LLMAuthError, LLMModelNotFound) as exc:
-            raise _llm_fatal(db, exc) from exc
+        cid = contact_id.strip()
+        if cid and not cid.isdigit():
+            raise DomainError("followup_invalid", "Pick a person from the list.", 400)
+        row = followup_log.add_note(
+            db, llm, prospect_id, text, how=how or None, happened_on=parse_date(happened_on, label="follow-up date"),
+            contact_id=int(cid) if cid else None, remind_on=parse_date(remind_on, label="reminder date"), remind_note=remind_note,
+            actor=actor_of(member),
+        )  # fmt: skip
         msg = f"Follow-up logged ({followup_log.HOW_LABELS.get(row.how, 'Other')}, {row.happened_on.strftime('%d %b')})"
         if row.reminder_id:
             from sales0.db.models import Reminder

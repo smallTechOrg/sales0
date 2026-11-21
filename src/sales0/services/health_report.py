@@ -99,8 +99,14 @@ def _ai(db: Session) -> Check:
     if not s.api_key_present:
         return Check("ai", "AI (Anthropic)", "error", "No API key configured: triage, research and drafting are off.",
                      "Set SALES0_ANTHROPIC_API_KEY on the server.")
+    from sales0.services import ai_status
+
+    ai = ai_status.status(db)
     cap = costs_report.spend_cap_status(db)
     spent = cap.month_micros / 1_000_000
+    if ai.down:
+        when = f" (since {_ago(ai.since)})" if ai.since else ""
+        return Check("ai", "AI (Anthropic)", "error", f"{ai.label}: {ai.reason}{when}. ${spent:.2f} spent this month.", ai.fix)
     if cap.state == "off":
         return Check("ai", "AI (Anthropic)", "ok", f"Key present; ${spent:.2f} spent this month, no monthly cap.")
     state = {"ok": "ok", "warn": "warn", "exceeded": "error"}.get(cap.state, "warn")

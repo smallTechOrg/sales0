@@ -48,6 +48,7 @@ _RESET_SEAMS = [
     ("sales0.config", "reset_settings"),
     ("sales0.db.engine", "reset_engine"),
     ("sales0.llm", "reset_llm_client"),
+    ("sales0.llm.health", "reset"),
     ("sales0.jobs.runner", "reset_runner"),
     ("sales0.jobs.scheduler", "reset_scheduler"),
     ("sales0.scraper.browser", "reset_browser_cache"),

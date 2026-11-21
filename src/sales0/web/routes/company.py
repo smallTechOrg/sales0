@@ -125,7 +125,7 @@ def company_context(request: Request, db: Session, company_id: int, member: Team
     if p is not None:
         no_fu = any(f.kind == "no_follow_up" for f in p.flags)
         fu = pl._followups_ctx(p, f"/pipeline/prospects/{p.id}", no_fu, db, member)  # noqa: SLF001
-        ctx.update({k: fu[k] for k in ("channels", "fu_plan", "needs_contact", "draft_info", "prospect_id", "draft_due_ready", "fu_notes", "reminders")})
+        ctx.update({k: fu[k] for k in ("channels", "fu_plan", "needs_contact", "draft_info", "prospect_id", "draft_due_ready", "fu_notes", "reminders", "fu_people", "fu_hows", "ai_down")})
         ctx.update(research_ctx(db, p.id, member))
     return ctx
 
