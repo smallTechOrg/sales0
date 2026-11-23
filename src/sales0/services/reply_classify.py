@@ -16,7 +16,6 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from sales0.config import get_settings
 from sales0.db.models import LlmCall
 from sales0.db.models.replies import REPLY_INTENTS, REPLY_KINDS
 from sales0.integrations.gmail.threads import ThreadMessage
@@ -24,6 +23,7 @@ from sales0.llm import LLMAuthError, LLMBadResponse, LLMClient, LLMError, LLMMod
 from sales0.llm.client import StructuredRequest
 from sales0.services._common import now_or
 from sales0.services.costs_report import SpendCapReached, ensure_within_spend_cap
+from sales0.llm.provider import active_model
 
 PROMPT_VERSION = "reply-v1"
 TOOL_NAME = "record_reply"
@@ -93,7 +93,7 @@ def _tool_schema() -> dict[str, object]:
 def _llm_row(resp: object | None, now: datetime, exc: Exception | None = None) -> LlmCall:
     if resp is None:
         return LlmCall(
-            feature="reply", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
+            feature="reply", model=active_model(), prompt_version=PROMPT_VERSION, status="error",
             error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
         )  # fmt: skip
     return LlmCall(

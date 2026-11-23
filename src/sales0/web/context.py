@@ -69,6 +69,7 @@ NAV: tuple[tuple[str, str, int | None], ...] = (
     ("Schedule", "/schedule", None),
     ("Health", "/health", None),
     ("Users", "/users", None),
+    ("AI settings", "/settings/ai", None),
     ("WhatsApp", "/whatsapp", 5),
 )
 # Pages that live under another nav item (Setup's tabs): the item stays highlighted on them.
@@ -95,7 +96,7 @@ POSTER_TYPE_LABELS = {
 def nav_items(path: str, due: int = 0, *, admin: bool = False) -> list[NavItem]:
     items = []
     for label, href, phase in NAV:
-        if href == "/users" and not admin:
+        if href in ("/users", "/settings/ai") and not admin:
             continue  # admins only
         active = path == href or path.startswith(href + "/") or any(
             path == a or path.startswith(a + "/") for a in NAV_ALIASES.get(href, ()))

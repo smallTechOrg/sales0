@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}AI settings{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <h1>AI settings</h1>
+      <p>Which AI the app uses for triage, research, drafting, summaries and suggestions. Admins only. Press <strong>Test</strong> to check a provider before (or after) saving it.</p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack">
+    {% if flash %}
+      <div class="flash flash--{{ flash.kind }}" role="{{ 'alert' if flash.kind == 'error' else 'status' }}">{{ flash.message }}</div>
+    {% endif %}
+    {% if error %}
+      <div class="flash flash--error" role="alert" id="ai-settings-error">{{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+    <section class="card" id="ai-test-result" aria-labelledby="ai-test-title">
+      <div class="card__header"><h2 id="ai-test-title">Test: {{ result.provider }}</h2>
+        <span class="badge {{ 'badge--high' if result.ok else 'badge--low' }}">{{ "Working" if result.ok else "Not working" }}</span></div>
+      <div class="card__body">
+        <p>{{ result.summary }}</p>
+        <ul class="health-details">
+          {% for s in result.steps %}<li>{{ "OK" if s.ok else "Failed" }} - {{ s.name }}: {{ s.detail }}</li>{% endfor %}
+        </ul>
+        <p class="muted">Nothing was saved by the test{% if not result.ok %}; the app keeps using the saved provider{% endif %}.</p>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="card" aria-labelledby="ai-current-title">
+      <div class="card__header"><h2 id="ai-current-title">In use now</h2></div>
+      <div class="card__body">
+        {% if current.provider == "openai" %}
+          <p id="ai-current">OpenAI-compatible: <code>{{ current.base_url }}</code>, model <code>{{ current.model }}</code>{% if current.research_model %} (research model <code>{{ current.research_model }}</code>){% endif %}.
+            Key: {% if current.key_unreadable %}<span class="badge badge--low">stored but unreadable - enter it again</span>{% elif current.key_stored %}stored {{ current.key_hint }}{% else %}none{% endif %}.</p>
+        {% else %}
+          <p id="ai-current">Anthropic, from the server settings: model <code>{{ current.server_model }}</code>, key {{ "present" if current.server_key_present else "MISSING (SALES0_ANTHROPIC_API_KEY)" }}.</p>
+        {% endif %}
+        {% if current.updated_at %}<p class="muted">Last changed {{ current.updated_at|localdt }}{% if current.updated_by %} by {{ current.updated_by }}{% endif %}.</p>{% endif %}
+        <p class="muted">When the AI does not answer, every page shows a banner saying why, and the work it could not do is listed on the <a href="/health">Health page</a> so you can finish it by hand.</p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="ai-form-title">
+      <div class="card__header"><h2 id="ai-form-title">Provider</h2></div>
+      <div class="card__body">
+        <form method="post" action="/settings/ai" id="ai-settings-form" class="stack" autocomplete="off">
+          <fieldset class="field">
+            <legend class="field__label">Provider</legend>
+            <label><input type="radio" name="provider" value="anthropic" id="ai-provider-anthropic"{% if values.provider != "openai" %} checked{% endif %}> Anthropic (server settings: <code>{{ current.server_model }}</code>)</label><br>
+            <label><input type="radio" name="provider" value="openai" id="ai-provider-openai"{% if values.provider == "openai" %} checked{% endif %}> OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, Together, Gemini, Ollama, vLLM ...)</label>
+          </fieldset>
+          <p class="muted">The fields below are used only for an OpenAI-compatible endpoint. Prospect research's web search needs Anthropic; with another provider, research uses the website, LinkedIn and your notes only.</p>
+          <div class="field"><label class="field__label" for="ai-base-url">Endpoint URL</label>
+            <input class="input" id="ai-base-url" name="base_url" type="url" maxlength="500" list="ai-presets" value="{{ values.base_url }}" placeholder="https://api.openai.com/v1">
+            <datalist id="ai-presets">{% for name, url in presets %}<option value="{{ url }}">{{ name }}</option>{% endfor %}</datalist>
+            <span class="hint">The base URL; the app calls <code>/chat/completions</code> under it.</span></div>
+          <div class="field"><label class="field__label" for="ai-model">Model</label>
+            <input class="input" id="ai-model" name="model" type="text" maxlength="200" value="{{ values.model }}" placeholder="gpt-4o-mini">
+            <span class="hint">Must support function (tool) calling.</span></div>
+          <div class="field"><label class="field__label" for="ai-research-model">Research model (optional)</label>
+            <input class="input" id="ai-research-model" name="research_model" type="text" maxlength="200" value="{{ values.research_model }}" placeholder="same as Model">
+            <span class="hint">A stronger model for research, account summaries and keyword ideas. Empty = Model.</span></div>
+          <div class="field"><label class="field__label" for="ai-key">API key</label>
+            <input class="input" id="ai-key" name="api_key" type="password" maxlength="500" value="" placeholder="{{ 'Leave empty to keep the stored key ' ~ current.key_hint if current.key_stored else 'sk-...' }}">
+            <span class="hint">Stored encrypted and never shown again. Leave empty for a local server that needs no key.</span>
+            {% if current.key_stored %}<label><input type="checkbox" name="clear_key" value="1" id="ai-clear-key"> Remove the stored key</label>{% endif %}</div>
+          <div class="field"><label class="field__label" for="ai-price-in">Price per million tokens, USD (optional, for the Costs page and the spend cap)</label>
+            <div class="row"><input class="input" id="ai-price-in" name="price_in" type="number" min="0" max="1000" step="any" value="{{ values.price_in }}" placeholder="input, e.g. 0.15" aria-label="Input price">
+            <input class="input" id="ai-price-out" name="price_out" type="number" min="0" max="1000" step="any" value="{{ values.price_out }}" placeholder="output, e.g. 0.60" aria-label="Output price"></div></div>
+          <div class="row">
+            <button class="btn" type="submit" formaction="/settings/ai/test" id="ai-test">Test</button>
+            <button class="btn btn--primary" type="submit" id="ai-save">Save</button>
+          </div>
+          <p class="muted">Test sends two tiny requests ("Reply with OK" and one small form to fill in) with the values above, saved or not. A saved change reaches every server within 30 seconds.</p>
+        </form>
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -26,7 +26,6 @@ from sales0.agent.research.schemas import (
     action_tool_schema,
 )
 from sales0.agent.research.site import same_site
-from sales0.config import get_settings
 from sales0.db.models import LlmCall
 from sales0.llm import (
     LLMAuthError,
@@ -38,6 +37,7 @@ from sales0.llm import (
 )
 from sales0.llm.client import StructuredRequest
 from sales0.logging import get_logger
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.agent.research")
 
@@ -137,7 +137,7 @@ def _llm_row(resp: Any, enquiry_id: int | None, now: datetime) -> LlmCall:
 def _error_row(exc: Exception, enquiry_id: int | None, now: datetime) -> LlmCall:
     return LlmCall(
         feature="research",
-        model=get_settings().llm_model,
+        model=active_model(),
         prompt_version=PROMPT_VERSION,
         enquiry_id=enquiry_id,
         status="error",

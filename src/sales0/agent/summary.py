@@ -16,10 +16,10 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.orm import Session
 
 from sales0.agent.research.loop import FATAL_LLM_ERRORS, PROMPTS_DIR, _env
-from sales0.config import get_settings
 from sales0.db.models import LlmCall
 from sales0.llm import LLMBadResponse, LLMClient, LLMError, get_llm_client
 from sales0.llm.client import StructuredRequest
+from sales0.llm.provider import active_model
 
 PROMPT_VERSION = "summary-v3"  # v3: + relationship (partner / direct client) and the offerings it fits
 TOOL_NAME = "record_account_summary"
@@ -124,7 +124,7 @@ def _row(resp: Any, now: datetime) -> LlmCall:
 
 def _error_row(exc: Exception, now: datetime) -> LlmCall:
     return LlmCall(
-        feature="summary", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
+        feature="summary", model=active_model(), prompt_version=PROMPT_VERSION, status="error",
         error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
     )  # fmt: skip
 

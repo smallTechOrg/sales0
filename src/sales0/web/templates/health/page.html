@@ -25,7 +25,7 @@
         </tbody>
       </table>
     </div></section>
-    <form class="row" method="post" action="/health/ai-check"><button class="btn" type="submit" id="health-check-ai">Check AI now</button><span class="hint">Sends one tiny request to Anthropic ("Reply with OK", well under a cent) and updates the AI row.</span></form>
+    <form class="row" method="post" action="/health/ai-check"><button class="btn" type="submit" id="health-check-ai">Check AI now</button><span class="hint">Sends one tiny request to the AI provider ("Reply with OK", well under a cent) and updates the AI row.{% if is_admin %} <a href="/settings/ai" id="health-ai-settings">AI settings</a> - choose the provider, endpoint, model and key.{% endif %}</span></form>
     {% if checks|selectattr("key", "equalto", "replies")|list %}
       <form class="row" method="post" action="/replies/check"><button class="btn" type="submit" id="health-check-replies">Check replies now</button><span class="hint">Runs the same check the worker asks for, right now.</span></form>
     {% endif %}

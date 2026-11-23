@@ -118,6 +118,10 @@ def research_prospect(
     records = context.build(db, prospect_id, detail="research")
 
     use_web = settings.research_web_search if web_search is None else web_search
+    if use_web:
+        from sales0.llm import supports_web_search
+
+        use_web = supports_web_search(llm)  # SMA-48: an OpenAI-compatible provider has no server-side web search
     findings: WebFindings | None = None
     if use_web:
         findings = search_web(

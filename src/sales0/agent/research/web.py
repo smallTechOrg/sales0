@@ -20,6 +20,7 @@ from sales0.db.models import LlmCall
 from sales0.llm import LLMClient, LLMError, get_llm_client
 from sales0.llm.client import StructuredRequest
 from sales0.logging import get_logger
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.agent.research.web")
 
@@ -91,7 +92,7 @@ def _row(resp: Any, now: datetime, enquiry_id: int | None) -> LlmCall:
 
 def _error_row(exc: Exception, now: datetime, enquiry_id: int | None) -> LlmCall:
     return LlmCall(
-        feature="research", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, enquiry_id=enquiry_id,
+        feature="research", model=active_model(), prompt_version=PROMPT_VERSION, enquiry_id=enquiry_id,
         status="error", error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
     )  # fmt: skip
 

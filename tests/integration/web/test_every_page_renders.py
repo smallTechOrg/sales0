@@ -55,6 +55,7 @@ CRM_PAGES = {
     "/health": 'id="health-table"',
     "/metrics?weeks=4&mode=sheet": 'id="secondary-table"',
     "/users": 'id="users-table"',  # Phase 5 accounts (open mode in this fixture: the acting admin may open it)
+    "/settings/ai": 'id="ai-settings-form"',  # SMA-48: admin AI provider settings
     "/account": "My account",
     "/sync": "Google Sheet sync",  # S2 builds the page; the nav entry must never 500
 }
@@ -64,7 +65,7 @@ INBOX_PAGES = ("/app", "/inbox?tab=review", "/inbox?tab=accepted", "/inbox?tab=d
 COVERED_PARAMLESS = {"/", "/inbox", "/setup", "/setup/offerings", "/outreach/instructions", "/keywords", "/runs", *STUB_PAGES, "/pipeline", "/leads", "/clients", "/prospects", "/contacts", "/contacts/duplicates", "/companies", "/competitors", "/criteria", "/import",
                     "/sync", "/sync/status", "/login", "/api/pipeline/summary", "/_shell/status-light", "/_shell/banner", "/setup/linkedin/status", "/setup/linkedin/accounts", "/team", "/oauth/google/callback",
                     "/outreach", "/outreach/compose", "/outreach/compose/defaults", "/outreach/compose/contacts", "/outreach/templates", "/outreach/decks",
-                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/account", "/setup/worker",
+                    "/digest", "/suggestions", "/costs", "/schedule", "/tracked", "/replies", "/replies/suppressions", "/metrics", "/users", "/settings/ai", "/account", "/setup/worker",
                     "/health", "/metrics/analytics",
                     # SMA-8 public front page: covered by test_public_pages.py
                     "/sales-agent", "/app", "/robots.txt", "/sitemap.xml"}

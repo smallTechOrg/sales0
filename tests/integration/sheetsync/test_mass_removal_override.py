@@ -66,23 +66,33 @@ def act_as(web: TestClient, member) -> None:  # noqa: ANN001
     assert web.post("/team/acting", data={"member_id": member.id, "next": "/sync"}, follow_redirects=False).status_code == 303
 
 
-def wait_idle(web: TestClient) -> dict:
+def _status(web: TestClient) -> dict:
+    return web.get("/api/sync/status", headers={"Accept": "application/json"}).json()["data"]
+
+
+def wait_idle(web: TestClient, *, after: object = None) -> dict:
+    """Idle AND a run finished after ``after`` (the ``last_finished_at`` seen before the click): idle alone can be
+    read before the job thread has even started (same race fixed in test_sync_page)."""
     end = time.monotonic() + 15
     while time.monotonic() < end:
-        data = web.get("/api/sync/status", headers={"Accept": "application/json"}).json()["data"]
-        if not data["running"]:
+        data = _status(web)
+        if not data["running"] and data.get("last_finished_at") != after and data.get("last_status") is not None:
             return data
         time.sleep(0.05)
     raise AssertionError("sync never finished")
 
 
+def run_sync(web: TestClient, path: str = "/sync/run", **kwargs: object) -> tuple[object, dict]:
+    before = _status(web).get("last_finished_at")
+    resp = web.post(path, **kwargs)  # type: ignore[arg-type]
+    return resp, wait_idle(web, after=before)
+
+
 def test_apply_anyway_is_admin_only_needs_confirmation_and_applies_the_removals(web: TestClient, team: Team) -> None:  # noqa: F811
     act_as(web, team.admin)
-    web.post("/sync/run", headers=HX)
-    wait_idle(web)
+    run_sync(web, headers=HX)
     web.state["src"] = StaticSource(rows(1))  # type: ignore[attr-defined]
-    web.post("/sync/run", headers=HX)
-    wait_idle(web)
+    run_sync(web, headers=HX)
     assert removed() == 0
     html = web.get("/sync").text
     assert 'id="sync-apply-anyway"' in html and "removal blocked" in html
@@ -96,8 +106,7 @@ def test_apply_anyway_is_admin_only_needs_confirmation_and_applies_the_removals(
     unconfirmed = web.post("/sync/run-anyway", data={}, headers={"Accept": "application/json"})
     assert unconfirmed.status_code == 400 and removed() == 0
 
-    ok = web.post("/sync/run-anyway", data={"confirm": "yes"}, headers=HX)
-    assert ok.status_code == 200 and "Sync started" in ok.text
-    status = wait_idle(web)
+    ok, status = run_sync(web, "/sync/run-anyway", data={"confirm": "yes"}, headers=HX)
+    assert ok.status_code == 200 and "Sync started" in ok.text  # type: ignore[attr-defined]
     assert status["last_status"] == "ok" and removed() == 5
     assert 'id="sync-apply-anyway"' not in web.get("/sync").text
