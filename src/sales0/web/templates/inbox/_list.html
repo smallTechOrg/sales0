@@ -1,5 +1,13 @@
 {# Needs: inbox (InboxPage), tab, q, page, pages, has_runs, offerings, discard_reasons, priorities. #}
 <section id="inbox-list" class="stack" aria-label="Enquiries" data-tab="{{ tab }}" data-total="{{ inbox.total }}">
+  {% if tab == "review" and retry_count %}
+    <form id="retry-all-form" class="row retry-all" method="post" action="/inbox/retry-failed" hx-post="/inbox/retry-failed" hx-target="#inbox-list" hx-swap="outerHTML" hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+      <input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="category" value="{{ category|default('') }}">
+      <button class="btn btn--sm" type="submit" id="retry-all-failed">Retry all failed ({{ retry_count }})</button>
+      <span class="hint">Runs AI triage again on every enquiry here it failed on or never ran on, {{ retry_max }} per click; stops early if the AI is down.</span>
+      <span class="htmx-indicator muted" aria-live="polite">Retrying - this can take a minute...</span>
+    </form>
+  {% endif %}
   {% set decidable = inbox.items | rejectattr("triage_status", "equalto", "pending") | list %}
   {% if decidable %}
     <form id="bulk-form" class="bulk-form" method="post" action="/inbox/decide" aria-label="Bulk actions">

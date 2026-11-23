@@ -5,6 +5,14 @@
     <span aria-hidden="true">|</span>
     <a href="/inbox?tab=skipped&state=failed&q={{ q | urlencode }}"{% if state == "failed" %} aria-current="true"{% endif %}>Triage failed ({{ counts.get("skipped_failed", 0) }})</a>
   </div>
+  {% if retry_count %}
+    <form id="retry-all-form" class="row retry-all" method="post" action="/inbox/skipped/retry-failed" hx-post="/inbox/skipped/retry-failed" hx-target="#inbox-list" hx-swap="outerHTML" hx-disabled-elt="find button" hx-indicator="find .htmx-indicator">
+      <input type="hidden" name="q" value="{{ q }}">
+      <button class="btn btn--sm" type="submit" id="retry-all-failed">Retry all failed ({{ retry_count }})</button>
+      <span class="hint">Runs AI triage again on every post whose triage failed and whose text is still stored, {{ retry_max }} per click; stops early if the AI is down.</span>
+      <span class="htmx-indicator muted" aria-live="polite">Retrying - this can take a minute...</span>
+    </form>
+  {% endif %}
   {% if skipped.items %}
     <div id="skipped-list" class="skipped-list">
       {% for post in skipped.items %}

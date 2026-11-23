@@ -42,6 +42,8 @@ EXEMPT_PREFIX = {
     "/set-password/": "authenticated by the one-time token",
     "/api/worker/": "bearer-token API of the laptop worker (SALES0_WORKER_TOKEN); not a member action",
     "/inbox/{enquiry_id}/retry": "re-runs AI triage on an enquiry; no decision",
+    "/inbox/retry-failed": "re-runs AI triage on every failed enquiry; no decision",
+    "/inbox/skipped/retry-failed": "re-runs AI triage on every failed skipped post; no decision",
     "/digest/build": "builds a derived digest",
     "/suggestions/generate": "AI suggestion batch; decisions (accept/dismiss) are attributed",
     "/metrics/targets": "per-source target override stored in app_meta (shared setting, no actor column)",
