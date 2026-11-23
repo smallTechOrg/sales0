@@ -45,6 +45,8 @@ ADMIN_ONLY = {
     ("POST", "/competitors/competitor"), ("POST", "/competitors/competitor/{competitor_id}"),
     ("POST", "/competitors/competitor/{competitor_id}/delete"), ("POST", "/competitors/competitor/{competitor_id}/link"),
     ("POST", "/competitors/group"), ("POST", "/competitors/group/{group_id}"), ("POST", "/competitors/group/{group_id}/delete"),
+    # SMA-48: the AI provider settings
+    ("POST", "/settings/ai"), ("POST", "/settings/ai/test"),
 }
 
 

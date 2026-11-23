@@ -28,6 +28,7 @@ from sales0.services import reminders
 from sales0.services._common import clip, not_found, now_or
 from sales0.services.crm import timeline
 from sales0.services.crm.actor import TEAM, Actor
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.followup_log")
 
@@ -138,7 +139,7 @@ def structure(db: Session, llm: LLMClient | None, text: str, *, today: date, peo
     try:
         resp = (llm or get_llm_client()).structured(req)
     except LLMError as exc:
-        db.add(LlmCall(feature="summary", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
+        db.add(LlmCall(feature="summary", model=active_model(), prompt_version=PROMPT_VERSION, status="error",
                        error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=stamp))
         db.flush()
         return None, 0

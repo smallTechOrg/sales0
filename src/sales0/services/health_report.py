@@ -95,10 +95,14 @@ def _linkedin(db: Session) -> Check:
 def _ai(db: Session) -> Check:
     from sales0.services import costs_report
 
-    s = get_settings()
-    if not s.api_key_present:
-        return Check("ai", "AI (Anthropic)", "error", "No API key configured: triage, research and drafting are off.",
-                     "Set SALES0_ANTHROPIC_API_KEY on the server.")
+    from sales0.llm import provider
+
+    cfg = provider.current()
+    name = f"AI ({cfg.label})"
+    lead = "Key present" if cfg.provider == "anthropic" else f"Model {cfg.model or '(none)'}"
+    if cfg.provider == "anthropic" and not cfg.key_present:
+        return Check("ai", name, "error", "No API key configured: triage, research and drafting are off.",
+                     "Set SALES0_ANTHROPIC_API_KEY on the server, or an admin chooses another provider on the AI settings page.")
     from sales0.services import ai_status
 
     ai = ai_status.status(db)
@@ -107,14 +111,14 @@ def _ai(db: Session) -> Check:
     missed = [f"Not done: {m.text}." for m in ai_status.missed(db)]
     if ai.down:
         when = f" (since {_ago(ai.since)})" if ai.since else ""
-        return Check("ai", "AI (Anthropic)", "error", f"{ai.label}: {ai.reason}{when}. ${spent:.2f} spent this month.", ai.fix, missed)
+        return Check("ai", name, "error", f"{ai.label}: {ai.reason}{when}. ${spent:.2f} spent this month.", ai.fix, missed)
     if missed:
-        return Check("ai", "AI (Anthropic)", "warn", f"Working again; some work was not done while it was unavailable. ${spent:.2f} spent this month.",
+        return Check("ai", name, "warn", f"Working again; some work was not done while it was unavailable. ${spent:.2f} spent this month.",
                      "Open the Inbox: fill those enquiries in by hand or press Retry triage.", missed)
     if cap.state == "off":
-        return Check("ai", "AI (Anthropic)", "ok", f"Key present; ${spent:.2f} spent this month, no monthly cap.")
+        return Check("ai", name, "ok", f"{lead}; ${spent:.2f} spent this month, no monthly cap.")
     state = {"ok": "ok", "warn": "warn", "exceeded": "error"}.get(cap.state, "warn")
-    return Check("ai", "AI (Anthropic)", state, f"Key present; ${spent:.2f} of ${cap.cap_micros / 1_000_000:.2f} this month ({cap.pct:.0f}%).",
+    return Check("ai", name, state, f"{lead}; ${spent:.2f} of ${cap.cap_micros / 1_000_000:.2f} this month ({cap.pct:.0f}%).",
                  "Raise SALES0_MONTHLY_SPEND_CAP_USD or wait for next month." if state != "ok" else "")
 
 
@@ -158,7 +162,7 @@ def report(db: Session, now: datetime | None = None) -> list[Check]:
     stamp = now or datetime.now(UTC)
     out: list[Check] = []
     for key, title, fn in (("replies", "Replies (Gmail)", lambda: _replies(db)), ("worker", "Laptop worker", lambda: _worker(db)),
-                           ("linkedin", "LinkedIn session", lambda: _linkedin(db)), ("ai", "AI (Anthropic)", lambda: _ai(db)),
+                           ("linkedin", "LinkedIn session", lambda: _linkedin(db)), ("ai", "AI", lambda: _ai(db)),
                            ("runs", "LinkedIn search runs", lambda: _runs(db, stamp)), ("sheet", "Google Sheet sync", lambda: _sheet(db)),
                            ("database", "Database", lambda: _database(db))):
         try:

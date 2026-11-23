@@ -1,4 +1,4 @@
-"""Is the AI (Anthropic) working right now? Shown as a banner on every page, on the Health page and next to the forms
+"""Is the AI (Anthropic, or the OpenAI-compatible provider an admin chose: SMA-48) working right now? Shown as a banner on every page, on the Health page and next to the forms
 that use it, so a person knows to fill things in by hand.
 
 Down when: no API key; the monthly spend cap is used up; or the latest AI call failed with no success since. The
@@ -15,7 +15,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from sales0.clock import ensure_utc
-from sales0.config import get_settings
 from sales0.db.models import LlmCall
 from sales0.llm import health
 from sales0.logging import get_logger
@@ -36,7 +35,21 @@ class AiStatus:
 
 
 def _explain(error_type: str, message: str) -> tuple[str, str]:
+    from sales0.llm import provider
+
+    cfg = provider.current()
     text = (message or "").lower()
+    if cfg.provider == "openai":
+        who = "the AI provider"
+        if "credit" in text or "quota" in text or "billing" in text:
+            return f"{who} account is out of credits", "Top up the provider account, or switch provider on the AI settings page."
+        if error_type in ("auth", "workspace_required"):
+            return f"{who} rejected the API key", "An admin checks the key on the AI settings page (Health -> AI settings)."
+        if error_type == "model_not_found":
+            return f"{who} does not know the model or the endpoint URL", "An admin checks the endpoint URL and model on the AI settings page."
+        if error_type == "transient":
+            return f"{who} is not responding (overloaded or unreachable)", "Usually passes by itself - try again in a few minutes, or check the endpoint URL."
+        return "AI calls are failing", "An admin presses Test on the AI settings page; the server log has the provider's message."
     if "credit balance" in text or "billing" in text:
         return "the Anthropic account is out of credits", "Top up the Anthropic account (console.anthropic.com, Plans & Billing)."
     if error_type in ("auth", "workspace_required"):
@@ -57,9 +70,15 @@ def status(db: Session, now: datetime | None = None) -> AiStatus:
 
 
 def _status(db: Session, now: datetime) -> AiStatus:
-    settings = get_settings()
-    if not settings.api_key_present:
-        return AiStatus(True, "AI unavailable", "no API key is set", "Set SALES0_ANTHROPIC_API_KEY on the server.")
+    from sales0.llm import provider
+
+    cfg = provider.current()
+    if cfg.provider == "openai" and (not cfg.base_url or not cfg.model):
+        return AiStatus(True, "AI unavailable", "the AI provider has no endpoint URL or model", "An admin fills them in on the AI settings page.")
+    if cfg.key_unreadable:
+        return AiStatus(True, "AI unavailable", "the stored AI provider key cannot be decrypted", "An admin enters the key again on the AI settings page.")
+    if cfg.provider == "anthropic" and not cfg.key_present:
+        return AiStatus(True, "AI unavailable", "no API key is set", "Set SALES0_ANTHROPIC_API_KEY on the server, or choose another provider on the AI settings page.")
     from sales0.services import costs_report
 
     cap = costs_report.spend_cap_status(db)
@@ -119,17 +138,18 @@ def check_now(db: Session, llm=None) -> AiStatus:  # type: ignore[no-untyped-def
     """One tiny real call (\"Reply with OK\") to see whether the AI answers; recorded like any other call."""
     from sales0.llm import LLMError, get_llm_client
 
+    from sales0.llm.provider import active_model
+
     stamp = datetime.now(UTC)
-    settings = get_settings()
     try:
         resp = (llm or get_llm_client()).ping()
     except LLMError as exc:
-        db.add(LlmCall(feature="ping", model=settings.llm_model[:100], prompt_version="ping-v1", status="error",
+        db.add(LlmCall(feature="ping", model=active_model(), prompt_version="ping-v1", status="error",
                        error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=stamp))
         db.flush()
         health.note_failure(str(getattr(exc, "error_type", "llm_error")), getattr(exc, "message", str(exc)), "ping")
         return status(db)
-    db.add(LlmCall(feature="ping", model=(resp.model or settings.llm_model)[:100], prompt_version="ping-v1", status="ok",
+    db.add(LlmCall(feature="ping", model=(resp.model or active_model())[:100], prompt_version="ping-v1", status="ok",
                    input_tokens=resp.input_tokens, output_tokens=resp.output_tokens, cost_usd_micros=resp.cost_usd_micros,
                    latency_ms=resp.latency_ms, created_at=stamp))
     db.flush()

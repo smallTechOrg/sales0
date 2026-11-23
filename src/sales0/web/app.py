@@ -147,6 +147,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(replies.router)
     app.include_router(metrics.router)
     app.include_router(users.router)  # Phase 5: admin Users page
+    from sales0.web.routes import ai_settings as ai_settings_routes
+
+    app.include_router(ai_settings_routes.router)  # SMA-48: admin AI provider settings + Test
     app.include_router(criteria.router)  # inbox feedback A3: editable triage criteria + discard reasons
     app.include_router(worker_api.router)  # hosted: the laptop worker (bearer token; 404 without SALES0_WORKER_TOKEN)
     for r in (pipeline.router, company.router, contacts.router, registries.router, importer.router, sync.router, tracked.router):

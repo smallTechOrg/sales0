@@ -125,6 +125,8 @@ def _summarise_output(tool_input: dict[str, Any] | None, text: str | None) -> st
 class AnthropicClient:
     """``LLMClient`` implementation over the Anthropic Messages API."""
 
+    supports_web_search = True
+
     def __init__(
         self,
         settings: Settings,
@@ -132,8 +134,10 @@ class AnthropicClient:
         sdk: Any | None = None,
         sleep: Callable[[float], None] = time.sleep,
         rng: random.Random | None = None,
+        record_health: bool = True,
     ) -> None:
         self._settings = settings
+        self._record = record_health  # False: the AI settings page's Test (keeps the app-wide AI status untouched)
         self._sleep = sleep
         self._rng = rng or random.Random()
         if sdk is not None:
@@ -260,7 +264,8 @@ class AnthropicClient:
                 mapped = self._map_error(exc, str(params.get("model") or ""))
                 from sales0.llm import health
 
-                health.note_failure(mapped.error_type, mapped.message, feature)
+                if self._record:
+                    health.note_failure(mapped.error_type, mapped.message, feature)
                 self._log_call(
                     feature=feature,
                     prompt_version=prompt_version,
@@ -275,7 +280,8 @@ class AnthropicClient:
         latency_ms = int((time.monotonic() - started) * 1000)
         from sales0.llm import health
 
-        health.note_success()
+        if self._record:
+            health.note_success()
         tool_input: dict[str, Any] | None = None
         texts: list[str] = []
         web_results: list[dict[str, Any]] = []

@@ -47,6 +47,7 @@ from sales0.services.dedupe import (
     strip_ellipsis,
 )
 from sales0.services.views import EnquiryCardView, SkippedPage, SkippedPostView
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.services.seen_posts")
 
@@ -502,7 +503,6 @@ def persist_triage(
     row = db.get(SeenPost, seen_post_id)
     if row is None:
         raise not_found()
-    settings = get_settings()
     cost = 0
     version = outcome.prompt_version if outcome is not None else PROMPT_VERSION
     if outcome is not None:
@@ -532,7 +532,7 @@ def persist_triage(
             db.add(
                 LlmCall(
                     feature="triage",
-                    model=settings.llm_model,
+                    model=active_model(),
                     prompt_version=version,
                     seen_post_id=row.id,
                     run_id=run_id,

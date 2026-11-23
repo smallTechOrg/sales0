@@ -19,7 +19,6 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from sqlalchemy.orm import Session
 
-from sales0.config import get_settings
 from sales0.db.models import Enquiry, LlmCall, Offering, OutreachMessage, TeamMember
 from sales0.errors import DomainError
 from sales0.llm import LLMAuthError, LLMBadResponse, LLMClient, LLMError, LLMModelNotFound, get_llm_client
@@ -31,6 +30,7 @@ from sales0.services import suppressions
 from sales0.services.outreach import decks, templates
 from sales0.services.outreach._shared import acted_by_of, add_event, join_addrs, split_addrs
 from sales0.services.team.connections import connection_status
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.outreach.drafting")
 
@@ -164,7 +164,7 @@ def _llm_row(resp: Any, enquiry_id: int | None, now: datetime, version: str = PR
 
 def _error_row(exc: Exception, enquiry_id: int | None, now: datetime, version: str = PROMPT_VERSION) -> LlmCall:
     return LlmCall(
-        feature="drafting", model=get_settings().llm_model, prompt_version=version, enquiry_id=enquiry_id,
+        feature="drafting", model=active_model(), prompt_version=version, enquiry_id=enquiry_id,
         status="error", error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
     )  # fmt: skip
 

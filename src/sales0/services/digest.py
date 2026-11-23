@@ -54,6 +54,7 @@ from sales0.services._common import clip, not_found, now_or
 from sales0.services.costs_report import SpendCapReached, ensure_within_spend_cap
 from sales0.services.team import connections
 from sales0.services.team.members import normalise_email
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.digest")
 
@@ -435,9 +436,15 @@ def _summarise(
         return None, 0, "AI summary skipped: the monthly spend cap is reached."
     client = llm
     if client is None:
-        if not get_settings().api_key_present:
+        from sales0.llm import provider
+
+        cfg = provider.current()
+        if cfg.provider == "anthropic" and not cfg.key_present:
             return None, 0, "AI summary skipped: no Anthropic key is configured."
-        client = get_llm_client()
+        try:
+            client = get_llm_client()
+        except LLMError as exc:  # no key / provider not set up (SMA-48)
+            return None, 0, f"AI summary skipped: {exc.message}"
     data_text = json.dumps(sections_data, ensure_ascii=False, sort_keys=True)
     user = _env().get_template("digest_user.md.j2").render(
         digest_date=digest_date.isoformat(), window_start=w.start.isoformat(timespec="minutes"),
@@ -459,7 +466,7 @@ def _summarise(
         resp = client.structured(req)
     except (LLMError, LLMAuthError, LLMModelNotFound) as exc:
         db.add(LlmCall(
-            feature="suggest", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
+            feature="suggest", model=active_model(), prompt_version=PROMPT_VERSION, status="error",
             error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
         ))  # fmt: skip
         log.warning("digest_summary_failed", error=type(exc).__name__)

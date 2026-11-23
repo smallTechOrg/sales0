@@ -72,6 +72,7 @@ from sales0.services import session as session_service
 from sales0.services._common import clip, record_history
 from sales0.services.runs import keyword_outcome, page_loads_today, plan_keywords, posts_seen_today
 from sales0.services.triage import active_offering_refs
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.jobs.discovery")
 
@@ -381,7 +382,7 @@ class _Run:
                     self.db.add(
                         LlmCall(
                             feature="triage",
-                            model=settings.llm_model,
+                            model=active_model(),
                             prompt_version="triage-v2",
                             seen_post_id=result.key,
                             run_id=self.run_id,

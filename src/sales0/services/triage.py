@@ -30,6 +30,7 @@ from sales0.db.models import Enquiry, LlmCall, Offering, OfferingGroup
 from sales0.llm import LLMAuthError, LLMClient, LLMModelNotFound, get_llm_client
 from sales0.services._common import clip, now_or, not_found, record_history
 from sales0.services.costs_report import SpendCapReached, ensure_within_spend_cap
+from sales0.llm.provider import active_model
 
 # SpendCapReached (Phase 4) is fatal for a run: it stops triaging and the enquiries stay pending.
 FATAL_LLM_ERRORS = (LLMAuthError, LLMModelNotFound, SpendCapReached)
@@ -48,11 +49,10 @@ def active_offering_refs(db: Session) -> list[OfferingRef]:
 def _error_row(
     db: Session, enquiry_id: int, run_id: int | None, exc: Exception, fewshot_count: int, now: datetime
 ) -> None:
-    settings = get_settings()
     db.add(
         LlmCall(
             feature="triage",
-            model=settings.llm_model,
+            model=active_model(),
             prompt_version=PROMPT_VERSION,
             enquiry_id=enquiry_id,
             run_id=run_id,
@@ -134,7 +134,7 @@ def triage_enquiry(
         db.add(
             LlmCall(
                 feature="triage",
-                model=settings.llm_model,
+                model=active_model(),
                 prompt_version=outcome.prompt_version,
                 enquiry_id=enquiry_id,
                 run_id=run_id,

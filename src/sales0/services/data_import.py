@@ -46,6 +46,7 @@ SKIP: dict[str, str] = {
     "scheduled_jobs": "hosted mode has no scheduler",
     "workers": "worker heartbeat registry",
     "app_meta": "per-database bookkeeping",
+    "ai_provider_config": "the hosted admin chooses its own AI provider (its key is encrypted with its own secret)",
     "sheet_sources": "hosted configures its own sheets",
     "sheet_sync_state": "hosted keeps its own sheet-sync cursors",
 }

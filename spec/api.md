@@ -134,6 +134,14 @@ Conventions are the Phase 1 ones: forms are `application/x-www-form-urlencoded` 
 | POST | `/users/{id}/reset` | - | force reset: new one-time link shown once; older links and the member's sessions are invalidated, `must_reset` set when they had a password |
 | POST | `/users/{id}/role` | `role` | change role; `last_admin` 409 for the only active admin |
 | POST | `/users/{id}/active` | `active` = `0`/`1` | deactivate (revokes sessions) / reactivate; `last_admin` / `self_lockout` 409 |
+
+**AI provider settings** (`web/routes/ai_settings.py`, `services/ai_settings.py`; SMA-48)
+
+| Method | Path | Form | Behaviour |
+|---|---|---|---|
+| GET | `/settings/ai` | - | **admin only**. The provider in use (Anthropic from the server settings, or an OpenAI-compatible endpoint), and the form (`#ai-settings-form`) |
+| POST | `/settings/ai` | `provider` (`anthropic`/`openai`), `base_url`, `model`, `research_model`, `api_key` (empty = keep), `clear_key`, `price_in`, `price_out` | save the single `ai_provider_config` row (key Fernet-encrypted, never shown again); used at once here and within 30 s on other instances; `invalid_ai_settings` 422 |
+| POST | `/settings/ai/test` | same as above | on the submitted values, saved or not: "Reply with OK" + one forced function call; result in `#ai-test-result`; saves nothing and leaves the app's AI status alone |
 | POST | `/team/acting` | `member_id`, `next` | admin (or open mode) only: act as another member; others 403 |
 The Team page's `POST /team/members` and `/team/members/{id}/active` also require the REAL user to be an admin. Open paths: `/login`, `/logout`, `/set-password/*`, `/api/health`, `/static/*` (+ `/__fixtures/*` in fixture mode).
 

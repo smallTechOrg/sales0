@@ -7,6 +7,7 @@ Every model is re-exported here; importing this package registers all tables on
 from __future__ import annotations
 
 from sales0.db.models import enums, enums_crm
+from sales0.db.models.ai_provider import AiProviderConfig
 from sales0.db.models.contacts import Contact, ContactEmail, ContactLink, ContactPhone, ContactTag, Tag
 from sales0.db.models.crm import Characteristic, Client, Company, EntityCharacteristic, Flag, FollowUp, Lead, Prospect
 from sales0.db.models._types import UTCDateTime
@@ -36,6 +37,7 @@ from sales0.db.models.timeline import TimelineEvent
 from sales0.db.models.workers import Worker
 
 __all__ = [
+    "AiProviderConfig",
     "CompanyOffering",
     "FollowUpNote",
     "Reminder",

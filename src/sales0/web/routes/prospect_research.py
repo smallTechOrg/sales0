@@ -57,10 +57,16 @@ def research_ctx(db: Session, prospect_id: int, member: TeamMember | None) -> di
         "summary_history": summary,
         "notes": notes_service.list_notes(db, prospect_id, member),
         "li_status": linkedin_page.status_for(db, prospect_id, b.company_linkedin_url),
-        "web_search_on": get_settings().research_web_search,
+        "web_search_on": get_settings().research_web_search and _web_search_supported(),
         "has_website": bool(b.website),
         "sheet_notes": _sheet_notes(db, prospect_id),
     }
+
+
+def _web_search_supported() -> bool:
+    from sales0.llm import supports_web_search
+
+    return supports_web_search()
 
 
 def _sheet_notes(db: Session, prospect_id: int) -> str | None:

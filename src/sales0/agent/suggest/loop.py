@@ -32,7 +32,6 @@ from sales0.agent.suggest.schemas import (
     SuggestOutput,
     tool_schema,
 )
-from sales0.config import get_settings
 from sales0.db.models import Enquiry, Keyword, LlmCall, Suggestion
 from sales0.errors import DomainError
 from sales0.llm import (
@@ -48,6 +47,7 @@ from sales0.logging import get_logger
 from sales0.services._common import clip, now_or
 from sales0.services.costs_report import ensure_within_spend_cap
 from sales0.services.keyword_yield import keyword_yield
+from sales0.llm.provider import active_model
 
 log = get_logger("sales0.suggest")
 
@@ -107,7 +107,7 @@ def _llm_row(resp: Any, now: datetime) -> LlmCall:
 
 def _error_row(exc: Exception, now: datetime) -> LlmCall:
     return LlmCall(
-        feature="suggest", model=get_settings().llm_model, prompt_version=PROMPT_VERSION, status="error",
+        feature="suggest", model=active_model(), prompt_version=PROMPT_VERSION, status="error",
         error_type=str(getattr(exc, "error_type", type(exc).__name__))[:100], created_at=now,
     )  # fmt: skip
 

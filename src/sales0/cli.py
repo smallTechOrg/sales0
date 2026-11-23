@@ -49,19 +49,19 @@ def _check_llm() -> int:
         print(f"LLM ERROR invalid configuration: {exc.error_count()} error(s) — see .env.example", file=sys.stderr)
         return 1
 
-    from sales0.llm import LLMError
-    from sales0.llm.anthropic_adapter import AnthropicClient
+    from sales0.llm import LLMError, build_client, provider
     from sales0.logging import configure_logging
 
     # Logs go to stderr so stdout carries only the result line.
     configure_logging(settings, stream=sys.stderr)
+    cfg = provider.current()  # SMA-48: the provider an admin chose on the AI settings page, else Anthropic
     try:
-        response = AnthropicClient(settings).ping()
+        response = build_client(cfg).ping()
     except LLMError as exc:
         print(f"LLM ERROR type={error_label(exc)} {exc.message}", file=sys.stderr)
         return 1
     print(
-        f"LLM OK model={settings.llm_model} "
+        f"LLM OK {'provider=openai ' if cfg.provider == 'openai' else ''}model={cfg.model or settings.llm_model} "
         f"input_tokens={response.input_tokens} output_tokens={response.output_tokens}"
     )
     return 0
