@@ -439,7 +439,7 @@ def _summarise(
         from sales0.llm import provider
 
         cfg = provider.current()
-        if cfg.provider == "anthropic" and not cfg.key_present:
+        if cfg.provider == "anthropic" and not get_settings().api_key_present:
             return None, 0, "AI summary skipped: no Anthropic key is configured."
         try:
             client = get_llm_client()

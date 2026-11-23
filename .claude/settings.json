@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "mcp__Linear"
+      "mcp__Linear",
+      "mcp__Linear__*"
     ]
   }
 }
