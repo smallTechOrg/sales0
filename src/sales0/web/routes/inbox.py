@@ -19,6 +19,7 @@ from sales0.services import inbox as inbox_service
 from sales0.services import offerings as offerings_service
 from sales0.services import runs as runs_service
 from sales0.services import seen_posts as seen_posts_service
+from sales0.services import triage_retry
 from sales0.services.research import auto as research_auto
 from sales0.services.crm import characteristics as characteristics_service
 from sales0.services.crm import companies as companies_service
@@ -128,6 +129,8 @@ def _skipped_ctx(db: Session, q: str | None, state: SkippedState, page: int, off
         "page": result.page,
         "pages": pages,
         "tabs": TABS,
+        "retry_count": triage_retry.posts_to_retry(db),  # "Retry all failed" (Skipped by AI)
+        "retry_max": triage_retry.MAX_PER_CLICK,
     }
 
 
@@ -189,6 +192,9 @@ def _list_ctx(db: Session, inbox: InboxPage, request: Request | None = None) -> 
         "characteristic_options": characteristics_service.list_characteristics(db, active_only=True),
         "can_save_rule": _is_admin(request, db) if request is not None else False,
         "company_names": _company_names(db),
+        "retry_max": triage_retry.MAX_PER_CLICK,
+        # "Retry all failed" (To review): enquiries whose AI triage failed or never ran.
+        "retry_count": triage_retry.enquiries_to_retry(db) if inbox.tab == "review" else 0,
     }
 
 
@@ -525,6 +531,49 @@ def retry(
     if not is_htmx(request):
         return redirect("/inbox", tab=_tab(tab), q=_q(q))
     return HTMLResponse(_card_html(request, db, card, tab, q, _page_number(page)) + cost_badge_oob(db) + toast)
+
+
+@router.post("/inbox/retry-failed", response_model=None)
+def retry_all_failed(
+    request: Request,
+    q: str = Form(""),
+    category: str = Form(""),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Retry AI triage on every To-review enquiry it failed on (or never ran on), up to 25 per click."""
+    try:
+        result = triage_retry.retry_failed_enquiries(db)
+        toast = toast_html(result.message, "ok" if result.ok else "error")
+    except DomainError as exc:  # job_busy
+        toast = toast_html(exc.message, "error")
+    if not is_htmx(request):
+        return redirect("/inbox", tab="review", q=_q(q))
+    inbox = _load_page(db, "review", _q(q), 1, _category(category), current_offering_id(request, db))
+    ctx = _list_ctx(db, inbox, request)
+    body = (
+        render_html(request, "inbox/_list.html", ctx)
+        + render_html(request, "inbox/_tabs.html", {**ctx, "oob": True})
+        + cost_badge_oob(db)
+        + toast
+    )
+    return HTMLResponse(body)
+
+
+@router.post("/inbox/skipped/retry-failed", response_model=None)
+def skipped_retry_all_failed(
+    request: Request,
+    q: str = Form(""),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Retry AI triage on every Skipped-by-AI post it failed on (text still stored), up to 25 per click."""
+    try:
+        result = triage_retry.retry_failed_posts(db)
+        toast = toast_html(result.message, "ok" if result.ok else "error")
+    except DomainError as exc:
+        toast = toast_html(exc.message, "error")
+    if not is_htmx(request):
+        return redirect("/inbox", tab="skipped", state="failed", q=_q(q))
+    return _skipped_response(request, db, q, "failed", "1", toast)
 
 
 __all__ = ["router", "DISCARD_REASONS", "first_urn"]

@@ -46,12 +46,14 @@ Single origin: `http://127.0.0.1:8765`. Pages are server-rendered HTML. Partials
 | POST | `/inbox/decide` | `enquiry_ids` (repeated), `decision=accept\|discard`, `discard_reason` (opt), `tab`, `q`, `page` | `decide` | `#inbox-list` for the current tab + tab counts (`hx-swap-oob` on `#inbox-tabs`) + toast "Accepted 2" / "Discarded 3" |
 | POST | `/inbox/{id}/fields` | `priority`, `offering_id` (each optional; an absent `offering_id` keeps it, `""`/`none` means "No match"; neither field → `field_invalid`) | `update_fields` (semantics in `architecture.md` → Contracts) | that card `#enquiry-{id}` |
 | POST | `/inbox/{id}/retry` | — | `retry_triage` | that card |
+| POST | `/inbox/retry-failed` | `q`, `category` | `triage_retry.retry_failed_enquiries` | To review list + tab counts oob + toast "AI triage retried: N done, M failed again." (failed + never-triaged enquiries, 25 per click; stops on a rejected key, the spend cap, or 3 failures in a row; `job_busy` toast during a run) |
 | POST | `/setup/keywords/suggested` | — | `seed_suggested` (Phase 1.4) | `#keyword-list` + toast "Added N · M already present" |
 | POST | `/setup/keywords/{id}/edit` | `text`, `group_name` (opt) | `update_keyword` | keyword row |
 | GET | `/inbox?tab=skipped&state=discard\|failed&q=&page=` | — | `list_skipped` | Skipped-by-AI tab (full page, or `#inbox-list` for htmx) |
 | POST | `/inbox/skipped/{id}/rescue` | — | `seen_posts.rescue(accept=False)` | row removed + toast "Moved to To review"; tab counts oob |
 | POST | `/inbox/skipped/{id}/override` | — | `seen_posts.rescue(accept=True)` | row removed + toast "Accepted as Prospect · New (overrode AI)" |
 | POST | `/inbox/skipped/{id}/retry` | — | `seen_posts.retry_triage` | that row |
+| POST | `/inbox/skipped/retry-failed` | `q` | `triage_retry.retry_failed_posts` | Triage failed list + toast (failed posts whose text is still stored; same limits as `/inbox/retry-failed`) |
 
 ## Phase 2 routes
 
