@@ -56,7 +56,7 @@
     </form>
   </div>
   <details class="inline-edit"{% if with_notes %} open{% endif %}>
-    <summary>Edit name, title, company, LinkedIn{% if with_notes %}, notes{% endif %}</summary>
+    <summary>Edit name, title, company, LinkedIn, location{% if with_notes %}, notes{% endif %}</summary>
     <form class="stack" method="post" action="/contacts/{{ cid }}">
       <input type="hidden" name="next" value="{{ next_url }}">
       <div class="grid-2">
@@ -64,6 +64,7 @@
         <div class="field"><label class="field__label" for="ec-title-{{ cid }}">Title</label><input class="input" id="ec-title-{{ cid }}" name="title" value="{{ c.title or '' }}" maxlength="200"></div>
         <div class="field"><label class="field__label" for="ec-company-{{ cid }}">Company</label><input class="input" id="ec-company-{{ cid }}" name="company" value="{{ c.company_name or '' }}" maxlength="200"></div>
         <div class="field"><label class="field__label" for="ec-li-{{ cid }}">LinkedIn profile</label><input class="input" id="ec-li-{{ cid }}" name="linkedin_url" value="{{ c.linkedin_url or '' }}" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+        <div class="field"><label class="field__label" for="ec-loc-{{ cid }}">Location</label><input class="input" id="ec-loc-{{ cid }}" name="location" value="{{ c.location or '' }}" maxlength="120" placeholder="City, country"></div>
       </div>
       {% if with_notes %}<div class="field"><label class="field__label" for="ec-notes-{{ cid }}">Notes</label><textarea class="input" id="ec-notes-{{ cid }}" name="notes" rows="3" maxlength="4000">{{ c.notes or "" }}</textarea></div>{% endif %}
       <div><button class="btn btn--primary" type="submit">Save contact</button></div>

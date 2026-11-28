@@ -1,0 +1,3 @@
+{# SMA-58: the options of the contact merge picker. Needs: merge_people (ContactView list), merge_q. #}
+<option value="">{% if merge_people %}Choose…{% elif merge_q %}Nobody matches "{{ merge_q }}"{% else %}No look-alikes - search above{% endif %}</option>
+{% for p in merge_people %}<option value="{{ p.id }}">{{ p.full_name or p.email or "(unnamed)" }}{% if p.company_name %} · {{ p.company_name }}{% endif %}{% if p.email and p.full_name %} · {{ p.email }}{% endif %} · #{{ p.id }}</option>{% endfor %}

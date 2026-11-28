@@ -100,6 +100,7 @@ class ContactView(_View):
     phone: str | None = None
     linkedin_url: str | None = None
     title: str | None = None
+    location: str | None = None
     company_id: int | None = None
     company_name: str | None = None
     tags: list[TagView] = Field(default_factory=list)

@@ -23,6 +23,7 @@ class Contact(Base):
     linkedin_slug: Mapped[str | None] = mapped_column(String(200), unique=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(500))
     title: Mapped[str | None] = mapped_column(String(200))
+    location: Mapped[str | None] = mapped_column(String(120))  # SMA-56: where the person is (city / region / country)
     notes: Mapped[str | None] = mapped_column(Text)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     search_text: Mapped[str] = mapped_column(String(700), nullable=False, default="", server_default="")

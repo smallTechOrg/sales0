@@ -173,11 +173,11 @@ def _seed_duplicates(url: str) -> dict[str, int]:
         om = sa.table("outreach_messages", *[sa.column(x) for x in ("member_id", "connection_email", "from_addr", "prospect_id", "created_at", "updated_at")])
         s.execute(insert(om).values(member_id=m.id, connection_email=m.email, from_addr=m.email, prospect_id=lose.id, created_at=t, updated_at=t))
         c = _old_enquiry(s)  # a contact link target
-        from sales0.db.models import Contact
-
-        ct = Contact(full_name="Asha")
-        s.add(ct)
-        s.flush()
+        # The p8 schema, not today's model (later revisions add contact columns).
+        ct_table = sa.table("contacts", *[sa.column(x) for x in ("full_name", "search_text", "origin", "actor", "created_at", "updated_at")])
+        ct_id = s.execute(insert(ct_table).values(full_name="Asha", search_text="", origin="manual", actor="system", created_at=t,
+                                                  updated_at=t)).inserted_primary_key
+        ct = SimpleNamespace(id=ct_id[0] if ct_id else s.execute(text("SELECT max(id) FROM contacts")).scalar_one())
         s.add_all([
             ContactLink(contact_id=ct.id, entity_type="prospect", entity_id=lose.id, role="buyer"),
             ContactLink(contact_id=ct.id, entity_type="prospect", entity_id=keep.id, role="buyer"),  # duplicate link

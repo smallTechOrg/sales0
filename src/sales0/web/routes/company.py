@@ -144,8 +144,19 @@ def company_page(
     if wants_json(request):
         return envelope_ok(companies_service.get_company(db, company_id).model_dump(mode="json"))
     ctx = company_context(request, db, company_id, member)
-    ctx["duplicates"] = companies_service.duplicate_candidates(db, company_id)
+    merge_q = (request.query_params.get("merge_q") or "").strip()[:100]
+    ctx["duplicates"] = companies_service.merge_candidates(db, company_id, merge_q)
+    ctx["merge_q"] = merge_q
     return pl._page(request, db, "pipeline/company.html", ctx)  # noqa: SLF001
+
+
+@router.get("/companies/{company_id}/merge-candidates", response_class=HTMLResponse)
+def company_merge_candidates(request: Request, company_id: PathId, merge_q: str = "", db: Session = Depends(get_db)) -> Response:
+    """SMA-62: the options of the merge picker for what was typed (htmx swaps them into the select)."""
+    from sales0.web.context import render_html
+
+    found = companies_service.merge_candidates(db, company_id, merge_q.strip()[:100])
+    return HTMLResponse(render_html(request, "pipeline/_merge_options.html", {"duplicates": found, "merge_q": merge_q}))
 
 
 # ---------------------------------------------------------------------- actions
@@ -307,12 +318,14 @@ def note(request: Request, company_id: PathId, body: str = Form(""), db: Session
 def add_person(
     request: Request, company_id: PathId, full_name: str = Form(""), email: str = Form(""), phone: str = Form(""),
     title: str = Form(""), linkedin_url: str = Form(""), role: str = Form(""), role_other: str = Form(""),
+    location: str = Form(""),
     db: Session = Depends(get_db), member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
     def go() -> str:
         chosen = (role_other.strip() if role == "other" and role_other.strip() else PERSON_ROLE_LABELS.get(role, role)) or None
         view = lifecycle.add_person(db, company_id, full_name=opt_str(full_name), email=opt_str(email), phone=opt_str(phone),
-                                    title=opt_str(title), linkedin_url=opt_str(linkedin_url), role=chosen, actor=actor_of(member))
+                                    title=opt_str(title), linkedin_url=opt_str(linkedin_url), role=chosen, actor=actor_of(member),
+                                    location=opt_str(location))
         return f"Added {view.full_name or view.email or 'the person'}."
 
     return _act(request, db, company_id, None, go)

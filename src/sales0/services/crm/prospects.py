@@ -446,6 +446,7 @@ def _relink_profile(db: Session, p: Prospect, url: str | None, *, now: datetime 
 def add_contact(
     db: Session, prospect_id: int, *, full_name: str | None = None, email: str | None = None, phone: str | None = None,
     title: str | None = None, linkedin_url: str | None = None, actor: Actor = TEAM, now: datetime | None = None,
+    location: str | None = None,
 ):  # type: ignore[no-untyped-def]
     """Add (or match) a person and link them to the prospect; the first one becomes its primary contact."""
     p = _get(db, prospect_id)
@@ -455,7 +456,7 @@ def add_contact(
         raise invalid("email_invalid", "That is not a valid e-mail address.")
     row, _ = contacts.upsert_row(
         db, full_name=full_name, email=email, phone=phone, title=title, linkedin_url=linkedin_url, company_id=p.company_id,
-        origin="manual", actor=actor, now=now,
+        origin="manual", actor=actor, now=now, location=location,
     )
     contacts.link(db, row.id, "prospect", p.id, None)
     if p.contact_id is None:
@@ -584,8 +585,11 @@ def ensure_for_enquiry(db: Session, enquiry_id: int, *, actor: Actor = TEAM, now
                              company_id=comp.id if comp else None, origin="enquiry", actor=actor, now=stamp)
     author = None
     if prof is not None:
-        author = _contact_for(db, p, ("enquiry", e.id), "author", full_name=e.author_name or prof.display_name,
-                              linkedin_url=prof.profile_url, title=e.author_headline, company_id=None, origin="enquiry",
+        author_name = e.author_name or prof.display_name
+        # SMA-58: the author IS the buyer when the post names them (same name): one contact with both roles, not two.
+        same = buyer is not None and comp is not None and _keys.names_match_loosely(buyer.full_name, author_name)
+        author = _contact_for(db, p, ("enquiry", e.id), "author", full_name=author_name, linkedin_url=prof.profile_url,
+                              title=e.author_headline, company_id=comp.id if same else None, origin="enquiry",
                               actor=actor, now=stamp)
     primary = buyer or author
     if primary is not None:

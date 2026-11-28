@@ -133,8 +133,14 @@ def test_search_over_10k_contacts_is_fast_and_paged(db) -> None:
 def test_duplicates_by_name_company_and_phone_with_loose_names(db) -> None:
     comp = companies.get_or_create(db, "Dup Co")
     a = contacts.upsert(db, full_name="Sam Lee", email="sam@dup.example", company_id=comp.id)
-    b = contacts.upsert(db, full_name="sam  LEE", email="sam.lee@other.example", company_id=comp.id)
-    assert a.id != b.id
+    # SMA-58: the same name at the same company is the same person now (both addresses kept on one contact)
+    same = contacts.upsert(db, full_name="sam  LEE", email="sam.lee@other.example", company_id=comp.id)
+    assert same.id == a.id and {e.email for e in contacts.get_contact(db, a.id).email_items} == {"sam@dup.example", "sam.lee@other.example"}
+    # duplicates made before that rule (or by a merge of companies) are still found on the Duplicates page
+    old = Contact(full_name="Sam Lee", company_id=comp.id, search_text="")
+    db.add(old)
+    db.flush()
+    b = contacts.get_contact(db, old.id)
     p1 = contacts.upsert(db, full_name="Meera Iyer", phone="+919811122233")
     p2 = contacts.upsert(db, full_name="Totally Different", phone="+919811122233")
     p3 = contacts.upsert(db, full_name="Meera Iyer-Nair", email="m@x.example")

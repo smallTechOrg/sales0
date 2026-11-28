@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from sales0.db.models import (
@@ -58,7 +58,7 @@ def views_for(db: Session, rows: Iterable[Contact]) -> list[ContactView]:
     return [
         ContactView(
             id=r.id, full_name=r.full_name, email=r.email, phone=r.phone, linkedin_url=r.linkedin_url, title=r.title,
-            company_id=r.company_id, company_name=names.get(r.company_id), tags=tags.get(r.id, []), origin=r.origin,
+            location=r.location, company_id=r.company_id, company_name=names.get(r.company_id), tags=tags.get(r.id, []), origin=r.origin,
         )
         for r in rows
     ]
@@ -118,7 +118,25 @@ def _rebuild_search_text(db: Session, row: Contact) -> None:
 
 
 # ---------------------------------------------------------------------------- upsert
-def _find_match(db: Session, *, emails: list[str], slug: str | None, digits: str, name: str | None) -> Contact | None:
+def _same_person_at_company(db: Session, company_id: int, name: str, slug: str | None) -> Contact | None:
+    """SMA-58: someone with the same name who already belongs to this company (as one of its people, or linked to one of
+    its prospects, e.g. the LinkedIn author of its enquiry). A person with a DIFFERENT LinkedIn profile is someone else."""
+    from sales0.db.models import ContactLink, Prospect
+
+    linked = select(ContactLink.contact_id).where(
+        ContactLink.entity_type == "prospect", ContactLink.entity_id.in_(select(Prospect.id).where(Prospect.company_id == company_id)))
+    rows = db.scalars(select(Contact).where(Contact.merged_into_id.is_(None), Contact.full_name.is_not(None),
+                                            or_(Contact.company_id == company_id, Contact.id.in_(linked))).order_by(Contact.id).limit(200))
+    for cand in rows:
+        if slug and cand.linkedin_slug and cand.linkedin_slug != slug:
+            continue
+        if _keys.names_match_loosely(cand.full_name, name):
+            return cand
+    return None
+
+
+def _find_match(db: Session, *, emails: list[str], slug: str | None, digits: str, name: str | None,
+                company_id: int | None = None) -> Contact | None:
     if emails:
         cid = db.scalar(select(ContactEmail.contact_id).where(ContactEmail.email.in_(emails)).order_by(ContactEmail.id).limit(1))
         if cid is not None:
@@ -136,6 +154,8 @@ def _find_match(db: Session, *, emails: list[str], slug: str | None, digits: str
             cand = db.get(Contact, cid)
             if cand is not None and _keys.names_match_loosely(cand.full_name, name):
                 return cand
+    if company_id and name:
+        return _same_person_at_company(db, company_id, name, slug)
     return None
 
 
@@ -170,6 +190,7 @@ def upsert_row(
     origin: str = "manual",
     actor: Actor = SYSTEM,
     now: datetime | None = None,
+    location: str | None = None,
 ) -> tuple[Contact, bool]:
     """Find-or-create; returns (row, created). Fills empty columns, never blanks one."""
     stamp = now_or(now)
@@ -180,12 +201,12 @@ def upsert_row(
     if not name and not mail and not slug:
         raise invalid("contact_invalid", "A contact needs a name, an email or a LinkedIn URL.")
     emails = _keys.all_emails(email)
-    row = _find_match(db, emails=emails, slug=slug, digits=_keys.phone_digits(tel), name=name)
+    row = _find_match(db, emails=emails, slug=slug, digits=_keys.phone_digits(tel), name=name, company_id=company_id)
     created = row is None
     enriched: list[str] = []
     if row is None:
         row = Contact(
-            full_name=name, email=mail, phone=tel, linkedin_slug=slug, title=clip(title, 200),
+            full_name=name, email=mail, phone=tel, linkedin_slug=slug, title=clip(title, 200), location=clip(location, 120),
             linkedin_url=clip(linkedin_url, 500) if slug else None, company_id=company_id,
             origin=origin if origin in ("manual", "enquiry", "sheet", "import", "reply") else "manual",
             actor=actor.label[:80], actor_member_id=actor.member_id, created_at=stamp, updated_at=stamp,
@@ -210,6 +231,9 @@ def upsert_row(
         if title and not row.title:
             row.title = clip(title, 200)
             enriched.append("title")
+        if location and not row.location:
+            row.location = clip(location, 120)
+            enriched.append("location")
         if company_id and not row.company_id:
             row.company_id = company_id
             enriched.append("company")
@@ -245,10 +269,11 @@ def upsert(
     origin: str = "manual",
     actor: Actor = SYSTEM,
     now: datetime | None = None,
+    location: str | None = None,
 ) -> ContactView:
     row, _ = upsert_row(
         db, full_name=full_name, email=email, phone=phone, linkedin_url=linkedin_url, title=title,
-        company_id=company_id, origin=origin, actor=actor, now=now,
+        company_id=company_id, origin=origin, actor=actor, now=now, location=location,
     )
     return _view(db, row)
 
@@ -344,7 +369,7 @@ def list_contacts(
 # ---------------------------------------------------------------------------- edit
 def update_contact(
     db: Session, contact_id: int, *, full_name=UNSET, title=UNSET, notes=UNSET, company=UNSET,  # type: ignore[no-untyped-def]
-    linkedin_url=UNSET, actor: Actor = TEAM, now: datetime | None = None,  # type: ignore[no-untyped-def]
+    linkedin_url=UNSET, location=UNSET, actor: Actor = TEAM, now: datetime | None = None,  # type: ignore[no-untyped-def]
 ) -> ContactView:
     row = _get(db, contact_id)
     changed: list[str] = []
@@ -371,6 +396,8 @@ def update_contact(
             row.full_name, _ = new, changed.append("name")
     if title is not UNSET and clip(title, 200) != row.title:
         row.title, _ = clip(title, 200), changed.append("title")
+    if location is not UNSET and clip(_keys.collapse(location), 120) != row.location:
+        row.location, _ = clip(_keys.collapse(location), 120), changed.append("location")
     if notes is not UNSET and ((notes or "").strip() or None) != row.notes:
         row.notes, _ = (notes or "").strip() or None, changed.append("notes")
     if company is not UNSET:
@@ -614,6 +641,12 @@ def link(db: Session, contact_id: int, entity_type: str, entity_id: int, role: s
         if role and not existing.role:
             existing.role = role
             db.flush()
+        elif role and role not in [r.strip() for r in existing.role.split(",")]:
+            # SMA-58: one person, several roles (e.g. the post's author who is also the named buyer)
+            combined = f"{existing.role}, {role}"
+            if len(combined) <= ContactLink.role.type.length:
+                existing.role = combined
+                db.flush()
         return
     db.add(ContactLink(contact_id=contact_id, entity_type=entity_type, entity_id=entity_id, role=role, created_at=now_or(None)))
     db.flush()
@@ -674,6 +707,25 @@ def find_duplicates(db: Session, *, limit: int = 50) -> list[DuplicateGroup]:
     by_id = {c.id: c for c in db.scalars(select(Contact).where(Contact.id.in_(all_ids)))} if all_ids else {}
     views = {v.id: v for v in views_for(db, by_id.values())}
     return [DuplicateGroup(reason=r, contacts=[views[i] for i in ids if i in views]) for r, ids in groups]
+
+
+def merge_candidates(db: Session, contact_id: int, q: str | None = None, *, limit: int = 20) -> list[ContactView]:
+    """SMA-58: the people offered in "Merge a duplicate into this contact". With no search, others with a matching name
+    (anywhere); with a search, anyone whose name, e-mail, company or tags contain every word typed."""
+    row = _get(db, contact_id)
+    stmt = select(Contact).where(Contact.id != row.id, Contact.merged_into_id.is_(None))
+    text = _keys.name_key(q or "")
+    if text:
+        for token in text.split(" ")[:6]:
+            stmt = stmt.where(Contact.search_text.like(f"%{_keys.like_escape(token)}%", escape="\\"))
+        return views_for(db, db.scalars(stmt.order_by(Contact.full_name, Contact.id).limit(limit)))
+    tokens = _keys.name_tokens(row.full_name)
+    if not tokens:
+        return []
+    like = f"%{_keys.like_escape(tokens[0])}%"
+    rows = [c for c in db.scalars(stmt.where(Contact.search_text.like(like, escape="\\")).order_by(Contact.id).limit(200))
+            if _keys.names_match_loosely(c.full_name, row.full_name)]
+    return views_for(db, rows[:limit])
 
 
 def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> ContactView:
@@ -754,6 +806,6 @@ def merge(db: Session, keep_id: int, drop_id: int, *, actor: Actor = TEAM, now: 
 __all__ = [
     "add_email", "add_phone", "remove_email", "remove_phone", "set_primary_email", "set_primary_phone", "update_email",
     "update_phone",
-    "add_tag", "find_duplicates", "resolve_id", "get_contact", "link", "list_contacts", "list_tags", "merge", "remove_tag",
+    "add_tag", "find_duplicates", "merge_candidates", "resolve_id", "get_contact", "link", "list_contacts", "list_tags", "merge", "remove_tag",
     "update_contact", "upsert", "upsert_row", "views_for",
 ]

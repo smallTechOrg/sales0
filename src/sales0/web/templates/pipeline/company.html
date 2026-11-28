@@ -31,7 +31,7 @@
               {% set role = roles.get(c.id) %}
               <div class="reply-item" id="company-contact-{{ c.id }}"><a class="contact-link" href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "Person" }}</a>
                 {% if role %}<span class="badge" data-role="{{ role }}">{{ role }}</span>{% endif %}
-                <div class="muted">{{ c.email or "" }}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.title %} · {{ c.title }}{% endif %}</div>
+                <div class="muted">{{ c.email or "" }}{% if c.phone %} · {{ c.phone }}{% endif %}{% if c.title %} · {{ c.title }}{% endif %}{% if c.location %} · <span data-field="location">{{ c.location }}</span>{% endif %}{% if c.linkedin_url and c.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ c.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn</a>{% endif %}</div>
                 <form class="inline-form" method="post" action="/companies/{{ life.company_id }}/people/{{ c.id }}/role">
                   <label class="field__label" for="role-{{ c.id }}">Role at {{ life.name }}</label>
                   <select class="select" id="role-{{ c.id }}" name="role">
@@ -57,6 +57,7 @@
                   <div class="field"><label class="field__label" for="apc-phone">Phone</label><input class="input" id="apc-phone" name="phone" maxlength="50"></div>
                   <div class="field"><label class="field__label" for="apc-title">Title</label><input class="input" id="apc-title" name="title" maxlength="200"></div>
                   <div class="field"><label class="field__label" for="apc-li">LinkedIn profile</label><input class="input" id="apc-li" name="linkedin_url" maxlength="500" placeholder="https://www.linkedin.com/in/..."></div>
+                  <div class="field"><label class="field__label" for="apc-loc">Location</label><input class="input" id="apc-loc" name="location" maxlength="120" placeholder="City, country"></div>
                   <div class="field"><label class="field__label" for="apc-role">Role</label>
                     <select class="select" id="apc-role" name="role"><option value="">Not set</option>
                       {% for key, label in person_role_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
@@ -161,17 +162,21 @@
         </section>
         {% endif %}
 
-        <details class="inline-edit" id="company-merge">
+        <details class="inline-edit" id="company-merge"{% if merge_q %} open{% endif %}>
           <summary>Merge a duplicate into this company</summary>
+          <form class="inline-form" method="get" action="/companies/{{ life.company_id }}#company-merge" role="search" id="company-merge-search">
+            <div class="field"><label class="field__label" for="merge-q">Find the duplicate</label>
+              <input class="input" id="merge-q" type="search" name="merge_q" value="{{ merge_q or '' }}" maxlength="100" autocomplete="off"
+                     placeholder="Name, website or LinkedIn page"
+                     hx-get="/companies/{{ life.company_id }}/merge-candidates" hx-target="#merge-drop" hx-trigger="input changed delay:250ms, search"></div>
+            <noscript><button class="btn" type="submit">Search</button></noscript>
+          </form>
           <form class="inline-form" method="post" action="/companies/{{ life.company_id }}/merge" hx-post="/companies/{{ life.company_id }}/merge" hx-swap="none" hx-confirm="Merge the chosen company into {{ life.name }}? Its people, enquiries and history move here and the duplicate is deleted.">
             <div class="field"><label class="field__label" for="merge-drop">Duplicate company</label>
-              <select class="input" id="merge-drop" name="drop_id" required>
-                <option value="">Choose…</option>
-                {% for d in duplicates %}<option value="{{ d.id }}">{{ d.name }}{% if d.website %} ({{ d.website }}){% endif %} · #{{ d.id }}</option>{% endfor %}
-              </select></div>
+              <select class="input" id="merge-drop" name="drop_id" required>{% include "pipeline/_merge_options.html" %}</select></div>
             <button class="btn btn--danger" type="submit">Merge into {{ life.name }}</button>
           </form>
-          <p class="hint">Listed: companies with the same website domain or LinkedIn page, or a name that starts the same. Everything moves to this company; the duplicate's name is kept in the timeline.</p>
+          <p class="hint">Listed: companies with the same website domain or LinkedIn page, or a name that starts the same - or, when you search, any company whose name, website or LinkedIn page has the words you type. Everything moves to this company; the duplicate's name is kept in the timeline.</p>
         </details>
       </div>
     </div>

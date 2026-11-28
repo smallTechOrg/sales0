@@ -1,0 +1,3 @@
+{# SMA-62: the options of the company merge picker. Needs: duplicates (CompanyView list), merge_q. #}
+<option value="">{% if duplicates %}Choose…{% elif merge_q %}No company matches "{{ merge_q }}"{% else %}No look-alikes - search above{% endif %}</option>
+{% for d in duplicates %}<option value="{{ d.id }}">{{ d.name }}{% if d.website %} ({{ d.website }}){% endif %} · #{{ d.id }}</option>{% endfor %}

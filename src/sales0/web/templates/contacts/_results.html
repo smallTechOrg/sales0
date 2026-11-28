@@ -9,7 +9,7 @@
           <tbody>
           {% for c in page.items %}
             <tr id="contact-{{ c.id }}">
-              <td><a href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "(unnamed)" }}</a>{% if c.title %}<div class="muted">{{ c.title }}</div>{% endif %}</td>
+              <td><a href="/contacts/{{ c.id }}">{{ c.full_name or c.email or "(unnamed)" }}</a>{% if c.title or c.location %}<div class="muted">{{ c.title or "" }}{% if c.title and c.location %} · {% endif %}{{ c.location or "" }}</div>{% endif %}</td>
               <td>{{ c.email or "—" }}</td>
               <td>{{ c.phone or "—" }}</td>
               <td>{% if c.company_id %}<a href="/companies/{{ c.company_id }}">{{ c.company_name }}</a>{% else %}{{ c.company_name or "—" }}{% endif %}</td>
