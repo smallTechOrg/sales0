@@ -431,8 +431,25 @@ def duplicate_candidates(db: Session, company_id: int, *, limit: int = 10) -> li
     return [_view(r) for r in rows]
 
 
+def merge_candidates(db: Session, company_id: int, q: str | None = None, *, limit: int = 20) -> list[CompanyView]:
+    """SMA-62: the companies offered in "Merge a duplicate into this company". With no search, the look-alikes
+    (``duplicate_candidates``); with a search, any other company whose name, website or LinkedIn page contains every
+    word typed - for a duplicate saved under a different name."""
+    text = _keys.name_key(q or "")
+    if not text:
+        return duplicate_candidates(db, company_id, limit=limit)
+    _get(db, company_id)
+    stmt = select(Company).where(Company.id != company_id)
+    for token in text.split(" ")[:6]:
+        like = f"%{_keys.like_escape(token)}%"
+        stmt = stmt.where(or_(Company.name_key.like(like, escape="\\"), func.lower(func.coalesce(Company.website, "")).like(like, escape="\\"),
+                              func.lower(func.coalesce(Company.linkedin_url, "")).like(like, escape="\\")))
+    rows = db.scalars(stmt.order_by(Company.name_key, Company.id).limit(limit))
+    return [_view(r) for r in rows]
+
+
 __all__ = [
-    "duplicate_candidates", "find_match", "get_company", "get_or_none", "get_or_create", "get_or_create_row", "list_companies", "merge",
+    "duplicate_candidates", "merge_candidates", "find_match", "get_company", "get_or_none", "get_or_create", "get_or_create_row", "list_companies", "merge",
     "update_company",
 ]
 

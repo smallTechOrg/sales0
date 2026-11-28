@@ -68,7 +68,9 @@ def test_accept_links_company_and_contacts_and_dedupes_a_shared_email(db) -> Non
     assert e1.company_id and e1.company_id == e2.company_id
     assert e1.contact_id == e2.contact_id  # same email -> one contact
     links = db.scalars(select(ContactLink).where(ContactLink.entity_type == "prospect", ContactLink.entity_id == v1.id)).all()
-    assert {ln.role for ln in links} >= {"buyer", "author"}
+    # SMA-58: the post's author is the named buyer (same name): one contact carrying both roles
+    assert {r.strip() for ln in links for r in (ln.role or "").split(",")} >= {"buyer", "author"}
+    assert len({ln.contact_id for ln in links}) == 1
     assert prospects.get_prospect(db, v1.id).contacts
 
 

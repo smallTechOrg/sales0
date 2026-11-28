@@ -108,10 +108,21 @@ def contact_page(request: Request, contact_id: PathId, db: Session = Depends(get
         return RedirectResponse(f"/contacts/{contact.id}", status_code=303)
     if wants_json(request):
         return envelope_ok(_dump(contact))
+    merge_q = (request.query_params.get("merge_q") or "").strip()[:100]
     return _page(
         request, db, "contacts/detail.html",
-        {"c": contact, "all_tags": contacts_service.list_tags(db), "tag_categories": TAG_CATEGORIES},
+        {"c": contact, "all_tags": contacts_service.list_tags(db), "tag_categories": TAG_CATEGORIES, "merge_q": merge_q,
+         "merge_people": contacts_service.merge_candidates(db, contact.id, merge_q)},
     )  # fmt: skip
+
+
+@router.get("/contacts/{contact_id}/merge-candidates", response_class=HTMLResponse)
+def contact_merge_candidates(request: Request, contact_id: PathId, merge_q: str = "", db: Session = Depends(get_db)) -> Response:
+    """SMA-58: the options of the contact merge picker for what was typed (htmx swaps them into the select)."""
+    from sales0.web.context import render_html
+
+    found = contacts_service.merge_candidates(db, contact_id, merge_q.strip()[:100])
+    return HTMLResponse(render_html(request, "contacts/_merge_options.html", {"merge_people": found, "merge_q": merge_q}))
 
 
 def _safe_back(value: str | None, default: str) -> str:
@@ -259,6 +270,7 @@ def create_contact(
     linkedin_url: str = Form(""),
     title: str = Form(""),
     company: str = Form(""),
+    location: str = Form(""),
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
@@ -268,7 +280,7 @@ def create_contact(
             company_id = companies_service.get_or_create(db, company.strip()).id
         view = contacts_service.upsert(
             db, full_name=opt_str(full_name), email=opt_str(email), phone=opt_str(phone), linkedin_url=opt_str(linkedin_url),
-            title=opt_str(title), company_id=company_id, origin="manual", actor=actor_of(member),
+            title=opt_str(title), company_id=company_id, origin="manual", actor=actor_of(member), location=opt_str(location),
         )  # fmt: skip
         if wants_json(request):
             return envelope_ok(_dump(view), 201)
@@ -282,9 +294,12 @@ def merge_contacts(
     request: Request,
     keep_id: str = Form(""),
     drop_id: str = Form(""),
+    next: str = Form(""),  # noqa: A002 - form field name
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
 ) -> Response:
+    back = _safe_back(next, "/contacts/duplicates")
+
     def run() -> Response:
         keep, drop = opt_int(keep_id, "contact"), opt_int(drop_id, "contact")
         if keep is None or drop is None:
@@ -292,9 +307,9 @@ def merge_contacts(
         view = contacts_service.merge(db, keep, drop, actor=actor_of(member))
         if wants_json(request):
             return envelope_ok(_dump(view))
-        return crm_done(request, "/contacts/duplicates", f"Merged into {view.full_name or view.email}.")
+        return crm_done(request, back, f"Merged into {view.full_name or view.email}.")
 
-    return crm_guard(request, "/contacts/duplicates", run, db)
+    return crm_guard(request, back, run, db)
 
 
 @router.post("/contacts/{contact_id}", response_model=None)
@@ -306,6 +321,7 @@ def update_contact(
     notes: str | None = Form(None),
     company: str | None = Form(None),
     linkedin_url: str | None = Form(None),
+    location: str | None = Form(None),
     next: str = Form(""),  # noqa: A002 - form field name
     db: Session = Depends(get_db),
     member: TeamMember | None = Depends(get_acting_member_optional),
@@ -318,7 +334,7 @@ def update_contact(
     def run() -> Response:
         view = contacts_service.update_contact(
             db, contact_id, full_name=given(full_name), title=given(title), notes=given(notes), company=given(company),
-            linkedin_url=given(linkedin_url), actor=actor_of(member),
+            linkedin_url=given(linkedin_url), location=given(location), actor=actor_of(member),
         )  # fmt: skip
         if wants_json(request):
             return envelope_ok(_dump(view))

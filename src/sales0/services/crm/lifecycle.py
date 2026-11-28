@@ -603,19 +603,20 @@ def _role_text(role: str | None) -> str | None:
 
 def add_person(db: Session, company_id: int, *, full_name: str | None = None, email: str | None = None, phone: str | None = None,
                title: str | None = None, linkedin_url: str | None = None, role: str | None = None, actor: Actor = TEAM,
-               now: datetime | None = None):  # type: ignore[no-untyped-def]
+               now: datetime | None = None, location: str | None = None):  # type: ignore[no-untyped-def]
     """Add (or match) a PERSON and link them to the company with a role (decision maker, HR / L&D, influencer, other -
     free text allowed). A person can belong to several companies; the link is per company."""
     company_row(db, company_id)
     p = primary_prospect(db, company_id)
     if p is not None:
         view = prospects.add_contact(db, p.id, full_name=full_name, email=email, phone=phone, title=title,
-                                     linkedin_url=linkedin_url, actor=actor, now=now)
+                                     linkedin_url=linkedin_url, actor=actor, now=now, location=location)
     else:
         from sales0.services.crm import contacts as contacts_mod
 
         row, _ = contacts_mod.upsert_row(db, full_name=full_name, email=email, phone=phone, title=title,
-                                         linkedin_url=linkedin_url, company_id=company_id, origin="manual", actor=actor, now=now)
+                                         linkedin_url=linkedin_url, company_id=company_id, origin="manual", actor=actor, now=now,
+                                         location=location)
         view = contacts_mod.views_for(db, [row])[0]
     from sales0.services.crm import contacts as contacts_mod
 

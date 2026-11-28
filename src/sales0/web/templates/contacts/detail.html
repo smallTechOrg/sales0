@@ -14,6 +14,7 @@
         <div class="pcard__meta">
           {% if c.title %}{{ c.title }} · {% endif %}
           {% if c.company_id %}<a href="/companies/{{ c.company_id }}">{{ c.company_name }}</a>{% elif c.company_name %}{{ c.company_name }}{% endif %}
+          {% if c.location %} · <span id="contact-location">{{ c.location }}</span>{% endif %}
           {% if c.linkedin_url and c.linkedin_url.startswith(("http://", "https://")) %} · <a href="{{ c.linkedin_url }}" rel="noopener noreferrer" target="_blank">LinkedIn</a>{% endif %}
         </div>
         <div class="row" id="contact-track">
@@ -64,5 +65,23 @@
         <div class="card__body"><div id="timeline">{{ timeline_list(c.timeline) }}</div></div>
       </section>
     </div>
+
+    <details class="inline-edit" id="contact-merge"{% if merge_q %} open{% endif %}>
+      <summary>Merge a duplicate into this contact</summary>
+      <form class="inline-form" method="get" action="/contacts/{{ c.id }}#contact-merge" role="search">
+        <div class="field"><label class="field__label" for="cmerge-q">Find the duplicate</label>
+          <input class="input" id="cmerge-q" type="search" name="merge_q" value="{{ merge_q or '' }}" maxlength="100" autocomplete="off"
+                 placeholder="Name, e-mail or company"
+                 hx-get="/contacts/{{ c.id }}/merge-candidates" hx-target="#cmerge-drop" hx-trigger="input changed delay:250ms, search"></div>
+        <noscript><button class="btn" type="submit">Search</button></noscript>
+      </form>
+      <form class="inline-form" method="post" action="/contacts/merge" hx-post="/contacts/merge" hx-swap="none" hx-confirm="Merge the chosen person into {{ c.full_name or c.email or 'this contact' }}? Their e-mails, phones, links and history move here and the duplicate is removed.">
+        <input type="hidden" name="keep_id" value="{{ c.id }}"><input type="hidden" name="next" value="/contacts/{{ c.id }}">
+        <div class="field"><label class="field__label" for="cmerge-drop">Duplicate</label>
+          <select class="input" id="cmerge-drop" name="drop_id" required>{% include "contacts/_merge_options.html" %}</select></div>
+        <button class="btn btn--danger" type="submit">Merge into this contact</button>
+      </form>
+      <p class="hint">Listed: people with a matching name - or, when you search, anyone whose name, e-mail, company or tags have the words you type.</p>
+    </details>
   </div>
 {% endblock %}
