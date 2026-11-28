@@ -196,3 +196,22 @@ def test_chromium_version_comes_from_playwrights_browsers_json(tmp_path: Path) -
 def test_the_installed_playwright_browsers_json_names_a_chromium_version() -> None:
     version = chromium_version()
     assert version is not None and version.split(".")[0].isdigit()
+
+
+def test_chrome_version_is_read_once_per_binary_and_survives_a_slow_second_launch(tmp_path: Path) -> None:
+    """CI flake: a second ``chrome --version`` on a loaded runner timed out and the label lost its version."""
+    import os
+    import stat
+
+    script = tmp_path / "google-chrome"
+    counter = tmp_path / "calls"
+    script.write_text(f'#!/bin/sh\necho x >> "{counter}"\necho "Google Chrome 158.0.7400.12"\n')
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    install = ChromeInstall(binary=script)
+    browser._VERSION_CACHE.clear()  # noqa: SLF001
+    assert chrome_version(install) == "158.0.7400.12"
+    mtime = script.stat().st_mtime
+    script.write_text("#!/bin/sh\nsleep 30\n")  # a hanging second launch would time out...
+    os.utime(script, (mtime, mtime))  # ...but it is the same binary, so the version read once is used
+    assert chrome_version(install) == "158.0.7400.12"
+    assert counter.read_text().count("x") == 1

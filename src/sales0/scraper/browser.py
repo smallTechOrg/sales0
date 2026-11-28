@@ -133,8 +133,13 @@ def find_chrome(platform: str = sys.platform, home: Path | None = None) -> Chrom
 _VERSION_RE = re.compile(r"(\d+(?:\.\d+){1,3})")
 
 
+_VERSION_CACHE: dict[tuple[str, float], str] = {}
+VERSION_TIMEOUT_S = 15.0  # ``chrome --version`` can take seconds on a loaded machine (5 s timed out on CI)
+
+
 def chrome_version(install: ChromeInstall) -> str | None:
-    """Chrome's version from ``Info.plist`` (macOS) or ``<binary> --version`` (Linux, 5 s)."""
+    """Chrome's version from ``Info.plist`` (macOS) or ``<binary> --version`` (Linux). A version read once is kept per
+    binary (path + modification time, so an update is seen), so a slow second launch never loses it."""
     if install.app is not None:
         try:
             with (install.app / "Contents" / "Info.plist").open("rb") as fh:
@@ -144,13 +149,22 @@ def chrome_version(install: ChromeInstall) -> str | None:
         text = str(value).strip() if value else ""
         return text or None
     try:
+        key = (str(install.binary), Path(install.binary).stat().st_mtime)
+    except OSError:
+        key = None
+    if key is not None and key in _VERSION_CACHE:
+        return _VERSION_CACHE[key]
+    try:
         out = subprocess.run(
-            [str(install.binary), "--version"], capture_output=True, text=True, timeout=5, check=False
+            [str(install.binary), "--version"], capture_output=True, text=True, timeout=VERSION_TIMEOUT_S, check=False
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     match = _VERSION_RE.search(out or "")
-    return match.group(1) if match else None
+    version = match.group(1) if match else None
+    if version and key is not None:
+        _VERSION_CACHE[key] = version
+    return version
 
 
 def _playwright_browsers_json() -> Path:
