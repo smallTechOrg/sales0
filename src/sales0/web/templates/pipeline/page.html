@@ -44,7 +44,6 @@
           <select class="input" id="f-offering" name="offering"><option value="{{ 'all' if shell and shell.offering_filter.current else '' }}"{% if not offering_on(params.offering) %} selected{% endif %}>Any</option>
             {% for o in offering_options %}<option value="{{ o.id }}"{% if o.id|string == params.offering %} selected{% endif %}>{{ o.name }}{% if not o.active %} (off){% endif %}</option>{% endfor %}
           </select></div>{% endif %}
-        {% if params.tab != "enquiries" %}<label class="enquiry__select"><input type="checkbox" name="sort" value="priority"{% if params.sort == "priority" %} checked{% endif %}> Highest priority first</label>{% endif %}
         {% if characteristic_options %}
           <div class="field"><label class="field__label" for="f-characteristic">Characteristic</label>
             <select class="input" id="f-characteristic" name="characteristic"><option value="">Any</option>

@@ -127,9 +127,9 @@ def _filtered(stmt, *, q, characteristic_id, priority_filter, category, flag, of
         stmt = stmt.where(or_(Company.name_key.like(like, escape="\\"),
                               Company.id.in_(select(Prospect.company_id).where(func.lower(Prospect.name).like(like, escape="\\")))))
     if priority_filter:
-        clause = priority.filter_clause(Prospect.priority, priority_filter)
+        clause = priority.filter_clause(priority.of_company(Company.id), priority_filter)
         if clause is not None:
-            stmt = stmt.where(Company.id.in_(select(Prospect.company_id).where(clause)))
+            stmt = stmt.where(clause)
     if category in ("channel_partner", "competitor", "relevant_prospect"):
         stmt = stmt.where(exists().where(Enquiry.company_id == Company.id, Enquiry.category == category, Enquiry.review_status != "discarded"))
     if characteristic_id:
@@ -148,15 +148,9 @@ def companies_with_trait(characteristic_id: int):  # type: ignore[no-untyped-def
     )
 
 
-def _order(sort: str | None):  # type: ignore[no-untyped-def]
-    best = select(func.min(case_rank())).where(Prospect.company_id == Company.id).correlate(Company).scalar_subquery()
-    if sort == "priority":
-        return (best, Company.updated_at.desc(), Company.id.desc())
-    return (Company.updated_at.desc(), Company.id.desc())
-
-
-def case_rank():  # type: ignore[no-untyped-def]
-    return priority.rank_order(Prospect.priority)
+def _order(sort: str | None = None):  # type: ignore[no-untyped-def]
+    """SMA-57: highest priority first on every board and list, then the most recently changed."""
+    return (priority.rank_order(priority.of_company(Company.id)), Company.updated_at.desc(), Company.id.desc())
 
 
 # ---------------------------------------------------------------------------- cards
@@ -189,7 +183,7 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
     offer_names = company_offerings.names_by_company(db, ids)
     traits = companies._characteristics_by_company(db, ids)  # noqa: SLF001
     nxt: dict[int, date] = {}
-    best: dict[int, tuple[str, str]] = {}
+    best: dict[int, tuple[str | None, str]] = {}
     if ids:
         for cid, due in db.execute(
             select(Prospect.company_id, func.min(Prospect.next_follow_up_on)).where(Prospect.company_id.in_(ids)).group_by(Prospect.company_id)
@@ -197,11 +191,9 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
             if due is not None:
                 nxt[cid] = due
         for cid, prio, src in db.execute(
-            select(Prospect.company_id, Prospect.priority, Prospect.priority_source)
-            .where(Prospect.company_id.in_(ids), Prospect.priority.is_not(None))
+            select(Company.id, priority.of_company(Company.id), priority.source_of_company(Company.id)).where(Company.id.in_(ids))
         ).all():
-            if prio in priority.RANK and priority.RANK[prio] > priority.RANK.get(best.get(cid, ("", ""))[0], 0):
-                best[cid] = (prio, src)
+            best[cid] = (prio, src or "derived")
     counts = dict(db.execute(select(Enquiry.company_id, func.count()).where(
         Enquiry.company_id.in_(ids or [-1]), Enquiry.review_status == "accepted").group_by(Enquiry.company_id)).all()) if ids else {}
     cats: dict[int, set[str]] = {}
@@ -215,12 +207,12 @@ def cards_for(db: Session, rows: list[Company]) -> list[CompanyCard]:
         owners = dict(db.execute(select(TeamMember.id, TeamMember.name).where(TeamMember.id.in_(oids))).all())
     out = []
     for r in rows:
-        prio = best.get(r.id)
+        prio = best.get(r.id) or (None, "derived")
         out.append(CompanyCard(
             id=r.id, name=r.name, city=r.city, stage=r.stage, stage_label=lifecycle.stage_label(r.stage), sub_status=r.sub_status,
             sub_label=lifecycle.sub_label(r.sub_status) if r.sub_status else None, off_ramp=r.off_ramp,
-            off_ramp_label=lifecycle.OFF_RAMP_LABELS.get(r.off_ramp or ""), priority=prio[0] if prio else None,
-            priority_source=prio[1] if prio else "derived", characteristics=traits.get(r.id, []), owner=owners.get(r.owner_member_id),
+            off_ramp_label=lifecycle.OFF_RAMP_LABELS.get(r.off_ramp or ""), priority=prio[0],
+            priority_source=prio[1], characteristics=traits.get(r.id, []), owner=owners.get(r.owner_member_id),
             next_follow_up_on=nxt.get(r.id), suggested_lead=lifecycle.active_suggestion(r) is not None,
             enquiries=int(counts.get(r.id, 0)), categories=sorted(cats.get(r.id, set())),
             offerings=offer_names.get(r.id, []), contacts=people.get(r.id, [])[:CARD_CONTACTS], contacts_more=max(len(people.get(r.id, [])) - CARD_CONTACTS, 0),
@@ -306,13 +298,14 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
                   category: str | None = None, per_column: int = 50, offering_id: int | None = None) -> EnquiryBoard:
     cols: list[EnquiryColumn] = []
     for status in (*ENQUIRY_ACTIVE_STATUSES, *ENQUIRY_CLOSED_STATUSES):
-        stmt = select(Enquiry, Company.name, Contact.full_name, Contact.title).outerjoin(Company, Company.id == Enquiry.company_id).outerjoin(
+        shown = priority.of_enquiry()  # SMA-60: the company's priority (as on its page), else the enquiry's own
+        stmt = select(Enquiry, Company.name, Contact.full_name, Contact.title, shown).outerjoin(Company, Company.id == Enquiry.company_id).outerjoin(
             Contact, Contact.id == Enquiry.contact_id).where(Enquiry.review_status == "accepted", Enquiry.deal_status == status, _enquiry_on_board())
         if q and q.strip():
             like = f"%{_keys.like_escape(_keys.name_key(q))}%"
             stmt = stmt.where(or_(func.lower(func.coalesce(Company.name, "")).like(like, escape="\\"),
                                   func.lower(func.coalesce(Enquiry.requirement_summary, "")).like(like, escape="\\")))
-        clause = priority.filter_clause(Enquiry.priority, priority_filter) if priority_filter else None
+        clause = priority.filter_clause(shown, priority_filter) if priority_filter else None
         if clause is not None:
             stmt = stmt.where(clause)
         if category in ("channel_partner", "competitor", "relevant_prospect"):
@@ -324,17 +317,17 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
 
             stmt = stmt.where((Enquiry.offering_id == offering_id) | Enquiry.company_id.in_(company_offerings.companies_with(offering_id)))
         total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-        rows = db.execute(stmt.order_by(priority.rank_order(Enquiry.priority), Enquiry.date_added.desc(), Enquiry.id.desc()).limit(per_column)).all()
-        company_ids = {e.company_id for e, *_ in rows if e.company_id}
+        rows = db.execute(stmt.order_by(priority.rank_order(shown), Enquiry.date_added.desc(), Enquiry.id.desc()).limit(per_column)).all()
+        company_ids = {r[0].company_id for r in rows if r[0].company_id}
         by_company = {c.id: c for c in cards_for(db, list(db.scalars(select(Company).where(Company.id.in_(company_ids))))) } if company_ids else {}
         cols.append(EnquiryColumn(key=status, label=deals.deal_label(status), total=total, cards=[
             EnquiryCard(id=e.id, summary=e.requirement_summary, company_id=e.company_id, company_name=name or e.company,
-                        deal_status=e.deal_status, priority=e.priority, category=e.category or "relevant_prospect",
+                        deal_status=e.deal_status, priority=prio, category=e.category or "relevant_prospect",
                         date_added=e.date_added, source_url=e.source_url,
                         contact_id=e.contact_id, person_name=cname or e.contact_person or e.author_name,
                         person_title=ctitle or (e.author_headline if not cname and not e.contact_person else None),
                         company_card=by_company.get(e.company_id))
-            for e, name, cname, ctitle in rows
+            for e, name, cname, ctitle, prio in rows
         ]))
     return EnquiryBoard(columns=cols)
 

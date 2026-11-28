@@ -163,8 +163,7 @@ def list_clients(
     if q and q.strip():
         stmt = stmt.where(func.lower(Client.name).like(f"%{_keys.like_escape(_keys.name_key(q))}%", escape="\\"))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-    order = (priority.rank_order(Prospect.priority), Client.created_at.desc(), Client.id.desc()) if sort == "priority" else (
-        Client.created_at.desc(), Client.id.desc())
+    order = (priority.rank_order(priority.of_prospect()), Client.created_at.desc(), Client.id.desc())  # SMA-57: always
     rows = db.scalars(stmt.order_by(*order).limit(size).offset((page - 1) * size))
     return ClientPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 

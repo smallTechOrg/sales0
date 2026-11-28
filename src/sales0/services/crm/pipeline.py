@@ -63,8 +63,7 @@ def board(
                 stmt = stmt.where(characteristics.prospect_filter(characteristic_id))
             stmt = prospects.apply_priority_category(stmt, priority_filter, category)
             total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-            order = (priority.rank_order(Prospect.priority), Prospect.updated_at.desc(), Prospect.id.desc()) if sort == "priority" else (
-                Prospect.updated_at.desc(), Prospect.id.desc())
+            order = (priority.rank_order(priority.of_prospect()), Prospect.updated_at.desc(), Prospect.id.desc())  # SMA-57
             rows = list(db.scalars(stmt.order_by(*order).limit(per_column)))
             columns.append(BoardColumn(stage=stage, label=STAGE_LABELS[stage], total=total, cards=prospects.views_for(db, rows)))
     else:
@@ -83,8 +82,7 @@ def board(
                 stmt = stmt.where(characteristics.prospect_filter(characteristic_id, Lead.prospect_id))
             stmt = prospects.apply_priority_category(stmt, priority_filter, category, Lead.prospect_id)
             total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-            order = (priority.rank_order(Prospect.priority), Lead.updated_at.desc(), Lead.id.desc()) if sort == "priority" else (
-                Lead.updated_at.desc(), Lead.id.desc())
+            order = (priority.rank_order(priority.of_prospect()), Lead.updated_at.desc(), Lead.id.desc())  # SMA-57
             rows = list(db.scalars(stmt.order_by(*order).limit(per_column)))
             columns.append(BoardColumn(stage=stage, label=STAGE_LABELS[stage], total=total, cards=leads.views_for(db, rows, now=stamp)))
     return Board(kind=kind, columns=columns)

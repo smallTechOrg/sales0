@@ -91,12 +91,12 @@ def test_after_runs_with_nothing_left_shows_all_caught_up_and_tab_empty_states(c
     assert "All caught up" in client.get("/inbox?tab=bogus&page=-3").text  # bad params fall back, never break
 
 
-def test_review_tab_sorts_failed_then_genuine_and_renders_card_details(client: TestClient) -> None:
+def test_review_tab_sorts_priority_first_and_renders_card_details(client: TestClient) -> None:
     ids = _seed_corpus()
     html = unescape(client.get("/inbox").text)
     order = _card_ids(html)
-    assert order[0] == ids["P6"]  # failed triage pinned first
-    assert order[1] == ids["P1"]  # then AI-genuine
+    assert order[0] == ids["P1"]  # SMA-57: highest priority first (the AI-genuine high one)
+    assert order.index(ids["P6"]) > order.index(ids["P1"])  # failed triage has no priority yet
     assert _count(html, "review") == 6
 
     p1 = _card(html, ids["P1"])

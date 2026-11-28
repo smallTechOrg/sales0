@@ -332,8 +332,12 @@ def list_contacts(
     if company_id:
         stmt = stmt.where(Contact.company_id == company_id)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    from sales0.services.crm import priority
+
     order = func.lower(func.coalesce(Contact.full_name, Contact.email, ""))
-    rows = list(db.scalars(stmt.order_by(order, Contact.id).limit(size).offset((page - 1) * size)))
+    # SMA-57: people of the highest-priority companies first, then A-Z
+    rows = list(db.scalars(stmt.order_by(priority.rank_order(priority.of_company(Contact.company_id)), order, Contact.id)
+                           .limit(size).offset((page - 1) * size)))
     return ContactPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 
 

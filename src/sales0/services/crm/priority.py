@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import case, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -104,6 +104,30 @@ def rank_order(column: ColumnElement) -> ColumnElement:  # type: ignore[type-arg
     return case((column == "high", 0), (column == "medium", 1), (column == "low", 2), else_=3)
 
 
+def of_company(company_id: ColumnElement) -> ColumnElement:  # type: ignore[type-arg]
+    """SMA-60: THE priority of a company - its primary prospect's (what the company page shows and sets), as a
+    correlated SQL expression. Every board, list, filter and sort uses this, never another prospect's or an enquiry's."""
+    from sales0.services.crm.primary import company_value
+
+    return company_value(company_id, "priority")
+
+
+def source_of_company(company_id: ColumnElement) -> ColumnElement:  # type: ignore[type-arg]
+    from sales0.services.crm.primary import company_value
+
+    return company_value(company_id, "priority_source")
+
+
+def of_prospect() -> ColumnElement:  # type: ignore[type-arg]
+    """For queries over a prospect row (leads, clients, follow-ups): its company's priority, else its own."""
+    return func.coalesce(of_company(Prospect.company_id), Prospect.priority)
+
+
+def of_enquiry() -> ColumnElement:  # type: ignore[type-arg]
+    """An enquiry's priority as shown and sorted: its company's priority when the company has one, else its own."""
+    return func.coalesce(of_company(Enquiry.company_id), Enquiry.priority)
+
+
 def filter_clause(column: ColumnElement, value: str | None) -> ColumnElement | None:  # type: ignore[type-arg]
     if value == "none":
         return column.is_(None)
@@ -114,5 +138,5 @@ def filter_clause(column: ColumnElement, value: str | None) -> ColumnElement | N
 
 __all__ = [
     "FILTER_CHOICES", "LABELS", "RANK", "SYSTEM", "best_of", "check", "derived_for", "filter_clause", "rank_order", "refresh",
-    "refresh_for_enquiry", "set_priority",
+    "refresh_for_enquiry", "set_priority", "of_company", "of_enquiry", "of_prospect", "source_of_company",
 ]
