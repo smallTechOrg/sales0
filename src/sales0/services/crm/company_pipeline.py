@@ -78,6 +78,7 @@ class EnquiryCard(BaseModel):
     category: str = "relevant_prospect"
     date_added: object | None = None
     source_url: str | None = None
+    author_profile_url: str | None = None  # SMA-59: the LinkedIn author's profile, shown on the card
     contact_id: int | None = None
     person_name: str | None = None  # always shown: the contact on the enquiry, else the contact person / post author
     person_title: str | None = None
@@ -323,7 +324,7 @@ def enquiry_board(db: Session, *, q: str | None = None, characteristic_id: int |
         cols.append(EnquiryColumn(key=status, label=deals.deal_label(status), total=total, cards=[
             EnquiryCard(id=e.id, summary=e.requirement_summary, company_id=e.company_id, company_name=name or e.company,
                         deal_status=e.deal_status, priority=prio, category=e.category or "relevant_prospect",
-                        date_added=e.date_added, source_url=e.source_url,
+                        date_added=e.date_added, source_url=e.source_url, author_profile_url=e.author_profile_url,
                         contact_id=e.contact_id, person_name=cname or e.contact_person or e.author_name,
                         person_title=ctitle or (e.author_headline if not cname and not e.contact_person else None),
                         company_card=by_company.get(e.company_id))

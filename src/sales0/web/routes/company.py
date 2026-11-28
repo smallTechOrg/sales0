@@ -351,7 +351,7 @@ def enquiry_status(
 
     e = db.get(Enquiry, enquiry_id)
     cid = e.company_id if e else None
-    back = pl._safe_next(next) or (f"/companies/{cid}" if cid else "/pipeline?tab=enquiries")  # noqa: SLF001
+    back = _safe_enquiry_next(next) or (f"/companies/{cid}" if cid else "/pipeline?tab=enquiries")
 
     def run() -> Response:
         row = deals.set_status(db, enquiry_id, status, actor=actor_of(member))
@@ -366,7 +366,7 @@ def enquiry_status(
 def _safe_enquiry_next(value: str) -> str:
     """A same-site /companies, /pipeline or /inbox path (open-redirect safe), else ''."""
     nxt = (value or "").strip()
-    return nxt if nxt.startswith(("/companies/", "/pipeline", "/inbox")) and not nxt.startswith("//") and "\\" not in nxt else ""
+    return nxt if nxt.startswith(("/companies/", "/pipeline", "/inbox", "/enquiries/")) and not nxt.startswith("//") and "\\" not in nxt else ""
 
 
 @router.post("/enquiries/{enquiry_id}/edit", response_model=None)
@@ -398,6 +398,30 @@ def enquiry_edit(
                         else f"/companies/{row.company_id}#enquiry-{row.id}", "Enquiry saved.")
 
     return crm_guard(request, back, run, db)
+
+
+@router.get("/enquiries/{enquiry_id}", response_class=HTMLResponse)
+def enquiry_page(request: Request, enquiry_id: PathId, db: Session = Depends(get_db)) -> Response:
+    """SMA-59: one enquiry on a page of its own - every detail (the post and its LinkedIn links, the author, the contact,
+    the AI's reading), its status and the edit form."""
+    from sales0.db.models import Company, Contact, Enquiry, Offering
+    from sales0.services.crm import priority as priority_service
+    from sales0.web.context import render_page
+
+    e = db.get(Enquiry, enquiry_id)
+    if e is None:
+        raise not_found()
+    if wants_json(request):
+        return envelope_ok({"id": e.id, "company_id": e.company_id, "requirement_summary": e.requirement_summary,
+                            "deal_status": e.deal_status, "review_status": e.review_status})
+    company = db.get(Company, e.company_id) if e.company_id else None
+    contact = db.get(Contact, e.contact_id) if e.contact_id else None
+    offering = db.get(Offering, e.offering_id) if e.offering_id else None
+    company_priority = db.scalar(select(priority_service.of_company(Company.id)).where(Company.id == e.company_id)) if company else None
+    ctx = {"e": e, "company": company, "contact": contact, "offering": offering, "deal_options": [(k, deals.deal_label(k)) for k in deals.SETTABLE],
+           "deal_label": deals.deal_label(e.deal_status) if e.deal_status else None, "company_priority": company_priority,
+           "self_url": f"/enquiries/{e.id}"}
+    return render_page(request, db, "pipeline/enquiry_page.html", ctx)
 
 
 @router.get("/enquiries/{enquiry_id}/edit-form", response_class=HTMLResponse)

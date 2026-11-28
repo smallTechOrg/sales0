@@ -782,3 +782,9 @@ details.inline-edit[open] { padding: var(--space-2) 0; }
 .add-enquiry > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: var(--space-3); }
 .add-enquiry > summary::-webkit-details-marker { display: none; }
 .add-enquiry__title { font-size: 1rem; margin: 0; color: var(--color-primary); }
+
+/* ------------------------------------------------------------------ SMA-59: the enquiry page */
+.detail-list { display: grid; grid-template-columns: minmax(7rem, max-content) 1fr; gap: var(--space-1) var(--space-3); margin: 0; }
+.detail-list dt { color: var(--color-muted); font-size: var(--font-size-sm); }
+.detail-list dd { margin: 0; overflow-wrap: anywhere; }
+.pre-wrap { white-space: pre-wrap; overflow-wrap: break-word; }

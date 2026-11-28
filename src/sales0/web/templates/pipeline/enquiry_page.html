@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{# SMA-59: one enquiry on a page of its own. Needs: e (Enquiry), company, contact, offering, deal_options, deal_label,
+   company_priority, self_url. #}
+{% from "pipeline/_enquiry_edit.html" import enquiry_edit_form %}
+{% block title %}{{ e.requirement_summary or "Enquiry" }}{% endblock %}
+{% block page_header %}
+  <div class="page__header">
+    <div>
+      <p class="muted"><a href="{{ '/companies/%d' % company.id if company else '/pipeline?tab=enquiries' }}">&larr; {{ company.name if company else "Enquiries" }}</a></p>
+      <h1 id="enquiry-title">{{ e.requirement_summary or "(no summary)" }}</h1>
+      <p>
+        {% if deal_label %}<span class="badge stage-badge" data-deal-status="{{ e.deal_status }}">{{ deal_label }}</span>{% endif %}
+        {% set shown = company_priority or e.priority %}
+        {% if shown %}<span class="badge badge--{{ shown }}" title="{{ 'The company\'s priority' if company_priority else 'This enquiry\'s priority' }}">{{ shown|capitalize }}</span>{% endif %}
+        <span class="badge">{{ e.review_status|replace("_", " ")|capitalize }}</span>
+        {% if e.category and e.category != "relevant_prospect" %}<span class="badge">{{ e.category|replace("_", " ")|capitalize }}</span>{% endif %}
+        {% if offering %}<span class="chip">{{ offering.name }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+{% endblock %}
+{% block content %}
+  <div class="stack" id="enquiry-page">
+    <div class="grid-2">
+      <section class="card" id="enquiry-details" aria-labelledby="enq-details-title">
+        <div class="card__header"><h2 id="enq-details-title">Details</h2></div>
+        <div class="card__body">
+          <dl class="detail-list">
+            <dt>Company</dt><dd>{% if company %}<a href="/companies/{{ company.id }}">{{ company.name }}</a>{% else %}{{ e.company or "-" }}{% endif %}</dd>
+            <dt>Contact</dt><dd>{% if contact %}<a href="/contacts/{{ contact.id }}">{{ contact.full_name or contact.email }}</a>{% else %}{{ e.contact_person or "-" }}{% endif %}</dd>
+            <dt>E-mail</dt><dd>{% if e.email %}<a href="mailto:{{ e.email }}">{{ e.email }}</a>{% else %}-{% endif %}</dd>
+            <dt>Phone</dt><dd>{{ e.phone or "-" }}</dd>
+            <dt>City</dt><dd>{{ e.city or "-" }}</dd>
+            <dt>Mode</dt><dd>{{ e.mode or "-" }}</dd>
+            <dt>Date posted</dt><dd>{{ e.date_posted.strftime("%d %b %Y") if e.date_posted else "-" }}</dd>
+            <dt>Added</dt><dd>{{ e.date_added|localdt if e.date_added else "-" }}</dd>
+            {% if e.notes %}<dt>Notes</dt><dd class="pre-wrap">{{ e.notes }}</dd>{% endif %}
+          </dl>
+        </div>
+      </section>
+      <section class="card" id="enquiry-source" aria-labelledby="enq-source-title">
+        <div class="card__header"><h2 id="enq-source-title">Post and author</h2></div>
+        <div class="card__body">
+          <dl class="detail-list">
+            <dt>Post</dt><dd>{% if e.source_url and e.source_url.startswith(("http://", "https://")) %}<a id="enquiry-post-link" href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ link_label(e.source_url) }}</a>{% else %}-{% endif %}</dd>
+            <dt>Posted by</dt><dd>{{ e.author_name or "-" }}{% if e.author_headline %}<div class="muted">{{ e.author_headline }}</div>{% endif %}</dd>
+            <dt>Author profile</dt><dd>{% if e.author_profile_url and e.author_profile_url.startswith(("http://", "https://")) %}<a id="enquiry-author-link" href="{{ e.author_profile_url }}" rel="noopener noreferrer" target="_blank">LinkedIn profile</a>{% else %}-{% endif %}</dd>
+            {% if e.ai_reason %}<dt>AI's reading</dt><dd>{{ e.ai_reason }}</dd>{% endif %}
+            {% if e.triage_status == "failed" %}<dt>AI</dt><dd class="triage-failed">AI triage failed - {{ e.triage_error or "unknown error" }}</dd>{% endif %}
+          </dl>
+          {% if e.raw_text %}<details><summary>Full post text</summary><p class="pre-wrap">{{ e.raw_text }}</p></details>{% endif %}
+        </div>
+      </section>
+    </div>
+
+    <section class="card" id="enquiry-actions" aria-labelledby="enq-actions-title">
+      <div class="card__header"><h2 id="enq-actions-title">Status and edit</h2></div>
+      <div class="card__body stack">
+        {% if e.review_status == "accepted" %}
+        <form class="inline-form" id="enquiry-status-form" method="post" action="/pipeline/enquiries/{{ e.id }}/status">
+          <input type="hidden" name="next" value="{{ self_url }}">
+          <label class="field__label" for="enquiry-status">Status</label>
+          <select class="select" id="enquiry-status" name="status">
+            {% for key, label in deal_options %}<option value="{{ key }}"{% if key == e.deal_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <button class="btn btn--sm" type="submit">Set</button>
+        </form>
+        {% endif %}
+        <div class="row">
+          <a class="btn btn--sm" href="/inbox?tab={{ 'accepted' if e.review_status == 'accepted' else ('discarded' if e.review_status == 'discarded' else 'review') }}&q={{ (e.requirement_summary or '')[:40]|urlencode }}">Open in Inbox</a>
+          {% if company %}<a class="btn btn--sm" href="/outreach/compose?enquiry_id={{ e.id }}">Draft from this enquiry</a>{% endif %}
+        </div>
+        {{ enquiry_edit_form(e, self_url, open=(e.triage_status == "failed" and not e.requirement_summary)) }}
+      </div>
+    </section>
+  </div>
+{% endblock %}
