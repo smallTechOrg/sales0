@@ -113,6 +113,10 @@
            data-link-kind="profile">{{ link_labels["profile"] }}</a>
         {% if posted_hint(card.posted_relative) %}<span class="muted">· {{ posted_hint(card.posted_relative) }}</span>{% endif %}
       {% endif %}
+      {# SMA-59: the author's profile next to the post link, and the enquiry's own page #}
+      {% if has_source and has_profile and card.link_kind == "post" and card.author_profile_url != card.source_url %}
+        <a class="enquiry__author-link" href="{{ card.author_profile_url }}" target="_blank" rel="noopener">Author profile ↗</a>{% endif %}
+      <a class="enquiry__page-link" href="/enquiries/{{ card.id }}">Full page</a>
     </div>
     <details class="enquiry__raw">
       <summary>Full post text</summary>

@@ -76,7 +76,7 @@
             {% from "pipeline/_enquiry_edit.html" import enquiry_edit_form %}
             {% for e in co.enquiries %}
               <div class="reply-item" id="enquiry-{{ e.id }}">
-                <strong>{{ e.requirement_summary or "(no summary)" }}</strong>
+                <a href="/enquiries/{{ e.id }}" class="enquiry-page-link"><strong>{{ e.requirement_summary or "(no summary)" }}</strong></a>
                 <div class="muted">
                   {% if e.deal_label %}<span class="badge stage-badge" data-deal-status="{{ e.deal_status }}">{{ e.deal_label }}</span> {% endif %}
                   {% if e.priority %}<span class="badge badge--{{ e.priority }}">{{ e.priority|capitalize }}</span> {% endif %}

@@ -21,10 +21,11 @@
             {% if c and c.off_ramp %}<span class="badge badge--warn">{{ c.off_ramp_label }}</span>{% endif %}
             {% if c %}{{ trait_chips(c.characteristics) }}{% endif %}
           </div>
-          <div class="pcard__meta">{{ e.summary or "(no summary)" }}</div>
+          <div class="pcard__meta"><a href="/enquiries/{{ e.id }}" class="enquiry-page-link" title="Open the enquiry">{{ e.summary or "(no summary)" }}</a></div>
           <div class="pcard__meta">
             {% if c and c.owner %}{{ c.owner }}{% endif %}
-            {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}{% if c and c.owner %} · {% endif %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">Source</a>{% endif %}
+            {% if e.source_url and e.source_url.startswith(("http://", "https://")) %}{% if c and c.owner %} · {% endif %}<a href="{{ e.source_url }}" rel="noopener noreferrer" target="_blank">{{ "LinkedIn post" if "linkedin.com" in e.source_url else "Source" }}</a>{% endif %}
+            {% if e.author_profile_url and e.author_profile_url.startswith(("http://", "https://")) and e.author_profile_url != e.source_url %} · <a href="{{ e.author_profile_url }}" rel="noopener noreferrer" target="_blank">Author</a>{% endif %}
             {% if c and c.next_follow_up_on %}<br>Next follow-up <span class="{% if c.next_follow_up_on < today %}is-overdue{% endif %}">{{ c.next_follow_up_on.strftime("%d %b") }}</span>{% endif %}
           </div>
           {% if e.company_id and c and c.stage and not c.off_ramp %}<button class="btn btn--sm pcard__move" type="button" data-move-open aria-label="Move {{ e.company_name or 'the company' }}" title="Move the company (same as dragging the card onto the strip above)">Move company…</button>{% endif %}
