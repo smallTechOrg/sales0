@@ -33,7 +33,7 @@ from sales0.services._common import now_or, not_found
 from sales0.services.crm import followups, leads, prospects, timeline
 from sales0.services.crm._common import invalid
 from sales0.services.crm.actor import SYSTEM, TEAM, Actor
-from sales0.services.crm.stages import RETIRED_LABELS, stage_rank
+from sales0.services.crm.stages import RETIRED_LABELS
 from sales0.services.crm.stages import STAGE_LABELS as STAGE_LABELS_
 
 STAGE_LABELS = {"prospect": "Prospect", "lead": "Lead", "client": "Customer"}
@@ -77,17 +77,10 @@ def ledger_prospects(db: Session, company_id: int) -> list[Prospect]:
 
 def primary_prospect(db: Session, company_id: int) -> Prospect | None:
     """The prospect row company-level actions apply to: the open one furthest along, else a converted one (it has the
-    lead), else the most recently closed one."""
-    rows = ledger_prospects(db, company_id)
-    if not rows:
-        return None
-    live = [p for p in rows if p.status == "open"]
-    if live:
-        return max(live, key=lambda p: (stage_rank(p.stage), -p.id))
-    conv = [p for p in rows if p.status == "converted"]
-    if conv:
-        return conv[-1]
-    return max(rows, key=lambda p: (p.closed_at or p.updated_at, p.id))
+    lead), else the most recently closed one (``primary.primary_order``, which the boards use too)."""
+    from sales0.services.crm.primary import primary_order
+
+    return db.scalars(select(Prospect).where(Prospect.company_id == company_id).order_by(*primary_order()).limit(1)).first()
 
 
 def ensure_ledger(db: Session, company_id: int, *, actor: Actor = TEAM, now: datetime | None = None) -> Prospect:

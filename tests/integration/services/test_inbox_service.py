@@ -38,11 +38,14 @@ def seeded(db_url: str) -> dict[str, int]:
     return ids
 
 
-def test_review_tab_pins_failed_then_genuine_then_priority_with_counts(seeded: dict[str, int]) -> None:
+def test_review_tab_sorts_priority_first_then_genuine_with_counts(seeded: dict[str, int]) -> None:
     with session_scope() as db:
         page = inbox.list_enquiries(db, "review", None)
     order = [c.id for c in page.items]
-    assert order[0] == seeded["FAIL"] and order[1] == seeded["P1"]
+    ranks = [{"high": 0, "medium": 1, "low": 2}.get(c.priority or "", 3) for c in page.items]
+    assert ranks == sorted(ranks)  # SMA-57: priority first, no exceptions
+    assert order[0] == seeded["P1"]  # the genuine high-priority one
+    assert order.index(seeded["FAIL"]) > order.index(seeded["P1"])  # failed triage has no priority yet
     assert page.counts == {"review": 6, "accepted": 0, "discarded": 0, "skipped": 0, "skipped_failed": 0} and page.total == 6
     p1 = next(c for c in page.items if c.id == seeded["P1"])
     assert p1.ai_verdict == "genuine" and p1.offering_name == "AI corporate workshops"

@@ -198,6 +198,9 @@ def tab_counts(db: Session, offering_id: int | None = None) -> dict[str, int]:
     return counts
 
 
+_PRIORITY_RANK = case((Enquiry.priority == "high", 0), (Enquiry.priority == "medium", 1), (Enquiry.priority == "low", 2), else_=3)
+
+
 def list_enquiries(
     db: Session,
     tab: InboxTab,
@@ -234,15 +237,17 @@ def list_enquiries(
 
     if tab == "review":
         order = (
-            case((Enquiry.triage_status == "failed", 0), else_=1),
+            # SMA-57: priority first everywhere; then the AI's genuine before its discards, failed triage at the top of
+            # the unprioritised ones (they need a retry), direct buyers first
+            _PRIORITY_RANK,
             case((Enquiry.ai_verdict == "genuine", 0), (Enquiry.ai_verdict == "discard", 1), else_=2),
-            case((Enquiry.priority == "high", 0), (Enquiry.priority == "medium", 1), (Enquiry.priority == "low", 2), else_=3),
-            case((Enquiry.ai_opportunity_type == "direct_buyer", 0), else_=1),  # direct buyers first within a priority
+            case((Enquiry.triage_status == "failed", 0), else_=1),
+            case((Enquiry.ai_opportunity_type == "direct_buyer", 0), else_=1),
             Enquiry.date_added.desc(),
             Enquiry.id.desc(),
         )
     else:
-        order = (Enquiry.decided_at.desc(), Enquiry.id.desc())
+        order = (_PRIORITY_RANK, Enquiry.decided_at.desc(), Enquiry.id.desc())
 
     total = int(db.scalar(select(func.count(Enquiry.id)).where(*conditions)) or 0)
     rows = list(

@@ -194,7 +194,10 @@ def list_due(db: Session, *, today: date | None = None, member_id: int | None = 
 
     ``member_id`` keeps only prospects whose latest actor is that team member."""
     today = today or _today()
-    stmt = _due_query(today).order_by(FollowUp.due_on, FollowUp.id)
+    from sales0.services.crm import priority
+
+    # SMA-57: highest priority first, then the oldest due date
+    stmt = _due_query(today).order_by(priority.rank_order(priority.of_prospect()), FollowUp.due_on, FollowUp.id)
     if member_id is not None:
         stmt = stmt.where(Prospect.actor_member_id == member_id)
     views = views_for(db, list(db.scalars(stmt)), today)

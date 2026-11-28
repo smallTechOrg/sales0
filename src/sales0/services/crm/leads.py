@@ -270,8 +270,7 @@ def list_leads(
         stmt = stmt.where(or_(func.lower(Prospect.name).like(like, escape="\\"),
                               Prospect.company_id.in_(select(Company.id).where(Company.name_key.like(like, escape="\\")))))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-    order = (priority.rank_order(Prospect.priority), Lead.updated_at.desc(), Lead.id.desc()) if sort == "priority" else (
-        Lead.updated_at.desc(), Lead.id.desc())
+    order = (priority.rank_order(priority.of_prospect()), Lead.updated_at.desc(), Lead.id.desc())  # SMA-57: always
     rows = list(db.scalars(stmt.order_by(*order).limit(size).offset((page - 1) * size)))
     return LeadPage(items=views_for(db, rows), total=total, page=page, page_size=size)
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from sales0.db.models import (
@@ -210,7 +210,8 @@ def get_company(db: Session, company_id: int) -> CompanyDetail:
     pids = [p.id for p in prospect_rows]
     enquiry_rows = list(db.scalars(
         select(Enquiry).where(or_(Enquiry.company_id == c.id, Enquiry.prospect_id.in_(pids or [-1])))
-        .order_by(Enquiry.date_added.desc(), Enquiry.id.desc())
+        .order_by(case((Enquiry.priority == "high", 0), (Enquiry.priority == "medium", 1), (Enquiry.priority == "low", 2), else_=3),
+                  Enquiry.date_added.desc(), Enquiry.id.desc())  # SMA-57
     ))
     eids = [e.id for e in enquiry_rows]
     # every person of the company: its contacts plus the contacts linked to its prospects
@@ -288,7 +289,10 @@ def list_companies(
     page, size = page_params(page, page_size)
     stmt = _filtered_companies(q, characteristic_id, offering_id, view)
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
-    rows = list(db.scalars(stmt.order_by(Company.name_key, Company.id).limit(size).offset((page - 1) * size)))
+    from sales0.services.crm import priority
+
+    rows = list(db.scalars(stmt.order_by(priority.rank_order(priority.of_company(Company.id)), Company.name_key, Company.id)
+                           .limit(size).offset((page - 1) * size)))  # SMA-57: priority first, then A-Z
     ids = [r.id for r in rows]
     np_, ncl, nct, nen = (_counts(db, m, ids) for m in (Prospect, Client, Contact, Enquiry))
     fus, traits = _open_follow_ups(db, ids), _characteristics_by_company(db, ids)
